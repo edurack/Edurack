@@ -12,9 +12,6 @@ import { createQuestion, listBundles, listTestCoresForBundle } from "@/server-fu
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
-const SUBJECTS = ["Physics", "Chemistry", "Mathematics"] as const;
-type Subject = (typeof SUBJECTS)[number];
-
 type DifficultyLevel = "Easy" | "Medium" | "Hard";
 type OptionKey = "A" | "B" | "C" | "D";
 
@@ -53,7 +50,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
 
   const [bundleId, setBundleId] = useState("");
   const [testId, setTestId] = useState("");
-  const [subject, setSubject] = useState<Subject>("Physics");
+  const [subject, setSubject] = useState("");
 
   const [questionNo, setQuestionNo] = useState("");
   const [questionBody, setQuestionBody] = useState("");
@@ -124,6 +121,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     const qNo = Number(questionNo);
     if (!qNo || qNo <= 0) return setError("Enter a valid question number.");
     if (!questionBody.trim()) return setError("Enter the question body.");
+    if (!subject.trim()) return setError("Enter a subject.");
     if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
       return setError("All four options (A–D) must be filled in.");
     }
@@ -139,7 +137,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           question: {
             bundleId,
             testId,
-            subject,
+            subject: subject.trim(),
             questionNo: qNo,
             body: questionBody.trim(),
             options: {
@@ -219,17 +217,21 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             </ClayField>
 
             <ClayField label="Subject">
-              <select
+              <input
                 value={subject}
-                onChange={(e) => setSubject(e.target.value as Subject)}
-                className={inputClass + " appearance-none"}
-              >
-                {SUBJECTS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="e.g. Physics, Verbal Ability, Accountancy…"
+                className={inputClass}
+                list="question-subject-suggestions"
+              />
+              <datalist id="question-subject-suggestions">
+                <option value="Physics" />
+                <option value="Chemistry" />
+                <option value="Mathematics" />
+                <option value="Verbal Ability" />
+                <option value="Accountancy" />
+                <option value="General Test" />
+              </datalist>
             </ClayField>
           </div>
 

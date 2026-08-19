@@ -50,6 +50,7 @@ type OnboardingProfile = {
   board: string;
   targetExam: string;
   track: "Dropper" | "11th" | "12th" | "";
+  cuetDomainSubjects: string[];
 };
 
 // Runs after ANY successful sign-in or sign-up (email/password or Google):
@@ -764,6 +765,7 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
     board: "",
     targetExam: "NEET",
     track: "",
+    cuetDomainSubjects: [],
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -815,7 +817,19 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     try {
       const token = await user.getIdToken();
-      await saveProfile({ data: { token, profile } });
+      const normalizedProfile = {
+        ...profile,
+        targetExam: (() => {
+          const value = profile.targetExam.toLowerCase();
+          if (value.includes("neet")) return "neet";
+          if (value.includes("jee")) return "jee";
+          if (value.includes("cuet")) return "cuet";
+          if (value.includes("ipmat")) return "ipmat";
+          return "";
+        })(),
+        cuetDomainSubjects: profile.cuetDomainSubjects.map((subject) => subject.trim()).filter(Boolean),
+      };
+      await saveProfile({ data: { token, profile: normalizedProfile } });
       onComplete();
     } catch {
       setError("Could not save your profile. Try again.");
@@ -963,6 +977,29 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
                 <option>IPMAT</option>
               </optgroup>
             </ClaySelect>
+
+            {profile.targetExam.toLowerCase().includes("cuet") && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">
+                  CUET domain subjects
+                </p>
+                <input
+                  value={profile.cuetDomainSubjects.join(", ")}
+                  onChange={(e) =>
+                    set(
+                      "cuetDomainSubjects",
+                      e.target.value
+                        .split(",")
+                        .map((subject) => subject.trim())
+                        .filter(Boolean),
+                    )
+                  }
+                  placeholder="Accountancy, General Test"
+                  className="clay-inset w-full rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-foreground/50">Separate multiple subjects with commas.</p>
+              </div>
+            )}
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">

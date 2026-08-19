@@ -4,5 +4,11 @@
       "source": "/(.*)",
       "headers": [{ "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/__/auth/:path*",
+      "destination": "https://findmedoctor-57feb.firebaseapp.com/__/auth/:path*"
+    }
   ]
 }

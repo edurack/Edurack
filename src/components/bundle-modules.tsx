@@ -20,11 +20,21 @@ import {
 
 type AdminUser = { getIdToken: () => Promise<string> };
 type TrackOption = "11th" | "12th" | "Dropper";
+type ExamOption = "neet" | "jee" | "cuet" | "ipmat";
+
+const EXAM_LABELS: Record<ExamOption, string> = {
+  neet: "NEET",
+  jee: "JEE",
+  cuet: "CUET",
+  ipmat: "IPMAT",
+};
 
 type BundleRow = {
   id: string;
   title: string;
   track: string;
+  exam: string;
+  domainSubject: string | null;
   features: string[];
   sellingPrice: number;
   crossedPrice: number;
@@ -128,6 +138,8 @@ function MultiUrlField({
 export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
   const [title, setTitle] = useState("");
   const [track, setTrack] = useState<TrackOption>("Dropper");
+  const [exam, setExam] = useState<ExamOption>("neet");
+  const [domainSubject, setDomainSubject] = useState("");
   const [features, setFeatures] = useState<string[]>(["", ""]);
   const [sellingPrice, setSellingPrice] = useState("");
   const [crossedPrice, setCrossedPrice] = useState("");
@@ -157,6 +169,9 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
 
   function resetForm() {
     setTitle("");
+    setTrack("Dropper");
+    setExam("neet");
+    setDomainSubject("");
     setFeatures(["", ""]);
     setSellingPrice("");
     setCrossedPrice("");
@@ -174,6 +189,7 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
     setSuccess(false);
 
     if (!title.trim()) return setError("Enter a bundle title.");
+    if (exam === "cuet" && !domainSubject.trim()) return setError("Enter the CUET domain subject for this bundle.");
     const cleanFeatures = features.map((f) => f.trim()).filter(Boolean);
     if (cleanFeatures.length < 2) return setError("Add at least 2 marketing feature pointers.");
 
@@ -200,6 +216,8 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
           bundle: {
             title: title.trim(),
             track,
+            exam,
+            domainSubject: exam === "cuet" ? domainSubject.trim() : null,
             features: cleanFeatures,
             sellingPrice: selling,
             crossedPrice: crossed,
@@ -272,6 +290,34 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
                 ))}
               </div>
             </ClayField>
+
+            <ClayField label="Exam">
+              <div className="grid grid-cols-4 gap-2">
+                {(["neet", "jee", "cuet", "ipmat"] as const).map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setExam(e)}
+                    className={`rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                      exam === e ? "clay-btn text-white" : "clay-btn-ghost text-foreground/70"
+                    }`}
+                  >
+                    {EXAM_LABELS[e]}
+                  </button>
+                ))}
+              </div>
+            </ClayField>
+
+            {exam === "cuet" && (
+              <ClayField label="CUET domain subject (e.g. Accountancy, General Test)">
+                <input
+                  value={domainSubject}
+                  onChange={(e) => setDomainSubject(e.target.value)}
+                  placeholder="e.g. Accountancy"
+                  className={inputClass}
+                />
+              </ClayField>
+            )}
 
             <ClayField label="Marketing features (2-3 pointers)">
               <div className="space-y-2">
@@ -525,7 +571,7 @@ function BundleCard({
           <div>
             <p className="font-display text-base font-bold text-foreground">{bundle.title}</p>
             <p className="text-xs text-foreground/50">
-              {bundle.track} · ₹{bundle.sellingPrice}{" "}
+              {EXAM_LABELS[bundle.exam as ExamOption] ?? bundle.exam} · {bundle.track} · ₹{bundle.sellingPrice}{" "}
               <span className="line-through opacity-60">₹{bundle.crossedPrice}</span> · expires{" "}
               {new Date(bundle.expiryDate).toLocaleDateString()}
             </p>

@@ -5,9 +5,8 @@
 // an admin review screen (e.g. inside MentorHubModule) can list, approve,
 // or reject applications later.
 import { createServerFn } from "@tanstack/react-start";
+import type { ExamKey } from "@/lib/admin-types";
 import { getDb } from "@/lib/mongo";
-
-type ExamKey = "neet" | "jee" | "cuet" | "ipmat";
 
 type StudentCategory = string;
 type SocialLink = { platform: string; url: string };

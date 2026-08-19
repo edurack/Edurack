@@ -26,6 +26,7 @@ import {
   Check,
   BookMarked,
 } from "lucide-react";
+import { EXAM_KEYS, EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { submitCreatorApplication } from "@/server-functions/mentor-applications";
 
 export const Route = createFileRoute("/join-mentor")({
@@ -38,7 +39,6 @@ export const Route = createFileRoute("/join-mentor")({
 
 type StudentCategory = "Droppers" | "12th" | "11th";
 type SocialPlatform = "YouTube" | "Instagram" | "LinkedIn" | "X (Twitter)" | "Telegram" | "Other";
-type ExamKey = "neet" | "jee" | "cuet" | "ipmat";
 
 interface SocialLinkField {
   platform: SocialPlatform;
@@ -77,12 +77,7 @@ const initialFormState: CreatorApplicationForm = {
 
 const categories: StudentCategory[] = ["Droppers", "12th", "11th"];
 const socialPlatforms: SocialPlatform[] = ["YouTube", "Instagram", "LinkedIn", "X (Twitter)", "Telegram", "Other"];
-const examOptions: { key: ExamKey; label: string }[] = [
-  { key: "neet", label: "NEET" },
-  { key: "jee", label: "JEE" },
-  { key: "cuet", label: "CUET" },
-  { key: "ipmat", label: "IPMAT" },
-];
+const examOptions: { key: ExamKey; label: string }[] = EXAM_KEYS.map((key) => ({ key, label: EXAM_LABELS[key] }));
 const MAX_SOCIAL_LINKS = 5;
 
 function platformIcon(platform: SocialPlatform) {

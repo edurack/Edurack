@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, UserPlus, Users2, Layers3, Pencil, X, Plus, ShieldCheck, Trophy, Building2, BookMarked } from "lucide-react";
-import type { Mentor, MentorshipBatch, Track } from "@/lib/admin-types";
+import type { ExamKey, Mentor, MentorshipBatch, Track } from "@/lib/admin-types";
 import {
   createMentor,
   listMentors,
@@ -457,6 +457,7 @@ function MentorshipBatchCreator({
   const [name, setName] = useState("");
   const [highlights, setHighlights] = useState<string[]>(["", ""]);
   const [track, setTrack] = useState<Track>("Dropper");
+  const [exam, setExam] = useState<ExamKey>("neet");
   const [sellingPrice, setSellingPrice] = useState("");
   const [crossedPrice, setCrossedPrice] = useState("");
   const [assignedMentorId, setAssignedMentorId] = useState("");
@@ -494,6 +495,7 @@ function MentorshipBatchCreator({
             name: name.trim(),
             highlights: cleanHighlights,
             track,
+            exam,
             sellingPrice: selling,
             crossedPrice: crossed,
             assignedMentorId: assignedMentorId || null,
@@ -504,6 +506,7 @@ function MentorshipBatchCreator({
       setThumbnailUrl("");
       setName("");
       setHighlights(["", ""]);
+      setExam("neet");
       setSellingPrice("");
       setCrossedPrice("");
       setAssignedMentorId("");

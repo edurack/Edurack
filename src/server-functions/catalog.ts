@@ -14,25 +14,36 @@ function discountPercent(selling: number, crossed: number): number {
   return Math.round(((crossed - selling) / crossed) * 100);
 }
 
+function shouldShowBundleForStudent(bundleExam: string, bundleDomainSubject: string | null, studentDomainSubjects: Set<string>) {
+  if (bundleExam !== "cuet" || !bundleDomainSubject) return true;
+  return studentDomainSubjects.size === 0 || studentDomainSubjects.has(bundleDomainSubject);
+}
+
 export const listPublicBundles = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
+    const decoded = await requireSignedIn(data.token);
     const db = await getDb();
+    const profile = await db.collection("profiles").findOne({ uid: decoded.uid });
+    const studentDomainSubjects = new Set((profile?.cuetDomainSubjects as string[]) ?? []);
     const rows = await db.collection("bundles").find({}).sort({ createdAt: -1 }).toArray();
 
     return {
-      bundles: rows.map((r) => ({
-        id: String(r._id),
-        title: r.title as string,
-        track: r.track as string,
-        features: (r.features as string[]) ?? [],
-        sellingPrice: r.sellingPrice as number,
-        crossedPrice: r.crossedPrice as number,
-        discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
-        expiryDate: r.expiryDate as string,
-        thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
-      })),
+      bundles: rows
+        .filter((r) => shouldShowBundleForStudent(r.exam as string, (r.domainSubject as string | null) ?? null, studentDomainSubjects))
+        .map((r) => ({
+          id: String(r._id),
+          title: r.title as string,
+          track: r.track as string,
+          exam: (r.exam as string) ?? "neet",
+          domainSubject: (r.domainSubject as string | null) ?? null,
+          features: (r.features as string[]) ?? [],
+          sellingPrice: r.sellingPrice as number,
+          crossedPrice: r.crossedPrice as number,
+          discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
+          expiryDate: r.expiryDate as string,
+          thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
+        })),
     };
   });
 
@@ -54,6 +65,7 @@ export const listPublicMentorshipBatches = createServerFn({ method: "GET" })
         id: String(b._id),
         name: b.name as string,
         track: b.track as string,
+        exam: (b.exam as string) ?? "neet",
         highlights: (b.highlights as string[]) ?? [],
         sellingPrice: b.sellingPrice as number,
         crossedPrice: b.crossedPrice as number,
@@ -77,6 +89,8 @@ export const getPublicBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         title: r.title as string,
         track: r.track as string,
+        exam: (r.exam as string) ?? "neet",
+        domainSubject: (r.domainSubject as string | null) ?? null,
         features: (r.features as string[]) ?? [],
         sellingPrice: r.sellingPrice as number,
         crossedPrice: r.crossedPrice as number,
@@ -118,6 +132,7 @@ export const getPublicMentorshipBatch = createServerFn({ method: "GET" })
         id: String(r._id),
         name: r.name as string,
         track: r.track as string,
+        exam: (r.exam as string) ?? "neet",
         highlights: (r.highlights as string[]) ?? [],
         sellingPrice: r.sellingPrice as number,
         crossedPrice: r.crossedPrice as number,

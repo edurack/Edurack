@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { scryptSync, randomBytes } from "node:crypto";
+import type { ExamKey, Track } from "@/lib/admin-types";
 
 // ─── Authorization helper ────────────────────────────────────────────────
 // Every admin-only server function below calls this first. It verifies the
@@ -150,7 +151,9 @@ export const listTestSeriesAdmin = createServerFn({ method: "GET" })
 // ─── Test Series Bundles ─────────────────────────────────────────────────
 type BundleInput = {
   title: string;
-  track: "11th" | "12th" | "Dropper";
+  track: Track;
+  exam: ExamKey;
+  domainSubject: string | null;
   features: string[];
   sellingPrice: number;
   crossedPrice: number;
@@ -186,7 +189,9 @@ export const listBundles = createServerFn({ method: "GET" })
       bundles: rows.map((r) => ({
         id: String(r._id),
         title: r.title as string,
-        track: r.track as string,
+        track: (r.track as Track) ?? "11th",
+        exam: (r.exam as ExamKey) ?? "neet",
+        domainSubject: (r.domainSubject as string | null) ?? null,
         features: (r.features as string[]) ?? [],
         sellingPrice: r.sellingPrice as number,
         crossedPrice: r.crossedPrice as number,
@@ -559,7 +564,8 @@ type MentorshipBatchInput = {
   thumbnailUrl: string | null;
   name: string;
   highlights: string[];
-  track: "11th" | "12th" | "Dropper";
+  track: Track;
+  exam: ExamKey;
   sellingPrice: number;
   crossedPrice: number;
   assignedMentorId: string | null;
@@ -572,6 +578,7 @@ export const createMentorshipBatch = createServerFn({ method: "POST" })
     const db = await getDb();
     const result = await db.collection("mentorshipBatches").insertOne({
       ...data.batch,
+      exam: data.batch.exam,
       createdAt: new Date(),
     });
     return { ok: true, id: String(result.insertedId) };
@@ -589,7 +596,8 @@ export const listMentorshipBatches = createServerFn({ method: "GET" })
         thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
         name: r.name as string,
         highlights: (r.highlights as string[]) ?? [],
-        track: r.track as string,
+        track: (r.track as Track) ?? "11th",
+        exam: (r.exam as ExamKey) ?? "neet",
         sellingPrice: r.sellingPrice as number,
         crossedPrice: r.crossedPrice as number,
         assignedMentorId: (r.assignedMentorId as string | null) ?? null,
@@ -986,7 +994,10 @@ export const listCreatorApplications = createServerFn({ method: "GET" })
         id: String(r._id),
         personal: r.personal as { fullName: string; email: string; mobileNumber: string; city: string },
         credentials: r.credentials as { institution: string; yearOfStudy: string; examRank: string },
-        mentorship: r.mentorship as { batchTitle: string; targetCategory: string; pricingTier: string },
+        mentorship: {
+          ...(r.mentorship as { batchTitle: string; targetCategory: string; pricingTier: string }),
+          examsTaught: ((r.mentorship as { examsTaught?: string[] })?.examsTaught ?? []) as string[],
+        },
         socialLinks: (r.socialLinks ?? []) as SocialLink[],
         status: (r.status as "pending" | "approved" | "rejected") ?? "pending",
         rejectionReason: (r.rejectionReason as string) ?? null,

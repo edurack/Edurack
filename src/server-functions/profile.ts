@@ -10,6 +10,7 @@ type OnboardingProfileInput = {
   board: string;
   targetExam: string;
   track: "Dropper" | "11th" | "12th" | "";
+  cuetDomainSubjects: string[];
 };
 
 const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
@@ -20,6 +21,7 @@ const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
   board: "",
   targetExam: "",
   track: "",
+  cuetDomainSubjects: [],
 };
 
 // Called right after ANY successful sign-in or sign-up (email/password or
@@ -115,6 +117,7 @@ export const getProfile = createServerFn({ method: "GET" })
       board: (doc.board as string) ?? "",
       targetExam: (doc.targetExam as string) ?? "",
       track: (doc.track as OnboardingProfileInput["track"]) ?? "",
+      cuetDomainSubjects: (doc.cuetDomainSubjects as string[]) ?? [],
       provider: (doc.provider as string) ?? null,
       createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : null,
       updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : null,

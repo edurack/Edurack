@@ -4,15 +4,40 @@
 
 export type Track = "11th" | "12th" | "Dropper";
 
+// Matches the ExamKey used in dashboard.tsx and mentor-applications.ts —
+// keep this the single source of truth going forward.
+export type ExamKey = "neet" | "jee" | "cuet" | "ipmat";
+
+export const EXAM_KEYS: ExamKey[] = ["neet", "jee", "cuet", "ipmat"];
+export const EXAM_LABELS: Record<ExamKey, string> = {
+  neet: "NEET",
+  jee: "JEE",
+  cuet: "CUET",
+  ipmat: "IPMAT",
+};
+
+export type CuetDomainSubject = string;
+
+export type StudentAcademicProfile = {
+  targetExam: ExamKey | "";
+  track: Track | "";
+  cuetDomainSubjects: CuetDomainSubject[];
+};
+
 // ─── Module 1 & 2: Test Series Bundles ──────────────────────────────────────
 export type TestSeriesBundle = {
   id: string;
   title: string;
   track: Track;
-  features: string[]; // 2-3 marketing pointer strings
+  exam: ExamKey;
+  // Only meaningful when exam === "cuet" — the specific domain subject this
+  // bundle covers (e.g. "Accountancy", "General Test"). Null for every other
+  // exam, where one bundle already covers the whole fixed syllabus.
+  domainSubject: string | null;
+  features: string[];
   sellingPrice: number;
-  crossedPrice: number; // dummy "before discount" price
-  uploadWindowStart: string; // ISO date string
+  crossedPrice: number;
+  uploadWindowStart: string;
   uploadWindowEnd: string;
   expiryDate: string;
   thumbnailUrl: string | null;
@@ -42,9 +67,9 @@ export type TestCore = {
   bundleId: string;
   name: string;
   totalQuestions: number;
-  subjects: string[];
+  subjects: string[]; 
   weightage: SubjectWeightage[];
-  liveStart: string; // ISO datetime
+  liveStart: string;
   liveEnd: string;
   instructions: string;
   createdAt: string | null;
@@ -93,6 +118,7 @@ export type MentorshipBatch = {
   name: string;
   highlights: string[];
   track: Track;
+  exam: ExamKey;
   sellingPrice: number;
   crossedPrice: number;
   assignedMentorId: string | null;

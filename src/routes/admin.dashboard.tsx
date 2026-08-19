@@ -49,6 +49,7 @@ import {
   Calendar,
   Link2,
 } from "lucide-react";
+import { EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { signOutUser } from "@/lib/firebase";
 import {
@@ -1038,7 +1039,7 @@ type Application = {
   id: string;
   personal: { fullName: string; email: string; mobileNumber: string; city: string };
   credentials: { institution: string; yearOfStudy: string; examRank: string };
-  mentorship: { batchTitle: string; targetCategory: string; pricingTier: string };
+  mentorship: { batchTitle: string; targetCategory: string; pricingTier: string; examsTaught: ExamKey[] };
   socialLinks: SocialLink[];
   status: ApplicationStatus;
   rejectionReason: string | null;
@@ -1251,6 +1252,9 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                     <p className="truncate text-sm font-semibold text-foreground">{app.mentorship.batchTitle}</p>
                     <p className="text-xs text-foreground/50">
                       {app.mentorship.targetCategory} · {app.mentorship.pricingTier}
+                      {app.mentorship.examsTaught.length > 0
+                        ? ` · ${app.mentorship.examsTaught.map((key) => EXAM_LABELS[key] ?? key).join(", ")}`
+                        : ""}
                     </p>
                   </div>
                 </div>

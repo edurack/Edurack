@@ -21,6 +21,15 @@ export const Route = createFileRoute("/admin/auth")({
 // it and load the mentor's profile.
 const MENTOR_SESSION_KEY = "mentor_session_token";
 
+async function waitForAdminClaim(maxAttempts = 5, delayMs = 400): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const result = await auth.currentUser!.getIdTokenResult(true);
+    if (result.claims.admin === true) return true;
+    if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return false;
+}
+
 type Tab = "signin" | "signup" | "mentor";
 
 function AdminAuthPage() {
@@ -181,8 +190,13 @@ function AdminSignInForm() {
       await firebaseSignIn(email, password);
       const token = await auth.currentUser!.getIdToken();
       await verifyAdminAccess({ data: { token, passkey } });
-      // Force-refresh so the token now carries the admin claim.
-      await auth.currentUser!.getIdToken(true);
+
+      const claimed = await waitForAdminClaim();
+      if (!claimed) {
+        setError("Admin access was granted, but it's taking a moment to sync. Please try signing in again.");
+        if (auth.currentUser) await signOutUser();
+        return;
+      }
       navigate({ to: "/admin/dashboard" });
     } catch (err) {
       setError(friendlyAdminError(err));
@@ -267,7 +281,13 @@ function AdminSignUpForm() {
       await firebaseSignUp(email, password);
       const token = await auth.currentUser!.getIdToken();
       await verifyAdminAccess({ data: { token, passkey } });
-      await auth.currentUser!.getIdToken(true);
+
+      const claimed = await waitForAdminClaim();
+      if (!claimed) {
+        setError("Admin access was granted, but it's taking a moment to sync. Please try signing in again.");
+        if (auth.currentUser) await signOutUser();
+        return;
+      }
       navigate({ to: "/admin/dashboard" });
     } catch (err) {
       setError(friendlyAdminError(err));
