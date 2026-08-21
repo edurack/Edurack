@@ -1,8 +1,14 @@
 // SERVER-ONLY. Never import this from a component or client-side file.
-import dns from "node:dns";
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-
 import { MongoClient, type Db } from "mongodb";
+
+// The custom DNS resolvers were a local-dev workaround for ISPs that fail
+// SRV lookups on their default resolver. They must NOT run in production —
+// on Vercel this causes DNS/TLS mismatches against Atlas's SRV records,
+// leading to MongoServerSelectionError / TLS alert failures.
+if (process.env.NODE_ENV === "development") {
+  const dns = require("node:dns");
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+}
 
 const uri = process.env.MONGODB_URI;
 if (!uri) throw new Error("MONGODB_URI is not set");
@@ -25,7 +31,7 @@ if (process.env.NODE_ENV === "development") {
 
 export async function getDb(): Promise<Db> {
   if (db) return db;
-  
+
   // The driver will handle connecting automatically when you request the db context
   db = client.db("Edurack");
   return db;
