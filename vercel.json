@@ -9,11 +9,5 @@
         }
       ]
     }
-  ],
-  "rewrites": [
-    {
-      "source": "/__/auth/:path*",
-      "destination": "https://edurackin.firebaseapp.com/__/auth/:path*"
-    }
   ]
 }
