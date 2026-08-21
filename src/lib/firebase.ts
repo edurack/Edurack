@@ -13,7 +13,7 @@ import {
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   // Always use the native Firebase auth domain to bypass browser cross-origin storage partitioning
-  authDomain: "edurack.in",
+  authDomain: "auth.edurack.in",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
