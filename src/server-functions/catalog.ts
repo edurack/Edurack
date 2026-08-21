@@ -14,7 +14,7 @@ function discountPercent(selling: number, crossed: number): number {
   return Math.round(((crossed - selling) / crossed) * 100);
 }
 
-function shouldShowBundleForStudent(bundleExam: string, bundleDomainSubject: string | null, studentDomainSubjects: Set<string>) {
+function shouldShowBundleForAStudent(bundleExam: string, bundleDomainSubject: string | null, studentDomainSubjects: Set<string>) {
   if (bundleExam !== "cuet" || !bundleDomainSubject) return true;
   return studentDomainSubjects.size === 0 || studentDomainSubjects.has(bundleDomainSubject);
 }
@@ -30,7 +30,7 @@ export const listPublicBundles = createServerFn({ method: "GET" })
 
     return {
       bundles: rows
-        .filter((r) => shouldShowBundleForStudent(r.exam as string, (r.domainSubject as string | null) ?? null, studentDomainSubjects))
+        .filter((r) => shouldShowBundleForAStudent(r.exam as string, (r.domainSubject as string | null) ?? null, studentDomainSubjects))
         .map((r) => ({
           id: String(r._id),
           title: r.title as string,

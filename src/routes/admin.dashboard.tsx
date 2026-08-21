@@ -49,7 +49,6 @@ import {
   Calendar,
   Link2,
 } from "lucide-react";
-import { EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { signOutUser } from "@/lib/firebase";
 import {
@@ -141,6 +140,15 @@ const currency = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
 });
+
+// Maps the exam keys stored on mentor applications (and, once catalog.ts
+// is updated, bundles/batches) to their display labels.
+const EXAM_LABELS: Record<string, string> = {
+  neet: "NEET",
+  jee: "JEE",
+  cuet: "CUET",
+  ipmat: "IPMAT",
+};
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -1039,7 +1047,13 @@ type Application = {
   id: string;
   personal: { fullName: string; email: string; mobileNumber: string; city: string };
   credentials: { institution: string; yearOfStudy: string; examRank: string };
-  mentorship: { batchTitle: string; targetCategory: string; pricingTier: string; examsTaught: ExamKey[] };
+  mentorship: {
+    batchTitle: string;
+    targetCategory: string;
+    pricingTier: string;
+    // Optional so applications filed before this field existed don't break.
+    examsTaught?: string[];
+  };
   socialLinks: SocialLink[];
   status: ApplicationStatus;
   rejectionReason: string | null;
@@ -1142,11 +1156,15 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
     const q = query.trim().toLowerCase();
     return applications.filter((a) => {
       if (statusFilter !== "all" && a.status !== statusFilter) return false;
+      const examMatch = (a.mentorship.examsTaught ?? []).some(
+        (exam) => exam.toLowerCase().includes(q) || (EXAM_LABELS[exam] ?? "").toLowerCase().includes(q),
+      );
       if (
         q &&
         !a.personal.fullName.toLowerCase().includes(q) &&
         !a.mentorship.batchTitle.toLowerCase().includes(q) &&
-        !a.credentials.institution.toLowerCase().includes(q)
+        !a.credentials.institution.toLowerCase().includes(q) &&
+        !examMatch
       )
         return false;
       return true;
@@ -1175,7 +1193,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, institution, or batch…"
+              placeholder="Search by name, institution, batch, or exam (NEET/JEE/CUET/IPMAT)…"
               className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
             />
           </div>
@@ -1252,12 +1270,26 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                     <p className="truncate text-sm font-semibold text-foreground">{app.mentorship.batchTitle}</p>
                     <p className="text-xs text-foreground/50">
                       {app.mentorship.targetCategory} · {app.mentorship.pricingTier}
-                      {app.mentorship.examsTaught.length > 0
-                        ? ` · ${app.mentorship.examsTaught.map((key) => EXAM_LABELS[key] ?? key).join(", ")}`
-                        : ""}
                     </p>
                   </div>
                 </div>
+
+                {/* Exams applied to mentor for */}
+                {app.mentorship.examsTaught && app.mentorship.examsTaught.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                      Mentoring for:
+                    </span>
+                    {app.mentorship.examsTaught.map((exam) => (
+                      <span
+                        key={exam}
+                        className="rounded-full bg-[var(--sky-deep)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white"
+                      >
+                        {EXAM_LABELS[exam] ?? exam}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Social links */}
                 {app.socialLinks.length > 0 && (
@@ -1268,6 +1300,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       return (
                         <a
                           key={i}
+
                           href={href}
                           target="_blank"
                           rel="noreferrer"
@@ -1644,8 +1677,7 @@ function FilterChip({
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
-})
- {
+}) {
   return (
     <button
       type="button"
