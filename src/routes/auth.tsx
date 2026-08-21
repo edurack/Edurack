@@ -78,15 +78,16 @@ function AuthPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (loading) return;
+  if (loading) return;
 
-    if (!user) {
-      setStage("auth");
-      return;
-    }
+  if (!user) {
+    setStage("auth");
+    return;
+  }
 
-    let cancelled = false;
-    (async () => {
+  let cancelled = false;
+  (async () => {
+    try {
       await user.reload();
       const isPasswordUser = user.providerData.some((p) => p.providerId === "password");
 
@@ -97,19 +98,28 @@ function AuthPage() {
         return;
       }
 
-      const { needsOnboarding: incomplete } = await completeLogin(user, "password");
+      const provider = user.providerData.some((p) => p.providerId === "google.com")
+        ? "google.com"
+        : "password";
+
+      const { needsOnboarding: incomplete } = await completeLogin(user, provider);
       if (cancelled) return;
+
       if (incomplete) {
         setStage("onboarding");
       } else {
         navigate({ to: "/dashboard" });
       }
-    })();
+    } catch (err) {
+      console.error("Auth redirect error:", err);
+      if (!cancelled) setStage("auth");
+    }
+  })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [user, loading, navigate]);
+  return () => {
+    cancelled = true;
+  };
+}, [user, loading, navigate]);
 
   async function handleVerified() {
     const current = auth.currentUser;
@@ -414,20 +424,26 @@ function SignInForm({
     }
   }
 
-  async function handleGoogle() {
-    setError(null);
-    setGoogleLoading(true);
-    try {
-      await googleAuth();
-      const user = auth.currentUser!;
-      const { needsOnboarding: incomplete } = await completeLogin(user, "google.com");
-      incomplete ? onSignedUp() : onSignedIn();
-    } catch (err) {
-      setError(friendlyAuthError(err));
-    } finally {
-      setGoogleLoading(false);
+async function handleGoogle() {
+  setError(null);
+  setGoogleLoading(true);
+  try {
+    await googleAuth();
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    const { needsOnboarding: incomplete } = await completeLogin(currentUser, "google.com");
+    if (incomplete) {
+      onSignedUp(); // Switches stage to onboarding
+    } else {
+      onSignedIn(); // Navigates to /dashboard
     }
+  } catch (err) {
+    setError(friendlyAuthError(err));
+  } finally {
+    setGoogleLoading(false);
   }
+}
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>

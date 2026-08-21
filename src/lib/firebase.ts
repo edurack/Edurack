@@ -10,9 +10,18 @@ import {
   signOut,
 } from "firebase/auth";
 
+// Detect if running locally
+const isLocal =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  // Use standard Firebase domain on localhost, custom domain on production
+  authDomain: isLocal
+    ? "edurackin.firebaseapp.com"
+    : import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "www.edurack.in",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
@@ -23,10 +32,7 @@ const firebaseConfig = {
 export const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Explicit local persistence: the user stays logged in across page reloads
-// and browser restarts (until they sign out) rather than only for the tab
-// session. This is the default for web already, but set explicitly so the
-// behavior doesn't depend on Firebase's default changing.
+// Explicit local persistence
 if (typeof window !== "undefined") {
   void setPersistence(auth, browserLocalPersistence);
 }
