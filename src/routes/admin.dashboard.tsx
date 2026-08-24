@@ -37,6 +37,8 @@ import {
   MapPin,
   Star,
   FileCheck,
+  FileText,
+  Copy,
   UserPlus,
   ThumbsUp,
   ThumbsDown,
@@ -67,6 +69,7 @@ import {
   deleteBundle,
   deleteTestCore,
 } from "@/server-functions/admin";
+import { getMentorOnboardingDetails } from "@/server-functions/mentor-onboarding";
 import { BundleCreationModule, BundleManagementModule } from "@/components/bundle-modules";
 import { TestCoreModule } from "@/components/test-core-module";
 import { QuestionIngestionModule } from "@/components/question-ingestion-module";
@@ -1078,6 +1081,268 @@ function socialIcon(platform: string) {
   }
 }
 
+// ─── Approved-application onboarding details drawer ─────────────────────────
+// Shows what the mentor filled in on the post-approval onboarding wizard
+// (src/routes/mentor-onboarding/$applicationId.tsx) plus their signature
+// status. Only reachable from an "approved" application card below.
+type MentorOnboardingDetails = {
+  profilePhotoUrl: string;
+  fullName: string;
+  college: string;
+  rank: string;
+  aboutText: string;
+  weeklyHours: string;
+  wantsToSellTestSeries: boolean;
+  wantsToRecordIntroVideo: boolean;
+  introVideoUrl: string;
+  batchName: string;
+  batchThumbnailUrl: string;
+  needsThumbnailFromEdurack: boolean;
+  batchPrice: number;
+  batchDurationMonths: number;
+  hasMinStudentCriteria: boolean;
+  minStudentCriteriaDetails: string;
+  needsPromotionAssistance: boolean;
+  hasSyllabusPdf: boolean;
+  syllabusPdfUrl: string;
+  wantsPlannerDiscussionCall: boolean;
+  expectedCommissionPercent: number;
+  wantsPlatformTour: boolean;
+  preferredLaunchDate: string;
+  submittedAt: string | null;
+  updatedAt: string | null;
+  signature: {
+    typedFullName: string;
+    agreementVersion: string;
+    signedAt: string | null;
+  } | null;
+};
+
+function OnboardingDetailsDrawer({
+  applicationId,
+  adminUser,
+  onClose,
+}: {
+  applicationId: string;
+  adminUser: { getIdToken: () => Promise<string> };
+  onClose: () => void;
+}) {
+  const [details, setDetails] = useState<MentorOnboardingDetails | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error" | "none">("loading");
+
+  async function load() {
+    setStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const result = await getMentorOnboardingDetails({ data: { token, applicationId } });
+      if (!result.details) {
+        setStatus("none");
+        return;
+      }
+      setDetails(result.details as MentorOnboardingDetails);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicationId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="clay relative flex h-full w-full max-w-lg flex-col overflow-y-auto rounded-l-3xl rounded-r-none p-5 sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-foreground/60 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Close
+          </button>
+          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70 sm:hidden">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {status === "loading" ? (
+          <div className="space-y-4">
+            <div className="h-20 animate-pulse rounded-2xl bg-foreground/5" />
+            <div className="h-32 animate-pulse rounded-2xl bg-foreground/5" />
+            <div className="h-24 animate-pulse rounded-2xl bg-foreground/5" />
+          </div>
+        ) : status === "none" ? (
+          <EmptyState message="This mentor hasn't submitted onboarding details yet." />
+        ) : status === "error" ? (
+          <ErrorState message="Couldn't load onboarding details." onRetry={load} />
+        ) : details ? (
+          <div className="space-y-4 text-sm">
+            {/* Identity / bio */}
+            <div className="clay-inset p-4">
+              <div className="flex items-center gap-3">
+                <div className="clay flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
+                  <span className="font-display text-xl font-bold text-foreground/60">
+                    {details.fullName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-display text-lg font-bold text-foreground">{details.fullName}</p>
+                  <p className="truncate text-xs text-foreground/50">
+                    {details.college} {details.rank ? `· ${details.rank}` : ""}
+                  </p>
+                </div>
+              </div>
+              {details.aboutText && (
+                <p className="mt-3 whitespace-pre-line text-foreground/70">{details.aboutText}</p>
+              )}
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-foreground/50">
+                <Calendar className="h-3 w-3" />
+                Weekly commitment: {details.weeklyHours || "—"}
+              </p>
+            </div>
+
+            {/* Batch */}
+            <DrawerSection icon={GraduationCap} title="Proposed batch">
+              <div className="clay-inset px-3.5 py-3">
+                <p className="font-semibold text-foreground">{details.batchName || "—"}</p>
+                <p className="mt-0.5 text-xs text-foreground/50">
+                  {currency.format(details.batchPrice || 0)} · {details.batchDurationMonths || 0} month
+                  {details.batchDurationMonths === 1 ? "" : "s"} ·{" "}
+                  {details.hasMinStudentCriteria
+                    ? details.minStudentCriteriaDetails || "Has criteria"
+                    : "Open to all"}
+                </p>
+                {details.batchThumbnailUrl && (
+                  <p className="mt-1 truncate text-xs text-foreground/50">
+                    Thumbnail: {details.batchThumbnailUrl}
+                  </p>
+                )}
+                {details.needsThumbnailFromEdurack && (
+                  <p className="mt-1 text-xs font-semibold text-[var(--sky-deep)]">
+                    Requested a thumbnail from EDURACK
+                  </p>
+                )}
+              </div>
+            </DrawerSection>
+
+            {/* Everything else */}
+            <DrawerSection icon={ListChecks} title="Onboarding answers">
+              <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+                <li>
+                  Sell test series too: <strong className="text-foreground">{details.wantsToSellTestSeries ? "Yes" : "No"}</strong>
+                </li>
+                <li>
+                  Intro video:{" "}
+                  <strong className="text-foreground">
+                    {details.wantsToRecordIntroVideo ? details.introVideoUrl || "Yes, pending" : "No"}
+                  </strong>
+                </li>
+                <li>
+                  Needs promotion assistance:{" "}
+                  <strong className="text-foreground">{details.needsPromotionAssistance ? "Yes" : "No"}</strong>
+                </li>
+                <li>
+                  Syllabus/planner:{" "}
+                  <strong className="text-foreground">
+                    {details.hasSyllabusPdf
+                      ? details.syllabusPdfUrl || "Provided"
+                      : details.wantsPlannerDiscussionCall
+                        ? "Wants a planning call"
+                        : "Not provided"}
+                  </strong>
+                </li>
+                <li>
+                  Expected commission: <strong className="text-foreground">{details.expectedCommissionPercent}%</strong>
+                </li>
+                <li>
+                  Wants platform tour: <strong className="text-foreground">{details.wantsPlatformTour ? "Yes" : "No"}</strong>
+                </li>
+                <li>
+                  Preferred launch date:{" "}
+                  <strong className="text-foreground">{formatDate(details.preferredLaunchDate) !== "—" ? formatDate(details.preferredLaunchDate) : details.preferredLaunchDate || "—"}</strong>
+                </li>
+              </ul>
+            </DrawerSection>
+
+            {/* Agreement / signature */}
+            <div
+              className={`clay-inset rounded-2xl p-4 ${
+                details.signature ? "bg-[var(--mint-soft)]/30" : "bg-[var(--coral-soft)]/30"
+              }`}
+            >
+              {details.signature ? (
+                <>
+                  <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Agreement signed
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/60">
+                    Signed as "{details.signature.typedFullName}" on {formatDateTime(details.signature.signedAt)} ·
+                    version {details.signature.agreementVersion}
+                  </p>
+                </>
+              ) : (
+                <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <AlertCircle className="h-4 w-4" />
+                  Agreement not yet signed
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// Builds the public onboarding wizard link for an approved application —
+// see src/routes/mentor-onboarding/$applicationId.tsx. Nothing sends this
+// automatically yet, so this is the admin's only way to hand it to the
+// mentor (email, WhatsApp, wherever) until an auto-send is wired up.
+function onboardingLinkFor(applicationId: string) {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/mentor-onboarding/${applicationId}`;
+}
+
+function CopyLinkButton({ applicationId }: { applicationId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    const link = onboardingLinkFor(applicationId);
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail on non-secure contexts / older browsers —
+      // fall back to a prompt so the admin can still grab the link.
+      window.prompt("Copy the onboarding link:", link);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+    >
+      {copied ? (
+        <>
+          <CheckCircle2 className="h-3.5 w-3.5 text-[var(--sky-deep)]" />
+          Copied!
+        </>
+      ) : (
+        <>
+          <Copy className="h-3.5 w-3.5" />
+          Copy onboarding link
+        </>
+      )}
+    </button>
+  );
+}
+
 type AppStatusFilter = "pending" | "approved" | "rejected" | "all";
 
 function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
@@ -1088,6 +1353,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [onboardingDrawerId, setOnboardingDrawerId] = useState<string | null>(null);
 
   async function load() {
     setStatus("loading");
@@ -1300,7 +1566,6 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       return (
                         <a
                           key={i}
-
                           href={href}
                           target="_blank"
                           rel="noreferrer"
@@ -1386,6 +1651,18 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                         Reopen
                       </button>
                     )}
+                    {app.status === "approved" && (
+                      <>
+                        <CopyLinkButton applicationId={app.id} />
+                        <button
+                          onClick={() => setOnboardingDrawerId(app.id)}
+                          className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          View onboarding details
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </li>
@@ -1393,6 +1670,14 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
           </ul>
         )}
       </div>
+
+      {onboardingDrawerId && (
+        <OnboardingDetailsDrawer
+          applicationId={onboardingDrawerId}
+          adminUser={adminUser}
+          onClose={() => setOnboardingDrawerId(null)}
+        />
+      )}
     </div>
   );
 }

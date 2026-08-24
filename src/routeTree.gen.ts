@@ -25,6 +25,7 @@ import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$
 import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
+import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/mentor-onboarding/$applicationId'
 import { Route as LegalTermsRouteImport } from './routes/legal/terms'
 import { Route as LegalRefundRouteImport } from './routes/legal/refund'
 import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
@@ -113,6 +114,12 @@ const MentorProfileMentorIdRoute = MentorProfileMentorIdRouteImport.update({
   path: '/mentor-profile/$mentorId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MentorOnboardingApplicationIdRoute =
+  MentorOnboardingApplicationIdRouteImport.update({
+    id: '/mentor-onboarding/$applicationId',
+    path: '/mentor-onboarding/$applicationId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const LegalTermsRoute = LegalTermsRouteImport.update({
   id: '/legal/terms',
   path: '/legal/terms',
@@ -166,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
@@ -191,6 +199,7 @@ export interface FileRoutesByTo {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
@@ -217,6 +226,7 @@ export interface FileRoutesById {
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
+  '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
@@ -244,6 +254,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
+    | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
     | '/simulator/live'
@@ -269,6 +280,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
+    | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
     | '/simulator/live'
@@ -294,6 +306,7 @@ export interface FileRouteTypes {
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
+    | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
     | '/simulator/live'
@@ -320,6 +333,7 @@ export interface RootRouteChildren {
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalRefundRoute: typeof LegalRefundRoute
   LegalTermsRoute: typeof LegalTermsRoute
+  MentorOnboardingApplicationIdRoute: typeof MentorOnboardingApplicationIdRoute
   MentorProfileMentorIdRoute: typeof MentorProfileMentorIdRoute
   MentorDashboardRoute: typeof MentorDashboardRoute
   SimulatorLiveRoute: typeof SimulatorLiveRoute
@@ -443,6 +457,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MentorProfileMentorIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mentor-onboarding/$applicationId': {
+      id: '/mentor-onboarding/$applicationId'
+      path: '/mentor-onboarding/$applicationId'
+      fullPath: '/mentor-onboarding/$applicationId'
+      preLoaderRoute: typeof MentorOnboardingApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/legal/terms': {
       id: '/legal/terms'
       path: '/legal/terms'
@@ -512,6 +533,7 @@ const rootRouteChildren: RootRouteChildren = {
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalRefundRoute: LegalRefundRoute,
   LegalTermsRoute: LegalTermsRoute,
+  MentorOnboardingApplicationIdRoute: MentorOnboardingApplicationIdRoute,
   MentorProfileMentorIdRoute: MentorProfileMentorIdRoute,
   MentorDashboardRoute: MentorDashboardRoute,
   SimulatorLiveRoute: SimulatorLiveRoute,

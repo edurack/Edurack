@@ -1,12 +1,12 @@
 // SERVER-ONLY. Never import this from a component or client-side file.
 import { MongoClient, type Db } from "mongodb";
+import dns from "node:dns";
 
 // The custom DNS resolvers were a local-dev workaround for ISPs that fail
 // SRV lookups on their default resolver. They must NOT run in production —
 // on Vercel this causes DNS/TLS mismatches against Atlas's SRV records,
 // leading to MongoServerSelectionError / TLS alert failures.
 if (process.env.NODE_ENV === "development") {
-  const dns = require("node:dns");
   dns.setServers(["8.8.8.8", "1.1.1.1"]);
 }
 
