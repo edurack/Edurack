@@ -68,8 +68,13 @@ import {
   listTestCoresForDeletion,
   deleteBundle,
   deleteTestCore,
+  createMentor,
+  updateMentorProfile,
+  createMentorshipBatch,
 } from "@/server-functions/admin";
-import { getMentorOnboardingDetails } from "@/server-functions/mentor-onboarding";
+import { updateMentorLockedInfo } from "@/server-functions/mentor-auth";
+import { getMentorOnboardingDetails, markMentorProfileCreated, markMentorshipBatchLinked } from "@/server-functions/mentor-onboarding";
+import { EXAM_KEYS, EXAM_LABELS as EXAM_LABEL_MAP, type Track, type ExamKey } from "@/lib/admin-types";
 import { BundleCreationModule, BundleManagementModule } from "@/components/bundle-modules";
 import { TestCoreModule } from "@/components/test-core-module";
 import { QuestionIngestionModule } from "@/components/question-ingestion-module";
@@ -1113,25 +1118,76 @@ type MentorOnboardingDetails = {
   updatedAt: string | null;
   signature: {
     typedFullName: string;
+    agreementUrl: string;
     agreementVersion: string;
     signedAt: string | null;
   } | null;
+  profileCreated: boolean;
+  mentorProfileId: string | null;
+  batchCreated: boolean;
+  mentorshipBatchId: string | null;
 };
+
+// ─── Credential generation for one-click mentor login creation ─────────────
+function slugifyName(name: string) {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return slug.slice(0, 16) || "mentor";
+}
+
+function randomSuffix(length = 4) {
+  return Math.random().toString(36).slice(2, 2 + length);
+}
+
+function randomPassword(length = 12) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function randomSecretCode() {
+  return `MNT-${new Date().getFullYear()}-${randomSuffix(3).toUpperCase()}`;
+}
 
 function OnboardingDetailsDrawer({
   applicationId,
+  examsTaughtHint,
   adminUser,
   onClose,
 }: {
   applicationId: string;
+  examsTaughtHint: string[];
   adminUser: { getIdToken: () => Promise<string> };
   onClose: () => void;
 }) {
   const [details, setDetails] = useState<MentorOnboardingDetails | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "none">("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [createProfileError, setCreateProfileError] = useState<string | null>(null);
+  const [generatedCredentials, setGeneratedCredentials] = useState<{
+    username: string;
+    password: string;
+    secretCode: string;
+  } | null>(null);
+
+  // ─── Batch publishing form state ───────────────────────────────────────
+  // Prefills whatever the onboarding wizard actually collected (name,
+  // thumbnail, price) and the application's examsTaught (if one resolves
+  // to a real ExamKey) — everything else (highlights, track, a crossed
+  // reference price) genuinely wasn't collected anywhere, so those start
+  // blank for the admin to fill in here before publishing.
+  const defaultExam: ExamKey = (examsTaughtHint.find((e) => (EXAM_KEYS as string[]).includes(e)) as ExamKey) ?? "neet";
+  const [batchHighlights, setBatchHighlights] = useState<string[]>(["", ""]);
+  const [batchTrack, setBatchTrack] = useState<Track>("Dropper");
+  const [batchExam, setBatchExam] = useState<ExamKey>(defaultExam);
+  const [batchCrossedPrice, setBatchCrossedPrice] = useState("");
+  const [publishingBatch, setPublishingBatch] = useState(false);
+  const [publishBatchError, setPublishBatchError] = useState<string | null>(null);
 
   async function load() {
     setStatus("loading");
+    setErrorMessage(null);
     try {
       const token = await adminUser.getIdToken();
       const result = await getMentorOnboardingDetails({ data: { token, applicationId } });
@@ -1141,8 +1197,139 @@ function OnboardingDetailsDrawer({
       }
       setDetails(result.details as MentorOnboardingDetails);
       setStatus("ready");
-    } catch {
+    } catch (err) {
+      // Log the full error to the browser console for debugging, and keep
+      // a short version on screen so it's visible without opening dev
+      // tools — a bare "couldn't load" message hides exactly the info
+      // needed to fix whatever actually broke (expired token, missing
+      // admin claim, a mismatched import in the server function, etc.).
+      console.error("getMentorOnboardingDetails failed:", err);
+      setErrorMessage(err instanceof Error ? err.message : String(err));
       setStatus("error");
+    }
+  }
+
+  // Creating a "mentor profile" here means creating a real mentor LOGIN —
+  // that's what src/lib/admin-types.ts's Mentor type and MentorList
+  // actually are (username + hashed password + secretCode), the same
+  // system the "Onboard a mentor" form in Mentor Hub already uses. Rather
+  // than inserting a differently-shaped document straight into that same
+  // "mentors" collection (which is what broke MentorList earlier), this
+  // reuses the existing, already-correct createMentor / updateMentorProfile
+  // / updateMentorLockedInfo functions — just auto-fills them with what
+  // was reviewed above, plus freshly generated credentials.
+  //
+  // Note: this deliberately does NOT auto-create a mentorship batch. The
+  // batch price/duration collected during onboarding don't map cleanly
+  // onto MentorshipBatch's required fields (highlights, Track, ExamKey
+  // aren't collected in the onboarding wizard at all), so guessing those
+  // would risk creating a malformed batch the same way the old mentor
+  // insert did. Use the batch details shown above to fill in "Create
+  // mentorship batch" in Mentor Hub yourself, with this mentor selected
+  // in the assignment dropdown.
+  async function handleCreateProfile() {
+    if (!details) return;
+    setCreatingProfile(true);
+    setCreateProfileError(null);
+    try {
+      const token = await adminUser.getIdToken();
+      const baseUsername = slugifyName(details.fullName);
+      const password = randomPassword();
+      const secretCode = randomSecretCode();
+
+      let mentorId: string | null = null;
+      let usedUsername = "";
+      let lastError: unknown = null;
+
+      // A couple of retries with a random suffix in case the base
+      // username collides with an existing mentor login.
+      for (let attempt = 0; attempt < 5 && !mentorId; attempt++) {
+        const candidate = attempt === 0 ? baseUsername : `${baseUsername}${randomSuffix(3)}`;
+        try {
+          const result = await createMentor({
+            data: { token, mentor: { username: candidate, password, secretCode, name: details.fullName } },
+          });
+          mentorId = result.id;
+          usedUsername = candidate;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      if (!mentorId) throw lastError instanceof Error ? lastError : new Error("Could not create a mentor login.");
+
+      await updateMentorProfile({
+        data: {
+          token,
+          id: mentorId,
+          profile: { name: details.fullName, profilePictureUrl: details.profilePhotoUrl || null, trackingIndex: "" },
+        },
+      });
+
+      await updateMentorLockedInfo({
+        data: {
+          token,
+          mentorId,
+          lockedInfo: {
+            aiimsIitRank: details.rank || "Not specified",
+            enrolledCollege: details.college || "Not specified",
+            pursuedCourse: "Not specified",
+          },
+        },
+      });
+
+      await markMentorProfileCreated({ data: { token, applicationId, mentorId } });
+
+      setGeneratedCredentials({ username: usedUsername, password, secretCode });
+      await load();
+    } catch (err) {
+      console.error("Create profile failed:", err);
+      setCreateProfileError(err instanceof Error ? err.message : "Could not create the profile. Try again.");
+    } finally {
+      setCreatingProfile(false);
+    }
+  }
+
+  // Publishes the mentorship batch using createMentorshipBatch — the same
+  // function "Create mentorship batch" in Mentor Hub uses, so the result
+  // is indistinguishable from one created there by hand. Requires a
+  // mentor profile to already exist (mentorProfileId), since a batch has
+  // to be assigned to someone.
+  async function handlePublishBatch() {
+    if (!details || !details.mentorProfileId) return;
+    setPublishBatchError(null);
+
+    const cleanHighlights = batchHighlights.map((h) => h.trim()).filter(Boolean);
+    if (cleanHighlights.length < 2) return setPublishBatchError("Add at least 2 highlights for this batch.");
+    const selling = details.batchPrice;
+    const crossed = Number(batchCrossedPrice);
+    if (!selling || selling <= 0) return setPublishBatchError("The batch price from onboarding looks invalid.");
+    if (!crossed || crossed <= selling) return setPublishBatchError("Crossed price must be higher than the selling price.");
+
+    setPublishingBatch(true);
+    try {
+      const token = await adminUser.getIdToken();
+      const result = await createMentorshipBatch({
+        data: {
+          token,
+          batch: {
+            thumbnailUrl: details.batchThumbnailUrl || null,
+            name: details.batchName,
+            highlights: cleanHighlights,
+            track: batchTrack,
+            exam: batchExam,
+            sellingPrice: selling,
+            crossedPrice: crossed,
+            assignedMentorId: details.mentorProfileId,
+          },
+        },
+      });
+      await markMentorshipBatchLinked({ data: { token, applicationId, mentorshipBatchId: result.id } });
+      await load();
+    } catch (err) {
+      console.error("Publish batch failed:", err);
+      setPublishBatchError(err instanceof Error ? err.message : "Could not publish the batch. Try again.");
+    } finally {
+      setPublishingBatch(false);
     }
   }
 
@@ -1177,16 +1364,30 @@ function OnboardingDetailsDrawer({
         ) : status === "none" ? (
           <EmptyState message="This mentor hasn't submitted onboarding details yet." />
         ) : status === "error" ? (
-          <ErrorState message="Couldn't load onboarding details." onRetry={load} />
+          <div className="space-y-3">
+            <ErrorState message="Couldn't load onboarding details." onRetry={load} />
+            {errorMessage && (
+              <div className="clay-inset rounded-2xl bg-[var(--coral-soft)]/20 p-3">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">
+                  Error detail (for debugging)
+                </p>
+                <p className="break-words font-mono text-xs text-foreground/70">{errorMessage}</p>
+              </div>
+            )}
+          </div>
         ) : details ? (
           <div className="space-y-4 text-sm">
             {/* Identity / bio */}
             <div className="clay-inset p-4">
               <div className="flex items-center gap-3">
-                <div className="clay flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
-                  <span className="font-display text-xl font-bold text-foreground/60">
-                    {details.fullName.charAt(0).toUpperCase()}
-                  </span>
+                <div className="clay flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                  {details.profilePhotoUrl ? (
+                    <img src={details.profilePhotoUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="font-display text-xl font-bold text-foreground/60">
+                      {details.fullName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate font-display text-lg font-bold text-foreground">{details.fullName}</p>
@@ -1207,6 +1408,11 @@ function OnboardingDetailsDrawer({
             {/* Batch */}
             <DrawerSection icon={GraduationCap} title="Proposed batch">
               <div className="clay-inset px-3.5 py-3">
+                {details.batchThumbnailUrl && (
+                  <div className="mb-2.5 h-24 w-full overflow-hidden rounded-xl bg-foreground/5">
+                    <img src={details.batchThumbnailUrl} alt="" className="h-full w-full object-cover" />
+                  </div>
+                )}
                 <p className="font-semibold text-foreground">{details.batchName || "—"}</p>
                 <p className="mt-0.5 text-xs text-foreground/50">
                   {currency.format(details.batchPrice || 0)} · {details.batchDurationMonths || 0} month
@@ -1215,11 +1421,6 @@ function OnboardingDetailsDrawer({
                     ? details.minStudentCriteriaDetails || "Has criteria"
                     : "Open to all"}
                 </p>
-                {details.batchThumbnailUrl && (
-                  <p className="mt-1 truncate text-xs text-foreground/50">
-                    Thumbnail: {details.batchThumbnailUrl}
-                  </p>
-                )}
                 {details.needsThumbnailFromEdurack && (
                   <p className="mt-1 text-xs font-semibold text-[var(--sky-deep)]">
                     Requested a thumbnail from EDURACK
@@ -1291,6 +1492,195 @@ function OnboardingDetailsDrawer({
                 </p>
               )}
             </div>
+
+            {/* Create profile — the actual "add this mentor to the portal"
+                action, gated on having reviewed a signed submission. */}
+            <div className="clay-inset rounded-2xl p-4">
+              {details.profileCreated ? (
+                <>
+                  <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-[var(--sky-deep)]" />
+                    Mentor login created
+                  </p>
+                  {generatedCredentials ? (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs font-medium text-amber-700">
+                        Save these now — the password won't be shown again. Share them with the mentor
+                        directly.
+                      </p>
+                      <div className="clay-inset space-y-1 rounded-2xl bg-[var(--mint-soft)]/30 px-4 py-3 font-mono text-xs text-foreground/80">
+                        <p>Username: {generatedCredentials.username}</p>
+                        <p>Password: {generatedCredentials.password}</p>
+                        <p>Secret code: {generatedCredentials.secretCode}</p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          navigator.clipboard.writeText(
+                            `Username: ${generatedCredentials.username}\nPassword: ${generatedCredentials.password}\nSecret code: ${generatedCredentials.secretCode}`,
+                          )
+                        }
+                        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy credentials
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-xs text-foreground/50">
+                      Login credentials were generated when this was created — they're not stored in
+                      plain text, so they can't be shown again from here.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mb-3 text-xs text-foreground/60">
+                    {details.signature
+                      ? "Creates this mentor's login (username, password, secret code) from what they submitted above. You'll publish their mentorship batch next."
+                      : "This mentor needs to confirm the agreement before a profile can be created."}
+                  </p>
+                  <button
+                    onClick={handleCreateProfile}
+                    disabled={!details.signature || creatingProfile}
+                    className="clay-btn inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {creatingProfile ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-4 w-4" />
+                    )}
+                    Create Profile
+                  </button>
+                  {createProfileError && (
+                    <p className="mt-2 text-xs font-medium text-rose-600">{createProfileError}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Publish mentorship batch — only once the mentor login
+                exists (a batch has to be assigned to somebody). Everything
+                already known from onboarding is shown read-only; the
+                genuinely-missing fields (highlights, track, exam, a
+                crossed reference price) are filled in here before
+                publishing for real via createMentorshipBatch. */}
+            {details.profileCreated && (
+              <div className="clay-inset rounded-2xl p-4">
+                {details.batchCreated ? (
+                  <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-[var(--sky-deep)]" />
+                    Batch published — live on the student dashboard
+                  </p>
+                ) : (
+                  <>
+                    <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                      <Layers3 className="h-3.5 w-3.5" />
+                      Publish mentorship batch
+                    </p>
+
+                    {details.batchThumbnailUrl && (
+                      <div className="mb-2.5 h-20 w-full overflow-hidden rounded-xl bg-foreground/5">
+                        <img src={details.batchThumbnailUrl} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <p className="text-sm font-semibold text-foreground">{details.batchName || "—"}</p>
+                    <p className="mb-3 text-xs text-foreground/50">
+                      {currency.format(details.batchPrice || 0)} · {details.batchDurationMonths || 0} month
+                      {details.batchDurationMonths === 1 ? "" : "s"} (from onboarding)
+                    </p>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                          Highlights (min. 2)
+                        </p>
+                        <div className="space-y-1.5">
+                          {batchHighlights.map((h, i) => (
+                            <input
+                              key={i}
+                              value={h}
+                              onChange={(e) => {
+                                const next = [...batchHighlights];
+                                next[i] = e.target.value;
+                                setBatchHighlights(next);
+                              }}
+                              placeholder={`Highlight ${i + 1}`}
+                              className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                          Track
+                        </p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {(["11th", "12th", "Dropper"] as Track[]).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setBatchTrack(t)}
+                              className={`rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
+                                batchTrack === t ? "clay-btn text-white" : "clay-chip text-foreground/70"
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                          Exam
+                        </p>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {EXAM_KEYS.map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => setBatchExam(e)}
+                              className={`rounded-xl px-2 py-1.5 text-xs font-semibold transition-all ${
+                                batchExam === e ? "clay-btn text-white" : "clay-chip text-foreground/70"
+                              }`}
+                            >
+                              {EXAM_LABEL_MAP[e]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                          Crossed price (₹) — the strike-through reference price
+                        </p>
+                        <input
+                          value={batchCrossedPrice}
+                          onChange={(e) => setBatchCrossedPrice(e.target.value)}
+                          inputMode="numeric"
+                          placeholder={`Higher than ₹${details.batchPrice}`}
+                          className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {publishBatchError && (
+                      <p className="mt-2 text-xs font-medium text-rose-600">{publishBatchError}</p>
+                    )}
+
+                    <button
+                      onClick={handlePublishBatch}
+                      disabled={publishingBatch}
+                      className="clay-btn mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                    >
+                      {publishingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers3 className="h-4 w-4" />}
+                      Publish Batch
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         ) : null}
       </div>
@@ -1353,7 +1743,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [onboardingDrawerId, setOnboardingDrawerId] = useState<string | null>(null);
+  const [onboardingApp, setOnboardingApp] = useState<Application | null>(null);
 
   async function load() {
     setStatus("loading");
@@ -1655,7 +2045,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       <>
                         <CopyLinkButton applicationId={app.id} />
                         <button
-                          onClick={() => setOnboardingDrawerId(app.id)}
+                          onClick={() => setOnboardingApp(app)}
                           className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
                         >
                           <FileText className="h-3.5 w-3.5" />
@@ -1671,11 +2061,12 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
         )}
       </div>
 
-      {onboardingDrawerId && (
+      {onboardingApp && (
         <OnboardingDetailsDrawer
-          applicationId={onboardingDrawerId}
+          applicationId={onboardingApp.id}
+          examsTaughtHint={onboardingApp.mentorship.examsTaught ?? []}
           adminUser={adminUser}
-          onClose={() => setOnboardingDrawerId(null)}
+          onClose={() => setOnboardingApp(null)}
         />
       )}
     </div>

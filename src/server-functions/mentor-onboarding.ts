@@ -188,21 +188,106 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
     const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
     if (!details) return { details: null };
 
+    // Built explicitly rather than spreading the raw Mongo document —
+    // the document's own `_id` field is a MongoDB ObjectId, and
+    // TanStack Start's server-fn response serializer (seroval) can't
+    // serialize that type. Spreading it crashes the request on the
+    // server before a response ever reaches the client, which is why
+    // this previously surfaced as an opaque "Couldn't load" error with
+    // no useful detail. Whitelisting fields here also means any other
+    // non-serializable value that sneaks into the document (say, a
+    // stray Date or ObjectId in a future field) won't silently break
+    // this again.
     return {
       details: {
-        ...(details as unknown as MentorOnboardingInput),
+        profilePhotoUrl: (details.profilePhotoUrl as string) ?? "",
+        fullName: (details.fullName as string) ?? "",
+        college: (details.college as string) ?? "",
+        rank: (details.rank as string) ?? "",
+        aboutText: (details.aboutText as string) ?? "",
+        weeklyHours: (details.weeklyHours as string) ?? "",
+        wantsToSellTestSeries: Boolean(details.wantsToSellTestSeries),
+        wantsToRecordIntroVideo: Boolean(details.wantsToRecordIntroVideo),
+        introVideoUrl: (details.introVideoUrl as string) ?? "",
+        batchName: (details.batchName as string) ?? "",
+        batchThumbnailUrl: (details.batchThumbnailUrl as string) ?? "",
+        needsThumbnailFromEdurack: Boolean(details.needsThumbnailFromEdurack),
+        batchPrice: Number(details.batchPrice ?? 0),
+        batchDurationMonths: Number(details.batchDurationMonths ?? 0),
+        hasMinStudentCriteria: Boolean(details.hasMinStudentCriteria),
+        minStudentCriteriaDetails: (details.minStudentCriteriaDetails as string) ?? "",
+        needsPromotionAssistance: Boolean(details.needsPromotionAssistance),
+        hasSyllabusPdf: Boolean(details.hasSyllabusPdf),
+        syllabusPdfUrl: (details.syllabusPdfUrl as string) ?? "",
+        wantsPlannerDiscussionCall: Boolean(details.wantsPlannerDiscussionCall),
+        expectedCommissionPercent: Number(details.expectedCommissionPercent ?? 0),
+        wantsPlatformTour: Boolean(details.wantsPlatformTour),
+        preferredLaunchDate: (details.preferredLaunchDate as string) ?? "",
         submittedAt: details.submittedAt instanceof Date ? details.submittedAt.toISOString() : null,
         updatedAt: details.updatedAt instanceof Date ? details.updatedAt.toISOString() : null,
         signature: details.signature
           ? {
-              typedFullName: details.signature.typedFullName as string,
-              agreementVersion: details.signature.agreementVersion as string,
+              typedFullName: (details.signature.typedFullName as string) ?? "",
+              agreementUrl: (details.signature.agreementUrl as string) ?? "",
+              agreementVersion: (details.signature.agreementVersion as string) ?? "",
               signedAt:
                 details.signature.signedAt instanceof Date ? details.signature.signedAt.toISOString() : null,
             }
           : null,
+        profileCreated: Boolean(details.profileCreated),
+        mentorProfileId: (details.mentorProfileId as string) ?? null,
+        batchCreated: Boolean(details.batchCreated),
+        mentorshipBatchId: (details.mentorshipBatchId as string) ?? null,
       },
     };
+  });
+
+// ─── Admin action: mark an onboarding submission as converted into a real
+// mentor login, once the admin has created that login via the existing
+// createMentor / updateMentorProfile / updateMentorLockedInfo functions in
+// admin.ts (see admin.dashboard.tsx's handleCreateProfile — this function
+// only records that it happened, it does not create the mentor itself).
+export const markMentorProfileCreated = createServerFn({ method: "POST" })
+  .validator((data: { token: string; applicationId: string; mentorId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+
+    const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
+    if (!details) throw new Error("This mentor hasn't submitted onboarding details yet.");
+    if (!details.signature) throw new Error("This mentor hasn't confirmed the mentor agreement yet.");
+
+    await db.collection("mentorOnboardingDetails").updateOne(
+      { applicationId: data.applicationId },
+      { $set: { profileCreated: true, mentorProfileId: data.mentorId, profileCreatedAt: new Date() } },
+    );
+
+    return { ok: true };
+  });
+
+// ─── Admin action: mark the same onboarding submission as having had its
+// mentorship batch published, once admin.dashboard.tsx's handlePublishBatch
+// has actually created it via the existing createMentorshipBatch function
+// in admin.ts. Same bookkeeping-only pattern as markMentorProfileCreated
+// above — this never creates the batch itself, only records that it
+// happened, so re-opening this drawer later shows "already published"
+// instead of offering to publish a duplicate.
+export const markMentorshipBatchLinked = createServerFn({ method: "POST" })
+  .validator((data: { token: string; applicationId: string; mentorshipBatchId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+
+    const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
+    if (!details) throw new Error("This mentor hasn't submitted onboarding details yet.");
+    if (!details.profileCreated) throw new Error("Create the mentor's profile before publishing a batch.");
+
+    await db.collection("mentorOnboardingDetails").updateOne(
+      { applicationId: data.applicationId },
+      { $set: { batchCreated: true, mentorshipBatchId: data.mentorshipBatchId, batchCreatedAt: new Date() } },
+    );
+
+    return { ok: true };
   });
 
 // NOTE: swap this for whatever your actual admin-check helper is named —

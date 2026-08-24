@@ -120,7 +120,7 @@ function Index() {
 
 function NavItem({ link, onClick }: { link: NavLink; className?: string; onClick?: () => void }) {
   const className =
-    "relative rounded-full px-4 py-2 text-sm font-medium text-slate-700 transition-colors duration-200 hover:bg-white/60 hover:text-slate-900";
+    "relative rounded-full px-4 py-2 text-sm font-medium text-foreground/70 transition-colors duration-200 hover:bg-foreground/5 hover:text-foreground";
 
   if (link.type === "route") {
     return (
@@ -161,7 +161,7 @@ function Header() {
             alt="EDURACK"
             className="h-10 w-auto shrink-0 object-contain sm:h-12"
           />
-          <span className="truncate font-display text-xl font-bold tracking-tight">EDURACK</span>
+          <span className="truncate font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
         </Link>
         <nav className="hidden items-center gap-1 md:flex">
           {navLinks.map((l) => (
@@ -251,7 +251,7 @@ function Hero() {
     <section className="px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:pt-28">
       <div className="mx-auto max-w-5xl text-center">
         <Reveal>
-          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-sky-700 sm:text-sm">
+          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 sm:text-sm">
             <Sparkles className="h-4 w-4 animate-pulse" />
             One platform. Four of India's toughest entrance exams.
           </div>
@@ -266,7 +266,7 @@ function Hero() {
                 className={`rounded-full px-4 py-2 text-sm font-bold transition-all duration-200 ${
                   activeExam === e.key
                     ? "clay-btn text-white"
-                    : "clay-chip text-slate-600 hover:text-slate-900"
+                    : "clay-chip text-foreground/60 hover:text-foreground"
                 }`}
               >
                 {e.label}
@@ -276,7 +276,7 @@ function Hero() {
         </Reveal>
 
         <Reveal delay={140}>
-          <h1 className="fluid-h1 mt-6 font-display font-extrabold tracking-tight text-slate-900">
+          <h1 className="fluid-h1 mt-6 font-display font-extrabold tracking-tight text-foreground">
             Prepare for{" "}
             <span className="relative inline-block">
               <span className="relative z-10 bg-gradient-to-br from-sky-600 to-teal-500 bg-clip-text text-transparent">
@@ -288,9 +288,9 @@ function Hero() {
         </Reveal>
 
         <Reveal delay={220}>
-          <p className="fluid-body mx-auto mt-6 max-w-2xl text-slate-600">
+          <p className="fluid-body mx-auto mt-6 max-w-2xl text-muted-foreground">
             Don't let an unfamiliar screen cost you marks. EDURACK gives NEET, JEE, CUET, and IPMAT
-            aspirants a <b className="text-slate-800">pixel-exact CBT simulator</b> for each exam's
+            aspirants a <b className="text-foreground">pixel-exact CBT simulator</b> for each exam's
             real interface, paired with mentorship spaces run directly by top rankers and IIM/IIT/AIIMS
             students.
           </p>
@@ -326,8 +326,8 @@ function Hero() {
                 key={s.k}
                 className="clay-sm px-3 py-4 transition-transform duration-200 hover:-translate-y-1"
               >
-                <div className="font-display text-xl font-bold text-slate-900 sm:text-2xl">{s.k}</div>
-                <div className="text-xs text-slate-500 sm:text-sm">{s.v}</div>
+                <div className="font-display text-xl font-bold text-foreground sm:text-2xl">{s.k}</div>
+                <div className="text-xs text-muted-foreground sm:text-sm">{s.v}</div>
               </div>
             ))}
           </div>
@@ -341,19 +341,22 @@ function SimulatorSection() {
   return (
     <section id="simulator" className="px-4 py-16 sm:px-6 lg:py-24">
       <Reveal className="mx-auto max-w-6xl text-center">
-        <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-teal-700">
+        <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-teal-700 dark:text-teal-300">
           THE EDURACK TESTING ENGINE
         </div>
-        <h2 className="fluid-h2 mx-auto mt-4 max-w-3xl font-display font-extrabold text-slate-900">
+        <h2 className="fluid-h2 mx-auto mt-4 max-w-3xl font-display font-extrabold text-foreground">
           Train your muscle memory for exam-day screens.
         </h2>
-        <p className="fluid-body mx-auto mt-3 max-w-2xl text-slate-600">
+        <p className="fluid-body mx-auto mt-3 max-w-2xl text-muted-foreground">
           Matching question palettes, navigation flags, and section indicators for each exam's actual
           testing interface — NEET's upcoming CBT shift, JEE and CUET's existing NTA screens, and
           IPMAT's format. Walk in already familiar with the layout, whichever exam you're sitting.
         </p>
       </Reveal>
       <Reveal delay={120} className="mt-10">
+        {/* CbtSimulator is intentionally left as a fixed light-mode replica —
+            the real NTA exam screen is always light, regardless of device
+            theme, so this component should not follow site-wide dark mode. */}
         <CbtSimulator />
       </Reveal>
     </section>
@@ -368,16 +371,16 @@ function MentorVideoShowcase() {
   ];
 
   return (
-    <section id="mentors" className="bg-slate-50/50 px-4 py-16 sm:px-6 lg:py-24">
+    <section id="mentors" className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-3xl text-center">
-          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-orange-700">
+          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300">
             LEARN FROM THE BEST
           </div>
-          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-slate-900">
+          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
             Direct Guidance From Top Rankers — Across Every Exam
           </h2>
-          <p className="fluid-body mt-3 text-slate-600">
+          <p className="fluid-body mt-3 text-muted-foreground">
             Hear straight from mentors who cracked NEET, JEE, CUET, and IPMAT — the competitive
             pressure is different for each, and so is their advice. Watch their high-yield prep tips
             below.
@@ -388,6 +391,9 @@ function MentorVideoShowcase() {
           {sampleVideos.map((v, i) => (
             <Reveal key={v.name} delay={i * 90}>
               <div className="clay flex h-full flex-col justify-between overflow-hidden p-4 transition-transform duration-300 hover:-translate-y-1">
+                {/* Video thumbnail placeholder — intentionally stays dark
+                    in both themes, same reasoning as CbtSimulator: it's
+                    mimicking a video player surface, not a page surface. */}
                 <div className="group relative aspect-video w-full cursor-pointer rounded-2xl bg-slate-900 shadow-inner">
                   <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                   <button
@@ -403,8 +409,8 @@ function MentorVideoShowcase() {
 
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="truncate font-display font-bold text-slate-900">{v.name}</h3>
-                    <p className="text-xs font-medium text-slate-500">{v.rank}</p>
+                    <h3 className="truncate font-display font-bold text-foreground">{v.name}</h3>
+                    <p className="text-xs font-medium text-muted-foreground">{v.rank}</p>
                   </div>
                   <Link
                     to="/auth"
@@ -427,29 +433,29 @@ const features = [
     icon: MonitorPlay,
     title: "1:1 Exam-Specific CBT Engines",
     desc: "Every shortcut, color state, and layout mirrors each exam's real testing interface — NEET, JEE, CUET, and IPMAT alike.",
-    color: "text-sky-600",
-    bg: "bg-sky-100",
+    color: "text-sky-600 dark:text-sky-400",
+    bg: "bg-sky-500/15",
   },
   {
     icon: LayoutDashboard,
     title: "Syllabus-Driven Trackers",
     desc: "Tailored structures per exam and class level — Class 11, 12, and Droppers — to pace out high-weightage topics.",
-    color: "text-teal-600",
-    bg: "bg-teal-100",
+    color: "text-teal-600 dark:text-teal-400",
+    bg: "bg-teal-500/15",
   },
   {
     icon: CalendarCheck,
     title: "Direct Mentor Marketplace",
     desc: "Browse premium batches listed by rankers across all four exams, each at their own customized rates.",
-    color: "text-orange-600",
-    bg: "bg-orange-100",
+    color: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-500/15",
   },
   {
     icon: LineChart,
     title: "Screen Analytics",
     desc: "Tracks speed per question, subject-wise accuracy, and projected percentile — normalized for each exam's own scoring pattern.",
-    color: "text-purple-600",
-    bg: "bg-purple-100",
+    color: "text-purple-600 dark:text-purple-400",
+    bg: "bg-purple-500/15",
   },
 ];
 
@@ -458,10 +464,10 @@ function FeaturesGrid() {
     <section id="features" className="px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-sky-700">
+          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300">
             THE EDURACK ADVANTAGE
           </div>
-          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-slate-900">
+          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
             Built for serious aspirants, whichever exam you're tackling.
           </h2>
         </Reveal>
@@ -475,8 +481,8 @@ function FeaturesGrid() {
                 >
                   <f.icon className={`h-7 w-7 ${f.color}`} />
                 </div>
-                <h3 className="mt-5 font-display text-lg font-bold text-slate-900">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{f.desc}</p>
+                <h3 className="mt-5 font-display text-lg font-bold text-foreground">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{f.desc}</p>
               </div>
             </Reveal>
           ))}
@@ -485,10 +491,10 @@ function FeaturesGrid() {
         <Reveal delay={120}>
           <div className="clay mt-16 grid grid-cols-1 items-center gap-6 p-8 md:grid-cols-[1fr_auto] md:p-12">
             <div>
-              <h3 className="font-display text-2xl font-extrabold text-slate-900 sm:text-3xl">
+              <h3 className="font-display text-2xl font-extrabold text-foreground sm:text-3xl">
                 Launch your first CBT mock right now.
               </h3>
-              <p className="mt-2 text-slate-600">
+              <p className="mt-2 text-muted-foreground">
                 NEET, JEE, CUET, or IPMAT — pick your exam and get ahead of the curve today.
               </p>
             </div>
@@ -506,6 +512,11 @@ function FeaturesGrid() {
 }
 
 function MarketplaceBanner() {
+  // This banner is a deliberately dark card (dark gradient + white text)
+  // regardless of site theme — it's meant to stand out as a distinct,
+  // premium-feeling block on the page even in light mode. Left as-is
+  // intentionally; it already reads correctly in dark mode too since
+  // it never relied on the background theme in the first place.
   return (
     <section id="marketplace" className="px-4 pb-20 sm:px-6 lg:pb-28">
       <Reveal className="mx-auto max-w-6xl">
@@ -599,9 +610,9 @@ function Footer() {
                 alt="EDURACK"
                 className="h-10 w-auto shrink-0 object-contain sm:h-12"
               />
-              <span className="font-display text-lg font-bold">EDURACK</span>
+              <span className="font-display text-lg font-bold text-foreground">EDURACK</span>
             </Link>
-            <p className="mt-3 text-sm text-slate-600">
+            <p className="mt-3 text-sm text-muted-foreground">
               The CBT testing and mentorship platform for NEET, JEE, CUET & IPMAT.
             </p>
           </div>
@@ -609,7 +620,7 @@ function Footer() {
             <FooterCol key={col.title} title={col.title} links={col.links} />
           ))}
         </div>
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 pt-5 text-xs text-slate-500">
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} EDURACK. All rights reserved.</span>
           <span>Built for India's toughest entrance exams.</span>
         </div>
@@ -621,12 +632,12 @@ function Footer() {
 function FooterCol({ title, links }: { title: string; links: FooterLink[] }) {
   return (
     <div>
-      <div className="font-display text-sm font-bold text-slate-900">{title}</div>
-      <ul className="mt-3 space-y-2 text-sm text-slate-600">
+      <div className="font-display text-sm font-bold text-foreground">{title}</div>
+      <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
         {links.map((l) => (
           <li key={l.label}>
             {l.type === "route" ? (
-              <Link to={l.to} className="transition-colors duration-200 hover:text-slate-900">
+              <Link to={l.to} className="transition-colors duration-200 hover:text-foreground">
                 {l.label}
               </Link>
             ) : (
@@ -634,7 +645,7 @@ function FooterCol({ title, links }: { title: string; links: FooterLink[] }) {
                 href={l.href}
                 target="_blank"
                 rel="noreferrer"
-                className="transition-colors duration-200 hover:text-slate-900"
+                className="transition-colors duration-200 hover:text-foreground"
               >
                 {l.label}
               </a>

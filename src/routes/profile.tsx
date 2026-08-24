@@ -1,4 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Palette } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useEffect, useState } from "react";
 import {
   Loader2,
@@ -270,6 +272,15 @@ function ProfilePage() {
             </div>
           </SectionCard>
         </div>
+
+        {/* ── Appearance ─────────────────────────────────────────────────── */}
+        <SectionCard icon={Palette} title="Appearance">
+          <p className="mb-4 text-sm text-foreground/60">
+            Choose how Edurack looks on this device. "System" matches your device's theme automatically.
+          </p>
+          <ThemeToggle />
+        </SectionCard>
+
 
         {/* ── Device management ───────────────────────────────────────────── */}
         <SectionCard
