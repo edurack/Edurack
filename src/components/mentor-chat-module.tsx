@@ -11,6 +11,7 @@ import {
   Clock,
   Plus,
   X,
+  ArrowLeft,
 } from "lucide-react";
 import {
   listMyAssignedBatches,
@@ -23,29 +24,16 @@ import {
   listMentorNotes,
   listBatchStudents,
 } from "@/server-functions/mentor-portal";
-
-const inputClass =
-  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
-
-function ClayField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-6">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
-    </div>
-  );
-}
+import {
+  ModuleHeader,
+  ClayField,
+  Panel,
+  LoadingBlock,
+  EmptyState,
+  ErrorBanner,
+  inputClass,
+  textareaClass,
+} from "@/components/mentor-portal-ui";
 
 type Batch = { id: string; name: string; track: string };
 type Thread = {
@@ -79,13 +67,9 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
       />
 
       {batches === null ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock />
       ) : batches.length === 0 ? (
-        <div className="clay p-6 text-center text-sm text-foreground/60">
-          No mentorship batches are assigned to you yet.
-        </div>
+        <EmptyState icon={MessageSquare} message="No mentorship batches are assigned to you yet." />
       ) : (
         <>
           <div className="mb-6">
@@ -101,11 +85,11 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
           </div>
 
           {batchId && (
-            <>
-              <ChatLockControl mentorToken={mentorToken} batchId={batchId} />
+            <div className="space-y-6">
               <ChatCanvas mentorToken={mentorToken} batchId={batchId} />
+              <ChatLockControl mentorToken={mentorToken} batchId={batchId} />
               <NoteUploadGate mentorToken={mentorToken} batchId={batchId} />
-            </>
+            </div>
           )}
         </>
       )}
@@ -113,105 +97,11 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
   );
 }
 
-// ─── Interval lock/unlock control ───────────────────────────────────────────
-function ChatLockControl({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
-  const [enabled, setEnabled] = useState(false);
-  const [openFrom, setOpenFrom] = useState("09:00");
-  const [openUntil, setOpenUntil] = useState("18:00");
-  const [isLockedNow, setIsLockedNow] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  async function refresh() {
-    const { window: w, isLockedNow: locked } = await getChatLockWindow({ data: { token: mentorToken, batchId } });
-    setEnabled(Boolean(w));
-    if (w) {
-      setOpenFrom(w.openFrom);
-      setOpenUntil(w.openUntil);
-    }
-    setIsLockedNow(locked);
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId]);
-
-  async function toggle() {
-    setSaving(true);
-    try {
-      await setChatLockWindow({
-        data: { token: mentorToken, batchId, enabled: !enabled, openFrom, openUntil },
-      });
-      await refresh();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveWindow() {
-    setSaving(true);
-    try {
-      await setChatLockWindow({ data: { token: mentorToken, batchId, enabled: true, openFrom, openUntil } });
-      await refresh();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="clay mb-6 p-5 sm:p-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <Clock className="h-4 w-4" /> Daily messaging window
-        </h2>
-        <button
-          type="button"
-          onClick={toggle}
-          disabled={saving}
-          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-all disabled:opacity-70 ${
-            enabled ? "clay-btn text-white" : "clay-btn-ghost text-foreground/70"
-          }`}
-        >
-          {enabled ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-          {enabled ? "Window active" : "No restriction"}
-        </button>
-      </div>
-
-      {enabled && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <ClayField label="Open from">
-            <input type="time" value={openFrom} onChange={(e) => setOpenFrom(e.target.value)} className={inputClass} />
-          </ClayField>
-          <ClayField label="Open until">
-            <input type="time" value={openUntil} onChange={(e) => setOpenUntil(e.target.value)} className={inputClass} />
-          </ClayField>
-          <button
-            onClick={saveWindow}
-            disabled={saving}
-            className="clay-btn-ghost rounded-full px-4 py-2.5 text-xs font-semibold text-foreground/70 disabled:opacity-70"
-          >
-            Save window
-          </button>
-        </div>
-      )}
-
-      {enabled && (
-        <p
-          className={`mt-3 flex items-center gap-1.5 text-xs font-medium ${
-            isLockedNow ? "text-[var(--destructive)]" : "text-foreground/50"
-          }`}
-        >
-          {isLockedNow ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-          {isLockedNow
-            ? "Messaging is currently locked outside your open window."
-            : `Messaging is open now (${openFrom}–${openUntil} daily).`}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ─── Split-pane chat canvas ──────────────────────────────────────────────────
+// ─── Split-pane chat canvas ────────────────────────────────────────────────
+// Mobile fix: previously both panes rendered at once, squeezed side by
+// side, on every screen size — unusable on a phone. Now, on narrow screens,
+// an active conversation replaces the thread list entirely (with a back
+// button to return), instead of both trying to share the same cramped row.
 function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [threads, setThreads] = useState<Thread[] | null>(null);
   const [activeStudentUid, setActiveStudentUid] = useState<string | null>(null);
@@ -274,11 +164,12 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
   }
 
   const activeThread = threads?.find((t) => t.studentUid === activeStudentUid);
+  const hasActive = Boolean(activeStudentUid);
 
   return (
-    <div className="clay mb-6 grid grid-cols-1 overflow-hidden sm:grid-cols-[220px_1fr]">
-      {/* ── Thread list (left pane) ─────────────────────────────────── */}
-      <div className="border-b border-foreground/10 sm:border-b-0 sm:border-r">
+    <div className="clay grid grid-cols-1 overflow-hidden sm:grid-cols-[220px_1fr]">
+      {/* ── Thread list — hidden on mobile once a thread is open ────── */}
+      <div className={`border-foreground/10 sm:block sm:border-b-0 sm:border-r ${hasActive ? "hidden" : "block"}`}>
         <div className="flex items-center justify-between gap-2 px-4 py-3.5">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-foreground/60" />
@@ -293,9 +184,7 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
           </button>
         </div>
         {threads === null ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-4 w-4 animate-spin text-foreground/40" />
-          </div>
+          <LoadingBlock compact />
         ) : threads.length === 0 ? (
           <div className="px-4 pb-4">
             <p className="mb-2 text-xs text-foreground/50">No conversations yet.</p>
@@ -328,10 +217,17 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
         )}
       </div>
 
-      {/* ── DM interface (right pane) ────────────────────────────────── */}
-      <div className="flex min-h-[24rem] flex-col">
-        <div className="border-b border-foreground/10 px-4 py-3.5">
-          <p className="text-sm font-semibold text-foreground">
+      {/* ── DM interface — hidden on mobile until a thread is chosen ──── */}
+      <div className={`min-h-[24rem] flex-col sm:flex ${hasActive ? "flex" : "hidden"}`}>
+        <div className="flex items-center gap-2 border-b border-foreground/10 px-4 py-3.5">
+          <button
+            onClick={() => setActiveStudentUid(null)}
+            className="text-foreground/40 hover:text-foreground/70 sm:hidden"
+            aria-label="Back to threads"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <p className="truncate text-sm font-semibold text-foreground">
             {activeThread?.studentName ?? "Select a thread, or start a new one"}
           </p>
         </div>
@@ -343,19 +239,13 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
               <p className="text-xs">Pick a conversation on the left, or tap + to message a student.</p>
             </div>
           ) : messages === null ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="h-4 w-4 animate-spin text-foreground/40" />
-            </div>
+            <LoadingBlock compact />
           ) : messages.length === 0 ? (
             <p className="text-xs text-foreground/50">No messages yet — say hello.</p>
           ) : (
             messages.map((m) => (
               <div key={m.id} className={`flex ${m.sender === "mentor" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                    m.sender === "mentor" ? "clay-btn text-white" : "clay-inset text-foreground"
-                  }`}
-                >
+                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.sender === "mentor" ? "clay-btn text-white" : "clay-inset text-foreground"}`}>
                   {m.body}
                 </div>
               </div>
@@ -367,9 +257,9 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
         {activeStudentUid && (
           <form onSubmit={handleSend} className="border-t border-foreground/10 p-3">
             {error && (
-              <p className="mb-2 rounded-2xl bg-[var(--coral-soft)]/50 px-3 py-1.5 text-xs font-medium text-foreground">
-                {error}
-              </p>
+              <div className="mb-2">
+                <ErrorBanner message={error} />
+              </div>
             )}
             <div className="flex items-center gap-2">
               <input
@@ -404,7 +294,6 @@ function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: st
   );
 }
 
-// ─── New message modal — the missing "first message" entry point ──────────
 function NewMessageModal({
   mentorToken,
   batchId,
@@ -461,11 +350,9 @@ function NewMessageModal({
         </div>
 
         {students === null ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-          </div>
+          <LoadingBlock compact />
         ) : students.length === 0 ? (
-          <p className="text-sm text-foreground/60">No students have purchased this batch yet.</p>
+          <EmptyState message="No students have purchased this batch yet." />
         ) : (
           <form onSubmit={handleSend} className="space-y-4">
             <ClayField label="Student">
@@ -485,15 +372,11 @@ function NewMessageModal({
                 onChange={(e) => setMessage(e.target.value)}
                 rows={4}
                 placeholder="Type your first message…"
-                className="clay-inset w-full resize-none rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                className={textareaClass}
               />
             </ClayField>
 
-            {error && (
-              <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-                {error}
-              </p>
-            )}
+            {error && <ErrorBanner message={error} />}
 
             <button
               type="submit"
@@ -509,7 +392,100 @@ function NewMessageModal({
   );
 }
 
+// ─── Interval lock/unlock control ──────────────────────────────────────────
+function ChatLockControl({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
+  const [enabled, setEnabled] = useState(false);
+  const [openFrom, setOpenFrom] = useState("09:00");
+  const [openUntil, setOpenUntil] = useState("18:00");
+  const [isLockedNow, setIsLockedNow] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function refresh() {
+    const { window: w, isLockedNow: locked } = await getChatLockWindow({ data: { token: mentorToken, batchId } });
+    setEnabled(Boolean(w));
+    if (w) {
+      setOpenFrom(w.openFrom);
+      setOpenUntil(w.openUntil);
+    }
+    setIsLockedNow(locked);
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId]);
+
+  async function toggle() {
+    setSaving(true);
+    try {
+      await setChatLockWindow({ data: { token: mentorToken, batchId, enabled: !enabled, openFrom, openUntil } });
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveWindow() {
+    setSaving(true);
+    try {
+      await setChatLockWindow({ data: { token: mentorToken, batchId, enabled: true, openFrom, openUntil } });
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel
+      icon={Clock}
+      title="Daily messaging window"
+      action={
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={saving}
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition-all disabled:opacity-70 ${
+            enabled ? "clay-btn text-white" : "clay-btn-ghost text-foreground/70"
+          }`}
+        >
+          {enabled ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+          {enabled ? "Window active" : "No restriction"}
+        </button>
+      }
+    >
+      {enabled && (
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <ClayField label="Open from">
+              <input type="time" value={openFrom} onChange={(e) => setOpenFrom(e.target.value)} className={inputClass} />
+            </ClayField>
+            <ClayField label="Open until">
+              <input type="time" value={openUntil} onChange={(e) => setOpenUntil(e.target.value)} className={inputClass} />
+            </ClayField>
+            <button
+              onClick={saveWindow}
+              disabled={saving}
+              className="clay-btn-ghost rounded-full px-4 py-2.5 text-xs font-semibold text-foreground/70 disabled:opacity-70"
+            >
+              Save window
+            </button>
+          </div>
+
+          <p className={`mt-3 flex items-center gap-1.5 text-xs font-medium ${isLockedNow ? "text-[var(--destructive)]" : "text-foreground/50"}`}>
+            {isLockedNow ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+            {isLockedNow
+              ? "Messaging is currently locked outside your open window."
+              : `Messaging is open now (${openFrom}–${openUntil} daily).`}
+          </p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 // ─── Anti-Piracy Document Gate ──────────────────────────────────────────────
+// Upload is a rare, deliberate action — collapsed behind a toggle so the
+// notes list (what you'd actually check regularly) leads instead.
 function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [fileName, setFileName] = useState("");
   const [fileUrl, setFileUrl] = useState("");
@@ -519,6 +495,7 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
   >(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   async function refresh() {
     const { notes: rows } = await listMentorNotes({ data: { token: mentorToken, batchId } });
@@ -546,6 +523,7 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
       setFileName("");
       setFileUrl("");
       setAcknowledged(false);
+      setShowForm(false);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not upload. Try again.");
@@ -555,96 +533,86 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
   }
 
   return (
-    <div className="clay p-5 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <FileUp className="h-4 w-4 text-foreground/60" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          Upload notes — watermark compliance gate
-        </h2>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <ClayField label="File name">
-            <input
-              value={fileName}
-              onChange={(e) => setFileName(e.target.value)}
-              placeholder="e.g. Organic Chemistry Notes — Unit 4.pdf"
-              className={inputClass}
-            />
-          </ClayField>
-          <ClayField label="Uploaded PDF URL">
-            <input
-              value={fileUrl}
-              onChange={(e) => setFileUrl(e.target.value)}
-              placeholder="https://…/notes.pdf"
-              className={inputClass}
-            />
-          </ClayField>
-        </div>
-
-        <label className="clay-inset flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-[var(--sky-deep)]"
-          />
-          <div className="flex items-start gap-2 text-sm text-foreground">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" />
-            <span>
-              I confirm this document is copyright-safe to share, and understand the system will
-              automatically append a diagonal "Edurack" background watermark across every page
-              before it reaches students.
-            </span>
-          </div>
-        </label>
-
-        {error && (
-          <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-            {error}
-          </p>
-        )}
-
+    <Panel
+      icon={FileUp}
+      title="Notes for this batch"
+      action={
         <button
-          type="submit"
-          disabled={saving || !acknowledged}
-          className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+          onClick={() => setShowForm((v) => !v)}
+          className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upload note"}
+          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          {showForm ? "Cancel" : "Upload note"}
         </button>
-      </form>
-
-      <div className="mt-6">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">
-          Uploaded notes for this batch
-        </h3>
-        {notes === null ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-foreground/40" />
+      }
+    >
+      {showForm && (
+        <form onSubmit={handleSubmit} className="mb-5 space-y-4 border-b border-foreground/10 pb-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <ClayField label="File name">
+              <input
+                value={fileName}
+                onChange={(e) => setFileName(e.target.value)}
+                placeholder="e.g. Organic Chemistry Notes — Unit 4.pdf"
+                className={inputClass}
+              />
+            </ClayField>
+            <ClayField label="Uploaded PDF URL">
+              <input value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} placeholder="https://…/notes.pdf" className={inputClass} />
+            </ClayField>
           </div>
-        ) : notes.length === 0 ? (
-          <p className="text-xs text-foreground/50">No notes uploaded yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {notes.map((n) => (
-              <li key={n.id} className="clay-inset flex items-center justify-between gap-3 px-4 py-2.5">
-                <a href={n.fileUrl} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-2">
-                  <FileText className="h-4 w-4 shrink-0 text-foreground/40" />
-                  <span className="truncate text-sm text-foreground">{n.fileName}</span>
-                </a>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                    n.watermarkApplied ? "bg-[var(--mint-soft)]/60 text-foreground" : "bg-foreground/5 text-foreground/50"
-                  }`}
-                >
-                  {n.watermarkApplied ? "Watermarked" : "Pending watermark"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+
+          <label className="clay-inset flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[var(--sky-deep)]"
+            />
+            <div className="flex items-start gap-2 text-sm text-foreground">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" />
+              <span>
+                I confirm this document is copyright-safe to share, and understand the system will automatically
+                append a diagonal "Edurack" background watermark across every page before it reaches students.
+              </span>
+            </div>
+          </label>
+
+          {error && <ErrorBanner message={error} />}
+
+          <button
+            type="submit"
+            disabled={saving || !acknowledged}
+            className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upload note"}
+          </button>
+        </form>
+      )}
+
+      {notes === null ? (
+        <LoadingBlock compact />
+      ) : notes.length === 0 ? (
+        <EmptyState icon={FileText} message="No notes uploaded yet." />
+      ) : (
+        <ul className="space-y-2">
+          {notes.map((n) => (
+            <li key={n.id} className="clay-inset flex items-center justify-between gap-3 px-4 py-2.5">
+              <a href={n.fileUrl} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 text-foreground/40" />
+                <span className="truncate text-sm text-foreground">{n.fileName}</span>
+              </a>
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                  n.watermarkApplied ? "bg-[var(--mint-soft)]/60 text-foreground" : "bg-foreground/5 text-foreground/50"
+                }`}
+              >
+                {n.watermarkApplied ? "Watermarked" : "Pending watermark"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

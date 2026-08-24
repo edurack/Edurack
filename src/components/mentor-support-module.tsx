@@ -1,38 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, LifeBuoy, Send, Clock, CheckCircle2, MessageCircle } from "lucide-react";
+import { Loader2, LifeBuoy, Send, Clock, CheckCircle2, MessageCircle, Plus, X } from "lucide-react";
 import type { TicketCategory, MentorSupportTicket } from "@/lib/admin-types";
 import { submitMentorTicket, listMyMentorTickets } from "@/server-functions/mentor-portal";
-
-const inputClass =
-  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
-
-const textareaClass =
-  "clay-inset w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
+import { ModuleHeader, ClayField, Panel, LoadingBlock, EmptyState, ErrorBanner, SuccessBanner, inputClass, textareaClass } from "@/components/mentor-portal-ui";
 
 const CATEGORIES: TicketCategory[] = ["Technical Issue", "Batch/Student Error", "Payout Queries", "General Doubts"];
 
-function ClayField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-6">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
-    </div>
-  );
-}
-
 export function MentorSupportModule({ mentorToken }: { mentorToken: string }) {
   const [tickets, setTickets] = useState<MentorSupportTicket[] | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   async function refresh() {
     const { tickets: rows } = await listMyMentorTickets({ data: { token: mentorToken } });
@@ -44,6 +20,8 @@ export function MentorSupportModule({ mentorToken }: { mentorToken: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mentorToken]);
 
+  const openCount = tickets?.filter((t) => t.status !== "Resolved").length ?? 0;
+
   return (
     <div>
       <ModuleHeader
@@ -51,30 +29,66 @@ export function MentorSupportModule({ mentorToken }: { mentorToken: string }) {
         subtitle="Raise an issue with Team Edurack and track its resolution here."
       />
 
-      <TicketForm mentorToken={mentorToken} onSubmitted={refresh} />
-      <TicketTimeline tickets={tickets} />
+      {tickets && openCount > 0 && !showForm && (
+        <div className="clay-inset mb-4 flex items-center gap-2 rounded-2xl bg-[var(--sky-soft)]/40 px-4 py-3 text-sm text-foreground/70">
+          <Clock className="h-4 w-4 shrink-0" />
+          <p>
+            <strong>{openCount}</strong> ticket{openCount !== 1 ? "s" : ""} still open.
+          </p>
+        </div>
+      )}
+
+      {showForm && (
+        <TicketForm
+          mentorToken={mentorToken}
+          onSubmitted={() => {
+            setShowForm(false);
+            refresh();
+          }}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      <TicketTimeline
+        tickets={tickets}
+        action={
+          !showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+            >
+              <Plus className="h-3.5 w-3.5" /> Raise a ticket
+            </button>
+          )
+        }
+      />
     </div>
   );
 }
 
-function TicketForm({ mentorToken, onSubmitted }: { mentorToken: string; onSubmitted: () => void }) {
+function TicketForm({
+  mentorToken,
+  onSubmitted,
+  onCancel,
+}: {
+  mentorToken: string;
+  onSubmitted: () => void;
+  onCancel: () => void;
+}) {
   const [category, setCategory] = useState<TicketCategory>("Technical Issue");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
 
     if (!message.trim()) return setError("Describe the issue before submitting.");
 
     setSaving(true);
     try {
       await submitMentorTicket({ data: { token: mentorToken, category, message: message.trim() } });
-      setSuccess(true);
       setMessage("");
       onSubmitted();
     } catch (err) {
@@ -85,58 +99,48 @@ function TicketForm({ mentorToken, onSubmitted }: { mentorToken: string; onSubmi
   }
 
   return (
-    <div className="clay mb-6 p-5 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <LifeBuoy className="h-4 w-4 text-foreground/60" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          Raise a ticket
-        </h2>
-      </div>
+    <div className="mb-6">
+      <Panel
+        icon={LifeBuoy}
+        title="Raise a ticket"
+        action={
+          <button onClick={onCancel} className="text-foreground/40 hover:text-foreground/70">
+            <X className="h-4 w-4" />
+          </button>
+        }
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <ClayField label="Category">
+            <select value={category} onChange={(e) => setCategory(e.target.value as TicketCategory)} className={inputClass + " appearance-none"}>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </ClayField>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <ClayField label="Category">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value as TicketCategory)}
-            className={inputClass + " appearance-none"}
+          <ClayField label="Message">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={5}
+              placeholder="Describe the issue in detail — what happened, when, and what you expected instead…"
+              className={textareaClass}
+            />
+          </ClayField>
+
+          {error && <ErrorBanner message={error} />}
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
           >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </ClayField>
-
-        <ClayField label="Message">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={5}
-            placeholder="Describe the issue in detail — what happened, when, and what you expected instead…"
-            className={textareaClass}
-          />
-        </ClayField>
-
-        {error && (
-          <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-            {error}
-          </p>
-        )}
-        {success && (
-          <p className="rounded-2xl bg-[var(--mint-soft)]/60 px-4 py-2 text-xs font-medium text-foreground">
-            Ticket submitted. Team Edurack will respond here.
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit ticket"}
-        </button>
-      </form>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit ticket"}
+          </button>
+        </form>
+      </Panel>
     </div>
   );
 }
@@ -158,22 +162,13 @@ function statusIcon(status: string) {
   return <MessageCircle className="h-3 w-3" />;
 }
 
-function TicketTimeline({ tickets }: { tickets: MentorSupportTicket[] | null }) {
+function TicketTimeline({ tickets, action }: { tickets: MentorSupportTicket[] | null; action?: React.ReactNode }) {
   return (
-    <div className="clay p-5 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <Send className="h-4 w-4 text-foreground/60" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          Ticket log
-        </h2>
-      </div>
-
+    <Panel icon={Send} title="Ticket log" action={action}>
       {tickets === null ? (
-        <div className="flex justify-center py-6">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock compact />
       ) : tickets.length === 0 ? (
-        <p className="text-sm text-foreground/60">No tickets filed yet.</p>
+        <EmptyState icon={LifeBuoy} message="No tickets filed yet." />
       ) : (
         <ul className="space-y-3">
           {tickets.map((t) => (
@@ -183,15 +178,11 @@ function TicketTimeline({ tickets }: { tickets: MentorSupportTicket[] | null }) 
                   {t.category}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusStyles(t.status)}`}
-                  >
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusStyles(t.status)}`}>
                     {statusIcon(t.status)}
                     {t.status}
                   </span>
-                  <span className="text-xs text-foreground/40">
-                    {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
-                  </span>
+                  <span className="text-xs text-foreground/40">{t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}</span>
                 </div>
               </div>
 
@@ -212,6 +203,6 @@ function TicketTimeline({ tickets }: { tickets: MentorSupportTicket[] | null }) 
           ))}
         </ul>
       )}
-    </div>
+    </Panel>
   );
 }

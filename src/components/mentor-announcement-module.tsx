@@ -1,34 +1,17 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, Megaphone, Mail, MailCheck, MailWarning, Users2 } from "lucide-react";
+import { Loader2, Megaphone, Mail, MailCheck, MailWarning, Users2, Plus, X } from "lucide-react";
 import type { MentorAnnouncement } from "@/lib/admin-types";
+import { postMentorAnnouncement, listMentorAnnouncements, listMyAssignedBatches } from "@/server-functions/mentor-portal";
 import {
-  postMentorAnnouncement,
-  listMentorAnnouncements,
-  listMyAssignedBatches,
-} from "@/server-functions/mentor-portal";
-
-const inputClass =
-  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
-
-function ClayField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-6">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
-    </div>
-  );
-}
+  ModuleHeader,
+  ClayField,
+  Panel,
+  LoadingBlock,
+  EmptyState,
+  ErrorBanner,
+  inputClass,
+  textareaClass,
+} from "@/components/mentor-portal-ui";
 
 type Batch = { id: string; name: string; track: string };
 
@@ -36,6 +19,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [announcements, setAnnouncements] = useState<MentorAnnouncement[] | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -48,9 +32,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
 
   async function refreshAnnouncements(batchId: string) {
     if (!batchId) return;
-    const { announcements: rows } = await listMentorAnnouncements({
-      data: { token: mentorToken, batchId },
-    });
+    const { announcements: rows } = await listMentorAnnouncements({ data: { token: mentorToken, batchId } });
     setAnnouncements(rows);
   }
 
@@ -67,40 +49,51 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
       />
 
       {batches === null ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock />
       ) : batches.length === 0 ? (
-        <div className="clay p-6 text-center text-sm text-foreground/60">
-          No mentorship batches are assigned to you yet. Once an admin assigns you a batch, it will
-          appear here.
-        </div>
+        <EmptyState icon={Megaphone} message="No mentorship batches are assigned to you yet." />
       ) : (
-        <>
-          <div className="mb-6">
-            <ClayField label="Target batch">
-              <select
-                value={selectedBatchId}
-                onChange={(e) => setSelectedBatchId(e.target.value)}
-                className={inputClass + " appearance-none"}
-              >
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} · {b.track}
-                  </option>
-                ))}
-              </select>
-            </ClayField>
-          </div>
+        <div className="space-y-6">
+          <ClayField label="Target batch">
+            <select
+              value={selectedBatchId}
+              onChange={(e) => setSelectedBatchId(e.target.value)}
+              className={inputClass + " appearance-none"}
+            >
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} · {b.track}
+                </option>
+              ))}
+            </select>
+          </ClayField>
 
-          <BroadcastPanel
-            mentorToken={mentorToken}
-            batchId={selectedBatchId}
-            onPosted={() => refreshAnnouncements(selectedBatchId)}
+          {showForm && (
+            <BroadcastPanel
+              mentorToken={mentorToken}
+              batchId={selectedBatchId}
+              onPosted={() => {
+                setShowForm(false);
+                refreshAnnouncements(selectedBatchId);
+              }}
+              onCancel={() => setShowForm(false)}
+            />
+          )}
+
+          <AnnouncementLog
+            announcements={announcements}
+            action={
+              !showForm && (
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+                >
+                  <Plus className="h-3.5 w-3.5" /> New announcement
+                </button>
+              )
+            }
           />
-
-          <AnnouncementLog announcements={announcements} />
-        </>
+        </div>
       )}
     </div>
   );
@@ -110,22 +103,22 @@ function BroadcastPanel({
   mentorToken,
   batchId,
   onPosted,
+  onCancel,
 }: {
   mentorToken: string;
   batchId: string;
   onPosted: () => void;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [triggerEmail, setTriggerEmail] = useState(true);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<{ emailStatus: string; recipientCount: number } | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setLastResult(null);
 
     if (!title.trim()) return setError("Give this announcement a title.");
     if (!message.trim()) return setError("Write the announcement message.");
@@ -133,10 +126,7 @@ function BroadcastPanel({
 
     setPosting(true);
     try {
-      const result = await postMentorAnnouncement({
-        data: { token: mentorToken, announcement: { batchId, title, message, triggerEmail } },
-      });
-      setLastResult({ emailStatus: result.emailStatus, recipientCount: result.recipientCount });
+      await postMentorAnnouncement({ data: { token: mentorToken, announcement: { batchId, title, message, triggerEmail } } });
       setTitle("");
       setMessage("");
       onPosted();
@@ -148,14 +138,15 @@ function BroadcastPanel({
   }
 
   return (
-    <div className="clay mb-6 p-5 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <Megaphone className="h-4 w-4 text-foreground/60" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          Draft a broadcast
-        </h2>
-      </div>
-
+    <Panel
+      icon={Megaphone}
+      title="Draft a broadcast"
+      action={
+        <button onClick={onCancel} className="text-foreground/40 hover:text-foreground/70">
+          <X className="h-4 w-4" />
+        </button>
+      }
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <ClayField label="Announcement title">
           <input
@@ -172,7 +163,7 @@ function BroadcastPanel({
             onChange={(e) => setMessage(e.target.value)}
             rows={5}
             placeholder="Write the full announcement…"
-            className="clay-inset w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+            className={textareaClass}
           />
         </ClayField>
 
@@ -189,35 +180,7 @@ function BroadcastPanel({
           </div>
         </label>
 
-        {error && (
-          <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-            {error}
-          </p>
-        )}
-
-        {lastResult && (
-          <div
-            className={`flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-medium text-foreground ${
-              lastResult.emailStatus === "sent"
-                ? "bg-[var(--mint-soft)]/60"
-                : lastResult.emailStatus === "failed"
-                  ? "bg-[var(--coral-soft)]/50"
-                  : "bg-foreground/5"
-            }`}
-          >
-            {lastResult.emailStatus === "sent" ? (
-              <MailCheck className="h-4 w-4" />
-            ) : lastResult.emailStatus === "failed" ? (
-              <MailWarning className="h-4 w-4" />
-            ) : (
-              <Megaphone className="h-4 w-4" />
-            )}
-            Posted to feed for {lastResult.recipientCount} student
-            {lastResult.recipientCount === 1 ? "" : "s"}.
-            {lastResult.emailStatus === "sent" && " Email broadcast sent."}
-            {lastResult.emailStatus === "failed" && " Email broadcast could not be sent."}
-          </div>
-        )}
+        {error && <ErrorBanner message={error} />}
 
         <button
           type="submit"
@@ -227,35 +190,30 @@ function BroadcastPanel({
           {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post announcement"}
         </button>
       </form>
-    </div>
+    </Panel>
   );
 }
 
-function AnnouncementLog({ announcements }: { announcements: MentorAnnouncement[] | null }) {
+function AnnouncementLog({
+  announcements,
+  action,
+}: {
+  announcements: MentorAnnouncement[] | null;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="clay p-5 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <Users2 className="h-4 w-4 text-foreground/60" />
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          Announcement history for this batch
-        </h2>
-      </div>
-
+    <Panel icon={Users2} title="Announcement history for this batch" action={action}>
       {announcements === null ? (
-        <div className="flex justify-center py-6">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock compact />
       ) : announcements.length === 0 ? (
-        <p className="text-sm text-foreground/60">Nothing posted to this batch yet.</p>
+        <EmptyState icon={Megaphone} message="Nothing posted to this batch yet." />
       ) : (
         <ul className="space-y-2">
           {announcements.map((a) => (
             <li key={a.id} className="clay-inset px-4 py-3.5">
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-foreground">{a.title}</p>
-                <span className="text-xs text-foreground/40">
-                  {a.createdAt ? new Date(a.createdAt).toLocaleString() : ""}
-                </span>
+                <span className="text-xs text-foreground/40">{a.createdAt ? new Date(a.createdAt).toLocaleString() : ""}</span>
               </div>
               <p className="mb-2 text-sm text-foreground/70">{a.message}</p>
               <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-wide">
@@ -272,6 +230,7 @@ function AnnouncementLog({ announcements }: { announcements: MentorAnnouncement[
                           : "bg-foreground/5 text-foreground/50"
                     }`}
                   >
+                    {a.emailStatus === "sent" ? <MailCheck className="mr-1 inline h-3 w-3" /> : a.emailStatus === "failed" ? <MailWarning className="mr-1 inline h-3 w-3" /> : null}
                     Email {a.emailStatus}
                   </span>
                 )}
@@ -280,6 +239,6 @@ function AnnouncementLog({ announcements }: { announcements: MentorAnnouncement[
           ))}
         </ul>
       )}
-    </div>
+    </Panel>
   );
 }

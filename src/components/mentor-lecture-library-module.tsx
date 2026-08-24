@@ -1,20 +1,7 @@
 import { useEffect, useState } from "react";
-import { Loader2, Library, Eye, CheckCircle2, MessageSquare, Star, ChevronDown, EyeOff, Send } from "lucide-react";
-import {
-  listMyLectureLibrary,
-  listLectureComments,
-  setLectureCommentVisibility,
-  postMentorLectureComment,
-} from "@/server-functions/mentor-portal";
-
-function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-6">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
-    </div>
-  );
-}
+import { Library, Eye, CheckCircle2, MessageSquare, Star, ChevronDown, EyeOff, Send, Loader2, PlayCircle } from "lucide-react";
+import { listMyLectureLibrary, listLectureComments, setLectureCommentVisibility, postMentorLectureComment } from "@/server-functions/mentor-portal";
+import { ModuleHeader, StatChip, LoadingBlock, EmptyState } from "@/components/mentor-portal-ui";
 
 type Lecture = {
   id: string;
@@ -52,13 +39,9 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
       />
 
       {lectures === null ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock />
       ) : lectures.length === 0 ? (
-        <div className="clay p-6 text-center text-sm text-foreground/60">
-          You haven't ingested any lectures yet — do that from the Live Sessions tab.
-        </div>
+        <EmptyState icon={PlayCircle} message="You haven't ingested any lectures yet — do that from the Live Sessions tab." />
       ) : (
         <div className="space-y-3">
           {lectures.map((l) => (
@@ -87,21 +70,13 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
 
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <StatChip icon={Eye} label="Viewers" value={l.viewerCount} />
-                <StatChip icon={CheckCircle2} label="Completed" value={l.completedCount} />
+                <StatChip icon={CheckCircle2} label="Completed" value={l.completedCount} tone={l.completedCount > 0 ? "mint" : "neutral"} />
                 <StatChip icon={MessageSquare} label="Comments" value={l.commentCount} />
-                <StatChip
-                  icon={Star}
-                  label="Rating"
-                  value={l.avgRating !== null ? `${l.avgRating} (${l.reviewCount})` : "—"}
-                />
+                <StatChip icon={Star} label="Rating" value={l.avgRating !== null ? `${l.avgRating} (${l.reviewCount})` : "—"} tone="sky" />
               </div>
 
               {expandedId === l.id && (
-                <LectureCommentAuditor
-                  mentorToken={mentorToken}
-                  sessionId={l.id}
-                  onCommentPosted={refreshLibrary}
-                />
+                <LectureCommentAuditor mentorToken={mentorToken} sessionId={l.id} onCommentPosted={refreshLibrary} />
               )}
             </div>
           ))}
@@ -111,25 +86,7 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
   );
 }
 
-function StatChip({ icon: Icon, label, value }: { icon: typeof Eye; label: string; value: string | number }) {
-  return (
-    <div className="clay-inset px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
-        <Icon className="h-3 w-3" />
-        {label}
-      </div>
-      <p className="mt-0.5 text-sm font-bold text-foreground">{value}</p>
-    </div>
-  );
-}
-
-type Comment = {
-  id: string;
-  studentName: string;
-  body: string;
-  hidden: boolean;
-  createdAt: string | null;
-};
+type Comment = { id: string; studentName: string; body: string; hidden: boolean; createdAt: string | null };
 
 function LectureCommentAuditor({
   mentorToken,
@@ -166,7 +123,7 @@ function LectureCommentAuditor({
       await postMentorLectureComment({ data: { token: mentorToken, sessionId, body: draft.trim() } });
       setDraft("");
       await refresh();
-      onCommentPosted(); // refreshes the parent's comment-count stat chip
+      onCommentPosted();
     } finally {
       setPosting(false);
     }
@@ -178,9 +135,7 @@ function LectureCommentAuditor({
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") postAsMentor();
-          }}
+          onKeyDown={(e) => e.key === "Enter" && postAsMentor()}
           placeholder="Pin a note for every student watching this lecture…"
           className="clay-inset flex-1 rounded-2xl px-3.5 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
         />
@@ -196,17 +151,12 @@ function LectureCommentAuditor({
 
       <div className="clay-inset max-h-72 space-y-2 overflow-y-auto rounded-2xl p-4">
         {comments === null ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-foreground/40" />
-          </div>
+          <LoadingBlock compact />
         ) : comments.length === 0 ? (
           <p className="text-xs text-foreground/50">No comments on this lecture yet.</p>
         ) : (
           comments.map((c) => (
-            <div
-              key={c.id}
-              className={`clay flex items-start justify-between gap-3 px-3.5 py-2.5 ${c.hidden ? "opacity-50" : ""}`}
-            >
+            <div key={c.id} className={`clay flex items-start justify-between gap-3 px-3.5 py-2.5 ${c.hidden ? "opacity-50" : ""}`}>
               <div>
                 <p className="text-xs font-semibold text-foreground">{c.studentName}</p>
                 <p className="text-xs text-foreground/70">{c.body}</p>

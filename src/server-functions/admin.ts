@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { adminAuth } from "@/lib/firebase-admin";
+import { sendMail, sendMailBatch } from "@/lib/mailer";
+import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { scryptSync, randomBytes } from "node:crypto";
 import type { ExamKey, Track } from "@/lib/admin-types";
@@ -236,13 +237,53 @@ export const postBundleAnnouncement = createServerFn({ method: "POST" })
   .validator((data: { token: string; announcement: BundleAnnouncementInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
     const db = await getDb();
+ 
     await db.collection("bundleAnnouncements").insertOne({
       ...data.announcement,
       createdAt: new Date(),
     });
-    return { ok: true };
+ 
+    let emailResult: { attempted: number; sent: number; failed: number } | null = null;
+ 
+    if (data.announcement.message?.trim()) {
+      const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(data.announcement.bundleId) });
+ 
+      if (bundle) {
+        const purchases = await db
+          .collection("purchases")
+          .find({ itemType: "bundle", itemId: data.announcement.bundleId })
+          .toArray();
+        const uids = [...new Set(purchases.map((p) => p.uid as string))];
+ 
+        if (uids.length > 0) {
+          const profiles = await db
+            .collection("profiles")
+            .find({ uid: { $in: uids } }, { projection: { email: 1 } })
+            .toArray();
+          const emails = profiles.map((p) => p.email as string | null).filter((e): e is string => Boolean(e));
+ 
+          if (emails.length > 0) {
+            const html = bundleAnnouncementEmailHtml({
+              bundleTitle: bundle.title as string,
+              message: data.announcement.message,
+            });
+            const result = await sendMailBatch(
+              emails.map((to) => ({ to, subject: `Update: ${bundle.title as string}`, html })),
+            );
+            emailResult = { attempted: emails.length, sent: result.sent, failed: result.failed };
+            console.log(
+              `[postBundleAnnouncement] emailed ${result.sent}/${emails.length} purchasers of bundleId=${data.announcement.bundleId}, ${result.failed} failed`,
+            );
+          }
+        }
+      }
+    }
+ 
+    return { ok: true, emailResult };
   });
+ 
 
 export const listBundleAnnouncements = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
@@ -623,7 +664,7 @@ export const updateMentorshipBatch = createServerFn({ method: "POST" })
 type AnnouncementTrack = "All" | "Dropper" | "11th" | "12th";
 
 export const postAnnouncement = createServerFn({ method: "POST" })
-  .validator((data: { token: string; message: string; track: AnnouncementTrack }) => data)
+  .validator((data: { token: string; message: string; track: AnnouncementTrack; sendEmail?: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
     const db = await getDb();
@@ -632,8 +673,32 @@ export const postAnnouncement = createServerFn({ method: "POST" })
       track: data.track,
       createdAt: new Date(),
     });
-    return { ok: true };
+ 
+    let emailResult: { attempted: number; sent: number; failed: number } | null = null;
+ 
+    if (data.sendEmail && data.message.trim()) {
+      const filter = data.track === "All" ? {} : { track: data.track };
+      const profiles = await db
+        .collection("profiles")
+        .find(filter, { projection: { email: 1 } })
+        .toArray();
+      const emails = profiles.map((p) => p.email as string | null).filter((e): e is string => Boolean(e));
+ 
+      if (emails.length > 0) {
+        const html = platformAnnouncementEmailHtml({ message: data.message });
+        const result = await sendMailBatch(
+          emails.map((to) => ({ to, subject: "Edurack Announcement", html })),
+        );
+        emailResult = { attempted: emails.length, sent: result.sent, failed: result.failed };
+        console.log(
+          `[postAnnouncement] emailed ${result.sent}/${emails.length} students in track=${data.track}, ${result.failed} failed`,
+        );
+      }
+    }
+ 
+    return { ok: true, emailResult };
   });
+ 
 
 export const listAnnouncements = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
@@ -1007,6 +1072,13 @@ export const listCreatorApplications = createServerFn({ method: "GET" })
     };
   });
 
+// Approving an application also emails the applicant — they aren't a
+// Firebase user yet at this stage, so the address comes straight from the
+// application's own personal.email, not from any auth lookup. Sending the
+// email is best-effort: if it fails, the approval itself has already been
+// saved above and is not rolled back, matching the same "the real action
+// already happened, don't undo it over an email hiccup" pattern used for
+// payment confirmations.
 export const approveCreatorApplication = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string }) => data)
   .handler(async ({ data }) => {
@@ -1014,15 +1086,44 @@ export const approveCreatorApplication = createServerFn({ method: "POST" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
+    const app = await db.collection("creatorApplications").findOne({ _id: new ObjectId(data.applicationId) });
+    if (!app) throw new Error("Application not found.");
+
     await db.collection("creatorApplications").updateOne(
       { _id: new ObjectId(data.applicationId) },
       { $set: { status: "approved", rejectionReason: null, reviewedAt: new Date() } },
     );
 
-   
+    const personal = app.personal as { fullName: string; email: string };
+    if (personal?.email) {
+      const appUrl = process.env.APP_URL;
+      if (!appUrl) {
+        console.warn(
+          `[approveCreatorApplication] APP_URL is not set — sending approval email for applicationId=${data.applicationId} without an onboarding link`,
+        );
+      }
+      const onboardingUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/mentor-onboarding/${data.applicationId}` : null;
+
+      try {
+        await sendMail({
+          to: personal.email,
+          subject: "Your Edurack mentor application has been approved 🎉",
+          html: mentorApprovedEmailHtml({ fullName: personal.fullName, onboardingUrl }),
+        });
+      } catch (err) {
+        console.error(`[approveCreatorApplication] approval email failed for applicationId=${data.applicationId}:`, err);
+      }
+    } else {
+      console.warn(`[approveCreatorApplication] no email on application ${data.applicationId}, skipping approval email`);
+    }
+
     return { ok: true };
   });
 
+// Rejecting an application also emails the applicant with the reason the
+// admin typed in. Same best-effort pattern as approveCreatorApplication —
+// the rejection itself is already saved above regardless of whether the
+// email succeeds.
 export const rejectCreatorApplication = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string; reason: string }) => data)
   .handler(async ({ data }) => {
@@ -1031,10 +1132,29 @@ export const rejectCreatorApplication = createServerFn({ method: "POST" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
+    const app = await db.collection("creatorApplications").findOne({ _id: new ObjectId(data.applicationId) });
+    if (!app) throw new Error("Application not found.");
+
     await db.collection("creatorApplications").updateOne(
       { _id: new ObjectId(data.applicationId) },
       { $set: { status: "rejected", rejectionReason: data.reason.trim(), reviewedAt: new Date() } },
     );
+
+    const personal = app.personal as { fullName: string; email: string };
+    if (personal?.email) {
+      try {
+        await sendMail({
+          to: personal.email,
+          subject: "Update on your Edurack mentor application",
+          html: mentorRejectedEmailHtml({ fullName: personal.fullName, reason: data.reason.trim() }),
+        });
+      } catch (err) {
+        console.error(`[rejectCreatorApplication] rejection email failed for applicationId=${data.applicationId}:`, err);
+      }
+    } else {
+      console.warn(`[rejectCreatorApplication] no email on application ${data.applicationId}, skipping rejection email`);
+    }
+
     return { ok: true };
   });
 

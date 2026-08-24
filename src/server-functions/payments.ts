@@ -5,6 +5,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { createHmac } from "node:crypto";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { sendMail } from "@/lib/mailer";
+import { purchaseConfirmationEmailHtml } from "@/lib/email-templates";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
@@ -95,7 +97,7 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
       throw new Error("Payment verification failed — signature mismatch.");
     }
 
-    const { sellingPrice } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+    const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
     const db = await getDb();
 
     // Upsert on (uid, itemType, itemId) so a retried/duplicate verification
@@ -115,6 +117,30 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
       },
       { upsert: true },
     );
+
+    // Combined "congrats + payment successful" email. The payment is
+    // already captured and the purchase record already written above, so a
+    // failed send here must never undo the purchase or fail this request —
+    // it's logged and swallowed, not thrown. Firebase's decoded ID token
+    // carries the account's email directly, so no extra DB lookup is
+    // needed to find where to send it.
+    if (decoded.email) {
+      try {
+        await sendMail({
+          to: decoded.email,
+          subject: `Payment successful — ${title}`,
+          html: purchaseConfirmationEmailHtml({
+            itemTitle: title,
+            itemType: data.itemType,
+            amount: sellingPrice,
+          }),
+        });
+      } catch (err) {
+        console.error(`[verifyRazorpayPayment] confirmation email failed for uid=${decoded.uid}:`, err);
+      }
+    } else {
+      console.warn(`[verifyRazorpayPayment] no email on token for uid=${decoded.uid}, skipping confirmation email`);
+    }
 
     return { ok: true };
   });

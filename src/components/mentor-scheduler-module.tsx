@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   XCircle,
   Link2,
+  Plus,
+  X,
+  Send,
 } from "lucide-react";
 import type { MentorshipSession, LectureComment } from "@/lib/admin-types";
 import {
@@ -22,32 +25,17 @@ import {
   updateSessionStatus,
   listLectureComments,
   setLectureCommentVisibility,
+  postMentorLectureComment,
 } from "@/server-functions/mentor-portal";
-import { Library } from "lucide-react";
-import { MentorLectureLibraryModule } from "@/components/mentor-lecture-library-module";
-
-const inputClass =
-  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
-
-function ClayField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-6">
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
-    </div>
-  );
-}
+import {
+  ModuleHeader,
+  ClayField,
+  Panel,
+  LoadingBlock,
+  EmptyState,
+  ErrorBanner,
+  inputClass,
+} from "@/components/mentor-portal-ui";
 
 type Batch = { id: string; name: string; track: string };
 type TabKey = "OneOnOne" | "BatchMeet" | "AsyncLecture";
@@ -80,44 +68,45 @@ export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) 
       />
 
       {batches === null ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock />
       ) : batches.length === 0 ? (
-        <div className="clay p-6 text-center text-sm text-foreground/60">
-          No mentorship batches are assigned to you yet.
-        </div>
+        <EmptyState icon={CalendarClock} message="No mentorship batches are assigned to you yet." />
       ) : (
         <>
-          <div className="mb-6">
-            <ClayField label="Batch">
-              <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className={inputClass + " appearance-none"}>
-                {batches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} · {b.track}
-                  </option>
-                ))}
-              </select>
-            </ClayField>
-          </div>
-
-          <div className="clay-inset mb-6 grid max-w-md grid-cols-3 gap-1 p-1">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setTab(t.key)}
-                  className={`flex items-center justify-center gap-1.5 rounded-full py-2 text-xs font-semibold transition-all ${
-                    tab === t.key ? "clay-btn text-white" : "text-foreground/70 hover:text-foreground"
-                  }`}
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <ClayField label="Batch">
+                <select
+                  value={batchId}
+                  onChange={(e) => setBatchId(e.target.value)}
+                  className={inputClass + " appearance-none"}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{t.label}</span>
-                </button>
-              );
-            })}
+                  {batches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} · {b.track}
+                    </option>
+                  ))}
+                </select>
+              </ClayField>
+            </div>
+            <div className="clay-inset flex gap-1 p-1 sm:w-auto">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTab(t.key)}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-semibold transition-all sm:flex-none sm:px-4 ${
+                      tab === t.key ? "clay-btn text-white" : "text-foreground/70 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {batchId && tab === "OneOnOne" && <TrackOneOnOne mentorToken={mentorToken} batchId={batchId} />}
@@ -129,7 +118,7 @@ export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) 
   );
 }
 
-// ─── Track A: 1:1 Personal Mentorship ───────────────────────────────────────
+// ─── Track A: 1:1 Personal Mentorship ─────────────────────────────────────
 type Student = { uid: string; fullName: string; email: string | null };
 
 function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
@@ -142,6 +131,7 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
   const [sessions, setSessions] = useState<MentorshipSession[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -192,18 +182,12 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
       await createMentorshipSession({
         data: {
           token: mentorToken,
-          session: {
-            batchId,
-            track: "OneOnOne",
-            studentUid,
-            durationMinutes: minutes,
-            meetingLink: meetingLink.trim(),
-            scheduledAt,
-          },
+          session: { batchId, track: "OneOnOne", studentUid, durationMinutes: minutes, meetingLink: meetingLink.trim(), scheduledAt },
         },
       });
       setMeetingLink("");
       setScheduledAt("");
+      setShowForm(false);
       await Promise.all([refreshUsage(studentUid), refreshSessions()]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not schedule this session.");
@@ -221,110 +205,122 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
   const studentName = students?.find((s) => s.uid === studentUid)?.fullName ?? "";
 
   return (
-    <div>
-      <div className="clay mb-6 p-5 sm:p-6">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <Users2 className="h-4 w-4" /> Schedule a 1:1 session
-        </h2>
-
-        {students === null ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-          </div>
-        ) : students.length === 0 ? (
-          <p className="text-sm text-foreground/60">No students have purchased this batch yet.</p>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <ClayField label="Student">
-              <select
-                value={studentUid}
-                onChange={(e) => setStudentUid(e.target.value)}
-                className={inputClass + " appearance-none"}
-              >
-                {students.map((s) => (
-                  <option key={s.uid} value={s.uid}>
-                    {s.fullName}
-                  </option>
-                ))}
-              </select>
-            </ClayField>
-
-            {usage && (
-              <div
-                className={`clay-chip inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${
-                  usage.sessionsRemaining === 0 ? "text-[var(--destructive)]" : "text-foreground/70"
-                }`}
-              >
-                {usage.sessionsUsed}/20 sessions used for {studentName} · {usage.sessionsRemaining} remaining
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ClayField label="Duration (minutes, max 180)">
-                <input
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="30"
-                  className={inputClass}
-                />
-              </ClayField>
-              <ClayField label="Scheduled date/time">
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className={inputClass}
-                />
-              </ClayField>
-            </div>
-
-            <ClayField label="Meeting link">
-              <div className="relative">
-                <Link2 className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
-                <input
-                  value={meetingLink}
-                  onChange={(e) => setMeetingLink(e.target.value)}
-                  placeholder="https://meet.google.com/…"
-                  className={inputClass + " pl-10"}
-                />
-              </div>
-            </ClayField>
-
-            {error && (
-              <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={saving || (usage?.sessionsRemaining ?? 1) <= 0}
-              className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Schedule session"}
+    <div className="space-y-6">
+      {showForm && (
+        <Panel
+          icon={Users2}
+          title="Schedule a 1:1 session"
+          action={
+            <button onClick={() => setShowForm(false)} className="text-foreground/40 hover:text-foreground/70">
+              <X className="h-4 w-4" />
             </button>
-          </form>
-        )}
-      </div>
+          }
+        >
+          {students === null ? (
+            <LoadingBlock compact />
+          ) : students.length === 0 ? (
+            <EmptyState message="No students have purchased this batch yet." />
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <ClayField label="Student">
+                <select
+                  value={studentUid}
+                  onChange={(e) => setStudentUid(e.target.value)}
+                  className={inputClass + " appearance-none"}
+                >
+                  {students.map((s) => (
+                    <option key={s.uid} value={s.uid}>
+                      {s.fullName}
+                    </option>
+                  ))}
+                </select>
+              </ClayField>
 
-      <SessionList sessions={sessions} onMarkStatus={markStatus} />
+              {usage && (
+                <div
+                  className={`clay-chip inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${
+                    usage.sessionsRemaining === 0 ? "text-[var(--destructive)]" : "text-foreground/70"
+                  }`}
+                >
+                  {usage.sessionsUsed}/20 sessions used for {studentName} · {usage.sessionsRemaining} remaining
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ClayField label="Duration (minutes, max 180)">
+                  <input
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="30"
+                    className={inputClass}
+                  />
+                </ClayField>
+                <ClayField label="Scheduled date/time">
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    className={inputClass}
+                  />
+                </ClayField>
+              </div>
+
+              <ClayField label="Meeting link">
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+                  <input
+                    value={meetingLink}
+                    onChange={(e) => setMeetingLink(e.target.value)}
+                    placeholder="https://meet.google.com/…"
+                    className={inputClass + " pl-10"}
+                  />
+                </div>
+              </ClayField>
+
+              {error && <ErrorBanner message={error} />}
+
+              <button
+                type="submit"
+                disabled={saving || (usage?.sessionsRemaining ?? 1) <= 0}
+                className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Schedule session"}
+              </button>
+            </form>
+          )}
+        </Panel>
+      )}
+
+      <SessionList
+        sessions={sessions}
+        onMarkStatus={markStatus}
+        action={
+          !showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+            >
+              <Plus className="h-3.5 w-3.5" /> New session
+            </button>
+          )
+        }
+      />
     </div>
   );
 }
 
-// ─── Track B: Complete Batch Meet ───────────────────────────────────────────
+// ─── Track B: Complete Batch Meet ─────────────────────────────────────────
 function TrackBatchMeet({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [meetingLink, setMeetingLink] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [sessions, setSessions] = useState<MentorshipSession[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   async function refreshSessions() {
-    const { sessions: rows } = await listMentorshipSessions({
-      data: { token: mentorToken, batchId, track: "BatchMeet" },
-    });
+    const { sessions: rows } = await listMentorshipSessions({ data: { token: mentorToken, batchId, track: "BatchMeet" } });
     setSessions(rows);
   }
 
@@ -346,6 +342,7 @@ function TrackBatchMeet({ mentorToken, batchId }: { mentorToken: string; batchId
       });
       setMeetingLink("");
       setScheduledAt("");
+      setShowForm(false);
       await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the batch meet.");
@@ -360,54 +357,65 @@ function TrackBatchMeet({ mentorToken, batchId }: { mentorToken: string; batchId
   }
 
   return (
-    <div>
-      <div className="clay mb-6 p-5 sm:p-6">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <Video className="h-4 w-4" /> Broadcast a batch meet room
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <ClayField label="Live video room link">
-            <div className="relative">
-              <Link2 className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
-              <input
-                value={meetingLink}
-                onChange={(e) => setMeetingLink(e.target.value)}
-                placeholder="https://meet.google.com/…"
-                className={inputClass + " pl-10"}
-              />
-            </div>
-          </ClayField>
-          <ClayField label="Scheduled date/time">
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className={inputClass}
-            />
-          </ClayField>
+    <div className="space-y-6">
+      {showForm && (
+        <Panel
+          icon={Video}
+          title="Broadcast a batch meet room"
+          action={
+            <button onClick={() => setShowForm(false)} className="text-foreground/40 hover:text-foreground/70">
+              <X className="h-4 w-4" />
+            </button>
+          }
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <ClayField label="Live video room link">
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+                <input
+                  value={meetingLink}
+                  onChange={(e) => setMeetingLink(e.target.value)}
+                  placeholder="https://meet.google.com/…"
+                  className={inputClass + " pl-10"}
+                />
+              </div>
+            </ClayField>
+            <ClayField label="Scheduled date/time">
+              <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={inputClass} />
+            </ClayField>
 
-          {error && (
-            <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-              {error}
-            </p>
-          )}
+            {error && <ErrorBanner message={error} />}
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Push to all students in batch"}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Push to all students in batch"}
+            </button>
+          </form>
+        </Panel>
+      )}
 
-      <SessionList sessions={sessions} onMarkStatus={markStatus} />
+      <SessionList
+        sessions={sessions}
+        onMarkStatus={markStatus}
+        action={
+          !showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+            >
+              <Plus className="h-3.5 w-3.5" /> New batch meet
+            </button>
+          )
+        }
+      />
     </div>
   );
 }
 
-// ─── Track C: Async Lecture Ingestion + Comment Auditor ─────────────────────
+// ─── Track C: Async Lecture Ingestion + Comment Auditor ──────────────────
 function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureUrl, setLectureUrl] = useState("");
@@ -416,11 +424,10 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeLectureId, setActiveLectureId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   async function refreshSessions() {
-    const { sessions: rows } = await listMentorshipSessions({
-      data: { token: mentorToken, batchId, track: "AsyncLecture" },
-    });
+    const { sessions: rows } = await listMentorshipSessions({ data: { token: mentorToken, batchId, track: "AsyncLecture" } });
     setSessions(rows);
   }
 
@@ -441,18 +448,13 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
       await createMentorshipSession({
         data: {
           token: mentorToken,
-          session: {
-            batchId,
-            track: "AsyncLecture",
-            lectureTitle: lectureTitle.trim(),
-            lectureUrl: lectureUrl.trim(),
-            scheduledAt,
-          },
+          session: { batchId, track: "AsyncLecture", lectureTitle: lectureTitle.trim(), lectureUrl: lectureUrl.trim(), scheduledAt },
         },
       });
       setLectureTitle("");
       setLectureUrl("");
       setScheduledAt("");
+      setShowForm(false);
       await refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not ingest this lecture.");
@@ -462,63 +464,69 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
   }
 
   return (
-    <div>
-      <div className="clay mb-6 p-5 sm:p-6">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <PlayCircle className="h-4 w-4" /> Ingest a lecture link
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <ClayField label="Lecture title">
-            <input
-              value={lectureTitle}
-              onChange={(e) => setLectureTitle(e.target.value)}
-              placeholder="e.g. Thermodynamics — Session 4"
-              className={inputClass}
-            />
-          </ClayField>
-          <ClayField label="Cloudflare Stream / Bunny.net player URL">
-            <input
-              value={lectureUrl}
-              onChange={(e) => setLectureUrl(e.target.value)}
-              placeholder="https://iframe.videodelivery.net/…"
-              className={inputClass}
-            />
-          </ClayField>
-          <ClayField label="Available from">
-            <input
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className={inputClass}
-            />
-          </ClayField>
+    <div className="space-y-6">
+      {showForm && (
+        <Panel
+          icon={PlayCircle}
+          title="Ingest a lecture link"
+          action={
+            <button onClick={() => setShowForm(false)} className="text-foreground/40 hover:text-foreground/70">
+              <X className="h-4 w-4" />
+            </button>
+          }
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <ClayField label="Lecture title">
+              <input
+                value={lectureTitle}
+                onChange={(e) => setLectureTitle(e.target.value)}
+                placeholder="e.g. Thermodynamics — Session 4"
+                className={inputClass}
+              />
+            </ClayField>
+            <ClayField label="Cloudflare Stream / Bunny.net player URL">
+              <input
+                value={lectureUrl}
+                onChange={(e) => setLectureUrl(e.target.value)}
+                placeholder="https://iframe.videodelivery.net/…"
+                className={inputClass}
+              />
+            </ClayField>
+            <ClayField label="Available from">
+              <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={inputClass} />
+            </ClayField>
 
-          {error && (
-            <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
-              {error}
-            </p>
-          )}
+            {error && <ErrorBanner message={error} />}
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ingest lecture"}
-          </button>
-        </form>
-      </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Ingest lecture"}
+            </button>
+          </form>
+        </Panel>
+      )}
 
-      <div className="clay p-5 sm:p-6">
-        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <CalendarClock className="h-4 w-4" /> Ingested lectures
-        </h2>
+      <Panel
+        icon={CalendarClock}
+        title="Ingested lectures"
+        action={
+          !showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+            >
+              <Plus className="h-3.5 w-3.5" /> New lecture
+            </button>
+          )
+        }
+      >
         {sessions === null ? (
-          <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-          </div>
+          <LoadingBlock compact />
         ) : sessions.length === 0 ? (
-          <p className="text-sm text-foreground/60">No lectures ingested yet.</p>
+          <EmptyState icon={PlayCircle} message="No lectures ingested yet." />
         ) : (
           <ul className="space-y-2">
             {sessions.map((s) => (
@@ -538,53 +546,43 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
                     {activeLectureId === s.id ? "Hide comments" : "Moderate comments"}
                   </button>
                 </div>
-                {activeLectureId === s.id && (
-                  <CommentAuditor mentorToken={mentorToken} sessionId={s.id} />
-                )}
+                {activeLectureId === s.id && <CommentAuditor mentorToken={mentorToken} sessionId={s.id} />}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
 
-// ─── Shared: session status list ────────────────────────────────────────────
+// ─── Shared: session status list ──────────────────────────────────────────
 function SessionList({
   sessions,
   onMarkStatus,
+  action,
 }: {
   sessions: MentorshipSession[] | null;
   onMarkStatus: (sessionId: string, status: "completed" | "cancelled") => void;
+  action?: React.ReactNode;
 }) {
   return (
-    <div className="clay p-5 sm:p-6">
-      <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-        <CalendarClock className="h-4 w-4" /> Scheduled sessions
-      </h2>
+    <Panel icon={CalendarClock} title="Scheduled sessions" action={action}>
       {sessions === null ? (
-        <div className="flex justify-center py-6">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock compact />
       ) : sessions.length === 0 ? (
-        <p className="text-sm text-foreground/60">Nothing scheduled yet.</p>
+        <EmptyState icon={CalendarClock} message="Nothing scheduled yet." />
       ) : (
         <ul className="space-y-2">
           {sessions.map((s) => (
             <li key={s.id} className="clay-inset flex items-center justify-between gap-3 px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">
                   {new Date(s.scheduledAt).toLocaleString()}
                   {s.durationMinutes ? ` · ${s.durationMinutes} min` : ""}
                 </p>
                 {s.meetingLink && (
-                  <a
-                    href={s.meetingLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-[var(--sky-deep)] hover:underline"
-                  >
+                  <a href={s.meetingLink} target="_blank" rel="noreferrer" className="truncate text-xs text-[var(--sky-deep)] hover:underline">
                     {s.meetingLink}
                   </a>
                 )}
@@ -603,18 +601,10 @@ function SessionList({
                 </span>
                 {s.status === "scheduled" && (
                   <>
-                    <button
-                      onClick={() => onMarkStatus(s.id, "completed")}
-                      className="text-foreground/40 hover:text-[var(--mint-soft)]"
-                      aria-label="Mark completed"
-                    >
+                    <button onClick={() => onMarkStatus(s.id, "completed")} className="text-foreground/40 hover:text-[var(--mint-soft)]" aria-label="Mark completed">
                       <CheckCircle2 className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => onMarkStatus(s.id, "cancelled")}
-                      className="text-foreground/40 hover:text-[var(--destructive)]"
-                      aria-label="Cancel"
-                    >
+                    <button onClick={() => onMarkStatus(s.id, "cancelled")} className="text-foreground/40 hover:text-[var(--destructive)]" aria-label="Cancel">
                       <XCircle className="h-4 w-4" />
                     </button>
                   </>
@@ -624,13 +614,11 @@ function SessionList({
           ))}
         </ul>
       )}
-    </div>
+    </Panel>
   );
 }
 
-import { Send } from "lucide-react";
-import { postMentorLectureComment } from "@/server-functions/mentor-portal";
-
+// ─── Comment auditor (pinned per-lecture) ─────────────────────────────────
 function CommentAuditor({ mentorToken, sessionId }: { mentorToken: string; sessionId: string }) {
   const [comments, setComments] = useState<LectureComment[] | null>(null);
   const [draft, setDraft] = useState("");
@@ -669,9 +657,7 @@ function CommentAuditor({ mentorToken, sessionId }: { mentorToken: string; sessi
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") postAsMentor();
-          }}
+          onKeyDown={(e) => e.key === "Enter" && postAsMentor()}
           placeholder="Pin a note for every student watching this lecture…"
           className="clay-inset flex-1 rounded-2xl px-3.5 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
         />
@@ -686,20 +672,13 @@ function CommentAuditor({ mentorToken, sessionId }: { mentorToken: string; sessi
       </div>
 
       {comments === null ? (
-        <div className="flex justify-center py-4">
-          <Loader2 className="h-4 w-4 animate-spin text-foreground/40" />
-        </div>
+        <LoadingBlock compact />
       ) : comments.length === 0 ? (
         <p className="text-xs text-foreground/50">No student comments on this lecture yet.</p>
       ) : (
         <ul className="space-y-2">
           {comments.map((c) => (
-            <li
-              key={c.id}
-              className={`clay-inset flex items-start justify-between gap-3 px-3.5 py-2.5 ${
-                c.hidden ? "opacity-50" : ""
-              }`}
-            >
+            <li key={c.id} className={`clay-inset flex items-start justify-between gap-3 px-3.5 py-2.5 ${c.hidden ? "opacity-50" : ""}`}>
               <div>
                 <p className="text-xs font-semibold text-foreground">{c.studentName}</p>
                 <p className="text-xs text-foreground/70">{c.body}</p>

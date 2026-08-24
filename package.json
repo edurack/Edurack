@@ -13,6 +13,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1116.0",
     "@emailjs/browser": "^4.4.1",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -53,6 +54,7 @@
     "cmdk": "^1.1.1",
     "data-uri-to-buffer": "^8.0.0",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
     "embla-carousel-react": "^8.6.0",
     "fetch-blob": "^4.0.0",
     "firebase": "^12.15.0",
@@ -64,6 +66,7 @@
     "katex": "^0.17.0",
     "lucide-react": "^0.575.0",
     "mongodb": "^7.4.0",
+    "nodemailer": "^9.0.5",
     "pdf-lib": "^1.17.1",
     "razorpay": "^2.9.6",
     "react": "^19.2.0",
@@ -84,6 +87,7 @@
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "2.7.0",
     "@types/node": "^22.16.5",
+    "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",

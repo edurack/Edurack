@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { generateOtp, hashOtp, sendOtpEmail } from "@/lib/otp";
+import { MailSendError } from "@/lib/mailer";
 
 const OTP_TTL_MS = 10 * 60 * 1000;          // code valid for 10 min
 const MAX_OTP_ATTEMPTS = 5;
@@ -71,12 +72,23 @@ export const sendEmailVerificationOtp = createServerFn({ method: "POST" })
 
       console.log(`[sendEmailVerificationOtp] OTP stored for uid=${decoded.uid}, sending email...`);
 
-      await sendOtpEmail({
-        toEmail: email,
-        code,
-        purposeLabel: "verify your email",
-        expiryMinutes: OTP_TTL_MS / 60000,
-      });
+      try {
+        await sendOtpEmail({
+          toEmail: email,
+          code,
+          purposeLabel: "verify your email",
+          expiryMinutes: OTP_TTL_MS / 60000,
+        });
+      } catch (mailErr) {
+        // The OTP record is already saved, so the code itself is still
+        // valid if the user gets it another way — but the send failed, so
+        // tell the client plainly rather than pretending it worked.
+        if (mailErr instanceof MailSendError) {
+          console.error(`[sendEmailVerificationOtp] SES send failed for uid=${decoded.uid}:`, mailErr.cause);
+          return { ok: false, error: "Couldn't send the verification email. Please try again in a moment." };
+        }
+        throw mailErr;
+      }
 
       console.log(`[sendEmailVerificationOtp] email sent successfully to ${email}`);
       return { ok: true };

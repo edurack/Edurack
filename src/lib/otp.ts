@@ -1,5 +1,6 @@
 // SERVER-ONLY.
 import crypto from "node:crypto";
+import { sendMail } from "@/lib/mailer";
 
 const OTP_PEPPER = process.env.OTP_PEPPER;
 if (!OTP_PEPPER) throw new Error("OTP_PEPPER is not set");
@@ -23,53 +24,40 @@ export function hashToken(token: string): string {
   return crypto.createHmac("sha256", OTP_PEPPER!).update(token).digest("hex");
 }
 
-// Calls EmailJS's REST API directly from the server, using the private key
-// as `accessToken`. This means the OTP is embedded server-side only — it
-// never touches the browser before the user reads it in their inbox.
+function otpEmailHtml(params: { code: string; purposeLabel: string; expiryMinutes: number }): string {
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #111;">
+      <h2 style="margin-bottom: 4px;">Edurack</h2>
+      <p>Use the code below to ${params.purposeLabel}:</p>
+      <p style="font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">
+        ${params.code}
+      </p>
+      <p style="color: #555; font-size: 14px;">
+        This code expires in ${params.expiryMinutes} minutes. If you didn't request this, you can safely
+        ignore this email.
+      </p>
+    </div>
+  `;
+}
+
+// Sends the OTP via AWS SES (nodemailer's SES transport, see src/lib/mailer.ts).
+// Replaces the old EmailJS REST call. Same signature and behavior as before,
+// so callers (email-verification.ts, password-reset.ts) don't need to change
+// how they call this — only how they handle it throwing (see MailSendError
+// in mailer.ts, and the try/catch in each caller).
 export async function sendOtpEmail(params: {
   toEmail: string;
   code: string;
   purposeLabel: string;
   expiryMinutes: number;
 }) {
-  const serviceId = process.env.EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID_OTP;
-  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
-  const privateKey = process.env.EMAILJS_PRIVATE_KEY;
+  console.log(`[sendOtpEmail] sending to=${params.toEmail} purpose="${params.purposeLabel}"`);
 
-  if (!serviceId || !templateId || !publicKey) {
-    throw new Error("EmailJS is not configured");
-  }
-
-  const templateParams = {
-    to_email: params.toEmail,
-    otp_code: params.code,
-    purpose_label: params.purposeLabel,
-    expiry_minutes: params.expiryMinutes,
-    app_name: "Edurack",
-  };
-
-  // Log exactly what we're sending — this is the ground truth for whether
-  // the OTP code is actually reaching EmailJS with the right variable name.
-  console.log("[sendOtpEmail] service:", serviceId, "template:", templateId);
-  console.log("[sendOtpEmail] template_params:", { ...templateParams, otp_code: `${params.code} (hidden in prod)` });
-
-  const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      service_id: serviceId,
-      template_id: templateId,
-      user_id: publicKey,
-      accessToken: privateKey,
-      template_params: templateParams,
-    }),
+  await sendMail({
+    to: params.toEmail,
+    subject: `Your Edurack code: ${params.code}`,
+    html: otpEmailHtml(params),
   });
 
-  const responseText = await res.text();
-  console.log("[sendOtpEmail] EmailJS response:", res.status, responseText);
-
-  if (!res.ok) {
-    throw new Error(`EmailJS send failed: ${res.status} ${responseText}`);
-  }
+  console.log(`[sendOtpEmail] email sent successfully to ${params.toEmail}`);
 }
