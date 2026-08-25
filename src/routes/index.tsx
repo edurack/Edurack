@@ -13,6 +13,15 @@ import {
   UserCheck,
   Cpu,
   TrendingUp,
+  ShieldCheck,
+  Users,
+  Globe,
+  Linkedin,
+  Youtube,
+  Instagram,
+  Twitter,
+  MessageSquare,
+  AtSign, // Used for Threads
 } from "lucide-react";
 import { CbtSimulator } from "@/components/landing/CbtSimulator";
 
@@ -21,9 +30,7 @@ export const Route = createFileRoute("/")({
 });
 
 // ---------------------------------------------
-// Exam config — shared across hero selector, mentor
-// showcase, and (soon) other pages that need to filter
-// or badge content by exam.
+// Exam config
 // ---------------------------------------------
 type ExamKey = "neet" | "jee" | "cuet" | "ipmat";
 
@@ -35,9 +42,7 @@ const exams: { key: ExamKey; label: string; full: string }[] = [
 ];
 
 // ---------------------------------------------
-// Scroll-reveal — the page's one motion device.
-// Fades + lifts an element into place the first time
-// it enters the viewport. Respects reduced-motion.
+// Scroll-reveal motion device
 // ---------------------------------------------
 function Reveal({
   children,
@@ -98,11 +103,115 @@ const navLinks: NavLink[] = [
   { label: "CBT Simulator", type: "anchor", href: "#simulator" },
   { label: "Mentors", type: "anchor", href: "#mentors" },
   { label: "Features", type: "anchor", href: "#features" },
+  { label: "About", type: "anchor", href: "#about" },
+  { label: "Connect", type: "anchor", href: "#connect" },
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
   { label: "Contact", type: "route", to: "/contact" },
 ];
 
+// ---------------------------------------------
+// Social Links Configuration (GitHub Replaced with Threads)
+// ---------------------------------------------
+const socialLinks = [
+  {
+    name: "LinkedIn",
+    description: "Founder updates & corporate networking",
+    href: "https://www.linkedin.com/company/edurack", // Replace with actual URL
+    icon: Linkedin,
+    color: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-500/10",
+  },
+  {
+    name: "Threads",
+    description: "Real-time updates & platform discussions",
+    href: "https://threads.net/@edurack.in", // Replace with actual URL
+    icon: AtSign,
+    color: "text-slate-900 dark:text-slate-100",
+    bg: "bg-slate-500/10",
+  },
+  {
+    name: "YouTube",
+    description: "CBT walkthroughs & strategy guides",
+    href: "https://youtube.com/@edurack", // Replace with actual URL
+    icon: Youtube,
+    color: "text-red-600 dark:text-red-400",
+    bg: "bg-red-500/10",
+  },
+  {
+    name: "Instagram",
+    description: "Student updates & mentor reels",
+    href: "https://instagram.com/edurack.in", // Replace with actual URL
+    icon: Instagram,
+    color: "text-pink-600 dark:text-pink-400",
+    bg: "bg-pink-500/10",
+  },
+  {
+    name: "X (Twitter)",
+    description: "Tech announcements & build updates",
+    href: "https://x.com/edurack_", // Replace with actual URL
+    icon: Twitter,
+    color: "text-sky-500 dark:text-sky-400",
+    bg: "bg-sky-500/10",
+  },
+  {
+    name: "Reddit",
+    description: "Community strategy & discussions",
+    href: "https://www.reddit.com/user/Edurack/", // Replace with actual URL
+    icon: MessageSquare,
+    color: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-500/10",
+  },
+];
+
 function Index() {
+  // Inject Organization Schema with all Co-Founders and Social Links for Search Engine Entity Separation
+  useEffect(() => {
+    const schemaData = {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": "Edurack Web",
+      "alternateName": "EDURACK.IN",
+      "url": "https://www.edurack.in",
+      "logo": "https://i.postimg.cc/4NvD69v0/image-removebg-preview.png",
+      "founder": [
+        {
+          "@type": "Person",
+          "name": "Vishal Sharma",
+          "jobTitle": "Co-Founder"
+        },
+        {
+          "@type": "Person",
+          "name": "Archita Priyadarshinee",
+          "jobTitle": "Co-Founder"
+        },
+        {
+          "@type": "Person",
+          "name": "Tarun Yadav",
+          "jobTitle": "Co-Founder"
+        }
+      ],
+      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Archita Priyadarshinee, and Tarun Yadav, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants.",
+      "sameAs": [
+        "https://www.edurack.in",
+        "https://www.linkedin.com/company/edurack",
+        "https://threads.net/@edurack.in",
+        "https://youtube.com/@edurack",
+        "https://instagram.com/edurack.in",
+        "https://x.com/edurack_",
+        "https://www.reddit.com/user/Edurack/"
+      ]
+    };
+
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.text = JSON.stringify(schemaData);
+    document.head.appendChild(script);
+
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen scroll-smooth">
       <Header />
@@ -111,6 +220,8 @@ function Index() {
         <SimulatorSection />
         <MentorVideoShowcase />
         <FeaturesGrid />
+        <AboutSection />
+        <SocialLinksSection />
         <MarketplaceBanner />
       </main>
       <Footer />
@@ -239,12 +350,6 @@ function Header() {
 }
 
 function Hero() {
-  // Local selection only — swapping this doesn't yet filter the rest of
-  // the page's content by exam. It's here so a JEE/CUET/IPMAT aspirant
-  // immediately sees "this platform is for me too" instead of reading
-  // NEET-only copy and assuming otherwise. Wiring it to actually filter
-  // simulator/mentor content by exam is a natural next step once each
-  // section has exam-tagged data to filter against.
   const [activeExam, setActiveExam] = useState<ExamKey>("neet");
 
   return (
@@ -253,7 +358,7 @@ function Hero() {
         <Reveal>
           <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 sm:text-sm">
             <Sparkles className="h-4 w-4 animate-pulse" />
-            One platform. Four of India's toughest entrance exams.
+            Official Web Platform · edurack.in
           </div>
         </Reveal>
 
@@ -289,7 +394,7 @@ function Hero() {
 
         <Reveal delay={220}>
           <p className="fluid-body mx-auto mt-6 max-w-2xl text-muted-foreground">
-            Don't let an unfamiliar screen cost you marks. EDURACK gives NEET, JEE, CUET, and IPMAT
+            Don't let an unfamiliar screen cost you marks. EDURACK (edurack.in) gives NEET, JEE, CUET, and IPMAT
             aspirants a <b className="text-foreground">pixel-exact CBT simulator</b> for each exam's
             real interface, paired with mentorship spaces run directly by top rankers and IIM/IIT/AIIMS
             students.
@@ -354,9 +459,6 @@ function SimulatorSection() {
         </p>
       </Reveal>
       <Reveal delay={120} className="mt-10">
-        {/* CbtSimulator is intentionally left as a fixed light-mode replica —
-            the real NTA exam screen is always light, regardless of device
-            theme, so this component should not follow site-wide dark mode. */}
         <CbtSimulator />
       </Reveal>
     </section>
@@ -391,9 +493,6 @@ function MentorVideoShowcase() {
           {sampleVideos.map((v, i) => (
             <Reveal key={v.name} delay={i * 90}>
               <div className="clay flex h-full flex-col justify-between overflow-hidden p-4 transition-transform duration-300 hover:-translate-y-1">
-                {/* Video thumbnail placeholder — intentionally stays dark
-                    in both themes, same reasoning as CbtSimulator: it's
-                    mimicking a video player surface, not a page surface. */}
                 <div className="group relative aspect-video w-full cursor-pointer rounded-2xl bg-slate-900 shadow-inner">
                   <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                   <button
@@ -511,12 +610,116 @@ function FeaturesGrid() {
   );
 }
 
+// ---------------------------------------------
+// Dedicated Brand & Co-Founders Section (SEO Entity Separation)
+// ---------------------------------------------
+function AboutSection() {
+  return (
+    <section id="about" className="bg-secondary/30 px-4 py-16 sm:px-6 lg:py-24">
+      <div className="mx-auto max-w-6xl">
+        <Reveal className="mx-auto max-w-3xl text-center">
+          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
+            OFFICIAL PLATFORM IDENTITY
+          </div>
+          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
+            About Edurack (edurack.in)
+          </h2>
+          <p className="fluid-body mt-3 text-muted-foreground">
+            Delivering precision test simulation and elite student mentorship.
+          </p>
+        </Reveal>
+
+        <Reveal delay={100} className="mt-12">
+          <div className="clay p-8 md:p-12">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+              <div className="flex flex-col items-start gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
+                  <Globe className="h-6 w-6" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-foreground">Independent Web Platform</h3>
+                <p className="text-sm text-muted-foreground">
+                  <strong>edurack.in</strong> is an independent web platform dedicated exclusively to providing pixel-exact Computer Based Test (CBT) simulators and structured mentorship spaces.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-teal-500/15 text-teal-600">
+                  <Users className="h-6 w-6" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-foreground">Co-Founding Team</h3>
+                <p className="text-sm text-muted-foreground">
+                  Founded and operated by <strong>Vishal Sharma</strong>, <strong>Archita Priyadarshinee</strong>, and <strong>Tarun Yadav</strong> to revolutionize competitive examination preparation across India.
+                </p>
+              </div>
+
+              <div className="flex flex-col items-start gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-purple-500/15 text-purple-600">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-foreground">Official Domain</h3>
+                <p className="text-sm text-muted-foreground">
+                  All official CBT test series, mentorship listings, and analytics are hosted exclusively on <strong>www.edurack.in</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------
+// Social Links UI Section
+// ---------------------------------------------
+function SocialLinksSection() {
+  return (
+    <section id="connect" className="px-4 py-16 sm:px-6 lg:py-24">
+      <div className="mx-auto max-w-6xl">
+        <Reveal className="mx-auto max-w-3xl text-center">
+          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300">
+            CONNECT WITH US
+          </div>
+          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
+            Follow EDURACK Across Platforms
+          </h2>
+          <p className="fluid-body mt-3 text-muted-foreground">
+            Connect directly with our co-founders and official community channels to follow product releases and exam strategy tips.
+          </p>
+        </Reveal>
+
+        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {socialLinks.map((s, i) => (
+            <Reveal key={s.name} delay={i * 70}>
+              <a
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="clay group flex h-full items-start gap-4 p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
+              >
+                <div
+                  className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${s.bg} transition-transform duration-300 group-hover:scale-110`}
+                >
+                  <s.icon className={`h-6 w-6 ${s.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1 font-display font-bold text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400">
+                    {s.name}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                    {s.description}
+                  </p>
+                </div>
+              </a>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function MarketplaceBanner() {
-  // This banner is a deliberately dark card (dark gradient + white text)
-  // regardless of site theme — it's meant to stand out as a distinct,
-  // premium-feeling block on the page even in light mode. Left as-is
-  // intentionally; it already reads correctly in dark mode too since
-  // it never relied on the background theme in the first place.
   return (
     <section id="marketplace" className="px-4 pb-20 sm:px-6 lg:pb-28">
       <Reveal className="mx-auto max-w-6xl">
@@ -613,7 +816,7 @@ function Footer() {
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
-              The CBT testing and mentorship platform for NEET, JEE, CUET & IPMAT.
+              Official web platform (edurack.in) founded by Vishal Sharma, Archita Priyadarshinee, and Tarun Yadav for NEET, JEE, CUET & IPMAT preparation.
             </p>
           </div>
           {footerColumns.map((col) => (
@@ -621,7 +824,7 @@ function Footer() {
           ))}
         </div>
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} EDURACK. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} EDURACK (edurack.in). All rights reserved.</span>
           <span>Built for India's toughest entrance exams.</span>
         </div>
       </div>
