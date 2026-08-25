@@ -8,14 +8,17 @@ import { useEffect, useRef, useState } from "react";
 import {
   Loader2, ArrowRight, ArrowLeft, Check, Sparkles, User, GraduationCap, Award,
   FileText, Clock, ShoppingBag, Video, Tag, ImageIcon, IndianRupee,
-  CalendarDays, Users2, Megaphone, BookMarked, Percent, MapPin, Rocket, CheckCircle2,
-  PenLine, AlertCircle, Upload, X, Link2, Eye,
+  CalendarDays, Users2, Megaphone, BookMarked, MapPin, Rocket, CheckCircle2,
+  PenLine, AlertCircle, Upload, X, Link2, Eye, ShieldCheck, TrendingUp, Pencil,
 } from "lucide-react";
 import { supabase, MENTOR_UPLOADS_BUCKET } from "@/lib/supabase";
 import {
   getApprovedApplicationSummary,
   submitMentorOnboardingDetails,
   signMentorAgreement,
+  FIXED_COMMISSION_PERCENT,
+  MIN_WEEKLY_HOURS,
+  MIN_BATCH_DURATION_MONTHS,
 } from "@/server-functions/mentor-onboarding";
 
 export const Route = createFileRoute("/mentor-onboarding/$applicationId")({
@@ -45,6 +48,15 @@ async function uploadImage(file: File, path: string): Promise<string> {
   return data.publicUrl;
 }
 
+// Shared math so the live per-student earnings estimate (Your Batch step,
+// preview card, and Review step) always agrees with itself and with the
+// fixed commission rate — computed in exactly one place.
+function estimateEarningsPerStudent(price: string): number | null {
+  const n = Number(price);
+  if (!n || n <= 0) return null;
+  return Math.round(n * (1 - FIXED_COMMISSION_PERCENT / 100));
+}
+
 type FormState = {
   profilePhotoUrl: string;
   fullName: string;
@@ -66,7 +78,7 @@ type FormState = {
   hasSyllabusPdf: boolean | null;
   syllabusPdfUrl: string;
   wantsPlannerDiscussionCall: boolean;
-  expectedCommissionPercent: string;
+  commissionAgreed: boolean;
   wantsPlatformTour: boolean | null;
   preferredLaunchDate: string;
 };
@@ -92,15 +104,31 @@ const emptyForm: FormState = {
   hasSyllabusPdf: null,
   syllabusPdfUrl: "",
   wantsPlannerDiscussionCall: false,
-  expectedCommissionPercent: "",
+  commissionAgreed: false,
   wantsPlatformTour: null,
   preferredLaunchDate: "",
 };
 
-const STEPS = ["About You", "Beyond This Batch", "Your Batch", "Materials & Promotion", "Terms & Launch", "Agreement"] as const;
+const STEPS = [
+  "About You",
+  "Beyond This Batch",
+  "Your Batch",
+  "Materials & Promotion",
+  "Terms & Launch",
+  "Review",
+  "Agreement",
+] as const;
 
-// Shown in the live preview panel, one per step — gives the mentor a reason
-// for each question instead of just a bare form field.
+const ABOUT_YOU_STEP = 0;
+const BEYOND_BATCH_STEP = 1;
+const YOUR_BATCH_STEP = 2;
+const MATERIALS_STEP = 3;
+const TERMS_STEP = 4;
+const REVIEW_STEP = 5;
+const AGREEMENT_STEP = 6;
+
+// Shown in the live preview panel, one per step — gives the mentor a
+// reason for each question instead of just a bare form field.
 const STEP_TIPS: { title: string; body: string }[] = [
   {
     title: "Why we ask this",
@@ -112,15 +140,19 @@ const STEP_TIPS: { title: string; body: string }[] = [
   },
   {
     title: "Pricing tip",
-    body: "Batches priced ₹1,999–₹4,999 for a 3–6 month program tend to convert best. You can always adjust price closer to launch.",
+    body: "Batches priced ₹1,999–₹4,999 for a 4–6 month program tend to convert best. You can always adjust price closer to launch.",
   },
   {
     title: "Optional, not required",
     body: "Promotion help and syllabus uploads are optional — skip either if you'd rather handle it yourself for now.",
   },
   {
-    title: "Almost there",
-    body: "Your expected commission is a starting point for discussion — EDURACK will confirm the final number with you directly.",
+    title: "Fixed, not negotiable",
+    body: `EDURACK's commission is a flat ${FIXED_COMMISSION_PERCENT}% for every mentor — this keeps things simple and fair across the platform.`,
+  },
+  {
+    title: "Double-check everything",
+    body: "This is your last chance to fix anything before it's saved. Click Edit on any section below to jump straight back to it.",
   },
   {
     title: "Last step",
@@ -185,71 +217,85 @@ function MentorOnboardingPage() {
   }
 
   function validateStep(s: number): string | null {
-    if (s === 0) {
+    if (s === ABOUT_YOU_STEP) {
       if (!form.fullName.trim()) return "Enter your full name.";
       if (!form.college.trim()) return "Enter your college / institution.";
       if (!form.aboutText.trim()) return "Write a short bio.";
       const words = form.aboutText.trim().split(/\s+/).filter(Boolean).length;
       if (words > 220) return "Keep the bio to roughly 200 words.";
-      if (!form.weeklyHours.trim()) return "Let us know your weekly time commitment.";
+      if (!form.weeklyHours.trim()) return "Enter your weekly time commitment.";
+      if (Number(form.weeklyHours) < MIN_WEEKLY_HOURS) {
+        return `Weekly time commitment must be at least ${MIN_WEEKLY_HOURS} hours.`;
+      }
     }
-    if (s === 1) {
+    if (s === BEYOND_BATCH_STEP) {
       if (form.wantsToSellTestSeries === null) return "Let us know if you'd like to sell a test series too.";
       if (form.wantsToRecordIntroVideo === null) return "Let us know about the intro video.";
     }
-    if (s === 2) {
+    if (s === YOUR_BATCH_STEP) {
       if (!form.batchName.trim()) return "Enter your batch name.";
       if (!form.batchPrice.trim() || Number(form.batchPrice) <= 0) return "Enter a valid batch price.";
-      if (!form.batchDurationMonths.trim() || Number(form.batchDurationMonths) <= 0)
-        return "Enter a valid batch duration.";
+      if (!form.batchDurationMonths.trim()) return "Enter the batch duration.";
+      if (Number(form.batchDurationMonths) < MIN_BATCH_DURATION_MONTHS) {
+        return `Batch duration must be at least ${MIN_BATCH_DURATION_MONTHS} months.`;
+      }
       if (form.hasMinStudentCriteria === null) return "Let us know about minimum student criteria.";
     }
-    if (s === 3) {
+    if (s === MATERIALS_STEP) {
       if (form.needsPromotionAssistance === null) return "Let us know if you'd like promotion assistance.";
       if (form.hasSyllabusPdf === null) return "Let us know about your syllabus/planner PDF.";
     }
-    if (s === 4) {
-      if (!form.expectedCommissionPercent.trim()) return "Enter your expected commission percentage.";
+    if (s === TERMS_STEP) {
+      if (!form.commissionAgreed) return `You must agree to the fixed ${FIXED_COMMISSION_PERCENT}% commission rate to continue.`;
       if (form.wantsPlatformTour === null) return "Let us know about a platform walkthrough.";
       if (!form.preferredLaunchDate.trim()) return "Pick a preferred launch date.";
     }
     return null;
   }
 
+  // Jump directly to any earlier step — used by both the clickable
+  // progress dots and the Review step's per-section Edit buttons.
+  function goToStep(target: number) {
+    setError(null);
+    setStep(target);
+  }
+
   async function handleNext() {
     const err = validateStep(step);
     if (err) return setError(err);
     setError(null);
+    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  }
 
-    if (step === 4) {
-      // Submit the details before moving to the Agreement step, so the
-      // signature step always has a saved record to hash/reference.
-      setSubmitting(true);
-      try {
-        await submitMentorOnboardingDetails({
-          data: {
-            applicationId,
-            ...form,
-            wantsToSellTestSeries: Boolean(form.wantsToSellTestSeries),
-            wantsToRecordIntroVideo: Boolean(form.wantsToRecordIntroVideo),
-            hasMinStudentCriteria: Boolean(form.hasMinStudentCriteria),
-            needsPromotionAssistance: Boolean(form.needsPromotionAssistance),
-            hasSyllabusPdf: Boolean(form.hasSyllabusPdf),
-            wantsPlatformTour: Boolean(form.wantsPlatformTour),
-            batchPrice: Number(form.batchPrice),
-            batchDurationMonths: Number(form.batchDurationMonths),
-            expectedCommissionPercent: Number(form.expectedCommissionPercent),
-          },
-        });
-      } catch (err) {
-        setSubmitting(false);
-        setError(err instanceof Error ? err.message : "Could not save. Try again.");
-        return;
-      }
+  // Submission now happens once, when confirming the Review step — not
+  // earlier — so nothing is saved to the server until the mentor has seen
+  // every section laid out together and actively confirmed it.
+  async function handleConfirmReview() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitMentorOnboardingDetails({
+        data: {
+          applicationId,
+          ...form,
+          wantsToSellTestSeries: Boolean(form.wantsToSellTestSeries),
+          wantsToRecordIntroVideo: Boolean(form.wantsToRecordIntroVideo),
+          hasMinStudentCriteria: Boolean(form.hasMinStudentCriteria),
+          needsPromotionAssistance: Boolean(form.needsPromotionAssistance),
+          hasSyllabusPdf: Boolean(form.hasSyllabusPdf),
+          wantsPlatformTour: Boolean(form.wantsPlatformTour),
+          commissionAgreed: form.commissionAgreed,
+          weeklyHours: Number(form.weeklyHours),
+          batchPrice: Number(form.batchPrice),
+          batchDurationMonths: Number(form.batchDurationMonths),
+        },
+      });
+      setStep(AGREEMENT_STEP);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save. Try again.");
+    } finally {
       setSubmitting(false);
     }
-
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
   function handleBack() {
@@ -304,6 +350,9 @@ function MentorOnboardingPage() {
     );
   }
 
+  const isReviewStep = step === REVIEW_STEP;
+  const isAgreementStep = step === AGREEMENT_STEP;
+
   return (
     <div className="min-h-screen px-4 py-10 sm:px-6">
       <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_320px] lg:items-start">
@@ -326,7 +375,7 @@ function MentorOnboardingPage() {
               <button
                 key={label}
                 type="button"
-                onClick={() => i < step && setStep(i)}
+                onClick={() => i < step && goToStep(i)}
                 aria-label={`Go back to ${label}`}
                 className={`h-1.5 flex-1 rounded-full border-0 p-0 transition-colors duration-300 ${
                   i <= step ? "bg-[var(--sky-deep)]" : "bg-slate-200"
@@ -350,13 +399,19 @@ function MentorOnboardingPage() {
 
           <div className="clay p-6 sm:p-8">
             <div key={step} className="animate-in fade-in slide-in-from-right-2 min-h-[16rem] duration-200">
-              {step === 0 && <StepAboutYou form={form} set={set} applicationId={applicationId} />}
-              {step === 1 && <StepBeyondBatch form={form} set={set} />}
-              {step === 2 && <StepYourBatch form={form} set={set} applicationId={applicationId} />}
-              {step === 3 && <StepMaterialsPromotion form={form} set={set} />}
-              {step === 4 && <StepTermsLaunch form={form} set={set} />}
-              {step === 5 && (
-                <AgreementStep applicationId={applicationId} fullName={form.fullName} onSigned={handleSigned} />
+              {step === ABOUT_YOU_STEP && <StepAboutYou form={form} set={set} applicationId={applicationId} />}
+              {step === BEYOND_BATCH_STEP && <StepBeyondBatch form={form} set={set} />}
+              {step === YOUR_BATCH_STEP && <StepYourBatch form={form} set={set} applicationId={applicationId} />}
+              {step === MATERIALS_STEP && <StepMaterialsPromotion form={form} set={set} />}
+              {step === TERMS_STEP && <StepTermsLaunch form={form} set={set} />}
+              {isReviewStep && <ReviewStep form={form} onEditStep={goToStep} />}
+              {isAgreementStep && (
+                <AgreementStep
+                  applicationId={applicationId}
+                  fullName={form.fullName}
+                  onBack={handleBack}
+                  onSigned={handleSigned}
+                />
               )}
             </div>
 
@@ -364,7 +419,9 @@ function MentorOnboardingPage() {
               <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>
             )}
 
-            {step < STEPS.length - 1 && (
+            {/* Nav bar — hidden on the Agreement step, which has its own
+                Back + Confirm buttons since it isn't a linear "next" action. */}
+            {!isAgreementStep && (
               <div className="mt-6 flex items-center gap-3">
                 {step > 0 && (
                   <button
@@ -378,7 +435,7 @@ function MentorOnboardingPage() {
                 )}
                 <button
                   type="button"
-                  onClick={handleNext}
+                  onClick={isReviewStep ? handleConfirmReview : handleNext}
                   disabled={submitting}
                   className="clay-btn flex flex-1 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold disabled:opacity-70"
                 >
@@ -386,7 +443,7 @@ function MentorOnboardingPage() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      <span>{step === 4 ? "Save & Continue to Agreement" : "Continue"}</span>
+                      <span>{isReviewStep ? "Confirm & Continue to Agreement" : "Continue"}</span>
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -440,6 +497,7 @@ function LivePreviewCard({
 }) {
   const initials = form.fullName.trim() ? form.fullName.trim().charAt(0).toUpperCase() : "?";
   const tip = STEP_TIPS[activeStep] ?? STEP_TIPS[STEP_TIPS.length - 1];
+  const perStudent = estimateEarningsPerStudent(form.batchPrice);
 
   return (
     <div className={`clay w-full max-w-xs flex-col gap-4 p-5 ${className}`}>
@@ -451,7 +509,7 @@ function LivePreviewCard({
       {/* Mentor mini-card */}
       <div
         className={`clay-inset rounded-2xl p-4 transition-shadow duration-300 ${
-          activeStep === 0 ? "ring-2 ring-[var(--sky-deep)]" : ""
+          activeStep === ABOUT_YOU_STEP ? "ring-2 ring-[var(--sky-deep)]" : ""
         }`}
       >
         <div className="flex items-center gap-3">
@@ -474,7 +532,7 @@ function LivePreviewCard({
         {form.weeklyHours && (
           <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
             <Clock className="h-3 w-3" />
-            {form.weeklyHours}
+            {form.weeklyHours} hrs/week
           </p>
         )}
       </div>
@@ -482,7 +540,7 @@ function LivePreviewCard({
       {/* Batch mini-card */}
       <div
         className={`clay-inset rounded-2xl p-4 transition-shadow duration-300 ${
-          activeStep === 2 ? "ring-2 ring-[var(--sky-deep)]" : ""
+          activeStep === YOUR_BATCH_STEP ? "ring-2 ring-[var(--sky-deep)]" : ""
         }`}
       >
         <div className="mb-2 h-20 w-full overflow-hidden rounded-xl bg-slate-100">
@@ -496,9 +554,15 @@ function LivePreviewCard({
         </div>
         <p className="truncate text-sm font-bold text-slate-900">{form.batchName || "Your batch name"}</p>
         <p className="mt-0.5 text-xs text-slate-500">
-          {form.batchPrice ? `₹${form.batchPrice}` : "₹—"} ·{" "}
+          {form.batchPrice ? `₹${Number(form.batchPrice).toLocaleString()}` : "₹—"} ·{" "}
           {form.batchDurationMonths ? `${form.batchDurationMonths} mo` : "— mo"}
         </p>
+        {perStudent !== null && (
+          <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+            <TrendingUp className="h-3 w-3" />
+            ≈ ₹{perStudent.toLocaleString()} / student
+          </p>
+        )}
       </div>
 
       {/* Contextual tip for the current step */}
@@ -676,6 +740,8 @@ function ImageUploadField({
   );
 }
 
+// ─── Step 1: About You ───────────────────────────────────────────────────────
+
 function StepAboutYou({
   form,
   set,
@@ -719,16 +785,27 @@ function StepAboutYou({
           {wordCount} / ~200 words
         </p>
       </div>
-      <Field label="Weekly time commitment" icon={Clock}>
-        <TextInput
-          value={form.weeklyHours}
-          onChange={(e) => set("weeklyHours", e.target.value)}
-          placeholder="e.g. 6-8 hours/week"
-        />
-      </Field>
+      <div>
+        <Field label={`Weekly time commitment (minimum ${MIN_WEEKLY_HOURS} hours)`} icon={Clock}>
+          <TextInput
+            type="number"
+            min={MIN_WEEKLY_HOURS}
+            value={form.weeklyHours}
+            onChange={(e) => set("weeklyHours", e.target.value)}
+            placeholder="e.g. 6"
+          />
+        </Field>
+        {form.weeklyHours && Number(form.weeklyHours) < MIN_WEEKLY_HOURS && (
+          <p className="mt-1.5 text-xs font-medium text-rose-600">
+            Must be at least {MIN_WEEKLY_HOURS} hours per week to run a batch on EDURACK.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
+
+// ─── Step 2: Beyond This Batch ───────────────────────────────────────────────
 
 function StepBeyondBatch({ form, set }: { form: FormState; set: <K extends keyof FormState>(k: K, v: FormState[K]) => void }) {
   return (
@@ -751,6 +828,28 @@ function StepBeyondBatch({ form, set }: { form: FormState; set: <K extends keyof
             />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Step 3: Your Batch (now with a live earnings estimate) ────────────────
+
+function EarningsEstimate({ price }: { price: string }) {
+  const perStudent = estimateEarningsPerStudent(price);
+  if (perStudent === null) return null;
+  return (
+    <div className="clay-inset flex items-start gap-2.5 rounded-2xl bg-[var(--mint-soft)]/30 px-4 py-3">
+      <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+      <div>
+        <p className="text-sm font-semibold text-slate-800">
+          You'd earn approximately ₹{perStudent.toLocaleString()} per student
+        </p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Based on ₹{Number(price).toLocaleString()} price minus EDURACK's fixed {FIXED_COMMISSION_PERCENT}%
+          commission. 10 students ≈ ₹{(perStudent * 10).toLocaleString()}, 50 students ≈ ₹
+          {(perStudent * 50).toLocaleString()}.
+        </p>
       </div>
     </div>
   );
@@ -795,23 +894,34 @@ function StepYourBatch({
         </label>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Batch price (₹)" icon={IndianRupee}>
-          <TextInput
-            type="number"
-            value={form.batchPrice}
-            onChange={(e) => set("batchPrice", e.target.value)}
-            placeholder="2999"
-          />
-        </Field>
-        <Field label="Duration (months)" icon={CalendarDays}>
-          <TextInput
-            type="number"
-            value={form.batchDurationMonths}
-            onChange={(e) => set("batchDurationMonths", e.target.value)}
-            placeholder="6"
-          />
-        </Field>
+        <div>
+          <Field label="Batch price (₹)" icon={IndianRupee}>
+            <TextInput
+              type="number"
+              value={form.batchPrice}
+              onChange={(e) => set("batchPrice", e.target.value)}
+              placeholder="2999"
+            />
+          </Field>
+        </div>
+        <div>
+          <Field label={`Duration (min. ${MIN_BATCH_DURATION_MONTHS} months)`} icon={CalendarDays}>
+            <TextInput
+              type="number"
+              min={MIN_BATCH_DURATION_MONTHS}
+              value={form.batchDurationMonths}
+              onChange={(e) => set("batchDurationMonths", e.target.value)}
+              placeholder="4"
+            />
+          </Field>
+        </div>
       </div>
+      {form.batchDurationMonths && Number(form.batchDurationMonths) < MIN_BATCH_DURATION_MONTHS && (
+        <p className="text-xs font-medium text-rose-600">
+          Batches must run for at least {MIN_BATCH_DURATION_MONTHS} months.
+        </p>
+      )}
+      <EarningsEstimate price={form.batchPrice} />
       <div>
         <Field label="Is this batch open to everyone, or is there a minimum student criteria?" icon={Users2}>
           <YesNoToggle
@@ -835,6 +945,8 @@ function StepYourBatch({
   );
 }
 
+// ─── Step 4: Materials & Promotion ───────────────────────────────────────────
+
 function StepMaterialsPromotion({ form, set }: { form: FormState; set: <K extends keyof FormState>(k: K, v: FormState[K]) => void }) {
   return (
     <div className="space-y-5">
@@ -844,8 +956,8 @@ function StepMaterialsPromotion({ form, set }: { form: FormState; set: <K extend
         </Field>
         {form.needsPromotionAssistance && (
           <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            If EDURACK promotes your batch, a 10% commission is taken from each student purchase made
-            through that promotion — see the agreement step for the full terms.
+            If EDURACK promotes your batch, an additional 10% commission is taken from each student
+            purchase made through that promotion, on top of the standard {FIXED_COMMISSION_PERCENT}%.
           </div>
         )}
       </div>
@@ -877,17 +989,34 @@ function StepMaterialsPromotion({ form, set }: { form: FormState; set: <K extend
   );
 }
 
+// ─── Step 5: Terms & Launch — commission is fixed, not editable ────────────
+
 function StepTermsLaunch({ form, set }: { form: FormState; set: <K extends keyof FormState>(k: K, v: FormState[K]) => void }) {
   return (
     <div className="space-y-4">
-      <Field label="What commission % are you expecting EDURACK to charge?" icon={Percent}>
-        <TextInput
-          type="number"
-          value={form.expectedCommissionPercent}
-          onChange={(e) => set("expectedCommissionPercent", e.target.value)}
-          placeholder="e.g. 15"
-        />
-      </Field>
+      <div>
+        <label className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+          Platform commission
+        </label>
+        <div className="clay-inset rounded-2xl px-4 py-4">
+          <p className="font-display text-2xl font-extrabold text-slate-900">{FIXED_COMMISSION_PERCENT}%</p>
+          <p className="mt-1 text-xs text-slate-500">
+            EDURACK's commission rate is fixed at {FIXED_COMMISSION_PERCENT}% for every mentor — this isn't
+            negotiable at onboarding, so there's nothing to enter here.
+          </p>
+        </div>
+        <label className="mt-3 flex items-start gap-2.5 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={form.commissionAgreed}
+            onChange={(e) => set("commissionAgreed", e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded"
+          />
+          I understand and agree to EDURACK's fixed {FIXED_COMMISSION_PERCENT}% commission rate.
+        </label>
+      </div>
+
       <div>
         <Field label="Would you like a quick platform walkthrough before launch?" icon={Rocket}>
           <YesNoToggle value={form.wantsPlatformTour} onChange={(v) => set("wantsPlatformTour", v)} />
@@ -904,8 +1033,109 @@ function StepTermsLaunch({ form, set }: { form: FormState; set: <K extends keyof
   );
 }
 
+// ─── Step 6: Review — see everything laid out together, edit any section
+// before it's actually submitted ────────────────────────────────────────────
+
+function ReviewRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5 text-sm">
+      <span className="shrink-0 text-slate-500">{label}</span>
+      <span className="text-right font-medium text-slate-900">{value || "—"}</span>
+    </div>
+  );
+}
+
+function ReviewSection({
+  title,
+  stepIndex,
+  onEditStep,
+  children,
+}: {
+  title: string;
+  stepIndex: number;
+  onEditStep: (step: number) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="clay-inset rounded-2xl p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</p>
+        <button
+          type="button"
+          onClick={() => onEditStep(stepIndex)}
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+        >
+          <Pencil className="h-3 w-3" />
+          Edit
+        </button>
+      </div>
+      <div className="divide-y divide-slate-100">{children}</div>
+    </div>
+  );
+}
+
+function ReviewStep({ form, onEditStep }: { form: FormState; onEditStep: (step: number) => void }) {
+  const perStudent = estimateEarningsPerStudent(form.batchPrice);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-600">
+        Review everything below before submitting. Click <strong>Edit</strong> on any section to go back
+        and change it — nothing is saved until you confirm here.
+      </p>
+
+      {form.profilePhotoUrl && (
+        <div className="flex items-center gap-3">
+          <img src={form.profilePhotoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />
+          <p className="text-xs text-slate-500">Your uploaded profile photo</p>
+        </div>
+      )}
+
+      <ReviewSection title="About You" stepIndex={ABOUT_YOU_STEP} onEditStep={onEditStep}>
+        <ReviewRow label="Full name" value={form.fullName} />
+        <ReviewRow label="College" value={form.college} />
+        <ReviewRow label="Rank" value={form.rank} />
+        <ReviewRow label="Weekly commitment" value={form.weeklyHours ? `${form.weeklyHours} hrs/week` : ""} />
+      </ReviewSection>
+
+      <ReviewSection title="Beyond This Batch" stepIndex={BEYOND_BATCH_STEP} onEditStep={onEditStep}>
+        <ReviewRow label="Also sell a test series" value={form.wantsToSellTestSeries ? "Yes" : "No"} />
+        <ReviewRow label="Intro video" value={form.wantsToRecordIntroVideo ? (form.introVideoUrl || "Yes, pending") : "No"} />
+      </ReviewSection>
+
+      <ReviewSection title="Your Batch" stepIndex={YOUR_BATCH_STEP} onEditStep={onEditStep}>
+        <ReviewRow label="Batch name" value={form.batchName} />
+        <ReviewRow label="Thumbnail" value={form.needsThumbnailFromEdurack ? "Requested from EDURACK" : form.batchThumbnailUrl ? "Uploaded" : "Not set"} />
+        <ReviewRow label="Price" value={form.batchPrice ? `₹${Number(form.batchPrice).toLocaleString()}` : ""} />
+        <ReviewRow label="Duration" value={form.batchDurationMonths ? `${form.batchDurationMonths} months` : ""} />
+        <ReviewRow
+          label="Enrollment"
+          value={form.hasMinStudentCriteria ? form.minStudentCriteriaDetails || "Has criteria" : "Open to all"}
+        />
+        {perStudent !== null && (
+          <ReviewRow label="Est. earning / student" value={`₹${perStudent.toLocaleString()}`} />
+        )}
+      </ReviewSection>
+
+      <ReviewSection title="Materials & Promotion" stepIndex={MATERIALS_STEP} onEditStep={onEditStep}>
+        <ReviewRow label="Needs promotion help" value={form.needsPromotionAssistance ? "Yes" : "No"} />
+        <ReviewRow
+          label="Syllabus/planner"
+          value={form.hasSyllabusPdf ? form.syllabusPdfUrl : form.wantsPlannerDiscussionCall ? "Wants a planning call" : "Not provided"}
+        />
+      </ReviewSection>
+
+      <ReviewSection title="Terms & Launch" stepIndex={TERMS_STEP} onEditStep={onEditStep}>
+        <ReviewRow label="Commission" value={`${FIXED_COMMISSION_PERCENT}% (agreed)`} />
+        <ReviewRow label="Wants platform tour" value={form.wantsPlatformTour ? "Yes" : "No"} />
+        <ReviewRow label="Preferred launch date" value={form.preferredLaunchDate} />
+      </ReviewSection>
+    </div>
+  );
+}
+
 // ─── Agreement (external link) + confirmation ───────────────────────────────
-const AGREEMENT_VERSION = "v1-2026-08";
+const AGREEMENT_VERSION = "v2-2026-08";
 
 // TODO: paste the actual agreement document link here once it's drafted
 // (Google Doc, PDF, DocuSign, whatever you land on). Left empty on purpose
@@ -916,10 +1146,12 @@ const AGREEMENT_LINK = "";
 function AgreementStep({
   applicationId,
   fullName,
+  onBack,
   onSigned,
 }: {
   applicationId: string;
   fullName: string;
+  onBack: () => void;
   onSigned: () => void;
 }) {
   const [typedName, setTypedName] = useState("");
@@ -989,15 +1221,25 @@ function AgreementStep({
 
       {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p>}
 
-      <button
-        type="button"
-        onClick={handleSign}
-        disabled={signing}
-        className="clay-btn flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold disabled:opacity-70"
-      >
-        {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-        Confirm Agreement
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="clay-btn-ghost flex items-center gap-2 rounded-full px-5 py-3.5 text-sm font-semibold"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Review
+        </button>
+        <button
+          type="button"
+          onClick={handleSign}
+          disabled={signing}
+          className="clay-btn flex flex-1 items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold disabled:opacity-70"
+        >
+          {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Confirm Agreement
+        </button>
+      </div>
     </div>
   );
 }

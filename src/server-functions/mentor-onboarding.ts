@@ -1,4 +1,4 @@
-// Post-approval mentor onboarding: the detailed 18-question form filled in
+// Post-approval mentor onboarding: the detailed onboarding form filled in
 // after an application is approved (see mentor-applications.ts /
 // admin.ts's approveCreatorApplication), plus digital agreement signing.
 // Deliberately public (no auth token check beyond validating the
@@ -17,6 +17,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { createHash } from "node:crypto";
 
+// Fixed platform terms — not mentor-editable. Kept as named constants so
+// the wizard, its validation, and this file all read from one source
+// instead of drifting out of sync with each other.
+export const FIXED_COMMISSION_PERCENT = 15;
+export const MIN_WEEKLY_HOURS = 4;
+export const MIN_BATCH_DURATION_MONTHS = 4;
+
 type MentorOnboardingInput = {
   applicationId: string;
   profilePhotoUrl: string;
@@ -24,7 +31,7 @@ type MentorOnboardingInput = {
   college: string;
   rank: string;
   aboutText: string;
-  weeklyHours: string;
+  weeklyHours: number;
   wantsToSellTestSeries: boolean;
   wantsToRecordIntroVideo: boolean;
   introVideoUrl: string;
@@ -39,7 +46,7 @@ type MentorOnboardingInput = {
   hasSyllabusPdf: boolean;
   syllabusPdfUrl: string;
   wantsPlannerDiscussionCall: boolean;
-  expectedCommissionPercent: number;
+  commissionAgreed: boolean;
   wantsPlatformTour: boolean;
   preferredLaunchDate: string;
 };
@@ -69,7 +76,10 @@ export const getApprovedApplicationSummary = createServerFn({ method: "GET" })
   });
 
 // ─── Draft-safe submit: upserts, so a mentor can come back and resubmit
-// before signing (submittedAt/updatedAt track this) without creating dupes. ─
+// before signing (submittedAt/updatedAt track this) without creating dupes.
+// This is the authoritative validation layer — the wizard enforces the
+// same minimums (weekly hours, batch duration, commission agreement) for a
+// good UX, but a request that skips the client can't skip these checks. ─
 export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
   .validator((data: MentorOnboardingInput) => data)
   .handler(async ({ data }) => {
@@ -83,7 +93,16 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
     if (!data.fullName?.trim()) throw new Error("Full name is required.");
     if (!data.batchName?.trim()) throw new Error("Batch name is required.");
     if (!data.batchPrice || data.batchPrice <= 0) throw new Error("Enter a valid batch price.");
-    if (!data.batchDurationMonths || data.batchDurationMonths <= 0) throw new Error("Enter a valid batch duration.");
+
+    if (!data.weeklyHours || data.weeklyHours < MIN_WEEKLY_HOURS) {
+      throw new Error(`Weekly time commitment must be at least ${MIN_WEEKLY_HOURS} hours.`);
+    }
+    if (!data.batchDurationMonths || data.batchDurationMonths < MIN_BATCH_DURATION_MONTHS) {
+      throw new Error(`Batch duration must be at least ${MIN_BATCH_DURATION_MONTHS} months.`);
+    }
+    if (!data.commissionAgreed) {
+      throw new Error(`You must agree to the platform's fixed ${FIXED_COMMISSION_PERCENT}% commission rate.`);
+    }
 
     // Both fields now come in as Supabase Storage public URLs from the
     // wizard's file-upload flow, not hand-typed links — a quick shape
@@ -102,7 +121,11 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
     await db.collection("mentorOnboardingDetails").updateOne(
       { applicationId: data.applicationId },
       {
-        $set: { ...data, updatedAt: new Date() },
+        $set: {
+          ...data,
+          commissionPercent: FIXED_COMMISSION_PERCENT, // recorded explicitly, never mentor-set
+          updatedAt: new Date(),
+        },
         $setOnInsert: { submittedAt: new Date() },
       },
       { upsert: true },
@@ -113,14 +136,12 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
 
 // ─── Digital signature ──────────────────────────────────────────────────────
 // This is a "click-to-sign" record, not a formal digital-signature-provider
-// signature (see the explanation in chat for what that distinction means
-// and when you'd need the latter instead). It captures: the exact
-// agreement text that was shown (hashed, so it can't be silently edited
-// after the fact and still claim the same signature), the typed legal
-// name, and a timestamp. IP/user-agent capture depends on how your
-// TanStack Start server exposes the request — flagged below since I can't
-// confirm the exact helper for this project without seeing your server
-// entry setup.
+// signature. It captures: a hash of the agreement link + version that was
+// shown at signing time (so a later change to the linked document is
+// detectable), the typed legal name, and a timestamp. IP/user-agent
+// capture depends on how your TanStack Start server exposes the request —
+// flagged below since I still don't have visibility into your server
+// entry setup to confirm the exact helper.
 export const signMentorAgreement = createServerFn({ method: "POST" })
   .validator(
     (data: { applicationId: string; typedFullName: string; agreementUrl: string; agreementVersion: string }) => data,
@@ -145,11 +166,10 @@ export const signMentorAgreement = createServerFn({ method: "POST" })
       throw new Error("The typed name must match the full name entered in the onboarding form.");
     }
 
-    // The agreement now lives at an external link (not embedded text), so
-    // there's no document body to hash-lock the way the old flow did.
-    // This hash instead just fingerprints which link + version the mentor
-    // was shown at confirmation time, for an audit trail if the link
-    // target ever changes later.
+    // The agreement lives at an external link (not embedded text), so
+    // there's no document body to hash-lock. This hash instead fingerprints
+    // which link + version the mentor was shown at confirmation time, for
+    // an audit trail if the link target ever changes later.
     const agreementHash = createHash("sha256").update(`${data.agreementUrl}::${data.agreementVersion}`).digest("hex");
 
     await db.collection("mentorOnboardingDetails").updateOne(
@@ -162,13 +182,8 @@ export const signMentorAgreement = createServerFn({ method: "POST" })
             agreementVersion: data.agreementVersion,
             agreementHash,
             signedAt: new Date(),
-            // TODO: populate from the actual request once confirmed —
-            // TanStack Start exposes this via a server-side request object
-            // in most setups (e.g. getWebRequest() from
-            // '@tanstack/react-start/server'), but I don't have visibility
-            // into how this project's server entry is wired to confirm the
-            // exact call. Without it, this stays null rather than guessing
-            // and silently recording nothing under a confident-looking key.
+            // TODO: populate from the actual request once confirmed — see
+            // prior note; needs this project's request-access API to fill.
             ipAddress: null,
             userAgent: null,
           },
@@ -188,16 +203,11 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
     const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
     if (!details) return { details: null };
 
-    // Built explicitly rather than spreading the raw Mongo document —
-    // the document's own `_id` field is a MongoDB ObjectId, and
-    // TanStack Start's server-fn response serializer (seroval) can't
-    // serialize that type. Spreading it crashes the request on the
-    // server before a response ever reaches the client, which is why
-    // this previously surfaced as an opaque "Couldn't load" error with
-    // no useful detail. Whitelisting fields here also means any other
-    // non-serializable value that sneaks into the document (say, a
-    // stray Date or ObjectId in a future field) won't silently break
-    // this again.
+    // Built explicitly rather than spreading the raw Mongo document — the
+    // document's own `_id` is a MongoDB ObjectId, which the server-fn
+    // response serializer (seroval) can't serialize. Whitelisting fields
+    // here also protects against any other non-serializable value that
+    // sneaks into the document later.
     return {
       details: {
         profilePhotoUrl: (details.profilePhotoUrl as string) ?? "",
@@ -205,7 +215,7 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
         college: (details.college as string) ?? "",
         rank: (details.rank as string) ?? "",
         aboutText: (details.aboutText as string) ?? "",
-        weeklyHours: (details.weeklyHours as string) ?? "",
+        weeklyHours: Number(details.weeklyHours ?? 0),
         wantsToSellTestSeries: Boolean(details.wantsToSellTestSeries),
         wantsToRecordIntroVideo: Boolean(details.wantsToRecordIntroVideo),
         introVideoUrl: (details.introVideoUrl as string) ?? "",
@@ -220,7 +230,8 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
         hasSyllabusPdf: Boolean(details.hasSyllabusPdf),
         syllabusPdfUrl: (details.syllabusPdfUrl as string) ?? "",
         wantsPlannerDiscussionCall: Boolean(details.wantsPlannerDiscussionCall),
-        expectedCommissionPercent: Number(details.expectedCommissionPercent ?? 0),
+        commissionPercent: Number(details.commissionPercent ?? FIXED_COMMISSION_PERCENT),
+        commissionAgreed: Boolean(details.commissionAgreed),
         wantsPlatformTour: Boolean(details.wantsPlatformTour),
         preferredLaunchDate: (details.preferredLaunchDate as string) ?? "",
         submittedAt: details.submittedAt instanceof Date ? details.submittedAt.toISOString() : null,
