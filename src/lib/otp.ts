@@ -1,6 +1,7 @@
 // SERVER-ONLY.
 import crypto from "node:crypto";
 import { sendMail } from "@/lib/mailer";
+import { otpEmailHtml } from "@/lib/email-templates";
 
 const OTP_PEPPER = process.env.OTP_PEPPER;
 if (!OTP_PEPPER) throw new Error("OTP_PEPPER is not set");
@@ -24,27 +25,9 @@ export function hashToken(token: string): string {
   return crypto.createHmac("sha256", OTP_PEPPER!).update(token).digest("hex");
 }
 
-function otpEmailHtml(params: { code: string; purposeLabel: string; expiryMinutes: number }): string {
-  return `
-    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #111;">
-      <h2 style="margin-bottom: 4px;">Edurack</h2>
-      <p>Use the code below to ${params.purposeLabel}:</p>
-      <p style="font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">
-        ${params.code}
-      </p>
-      <p style="color: #555; font-size: 14px;">
-        This code expires in ${params.expiryMinutes} minutes. If you didn't request this, you can safely
-        ignore this email.
-      </p>
-    </div>
-  `;
-}
-
-// Sends the OTP via AWS SES (nodemailer's SES transport, see src/lib/mailer.ts).
-// Replaces the old EmailJS REST call. Same signature and behavior as before,
-// so callers (email-verification.ts, password-reset.ts) don't need to change
-// how they call this — only how they handle it throwing (see MailSendError
-// in mailer.ts, and the try/catch in each caller).
+// Sends the OTP via AWS SES (nodemailer's SES transport, see src/lib/mailer.ts),
+// using the shared branded template (src/lib/email-templates.ts) so this
+// looks consistent with every other email the app sends.
 export async function sendOtpEmail(params: {
   toEmail: string;
   code: string;
