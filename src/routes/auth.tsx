@@ -78,48 +78,48 @@ function AuthPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-  if (loading) return;
+    if (loading) return;
 
-  if (!user) {
-    setStage("auth");
-    return;
-  }
-
-  let cancelled = false;
-  (async () => {
-    try {
-      await user.reload();
-      const isPasswordUser = user.providerData.some((p) => p.providerId === "password");
-
-      if (isPasswordUser && !user.emailVerified) {
-        if (cancelled) return;
-        setPendingEmail(user.email ?? "");
-        setStage("verify-email");
-        return;
-      }
-
-      const provider = user.providerData.some((p) => p.providerId === "google.com")
-        ? "google.com"
-        : "password";
-
-      const { needsOnboarding: incomplete } = await completeLogin(user, provider);
-      if (cancelled) return;
-
-      if (incomplete) {
-        setStage("onboarding");
-      } else {
-        navigate({ to: "/dashboard" });
-      }
-    } catch (err) {
-      console.error("Auth redirect error:", err);
-      if (!cancelled) setStage("auth");
+    if (!user) {
+      setStage("auth");
+      return;
     }
-  })();
 
-  return () => {
-    cancelled = true;
-  };
-}, [user, loading, navigate]);
+    let cancelled = false;
+    (async () => {
+      try {
+        await user.reload();
+        const isPasswordUser = user.providerData.some((p) => p.providerId === "password");
+
+        if (isPasswordUser && !user.emailVerified) {
+          if (cancelled) return;
+          setPendingEmail(user.email ?? "");
+          setStage("verify-email");
+          return;
+        }
+
+        const provider = user.providerData.some((p) => p.providerId === "google.com")
+          ? "google.com"
+          : "password";
+
+        const { needsOnboarding: incomplete } = await completeLogin(user, provider);
+        if (cancelled) return;
+
+        if (incomplete) {
+          setStage("onboarding");
+        } else {
+          navigate({ to: "/dashboard" });
+        }
+      } catch (err) {
+        console.error("Auth redirect error:", err);
+        if (!cancelled) setStage("auth");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, loading, navigate]);
 
   async function handleVerified() {
     const current = auth.currentUser;
@@ -133,6 +133,22 @@ function AuthPage() {
       setStage("onboarding");
     } else {
       navigate({ to: "/dashboard" });
+    }
+  }
+
+  // NEW: escape hatch. Any stuck/unverified session (e.g. a shared device
+  // that previously had someone else's unverified signup cached by Firebase's
+  // local persistence) can be cleared without the user having to manually
+  // wipe browser storage.
+  async function handleSignOutAndRestart() {
+    try {
+      await auth.signOut();
+    } catch (err) {
+      console.error("Sign out error:", err);
+    } finally {
+      setPendingEmail("");
+      setTab("signin");
+      setStage("auth");
     }
   }
 
@@ -195,7 +211,11 @@ function AuthPage() {
             />
           )}
           {stage === "verify-email" && (
-            <EmailVerificationCard email={pendingEmail} onVerified={handleVerified} />
+            <EmailVerificationCard
+              email={pendingEmail}
+              onVerified={handleVerified}
+              onSignOut={handleSignOutAndRestart}
+            />
           )}
           {stage === "onboarding" && (
             <OnboardingCard onComplete={() => navigate({ to: "/dashboard" })} />
@@ -424,26 +444,31 @@ function SignInForm({
     }
   }
 
-async function handleGoogle() {
-  setError(null);
-  setGoogleLoading(true);
-  try {
-    await googleAuth();
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
+  async function handleGoogle() {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      await googleAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        // FIX: previously silently returned here with no feedback,
+        // leaving the user stuck on a spinner-free, dead button.
+        setError("Something went wrong. Please try again.");
+        return;
+      }
 
-    const { needsOnboarding: incomplete } = await completeLogin(currentUser, "google.com");
-    if (incomplete) {
-      onSignedUp(); // Switches stage to onboarding
-    } else {
-      onSignedIn(); // Navigates to /dashboard
+      const { needsOnboarding: incomplete } = await completeLogin(currentUser, "google.com");
+      if (incomplete) {
+        onSignedUp(); // Switches stage to onboarding
+      } else {
+        onSignedIn(); // Navigates to /dashboard
+      }
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    } finally {
+      setGoogleLoading(false);
     }
-  } catch (err) {
-    setError(friendlyAuthError(err));
-  } finally {
-    setGoogleLoading(false);
   }
-}
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
@@ -550,8 +575,13 @@ function SignUpForm({
     setGoogleLoading(true);
     try {
       await googleAuth();
-      const user = auth.currentUser!;
-      const { needsOnboarding: incomplete } = await completeLogin(user, "google.com");
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        // FIX: same guard as SignInForm — avoid a silent dead end.
+        setError("Something went wrong. Please try again.");
+        return;
+      }
+      const { needsOnboarding: incomplete } = await completeLogin(currentUser, "google.com");
       incomplete ? onSignedUp() : onSignedIn();
     } catch (err) {
       setError(friendlyAuthError(err));
@@ -639,10 +669,19 @@ function SignUpForm({
 }
 
 // ─── Email Verification ──────────────────────────────────────────────────────
-function EmailVerificationCard({ email, onVerified }: { email: string; onVerified: () => void }) {
+function EmailVerificationCard({
+  email,
+  onVerified,
+  onSignOut,
+}: {
+  email: string;
+  onVerified: () => void;
+  onSignOut: () => void;
+}) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
   const [cooldown, setCooldown] = useState(60);
@@ -703,6 +742,15 @@ function EmailVerificationCard({ email, onVerified }: { email: string; onVerifie
     }
   }
 
+  async function handleSignOutClick() {
+    setSigningOut(true);
+    try {
+      await onSignOut();
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <div className="mb-2 text-center">
@@ -751,7 +799,7 @@ function EmailVerificationCard({ email, onVerified }: { email: string; onVerifie
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>Verify & continue</span><ArrowRight className="h-4 w-4" /></>}
       </button>
 
-      <div className="text-center text-xs text-foreground/60">
+      <div className="flex items-center justify-center gap-4 text-center text-xs text-foreground/60">
         <button
           type="button"
           onClick={handleResend}
@@ -759,6 +807,18 @@ function EmailVerificationCard({ email, onVerified }: { email: string; onVerifie
           className="font-semibold text-[var(--sky-deep)] transition-colors hover:underline disabled:text-foreground/40 disabled:no-underline"
         >
           {resending ? "Sending..." : cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+        </button>
+
+        <span className="text-foreground/30">•</span>
+
+        {/* NEW: escape hatch for stuck/unverified sessions on shared devices */}
+        <button
+          type="button"
+          onClick={handleSignOutClick}
+          disabled={signingOut}
+          className="font-semibold text-foreground/70 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
+        >
+          {signingOut ? "Signing out..." : "Not you? Sign out"}
         </button>
       </div>
     </form>
