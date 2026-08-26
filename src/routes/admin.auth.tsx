@@ -1,7 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, ShieldCheck, Mail, Lock, KeyRound, Eye, EyeOff, User } from "lucide-react";
-import { auth, firebaseSignIn, firebaseSignUp, signOutUser } from "@/lib/firebase";
+import {
+  adminAuthClient,
+  adminFirebaseSignIn,
+  adminFirebaseSignUp,
+  adminSignOutUser,
+} from "@/lib/admin-auth-client";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { verifyAdminAccess } from "@/server-functions/admin";
 import { mentorLogin } from "@/server-functions/mentor-auth";
@@ -23,7 +28,7 @@ const MENTOR_SESSION_KEY = "mentor_session_token";
 
 async function waitForAdminClaim(maxAttempts = 5, delayMs = 400): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
-    const result = await auth.currentUser!.getIdTokenResult(true);
+    const result = await adminAuthClient.currentUser!.getIdTokenResult(true);
     if (result.claims.admin === true) return true;
     if (i < maxAttempts - 1) await new Promise((r) => setTimeout(r, delayMs));
   }
@@ -187,14 +192,14 @@ function AdminSignInForm() {
     }
     setLoading(true);
     try {
-      await firebaseSignIn(email, password);
-      const token = await auth.currentUser!.getIdToken();
+      await adminFirebaseSignIn(email, password);
+      const token = await adminAuthClient.currentUser!.getIdToken();
       await verifyAdminAccess({ data: { token, passkey } });
 
       const claimed = await waitForAdminClaim();
       if (!claimed) {
         setError("Admin access was granted, but it's taking a moment to sync. Please try signing in again.");
-        if (auth.currentUser) await signOutUser();
+        if (adminAuthClient.currentUser) await adminSignOutUser();
         return;
       }
       navigate({ to: "/admin/dashboard" });
@@ -202,7 +207,7 @@ function AdminSignInForm() {
       setError(friendlyAdminError(err));
       // If the passkey was wrong, don't leave an authenticated-but-
       // unauthorized session sitting around.
-      if (auth.currentUser) await signOutUser();
+      if (adminAuthClient.currentUser) await adminSignOutUser();
     } finally {
       setLoading(false);
     }
@@ -278,20 +283,20 @@ function AdminSignUpForm() {
 
     setLoading(true);
     try {
-      await firebaseSignUp(email, password);
-      const token = await auth.currentUser!.getIdToken();
+      await adminFirebaseSignUp(email, password);
+      const token = await adminAuthClient.currentUser!.getIdToken();
       await verifyAdminAccess({ data: { token, passkey } });
 
       const claimed = await waitForAdminClaim();
       if (!claimed) {
         setError("Admin access was granted, but it's taking a moment to sync. Please try signing in again.");
-        if (auth.currentUser) await signOutUser();
+        if (adminAuthClient.currentUser) await adminSignOutUser();
         return;
       }
       navigate({ to: "/admin/dashboard" });
     } catch (err) {
       setError(friendlyAdminError(err));
-      if (auth.currentUser) await signOutUser();
+      if (adminAuthClient.currentUser) await adminSignOutUser();
     } finally {
       setLoading(false);
     }
@@ -427,4 +432,3 @@ function MentorSignInForm() {
     </form>
   );
 }
-
