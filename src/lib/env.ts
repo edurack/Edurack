@@ -6,6 +6,10 @@ const REQUIRED_SERVER_ENV = [
   "FIREBASE_CLIENT_EMAIL",
   "FIREBASE_PRIVATE_KEY",
   "MONGODB_URI",
+  "AWS_REGION",
+  "S3_LECTURES_BUCKET",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
 ] as const;
 
 let validated = false;

@@ -1,6 +1,8 @@
 // Server functions backing the student-facing Unified Batch/Course Hub.
 // These require a valid signed-in Firebase token (any student), not admin —
 // mirroring the pattern in catalog.ts.
+// swap this import
+import { signLectureUrl } from "@/lib/video-signer";
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
@@ -245,12 +247,12 @@ export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" }
       .sort({ scheduledAt: 1 })
       .toArray();
 
-    return {
+        return {
       sessions: rows.map((r) => ({
         id: String(r._id),
         track: r.track as "OneOnOne" | "BatchMeet" | "AsyncLecture",
         meetingLink: (r.meetingLink as string | null) ?? null,
-        lectureUrl: (r.lectureUrl as string | null) ?? null,
+        lectureUrl: null, // never expose the raw URL here — /lecture/$sessionId signs it after checking purchase
         lectureTitle: (r.lectureTitle as string | null) ?? null,
         durationMinutes: (r.durationMinutes as number | null) ?? null,
         scheduledAt: r.scheduledAt as string,
@@ -312,18 +314,18 @@ export const getLectureSessionForStudent = createServerFn({ method: "GET" })
       mentorName = (mentor?.name as string) ?? null;
     }
 
-    return {
+       return {
       session: {
         id: String(session._id),
         batchId: session.batchId as string,
         batchName: (batch?.name as string) ?? "Mentorship Batch",
         mentorName,
         lectureTitle: (session.lectureTitle as string) ?? "Lecture",
-        lectureUrl: session.lectureUrl as string,
+        lectureUrl: await signLectureUrl(session.lectureUrl as string), // session.lectureUrl now stores the S3 KEY, not a full URL
         scheduledAt: session.scheduledAt as string,
       },
     };
-  });
+   });
 
 export const listLectureCommentsForStudent = createServerFn({ method: "GET" })
   .validator((data: { token: string; sessionId: string }) => data)

@@ -13,7 +13,10 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1118.0",
     "@aws-sdk/client-sesv2": "^3.1116.0",
+    "@aws-sdk/cloudfront-signer": "^3.1116.0",
+    "@aws-sdk/s3-request-presigner": "^3.1118.0",
     "@emailjs/browser": "^4.4.1",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
