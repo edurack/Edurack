@@ -31,6 +31,7 @@ import {
   LoadingBlock,
   EmptyState,
   ErrorBanner,
+  FileUploadField,
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
@@ -511,9 +512,8 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
     e.preventDefault();
     setError(null);
 
-    if (!fileName.trim() || !fileUrl.trim()) return setError("Provide the uploaded PDF's name and URL.");
+    if (!fileUrl.trim()) return setError("Upload a PDF first.");
     if (!acknowledged) return setError("You must check the copyright safety toggle before uploading.");
-    if (!fileUrl.toLowerCase().endsWith(".pdf")) return setError("Only .pdf files are accepted here.");
 
     setSaving(true);
     try {
@@ -548,19 +548,25 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
     >
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-5 space-y-4 border-b border-foreground/10 pb-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ClayField label="File name">
-              <input
-                value={fileName}
-                onChange={(e) => setFileName(e.target.value)}
-                placeholder="e.g. Organic Chemistry Notes — Unit 4.pdf"
-                className={inputClass}
-              />
-            </ClayField>
-            <ClayField label="Uploaded PDF URL">
-              <input value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} placeholder="https://…/notes.pdf" className={inputClass} />
-            </ClayField>
-          </div>
+          <FileUploadField
+            label="Upload PDF"
+            value={fileUrl}
+            fileName={fileName}
+            onChange={(url, name) => {
+              setFileUrl(url);
+              setFileName((prev) => prev || name);
+            }}
+            storagePath={`mentor-notes/${batchId}`}
+          />
+
+          <ClayField label="Display name" hint="How this shows to students — defaults to the uploaded file's name.">
+            <input
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              placeholder="e.g. Organic Chemistry Notes — Unit 4"
+              className={inputClass}
+            />
+          </ClayField>
 
           <label className="clay-inset flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3">
             <input
@@ -582,10 +588,10 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
 
           <button
             type="submit"
-            disabled={saving || !acknowledged}
+            disabled={saving || !acknowledged || !fileUrl}
             className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Upload note"}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save note"}
           </button>
         </form>
       )}

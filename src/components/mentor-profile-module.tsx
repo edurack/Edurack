@@ -1,18 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  User,
-  Camera,
-  GraduationCap,
-  Video,
-  Lock,
-  Trophy,
-  Building2,
-  BookMarked,
-  Upload,
-  Play,
-  X,
-} from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Loader2, User, GraduationCap, Lock, Trophy, Building2, BookMarked, Play } from "lucide-react";
 import type { MentorProfileExtended, YearOfStudy } from "@/lib/admin-types";
 import { getMentorProfile, updateMyMentorProfile } from "@/server-functions/mentor-auth";
 import { VideoPlayer } from "@/components/clay-video-player";
@@ -23,6 +10,8 @@ import {
   LoadingBlock,
   ErrorBanner,
   SuccessBanner,
+  ImageUploadField,
+  LectureUploadField,
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
@@ -139,25 +128,12 @@ function EditableProfileForm({
   return (
     <Panel icon={User} title="Updateable details">
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="flex items-center gap-4">
-          <div className="clay-inset flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full">
-            {profilePictureUrl ? (
-              <img src={profilePictureUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <Camera className="h-6 w-6 text-foreground/30" />
-            )}
-          </div>
-          <div className="flex-1">
-            <ClayField label="Profile picture URL">
-              <input
-                value={profilePictureUrl}
-                onChange={(e) => setProfilePictureUrl(e.target.value)}
-                placeholder="https://…/your-photo.jpg"
-                className={inputClass}
-              />
-            </ClayField>
-          </div>
-        </div>
+        <ImageUploadField
+          label="Profile photo"
+          value={profilePictureUrl}
+          onChange={setProfilePictureUrl}
+          storagePath={`mentor-profiles/${profile.id}/photo`}
+        />
 
         <ClayField label="Full name">
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
@@ -193,7 +169,7 @@ function EditableProfileForm({
           </div>
         </ClayField>
 
-        <IntroVideoUploader value={introVideoUrl} onChange={setIntroVideoUrl} />
+        <IntroVideoUploader value={introVideoUrl} onChange={setIntroVideoUrl} mentorId={profile.id} />
 
         {error && <ErrorBanner message={error} />}
         {success && <SuccessBanner message="Profile updated." />}
@@ -211,75 +187,43 @@ function EditableProfileForm({
 }
 
 // ─── Self-introduction video node ───────────────────────────────────────
-// NOTE: there's no Cloudflare Stream / Bunny.net upload pipeline wired up
-// yet, so this stores a direct .mp4 URL rather than performing a real
-// upload. The file picker below lets a mentor preview a local clip
-// instantly (via a transient blob URL) while a real host URL is pasted in.
-function IntroVideoUploader({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.includes("mp4")) return;
-    setPreviewUrl(URL.createObjectURL(file));
-  }
-
-  function clearPreview() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  const displaySrc = previewUrl ?? (value || null);
-
+// Now a real upload (to the mentor-lectures Supabase bucket, 500MB cap,
+// resumable) instead of only previewing a local blob while a hosted URL
+// gets pasted in separately — the two-step "upload elsewhere, paste here"
+// flow this replaced was never actually wired to anything.
+function IntroVideoUploader({
+  value,
+  onChange,
+  mentorId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  mentorId: string;
+}) {
   return (
-    <ClayField label="Self-introduction video (.mp4)" hint="Local preview only — paste the final hosted URL to save it.">
-      <div className="clay-inset overflow-hidden rounded-2xl">
-        <div className="relative flex aspect-video items-center justify-center bg-[var(--sky-soft)]/60">
-          {displaySrc ? (
-            <VideoPlayer src={displaySrc} />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-foreground/40">
-              <Play className="h-8 w-8" strokeWidth={1.5} />
-              <span className="text-xs font-medium">No intro video yet</span>
-            </div>
-          )}
-          {previewUrl && (
-            <button
-              type="button"
-              onClick={clearPreview}
-              className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-foreground/60 shadow-sm hover:text-foreground"
-              aria-label="Remove preview"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+    <div>
+      <LectureUploadField
+        label="Self-introduction video"
+        value={value}
+        onChange={onChange}
+        storagePath={`mentor-profiles/${mentorId}/intro`}
+      />
+      {value && (
+        <div className="clay-inset mt-3 overflow-hidden rounded-2xl">
+          <div className="aspect-video">
+            <VideoPlayer src={value} />
+          </div>
         </div>
-
-        <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="clay-btn-ghost inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-foreground/70"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Preview a clip
-          </button>
-          <input ref={fileInputRef} type="file" accept="video/mp4" onChange={handleFile} className="hidden" />
-          <input
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Hosted .mp4 URL (paste after uploading)"
-            className={inputClass + " flex-1"}
-          />
+      )}
+      {!value && (
+        <div className="clay-inset mt-3 flex aspect-video items-center justify-center rounded-2xl bg-[var(--sky-soft)]/60">
+          <div className="flex flex-col items-center gap-2 text-foreground/40">
+            <Play className="h-8 w-8" strokeWidth={1.5} />
+            <span className="text-xs font-medium">No intro video yet</span>
+          </div>
         </div>
-      </div>
-      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-foreground/40">
-        <Video className="h-3 w-3" />
-        Local preview only — paste the final hosted URL to save it to your profile.
-      </p>
-    </ClayField>
+      )}
+    </div>
   );
 }
 

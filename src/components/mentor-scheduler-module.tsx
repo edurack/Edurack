@@ -35,6 +35,7 @@ import {
   EmptyState,
   ErrorBanner,
   inputClass,
+  LectureUploadField,
 } from "@/components/mentor-portal-ui";
 
 type Batch = { id: string; name: string; track: string };
@@ -440,7 +441,7 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
     e.preventDefault();
     setError(null);
     if (!lectureTitle.trim()) return setError("Give this lecture a title.");
-    if (!lectureUrl.trim()) return setError("Provide the lecture player URL.");
+    if (!lectureUrl.trim()) return setError("Upload the lecture video first.");
     if (!scheduledAt) return setError("Set when this lecture becomes available.");
 
     setSaving(true);
@@ -468,7 +469,7 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
       {showForm && (
         <Panel
           icon={PlayCircle}
-          title="Ingest a lecture link"
+          title="Upload a lecture"
           action={
             <button onClick={() => setShowForm(false)} className="text-foreground/40 hover:text-foreground/70">
               <X className="h-4 w-4" />
@@ -484,14 +485,12 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
                 className={inputClass}
               />
             </ClayField>
-            <ClayField label="Cloudflare Stream / Bunny.net player URL">
-              <input
-                value={lectureUrl}
-                onChange={(e) => setLectureUrl(e.target.value)}
-                placeholder="https://iframe.videodelivery.net/…"
-                className={inputClass}
-              />
-            </ClayField>
+            <LectureUploadField
+              label="Lecture video"
+              value={lectureUrl}
+              onChange={setLectureUrl}
+              storagePath={`lectures/${batchId}`}
+            />
             <ClayField label="Available from">
               <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={inputClass} />
             </ClayField>
