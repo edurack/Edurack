@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { onIdTokenChanged, type User } from "firebase/auth";
-import { auth } from "./firebase";
+import { adminAuthClient } from "./admin-auth-client";
 
 type AdminClaimState = {
   adminUser: User | null;
@@ -16,7 +16,7 @@ export function useAdminClaim(): AdminClaimState {
   });
 
   useEffect(() => {
-    const unsubscribe = onIdTokenChanged(auth, async (user) => {
+    const unsubscribe = onIdTokenChanged(adminAuthClient, async (user) => {
       if (!user) {
         setState({ adminUser: null, isAdmin: false, loading: false });
         return;
