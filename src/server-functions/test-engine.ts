@@ -45,7 +45,16 @@ export const getTestForTaking = createServerFn({ method: "GET" })
         name: test.name as string,
         subjects: (test.subjects as string[]) ?? [],
         totalQuestions: test.totalQuestions as number,
-        timeLimitMinutes: (test.timeLimitMinutes as number) ?? 180,
+        // FIXED: this was reading `test.timeLimitMinutes`, a field that
+        // was never actually written to testCores documents anywhere —
+        // Test Core stores the duration as `durationMinutes` (see
+        // admin.ts createTestCore/updateTestCore and admin-types.ts
+        // TestCore). That mismatch meant every test silently fell
+        // through to the `?? 180` fallback, no matter what duration was
+        // set when the test was created — which is why the countdown
+        // timer on the exam page always showed ~180 minutes regardless
+        // of what Test Core displayed. Reading the real field now.
+        timeLimitMinutes: (test.durationMinutes as number) ?? 180,
       },
       // Which attempt this will be if submitted (1st, 2nd, ...) — shown in
       // the test UI so a student retaking a test knows which attempt

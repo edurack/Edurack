@@ -792,10 +792,10 @@ function TestsTab({
 }) {
   const [attemptsByTest, setAttemptsByTest] = useState<Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>>({});
 
-  // NEW — ticks every 30s so isLive/isUpcoming below actually re-evaluate
-  // over time instead of being frozen at whatever they were when the page
-  // first loaded. Without this, a test that goes live (or ends) while the
-  // tab stays open never updates its badge until a manual refresh.
+  // Ticks every 30s so the LIVE / Starts / Held-on badge below actually
+  // re-evaluates over time instead of freezing at whatever it was when
+  // the page first loaded. This is purely cosmetic — it does NOT gate
+  // whether the test can be opened, see disabled={!isPurchased} below.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
@@ -839,8 +839,9 @@ function TestsTab({
   return (
     <div className="space-y-3">
       {tests.map((t) => {
-        // CHANGED — uses the ticking `now` state instead of a one-off
-        // Date.now() call, so this recomputes on every 30s tick.
+        // Uses the ticking `now` state instead of a one-off Date.now()
+        // call, so the badge below recomputes on every 30s tick. Purely
+        // informational — access is controlled only by isPurchased.
         const start = new Date(t.liveStart).getTime();
         const end = new Date(t.liveEnd).getTime();
         const isLive = now >= start && now <= end;
@@ -861,11 +862,8 @@ function TestsTab({
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
                     </span>
                   ) : isUpcoming ? (
-                    // CHANGED — toLocaleString() instead of toLocaleDateString()
-                    // so the start time is shown, not just the date.
                     <span className="text-foreground/50">Starts {new Date(t.liveStart).toLocaleString()}</span>
                   ) : (
-                    // CHANGED — same here: full date+time for when it was held.
                     <span className="text-foreground/50">Held on: {new Date(t.liveStart).toLocaleString()}</span>
                   )}
                   {attempted && (
@@ -876,6 +874,9 @@ function TestsTab({
                 </p>
               </div>
 
+              {/* NOTE: disabled is `!isPurchased` only, in both branches
+                  below — the live/held-on badge above is informational,
+                  it never gates whether the test can be opened. */}
               {attempted ? (
                 <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
                   <button
@@ -886,7 +887,7 @@ function TestsTab({
                     Analysis
                   </button>
                   <button
-                    disabled={!isPurchased || !isLive}
+                    disabled={!isPurchased}
                     onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
                     className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline disabled:opacity-40"
                   >
@@ -895,7 +896,7 @@ function TestsTab({
                 </div>
               ) : (
                 <button
-                  disabled={!isPurchased || !isLive}
+                  disabled={!isPurchased}
                   onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
                   className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                 >

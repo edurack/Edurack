@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors } from "@/server-functions/catalog";
+import { getMyPurchases } from "@/server-functions/student-data";
 import { AppHeader } from "@/components/app-header";
 
 export const Route = createFileRoute("/dashboard")({
@@ -108,9 +109,13 @@ type Listing = {
   discountPercent: number;
   metaLines: { icon: typeof Calendar; text: string }[];
   searchText: string;
+  // Whether the signed-in student already owns this item, derived from
+  // getMyPurchases() and keyed as `${itemType}:${itemId}` to exactly match
+  // the shape purchases.ts hands back. Drives Buy Now vs Study Now below.
+  purchased: boolean;
 };
 
-function bundleToListing(b: Bundle): Listing {
+function bundleToListing(b: Bundle, purchasedKeys: Set<string>): Listing {
   const exam = b.exam ?? "neet";
   return {
     id: b.id,
@@ -127,10 +132,11 @@ function bundleToListing(b: Bundle): Listing {
       { icon: Calendar, text: `Access until ${new Date(b.expiryDate).toLocaleDateString()}` },
     ],
     searchText: `${b.title} ${b.track} ${EXAM_LABELS[exam]} ${b.features.join(" ")}`.toLowerCase(),
+    purchased: purchasedKeys.has(`bundle:${b.id}`),
   };
 }
 
-function batchToListing(b: MentorshipBatch): Listing {
+function batchToListing(b: MentorshipBatch, purchasedKeys: Set<string>): Listing {
   const exam = b.exam ?? "neet";
   return {
     id: b.id,
@@ -147,6 +153,7 @@ function batchToListing(b: MentorshipBatch): Listing {
       { icon: BookOpen, text: b.highlights[0] ?? "1:1 mentorship" },
     ],
     searchText: `${b.name} ${b.track} ${EXAM_LABELS[exam]} ${b.highlights.join(" ")} ${b.mentorName ?? ""}`.toLowerCase(),
+    purchased: purchasedKeys.has(`mentorship:${b.id}`),
   };
 }
 
@@ -160,6 +167,7 @@ function DashboardPage() {
   const [bundles, setBundles] = useState<Bundle[] | null>(null);
   const [batches, setBatches] = useState<MentorshipBatch[] | null>(null);
   const [mentors, setMentors] = useState<MentorDirectoryEntry[] | null>(null);
+  const [purchasedKeys, setPurchasedKeys] = useState<Set<string> | null>(null);
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("All");
   const [examFilter, setExamFilter] = useState<ExamFilter>("All");
   const [query, setQuery] = useState("");
@@ -174,12 +182,14 @@ function DashboardPage() {
     if (!user) return;
     (async () => {
       const token = await user.getIdToken();
-      const [{ profile: p }, { bundles: bundleRows }, { batches: batchRows }, { mentors: mentorRows }] = await Promise.all([
-        getProfile({ data: { token } }),
-        listPublicBundles({ data: { token } }),
-        listPublicMentorshipBatches({ data: { token } }),
-        listPublicMentors({ data: { token } }),
-      ]);
+      const [{ profile: p }, { bundles: bundleRows }, { batches: batchRows }, { mentors: mentorRows }, { purchases }] =
+        await Promise.all([
+          getProfile({ data: { token } }),
+          listPublicBundles({ data: { token } }),
+          listPublicMentorshipBatches({ data: { token } }),
+          listPublicMentors({ data: { token } }),
+          getMyPurchases({ data: { token } }),
+        ]);
       if (p) {
         setProfile({
           fullName: p.fullName,
@@ -190,13 +200,17 @@ function DashboardPage() {
       setBundles(bundleRows as Bundle[]);
       setBatches(batchRows as MentorshipBatch[]);
       setMentors(mentorRows as MentorDirectoryEntry[]);
+      setPurchasedKeys(new Set(purchases.map((pu) => `${pu.itemType}:${pu.itemId}`)));
     })();
   }, [user]);
 
   const allListings = useMemo(() => {
-    if (!bundles || !batches) return null;
-    return [...bundles.map(bundleToListing), ...batches.map(batchToListing)];
-  }, [bundles, batches]);
+    if (!bundles || !batches || !purchasedKeys) return null;
+    return [
+      ...bundles.map((b) => bundleToListing(b, purchasedKeys)),
+      ...batches.map((b) => batchToListing(b, purchasedKeys)),
+    ];
+  }, [bundles, batches, purchasedKeys]);
 
   const track = profile?.track ?? "";
   const examKey = profile?.targetExam ? resolveExamKey(profile.targetExam) : null;
@@ -523,6 +537,11 @@ function ListingResultRow({ listing }: { listing: Listing }) {
           {EXAM_LABELS[listing.exam]} · {listing.kind} · {listing.track || "All tracks"}
         </p>
       </div>
+      {listing.purchased && (
+        <span className="shrink-0 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold text-foreground">
+          Owned
+        </span>
+      )}
       <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30" />
     </button>
   );
@@ -577,18 +596,27 @@ function ListingCard({ listing }: { listing: Listing }) {
         </div>
 
         <div className="mb-3 flex items-baseline gap-2">
-          <span className="font-display text-lg font-bold text-foreground">
-            ₹{listing.sellingPrice.toLocaleString()}
-          </span>
-          {listing.crossedPrice > listing.sellingPrice && (
-            <span className="text-sm text-foreground/40 line-through">
-              ₹{listing.crossedPrice.toLocaleString()}
+          {listing.purchased ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--mint-soft)] px-3 py-1 text-xs font-bold text-foreground">
+              <BadgeCheck className="h-3.5 w-3.5" />
+              Purchased
             </span>
-          )}
-          {listing.discountPercent > 0 && (
-            <span className="text-xs font-semibold text-[var(--sky-deep)]">
-              {listing.discountPercent}% OFF
-            </span>
+          ) : (
+            <>
+              <span className="font-display text-lg font-bold text-foreground">
+                ₹{listing.sellingPrice.toLocaleString()}
+              </span>
+              {listing.crossedPrice > listing.sellingPrice && (
+                <span className="text-sm text-foreground/40 line-through">
+                  ₹{listing.crossedPrice.toLocaleString()}
+                </span>
+              )}
+              {listing.discountPercent > 0 && (
+                <span className="text-xs font-semibold text-[var(--sky-deep)]">
+                  {listing.discountPercent}% OFF
+                </span>
+              )}
+            </>
           )}
         </div>
 
@@ -598,7 +626,7 @@ function ListingCard({ listing }: { listing: Listing }) {
             onClick={goToDetail}
             className="clay-btn flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
           >
-            <span>Buy Now</span>
+            <span>{listing.purchased ? "Study Now" : "Buy Now"}</span>
             <ArrowRight className="h-4 w-4" />
           </button>
           <button
