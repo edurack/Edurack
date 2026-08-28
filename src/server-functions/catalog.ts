@@ -158,7 +158,13 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         name: r.name as string,
         totalQuestions: r.totalQuestions as number,
-        timeLimitMinutes: (r.timeLimitMinutes as number) ?? 180,
+        // FIXED: this used to read `r.timeLimitMinutes`, a field that was
+        // never actually written anywhere — testCores stores the duration
+        // as `durationMinutes` (see admin.ts createTestCore/updateTestCore
+        // and admin-types.ts TestCore). That mismatch meant this always
+        // silently fell through to the `?? 180` fallback, regardless of
+        // what duration was set in Test Core. Reading the real field now.
+        timeLimitMinutes: (r.durationMinutes as number) ?? 180,
         liveStart: r.liveStart as string,
         liveEnd: r.liveEnd as string,
       })),
