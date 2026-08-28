@@ -110,6 +110,11 @@ function SimulatorLivePage() {
   const subjectQuestions = demoQuestions.filter((q) => q.subject === activeSubject);
   const currentQuestion = subjectQuestions[currentIndex];
 
+  // Whether the current question is the very last one across every
+  // subject — i.e. there's genuinely nowhere further to advance to.
+  const isLastQuestionOverall =
+    activeSubject === SUBJECTS[SUBJECTS.length - 1] && currentIndex === subjectQuestions.length - 1;
+
   function computeResult(): DemoResult {
     const subjectBreakdown: SubjectResult[] = SUBJECTS.map((subject) => {
       const qs = demoQuestions.filter((q) => q.subject === subject);
@@ -173,6 +178,21 @@ function SimulatorLivePage() {
     setPaletteOpen(false);
   }
 
+  // Moves to the next question within the current subject, or — if
+  // already on the last question of the current subject — rolls over
+  // into the first question of the next subject in SUBJECTS. Only a
+  // no-op when there's truly nothing left (last question of the last
+  // subject), matching isLastQuestionOverall above.
+  function advance() {
+    if (currentIndex < subjectQuestions.length - 1) {
+      goTo(currentIndex + 1);
+      return;
+    }
+    const subjectIndex = SUBJECTS.indexOf(activeSubject);
+    const nextSubject = SUBJECTS[subjectIndex + 1];
+    if (nextSubject) selectSubject(nextSubject);
+  }
+
   function selectOption(option: OptionKey) {
     if (!currentQuestion) return;
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: option }));
@@ -182,14 +202,14 @@ function SimulatorLivePage() {
     if (!currentQuestion) return;
     const hasAnswer = Boolean(answers[currentQuestion.id]);
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered" : "not-answered" }));
-    goTo(Math.min(currentIndex + 1, subjectQuestions.length - 1));
+    advance();
   }
 
   function saveAndMark() {
     if (!currentQuestion) return;
     const hasAnswer = Boolean(answers[currentQuestion.id]);
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered-marked" : "marked" }));
-    goTo(Math.min(currentIndex + 1, subjectQuestions.length - 1));
+    advance();
   }
 
   function clearResponse() {
@@ -355,8 +375,8 @@ function SimulatorLivePage() {
                     &lt;&lt; Back
                   </button>
                   <button
-                    disabled={currentIndex === subjectQuestions.length - 1}
-                    onClick={() => goTo(currentIndex + 1)}
+                    disabled={isLastQuestionOverall}
+                    onClick={advance}
                     className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                   >
                     Next &gt;&gt;

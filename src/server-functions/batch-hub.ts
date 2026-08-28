@@ -98,7 +98,16 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         name: r.name as string,
         totalQuestions: r.totalQuestions as number,
-        timeLimitMinutes: (r.timeLimitMinutes as number) ?? 180,
+        // FIXED: this was reading `r.timeLimitMinutes`, a field that was
+        // never actually written to testCores documents — the duration
+        // is stored as `durationMinutes` (see admin.ts
+        // createTestCore/updateTestCore and admin-types.ts TestCore).
+        // This is the same field-name mismatch already fixed in
+        // catalog.ts and test-engine.ts — this file has its own separate
+        // copy of listPublicTestsForBundle, which is the one
+        // course.$kind.$id.tsx actually imports and calls, so it needed
+        // the identical fix applied here too.
+        timeLimitMinutes: (r.durationMinutes as number) ?? 180,
         subjects: (r.subjects as string[]) ?? [],
         liveStart: r.liveStart as string,
         liveEnd: r.liveEnd as string,

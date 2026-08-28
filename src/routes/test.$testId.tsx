@@ -89,6 +89,13 @@ function TestEnginePage() {
   );
   const currentQuestion = subjectQuestions[currentIndex];
 
+  // Whether the current question is the very last one across every
+  // subject — i.e. there's genuinely nowhere further to advance to.
+  const isLastQuestionOverall =
+    Boolean(test) &&
+    activeSubject === test!.subjects[test!.subjects.length - 1] &&
+    currentIndex === subjectQuestions.length - 1;
+
   async function handleSubmit() {
     if (!user || !questions || submittedRef.current) return;
     submittedRef.current = true;
@@ -138,6 +145,22 @@ function TestEnginePage() {
     setPaletteOpen(false);
   }
 
+  // Moves to the next question within the current subject, or — if
+  // already on the last question of the current subject — rolls over
+  // into the first question of the next subject in test.subjects. Only a
+  // no-op when there's truly nothing left (last question of the last
+  // subject), matching isLastQuestionOverall above.
+  function advance() {
+    if (!test) return;
+    if (currentIndex < subjectQuestions.length - 1) {
+      goTo(currentIndex + 1);
+      return;
+    }
+    const subjectIndex = test.subjects.indexOf(activeSubject);
+    const nextSubject = test.subjects[subjectIndex + 1];
+    if (nextSubject) selectSubject(nextSubject);
+  }
+
   function selectOption(option: OptionKey) {
     if (!currentQuestion) return;
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: option }));
@@ -147,14 +170,14 @@ function TestEnginePage() {
     if (!currentQuestion) return;
     const hasAnswer = Boolean(answers[currentQuestion.id]);
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered" : "not-answered" }));
-    goTo(Math.min(currentIndex + 1, subjectQuestions.length - 1));
+    advance();
   }
 
   function saveAndMark() {
     if (!currentQuestion) return;
     const hasAnswer = Boolean(answers[currentQuestion.id]);
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered-marked" : "marked" }));
-    goTo(Math.min(currentIndex + 1, subjectQuestions.length - 1));
+    advance();
   }
 
   function clearResponse() {
@@ -348,8 +371,8 @@ function TestEnginePage() {
                     &lt;&lt; Back
                   </button>
                   <button
-                    disabled={currentIndex === subjectQuestions.length - 1}
-                    onClick={() => goTo(currentIndex + 1)}
+                    disabled={isLastQuestionOverall}
+                    onClick={advance}
                     className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                   >
                     Next &gt;&gt;
