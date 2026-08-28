@@ -315,6 +315,7 @@ type TestCoreInput = {
   bundleId: string;
   name: string;
   totalQuestions: number;
+  durationMinutes: number;
   subjects: string[];
   weightage: SubjectWeightageInput[];
   liveStart: string;
@@ -349,7 +350,8 @@ export const listTestCoresForBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         bundleId: r.bundleId as string,
         name: r.name as string,
-        totalQuestions: r.totalQuestions as number,
+                totalQuestions: r.totalQuestions as number,
+        durationMinutes: (r.durationMinutes as number) ?? 0,
         subjects: (r.subjects as string[]) ?? [],
         weightage: (r.weightage as SubjectWeightageInput[]) ?? [],
         liveStart: r.liveStart as string,

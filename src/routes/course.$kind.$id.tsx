@@ -792,6 +792,16 @@ function TestsTab({
 }) {
   const [attemptsByTest, setAttemptsByTest] = useState<Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>>({});
 
+  // NEW — ticks every 30s so isLive/isUpcoming below actually re-evaluate
+  // over time instead of being frozen at whatever they were when the page
+  // first loaded. Without this, a test that goes live (or ends) while the
+  // tab stays open never updates its badge until a manual refresh.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (!tests || tests.length === 0 || !isPurchased) return;
     let cancelled = false;
@@ -829,7 +839,8 @@ function TestsTab({
   return (
     <div className="space-y-3">
       {tests.map((t) => {
-        const now = Date.now();
+        // CHANGED — uses the ticking `now` state instead of a one-off
+        // Date.now() call, so this recomputes on every 30s tick.
         const start = new Date(t.liveStart).getTime();
         const end = new Date(t.liveEnd).getTime();
         const isLive = now >= start && now <= end;
@@ -850,9 +861,12 @@ function TestsTab({
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
                     </span>
                   ) : isUpcoming ? (
-                    <span className="text-foreground/50">Starts {new Date(t.liveStart).toLocaleDateString()}</span>
+                    // CHANGED — toLocaleString() instead of toLocaleDateString()
+                    // so the start time is shown, not just the date.
+                    <span className="text-foreground/50">Starts {new Date(t.liveStart).toLocaleString()}</span>
                   ) : (
-                    <span className="text-foreground/50">Held on: {new Date(t.liveStart).toLocaleDateString()}</span>
+                    // CHANGED — same here: full date+time for when it was held.
+                    <span className="text-foreground/50">Held on: {new Date(t.liveStart).toLocaleString()}</span>
                   )}
                   {attempted && (
                     <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
@@ -872,7 +886,7 @@ function TestsTab({
                     Analysis
                   </button>
                   <button
-                    disabled={!isPurchased}
+                    disabled={!isPurchased || !isLive}
                     onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
                     className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline disabled:opacity-40"
                   >
@@ -881,7 +895,7 @@ function TestsTab({
                 </div>
               ) : (
                 <button
-                  disabled={!isPurchased}
+                  disabled={!isPurchased || !isLive}
                   onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
                   className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                 >

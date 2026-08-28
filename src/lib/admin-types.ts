@@ -67,8 +67,12 @@ export type TestCore = {
   bundleId: string;
   name: string;
   totalQuestions: number;
-  subjects: string[]; 
+  subjects: string[];
   weightage: SubjectWeightage[];
+  // NEW — the test's time limit, in minutes. Was previously never asked
+  // for at creation time even though the student-facing engine already
+  // expects a timeLimitMinutes-shaped value (see catalog.ts).
+  durationMinutes: number;
   liveStart: string;
   liveEnd: string;
   instructions: string;

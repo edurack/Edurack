@@ -2,13 +2,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   Loader2,
   ClipboardList,
-  Plus,
-  X,
   Tag,
   Scale,
   CalendarRange,
   FileText,
   Pencil,
+  Timer,
 } from "lucide-react";
 import {
   listBundles,
@@ -30,6 +29,7 @@ type TestCoreRow = {
   totalQuestions: number;
   subjects: string[];
   weightage: SubjectWeightageRow[];
+  durationMinutes: number;
   liveStart: string;
   liveEnd: string;
   instructions: string;
@@ -79,6 +79,84 @@ function parseSubjectTags(raw: string): string[] {
   return out;
 }
 
+// ─── Subject weightage editor ────────────────────────────────────────────
+// The subject list typed here (comma-separated) is the single source of
+// truth for which subjects exist on this test — the weightage rows below
+// are generated directly from it, one per subject, so there's no way for a
+// weightage entry to reference a subject that was never actually typed
+// into the tag list (the old free-text + datalist version allowed that
+// mismatch). Editing the tag list adds/removes weightage rows automatically
+// while preserving counts for subjects that are still present.
+function SubjectWeightageEditor({
+  subjectTagsRaw,
+  onSubjectTagsRawChange,
+  weightageMap,
+  onWeightageMapChange,
+  totalQuestions,
+}: {
+  subjectTagsRaw: string;
+  onSubjectTagsRawChange: (v: string) => void;
+  weightageMap: Record<string, number>;
+  onWeightageMapChange: (m: Record<string, number>) => void;
+  totalQuestions: string;
+}) {
+  const parsedSubjects = parseSubjectTags(subjectTagsRaw);
+  const weightageSum = parsedSubjects.reduce((sum, s) => sum + (weightageMap[s] || 0), 0);
+
+  return (
+    <div className="space-y-3">
+      <ClayField label="Subject tags (comma-separated)">
+        <div className="relative">
+          <Tag className="pointer-events-none absolute left-4 top-3.5 h-3.5 w-3.5 text-foreground/30" />
+          <input
+            value={subjectTagsRaw}
+            onChange={(e) => onSubjectTagsRawChange(e.target.value)}
+            placeholder="Physics, Chemistry, Biology"
+            className={inputClass + " pl-10"}
+          />
+        </div>
+      </ClayField>
+
+      {parsedSubjects.length > 0 && (
+        <div>
+          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            <Scale className="h-3.5 w-3.5" />
+            Subject weightage thresholds
+          </span>
+          <div className="space-y-2">
+            {parsedSubjects.map((s) => (
+              <div key={s} className="flex items-center gap-2">
+                <span className="clay-chip flex-1 truncate px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-foreground/70">
+                  {s}
+                </span>
+                <input
+                  value={weightageMap[s] || ""}
+                  onChange={(e) =>
+                    onWeightageMapChange({ ...weightageMap, [s]: Number(e.target.value) || 0 })
+                  }
+                  inputMode="numeric"
+                  placeholder="Qs"
+                  className={inputClass + " w-24"}
+                />
+              </div>
+            ))}
+          </div>
+          <p
+            className={`mt-2 text-xs font-medium ${
+              totalQuestions && weightageSum !== Number(totalQuestions)
+                ? "text-[var(--destructive)]"
+                : "text-foreground/40"
+            }`}
+          >
+            Weightage total: {weightageSum}
+            {totalQuestions ? ` / ${totalQuestions} required` : ""}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TestCoreModule({ adminUser }: { adminUser: AdminUser }) {
   const [bundles, setBundles] = useState<BundleOption[] | null>(null);
   const [bundleId, setBundleId] = useState("");
@@ -112,7 +190,7 @@ export function TestCoreModule({ adminUser }: { adminUser: AdminUser }) {
     <div>
       <ModuleHeader
         title="Test Core Manager"
-        subtitle="Map individual mock tests inside a bundle — subjects, weightage, live windows, and instructions."
+        subtitle="Map individual mock tests inside a bundle — subjects, weightage, duration, live windows, and instructions."
       />
 
       <div className="clay mb-6 p-5 sm:p-6">
@@ -154,8 +232,9 @@ function TestCoreCreationForm({
 }) {
   const [name, setName] = useState("");
   const [totalQuestions, setTotalQuestions] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
   const [subjectTagsRaw, setSubjectTagsRaw] = useState("");
-  const [weightage, setWeightage] = useState<SubjectWeightageRow[]>([{ subject: "", questionCount: 0 }]);
+  const [weightageMap, setWeightageMap] = useState<Record<string, number>>({});
   const [liveStart, setLiveStart] = useState("");
   const [liveEnd, setLiveEnd] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -165,25 +244,25 @@ function TestCoreCreationForm({
   const [success, setSuccess] = useState(false);
 
   const parsedSubjects = parseSubjectTags(subjectTagsRaw);
-  const weightageSum = weightage.reduce((sum, w) => sum + (Number(w.questionCount) || 0), 0);
 
-  function updateWeightageRow(i: number, patch: Partial<SubjectWeightageRow>) {
-    const next = [...weightage];
-    next[i] = { ...next[i], ...patch };
-    setWeightage(next);
-  }
-  function addWeightageRow() {
-    setWeightage([...weightage, { subject: "", questionCount: 0 }]);
-  }
-  function removeWeightageRow(i: number) {
-    setWeightage(weightage.filter((_, idx) => idx !== i));
-  }
+  // Keep the weightage map in sync with whatever subjects are currently
+  // typed into the tag field — add new subjects at 0, drop removed ones,
+  // and always preserve the count for subjects that are still present.
+  useEffect(() => {
+    setWeightageMap((prev) => {
+      const next: Record<string, number> = {};
+      for (const s of parsedSubjects) next[s] = prev[s] ?? 0;
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectTagsRaw]);
 
   function resetForm() {
     setName("");
     setTotalQuestions("");
+    setDurationMinutes("");
     setSubjectTagsRaw("");
-    setWeightage([{ subject: "", questionCount: 0 }]);
+    setWeightageMap({});
     setLiveStart("");
     setLiveEnd("");
     setInstructions("");
@@ -197,12 +276,15 @@ function TestCoreCreationForm({
     if (!name.trim()) return setError("Enter a test name.");
     const total = Number(totalQuestions);
     if (!total || total <= 0) return setError("Enter a valid total question count.");
+    const duration = Number(durationMinutes);
+    if (!duration || duration <= 0) return setError("Enter a valid test duration (in minutes).");
     if (parsedSubjects.length === 0) return setError("Add at least one subject tag.");
 
-    const cleanWeightage = weightage
-      .map((w) => ({ subject: w.subject.trim(), questionCount: Number(w.questionCount) || 0 }))
-      .filter((w) => w.subject && w.questionCount > 0);
-    if (cleanWeightage.length === 0) return setError("Add at least one subject weightage row.");
+    const weightage = parsedSubjects.map((s) => ({ subject: s, questionCount: weightageMap[s] || 0 }));
+    if (weightage.some((w) => w.questionCount <= 0)) {
+      return setError("Every subject needs a question count greater than 0.");
+    }
+    const weightageSum = weightage.reduce((sum, w) => sum + w.questionCount, 0);
     if (weightageSum !== total) {
       return setError(`Weightage totals ${weightageSum}, but Total Questions is set to ${total}. They must match.`);
     }
@@ -221,8 +303,9 @@ function TestCoreCreationForm({
             bundleId,
             name: name.trim(),
             totalQuestions: total,
+            durationMinutes: duration,
             subjects: parsedSubjects,
-            weightage: cleanWeightage,
+            weightage,
             liveStart,
             liveEnd,
             instructions: instructions.trim(),
@@ -249,7 +332,7 @@ function TestCoreCreationForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <ClayField label="Test name">
             <input
               value={name}
@@ -267,89 +350,27 @@ function TestCoreCreationForm({
               className={inputClass}
             />
           </ClayField>
-        </div>
-
-        <ClayField label="Subject tags (comma-separated)">
-          <div className="relative">
-            <Tag className="pointer-events-none absolute left-4 top-3.5 h-3.5 w-3.5 text-foreground/30" />
-            <input
-              value={subjectTagsRaw}
-              onChange={(e) => setSubjectTagsRaw(e.target.value)}
-              placeholder="Physics, Chemistry, Biology"
-              className={inputClass + " pl-10"}
-            />
-          </div>
-          {parsedSubjects.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {parsedSubjects.map((s) => (
-                <span
-                  key={s}
-                  className="clay-chip px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/70"
-                >
-                  {s}
-                </span>
-              ))}
+          <ClayField label="Duration (minutes)">
+            <div className="relative">
+              <Timer className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+              <input
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(e.target.value)}
+                inputMode="numeric"
+                placeholder="180"
+                className={inputClass + " pl-10"}
+              />
             </div>
-          )}
-        </ClayField>
-
-        <div>
-          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
-            <Scale className="h-3.5 w-3.5" />
-            Subject weightage thresholds
-          </span>
-          <div className="space-y-2">
-            {weightage.map((w, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input
-                  value={w.subject}
-                  onChange={(e) => updateWeightageRow(i, { subject: e.target.value })}
-                  placeholder="Subject (e.g. Physics)"
-                  className={inputClass + " flex-1"}
-                  list="test-core-subject-suggestions"
-                />
-                <input
-                  value={w.questionCount || ""}
-                  onChange={(e) => updateWeightageRow(i, { questionCount: Number(e.target.value) || 0 })}
-                  inputMode="numeric"
-                  placeholder="Qs"
-                  className={inputClass + " w-24"}
-                />
-                {weightage.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeWeightageRow(i)}
-                    className="text-foreground/40 hover:text-foreground/70"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-            <datalist id="test-core-subject-suggestions">
-              {parsedSubjects.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-            <button
-              type="button"
-              onClick={addWeightageRow}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add subject row
-            </button>
-          </div>
-          <p
-            className={`mt-2 text-xs font-medium ${
-              totalQuestions && weightageSum !== Number(totalQuestions)
-                ? "text-[var(--destructive)]"
-                : "text-foreground/40"
-            }`}
-          >
-            Weightage total: {weightageSum}
-            {totalQuestions ? ` / ${totalQuestions} required` : ""}
-          </p>
+          </ClayField>
         </div>
+
+        <SubjectWeightageEditor
+          subjectTagsRaw={subjectTagsRaw}
+          onSubjectTagsRawChange={setSubjectTagsRaw}
+          weightageMap={weightageMap}
+          onWeightageMapChange={setWeightageMap}
+          totalQuestions={totalQuestions}
+        />
 
         <ClayField label="Live window">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -376,7 +397,7 @@ function TestCoreCreationForm({
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             rows={4}
-            placeholder="e.g. Negative marking applies. Calculator not allowed. Duration: 3 hours…"
+            placeholder="e.g. Negative marking applies. Calculator not allowed."
             className={textareaClass}
           />
         </ClayField>
@@ -404,7 +425,7 @@ function TestCoreCreationForm({
   );
 }
 
-// ─── List of tests already in this bundle ───────────────────────────────────
+// ─── List of tests already in this bundle, with full edit ───────────────────
 function TestCoreList({
   tests,
   adminUser,
@@ -415,29 +436,73 @@ function TestCoreList({
   onSaved: () => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [totalQuestions, setTotalQuestions] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [subjectTagsRaw, setSubjectTagsRaw] = useState("");
+  const [weightageMap, setWeightageMap] = useState<Record<string, number>>({});
   const [instructions, setInstructions] = useState("");
   const [liveStart, setLiveStart] = useState("");
   const [liveEnd, setLiveEnd] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function startEdit(t: TestCoreRow) {
     setEditingId(t.id);
+    setName(t.name);
+    setTotalQuestions(String(t.totalQuestions));
+    setDurationMinutes(String(t.durationMinutes ?? ""));
+    setSubjectTagsRaw(t.subjects.join(", "));
+    setWeightageMap(Object.fromEntries(t.weightage.map((w) => [w.subject, w.questionCount])));
     setInstructions(t.instructions);
     setLiveStart(t.liveStart);
     setLiveEnd(t.liveEnd);
     setError(null);
   }
 
+  const parsedSubjects = parseSubjectTags(subjectTagsRaw);
+
   async function save(id: string) {
     setError(null);
+
+    if (!name.trim()) return setError("Enter a test name.");
+    const total = Number(totalQuestions);
+    if (!total || total <= 0) return setError("Enter a valid total question count.");
+    const duration = Number(durationMinutes);
+    if (!duration || duration <= 0) return setError("Enter a valid test duration (in minutes).");
+    if (parsedSubjects.length === 0) return setError("Add at least one subject tag.");
+
+    const weightage = parsedSubjects.map((s) => ({ subject: s, questionCount: weightageMap[s] || 0 }));
+    if (weightage.some((w) => w.questionCount <= 0)) {
+      return setError("Every subject needs a question count greater than 0.");
+    }
+    const weightageSum = weightage.reduce((sum, w) => sum + w.questionCount, 0);
+    if (weightageSum !== total) {
+      return setError(`Weightage totals ${weightageSum}, but Total Questions is set to ${total}. They must match.`);
+    }
     if (new Date(liveEnd) <= new Date(liveStart)) return setError("Live end must be after live start.");
+    if (!instructions.trim()) return setError("Add instructions for students taking this test.");
 
     setSaving(true);
     try {
       const token = await adminUser.getIdToken();
       await updateTestCore({
-        data: { token, id, testCore: { instructions, liveStart, liveEnd } },
+        data: {
+          token,
+          id,
+          testCore: {
+            name: name.trim(),
+            totalQuestions: total,
+            durationMinutes: duration,
+            subjects: parsedSubjects,
+            weightage,
+            instructions: instructions.trim(),
+            liveStart,
+            liveEnd,
+          },
+        },
       });
       setEditingId(null);
       onSaved();
@@ -468,7 +533,41 @@ function TestCoreList({
           {tests.map((t) => (
             <li key={t.id} className="clay-inset px-4 py-3.5">
               {editingId === t.id ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Test name"
+                      className={inputClass}
+                    />
+                    <input
+                      value={totalQuestions}
+                      onChange={(e) => setTotalQuestions(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="Total questions"
+                      className={inputClass}
+                    />
+                    <div className="relative">
+                      <Timer className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+                      <input
+                        value={durationMinutes}
+                        onChange={(e) => setDurationMinutes(e.target.value)}
+                        inputMode="numeric"
+                        placeholder="Duration (min)"
+                        className={inputClass + " pl-10"}
+                      />
+                    </div>
+                  </div>
+
+                  <SubjectWeightageEditor
+                    subjectTagsRaw={subjectTagsRaw}
+                    onSubjectTagsRawChange={setSubjectTagsRaw}
+                    weightageMap={weightageMap}
+                    onWeightageMapChange={setWeightageMap}
+                    totalQuestions={totalQuestions}
+                  />
+
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <input
                       type="datetime-local"
@@ -500,7 +599,7 @@ function TestCoreList({
                       disabled={saving}
                       className="clay-btn rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-70"
                     >
-                      {saving ? "Saving…" : "Save"}
+                      {saving ? "Saving…" : "Save all changes"}
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
@@ -515,7 +614,7 @@ function TestCoreList({
                   <div>
                     <p className="text-sm font-semibold text-foreground">{t.name}</p>
                     <p className="mt-0.5 text-xs text-foreground/50">
-                      {t.totalQuestions} questions · {t.subjects.join(", ")}
+                      {t.totalQuestions} questions · {t.durationMinutes ?? "—"} min · {t.subjects.join(", ")}
                     </p>
                     <p className="mt-0.5 text-xs text-foreground/50">
                       Live {new Date(t.liveStart).toLocaleString()} → {new Date(t.liveEnd).toLocaleString()}

@@ -7,8 +7,15 @@ import {
   Circle,
   BookOpen,
   Calendar,
+  Hash,
+  AlertCircle,
 } from "lucide-react";
-import { createQuestion, listBundles, listTestCoresForBundle } from "@/server-functions/admin";
+import {
+  createQuestion,
+  listBundles,
+  listTestCoresForBundle,
+  listQuestionsForTestSubject,
+} from "@/server-functions/admin";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
@@ -16,7 +23,17 @@ type DifficultyLevel = "Easy" | "Medium" | "Hard";
 type OptionKey = "A" | "B" | "C" | "D";
 
 type BundleOption = { id: string; title: string };
-type TestOption = { id: string; name: string };
+
+// Carries everything the numbering/subject logic needs — not just id/name
+// like before, so the subject list and per-subject thresholds always come
+// straight from what was actually configured on this test in Test Core,
+// rather than from a fixed guess list.
+type TestOption = {
+  id: string;
+  name: string;
+  subjects: string[];
+  weightage: { subject: string; questionCount: number }[];
+};
 
 function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
@@ -52,9 +69,15 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   const [testId, setTestId] = useState("");
   const [subject, setSubject] = useState("");
 
-  const [questionNo, setQuestionNo] = useState("");
-  const [questionBody, setQuestionBody] = useState("");
+  // Auto-numbering state — nextNumber is what gets submitted; it's derived,
+  // never typed. threshold is this subject's weightage count from Test
+  // Core (or null if this test has no weightage configured), shown as the
+  // "x / y" progress indicator.
+  const [nextNumber, setNextNumber] = useState<number | null>(null);
+  const [threshold, setThreshold] = useState<number | null>(null);
+  const [countLoading, setCountLoading] = useState(false);
 
+  const [questionBody, setQuestionBody] = useState("");
   const [optionA, setOptionA] = useState("");
   const [optionB, setOptionB] = useState("");
   const [optionC, setOptionC] = useState("");
@@ -70,6 +93,8 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const selectedTest = tests?.find((t) => t.id === testId) ?? null;
+
   // ─── Load bundles once ─────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -80,7 +105,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser]);
 
-  // ─── Load tests whenever the selected bundle changes ────────────────────
+  // ─── Load tests (with their real subjects + weightage) when bundle changes
   useEffect(() => {
     if (!bundleId) {
       setTests(null);
@@ -90,15 +115,55 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     (async () => {
       setTests(null);
       setTestId("");
+      setSubject("");
       const token = await adminUser.getIdToken();
       const { testCores } = await listTestCoresForBundle({ data: { token, bundleId } });
-      setTests(testCores.map((t) => ({ id: t.id, name: t.name })));
+      setTests(
+        testCores.map((t) => ({
+          id: t.id,
+          name: t.name,
+          subjects: t.subjects ?? [],
+          weightage: t.weightage ?? [],
+        })),
+      );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundleId, adminUser]);
 
+  // Reset subject whenever the test changes — the previous test's subject
+  // almost certainly doesn't exist on the new one.
+  useEffect(() => {
+    setSubject("");
+    setNextNumber(null);
+    setThreshold(null);
+  }, [testId]);
+
+  // ─── Fetch how many questions already exist for this test+subject, and
+  // derive the next question number and this subject's threshold from it.
+  // Runs every time the subject changes, so switching subjects mid-session
+  // always shows that subject's own numbering, not a shared counter.
+  useEffect(() => {
+    if (!testId || !subject) {
+      setNextNumber(null);
+      setThreshold(null);
+      return;
+    }
+    (async () => {
+      setCountLoading(true);
+      try {
+        const token = await adminUser.getIdToken();
+        const { questions } = await listQuestionsForTestSubject({ data: { token, testId, subject } });
+        setNextNumber(questions.length + 1);
+        const w = selectedTest?.weightage.find((row) => row.subject === subject);
+        setThreshold(w ? w.questionCount : null);
+      } finally {
+        setCountLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testId, subject]);
+
   function resetQuestionFields() {
-    setQuestionNo("");
     setQuestionBody("");
     setOptionA("");
     setOptionB("");
@@ -118,15 +183,19 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
 
     if (!bundleId) return setError("Select a parent bundle.");
     if (!testId) return setError("Select a test within that bundle.");
-    const qNo = Number(questionNo);
-    if (!qNo || qNo <= 0) return setError("Enter a valid question number.");
+    if (!subject) return setError("Select a subject.");
+    if (nextNumber === null) return setError("Still working out the question number — try again in a moment.");
     if (!questionBody.trim()) return setError("Enter the question body.");
-    if (!subject.trim()) return setError("Enter a subject.");
     if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
       return setError("All four options (A–D) must be filled in.");
     }
     if (!solution.trim()) return setError("Enter the step-by-step solution.");
     if (isPYQ && !pyqYear.trim()) return setError("Enter the PYQ year, or uncheck 'Previous Year Question'.");
+    if (threshold !== null && nextNumber > threshold) {
+      return setError(
+        `${subject} already has ${threshold} questions from Test Core's weightage — this would exceed that. Update the weightage in Test Core first if that's intentional.`,
+      );
+    }
 
     setSaving(true);
     try {
@@ -137,8 +206,8 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           question: {
             bundleId,
             testId,
-            subject: subject.trim(),
-            questionNo: qNo,
+            subject,
+            questionNo: nextNumber,
             body: questionBody.trim(),
             options: {
               A: optionA.trim(),
@@ -156,6 +225,10 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
       });
       setSuccess(true);
       resetQuestionFields();
+      // Advance the counter locally for fast serial entry — no need to
+      // round-trip the count query again for the very next question in the
+      // same subject.
+      setNextNumber((n) => (n === null ? null : n + 1));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this question. Try again.");
     } finally {
@@ -163,11 +236,14 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     }
   }
 
+  const hasSubjects = (selectedTest?.subjects.length ?? 0) > 0;
+  const contextReady = Boolean(bundleId && testId && subject);
+
   return (
     <div>
       <ModuleHeader
         title="Question Ingestion Pipeline"
-        subtitle="Bundle → Test → Subject. Add one question at a time, with LaTeX-ready text fields."
+        subtitle="Bundle → Test → Subject. Question numbering is automatic, per subject."
       />
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -187,9 +263,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                 onChange={(e) => setBundleId(e.target.value)}
                 className={inputClass + " appearance-none"}
               >
-                <option value="">
-                  {bundles === null ? "Loading…" : "Select bundle"}
-                </option>
+                <option value="">{bundles === null ? "Loading…" : "Select bundle"}</option>
                 {(bundles ?? []).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.title}
@@ -217,54 +291,60 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             </ClayField>
 
             <ClayField label="Subject">
-              <input
+              <select
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g. Physics, Verbal Ability, Accountancy…"
-                className={inputClass}
-                list="question-subject-suggestions"
-              />
-              <datalist id="question-subject-suggestions">
-                <option value="Physics" />
-                <option value="Chemistry" />
-                <option value="Mathematics" />
-                <option value="Verbal Ability" />
-                <option value="Accountancy" />
-                <option value="General Test" />
-              </datalist>
+                disabled={!testId || !hasSubjects}
+                className={inputClass + " appearance-none disabled:opacity-50"}
+              >
+                <option value="">
+                  {!testId ? "Select a test first" : !hasSubjects ? "This test has no subjects" : "Select subject"}
+                </option>
+                {(selectedTest?.subjects ?? []).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
             </ClayField>
           </div>
 
-          {(!bundleId || !testId) && (
+          {testId && !hasSubjects && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-rose-600">
+              <AlertCircle className="h-3.5 w-3.5" />
+              This test has no subject tags configured — add them in Test Core before entering questions.
+            </p>
+          )}
+          {(!bundleId || !testId || !subject) && hasSubjects && (
             <p className="mt-3 flex items-center gap-1.5 text-xs text-foreground/40">
               <BookOpen className="h-3 w-3" />
-              Select a bundle and test above to enable question entry below.
+              Select a bundle, test, and subject above to enable question entry below.
             </p>
+          )}
+
+          {contextReady && (
+            <div className="clay-inset mt-4 flex items-center gap-2 rounded-2xl px-4 py-3">
+              <Hash className="h-4 w-4 shrink-0 text-foreground/50" />
+              {countLoading || nextNumber === null ? (
+                <span className="text-sm text-foreground/50">Working out the next question number…</span>
+              ) : (
+                <span className="text-sm font-semibold text-foreground">
+                  Adding question {nextNumber}
+                  {threshold !== null ? ` of ${threshold}` : ""} for {subject}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
         {/* ── Core question inputs ──────────────────────────────────── */}
-        <div className={`clay p-5 sm:p-6 ${!bundleId || !testId ? "opacity-50" : ""}`}>
+        <div className={`clay p-5 sm:p-6 ${!contextReady ? "opacity-50" : ""}`}>
           <div className="mb-4 flex items-center gap-2">
             <FileQuestion className="h-4 w-4 text-foreground/60" />
-            <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-              Question
-            </h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">Question</h2>
           </div>
 
-          <fieldset disabled={!bundleId || !testId} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-              <ClayField label="Question no.">
-                <input
-                  value={questionNo}
-                  onChange={(e) => setQuestionNo(e.target.value)}
-                  inputMode="numeric"
-                  placeholder="e.g. 1"
-                  className={inputClass}
-                />
-              </ClayField>
-            </div>
-
+          <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
             <ClayField label="Question body (text, LaTeX $…$/$$…$$, or image URL)">
               <textarea
                 value={questionBody}
@@ -298,9 +378,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                         aria-label={`Mark option ${opt.key} as correct`}
                         aria-pressed={isCorrect}
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold transition-all ${
-                          isCorrect
-                            ? "clay-btn text-white"
-                            : "clay-btn-ghost text-foreground/50"
+                          isCorrect ? "clay-btn text-white" : "clay-btn-ghost text-foreground/50"
                         }`}
                       >
                         {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : opt.key}
@@ -324,7 +402,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
         </div>
 
         {/* ── Solution & metadata panel ─────────────────────────────── */}
-        <div className={`clay p-5 sm:p-6 ${!bundleId || !testId ? "opacity-50" : ""}`}>
+        <div className={`clay p-5 sm:p-6 ${!contextReady ? "opacity-50" : ""}`}>
           <div className="mb-4 flex items-center gap-2">
             <ListChecks className="h-4 w-4 text-foreground/60" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
@@ -332,7 +410,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             </h2>
           </div>
 
-          <fieldset disabled={!bundleId || !testId} className="space-y-4">
+          <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
             <ClayField label="Step-by-step solution (LaTeX enabled)">
               <textarea
                 value={solution}
@@ -375,8 +453,6 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
               </div>
             </div>
 
-            {/* Conditional PYQ year input — animated slide-in rather than an
-                abrupt mount/unmount, so the layout doesn't jump when toggled. */}
             <div
               className={`grid transition-all duration-300 ease-out ${
                 isPYQ ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
@@ -406,13 +482,13 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           )}
           {success && (
             <p className="mt-4 rounded-2xl bg-[var(--mint-soft)]/60 px-4 py-2 text-xs font-medium text-foreground">
-              Question saved. Form cleared for the next entry.
+              Question saved. Numbering advanced automatically for the next one.
             </p>
           )}
 
           <button
             type="submit"
-            disabled={saving || !bundleId || !testId}
+            disabled={saving || !contextReady || nextNumber === null}
             className="clay-btn mt-5 flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save question"}

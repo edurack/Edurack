@@ -22,22 +22,30 @@
 // Buckets needed (Storage → create each, set Public, set its own "file
 // size limit" to match the cap below — that's the per-bucket backstop;
 // the project-level cap above is the one that can't be worked around):
-//   • mentor-uploads   (existing — onboarding wizard photos, unchanged)
-//   • mentor-images    (profile pictures)              — cap 50MB
-//   • mentor-files     (PDF notes)                     — cap 100MB
-//   • mentor-lectures  (lecture videos)                — cap 500MB
+//   • mentor-uploads     (existing — onboarding wizard photos, unchanged)
+//   • mentor-images      (profile pictures)              — cap 50MB
+//   • mentor-files       (PDF notes)                     — cap 100MB
+//   • mentor-lectures    (lecture videos)                — cap 500MB
+//   • bundle-thumbnails  (NEW — bundle cover images)      — cap 20MB
+//   • bundle-documents   (NEW — syllabus/planner PDFs)    — cap 50MB
 //
 // Policies — same open-write-scoped-by-bucket pattern as mentor-uploads,
-// since mentors already have their own session-token auth (not Supabase
-// Auth), so there's no Supabase-side user to scope RLS to. Run once per
-// new bucket, swapping the bucket_id:
+// since admins already have their own auth (Firebase ID token, not
+// Supabase Auth), so there's no Supabase-side user to scope RLS to. Run
+// once per new bucket, swapping the bucket_id:
 //
-//   create policy "Mentors can upload to mentor-images"
+//   create policy "Admins can upload to bundle-thumbnails"
 //   on storage.objects for insert
 //   to anon
-//   with check (bucket_id = 'mentor-images');
+//   with check (bucket_id = 'bundle-thumbnails');
 //
-// (repeat for mentor-files and mentor-lectures)
+//   create policy "Admins can upload to bundle-documents"
+//   on storage.objects for insert
+//   to anon
+//   with check (bucket_id = 'bundle-documents');
+//
+// (repeat the pattern for mentor-images / mentor-files / mentor-lectures
+// if those policies don't already exist from earlier work)
 import { createClient } from "@supabase/supabase-js";
 
 export const supabase = createClient(
@@ -48,7 +56,7 @@ export const supabase = createClient(
 // ─── Onboarding wizard (existing, unchanged) ─────────────────────────────
 export const MENTOR_UPLOADS_BUCKET = "mentor-uploads";
 
-// ─── Mentor portal uploads ────────────────────────────────────────────────
+// ─── Mentor portal uploads (existing, unchanged) ─────────────────────────
 export const MENTOR_IMAGES_BUCKET = "mentor-images";
 export const MENTOR_FILES_BUCKET = "mentor-files";
 export const MENTOR_LECTURES_BUCKET = "mentor-lectures";
@@ -56,3 +64,27 @@ export const MENTOR_LECTURES_BUCKET = "mentor-lectures";
 export const MAX_IMAGE_BYTES = 50 * 1024 * 1024; // 50MB
 export const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB
 export const MAX_LECTURE_BYTES = 500 * 1024 * 1024; // 500MB
+
+// ─── NEW: Admin bundle uploads (thumbnails, syllabus PDFs, planners) ────
+export const BUNDLE_THUMBNAILS_BUCKET = "bundle-thumbnails";
+export const BUNDLE_DOCUMENTS_BUCKET = "bundle-documents";
+
+export const MAX_BUNDLE_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
+export const MAX_BUNDLE_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
+
+// Shared helper — uploads a single File to the given bucket under a
+// collision-proof generated name, and returns its public URL. Every
+// upload field in the admin dashboard (bundle thumbnail, syllabus PDF,
+// planner PDF) goes through this one function so the naming scheme and
+// error shape stay identical everywhere.
+export async function uploadToSupabase(bucket: string, file: File): Promise<string> {
+  const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const { error } = await supabase.storage.from(bucket).upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
+}
