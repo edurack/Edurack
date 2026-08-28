@@ -110,13 +110,13 @@ const navLinks: NavLink[] = [
 ];
 
 // ---------------------------------------------
-// Social Links Configuration (GitHub Replaced with Threads)
+// Social Links Configuration
 // ---------------------------------------------
 const socialLinks = [
   {
     name: "LinkedIn",
     description: "Founder updates & corporate networking",
-    href: "https://www.linkedin.com/company/edurack", // Replace with actual URL
+    href: "https://www.linkedin.com/company/edurack",
     icon: Linkedin,
     color: "text-blue-600 dark:text-blue-400",
     bg: "bg-blue-500/10",
@@ -124,7 +124,7 @@ const socialLinks = [
   {
     name: "Threads",
     description: "Real-time updates & platform discussions",
-    href: "https://threads.net/@edurack.in", // Replace with actual URL
+    href: "https://threads.net/@edurack.in",
     icon: AtSign,
     color: "text-slate-900 dark:text-slate-100",
     bg: "bg-slate-500/10",
@@ -132,7 +132,7 @@ const socialLinks = [
   {
     name: "YouTube",
     description: "CBT walkthroughs & strategy guides",
-    href: "https://youtube.com/@edurack", // Replace with actual URL
+    href: "https://youtube.com/@edurack",
     icon: Youtube,
     color: "text-red-600 dark:text-red-400",
     bg: "bg-red-500/10",
@@ -140,7 +140,7 @@ const socialLinks = [
   {
     name: "Instagram",
     description: "Student updates & mentor reels",
-    href: "https://instagram.com/edurack.in", // Replace with actual URL
+    href: "https://instagram.com/edurack.in",
     icon: Instagram,
     color: "text-pink-600 dark:text-pink-400",
     bg: "bg-pink-500/10",
@@ -148,7 +148,7 @@ const socialLinks = [
   {
     name: "X (Twitter)",
     description: "Tech announcements & build updates",
-    href: "https://x.com/edurack_", // Replace with actual URL
+    href: "https://x.com/edurack_",
     icon: Twitter,
     color: "text-sky-500 dark:text-sky-400",
     bg: "bg-sky-500/10",
@@ -156,7 +156,7 @@ const socialLinks = [
   {
     name: "Reddit",
     description: "Community strategy & discussions",
-    href: "https://www.reddit.com/user/Edurack/", // Replace with actual URL
+    href: "https://www.reddit.com/user/Edurack/",
     icon: MessageSquare,
     color: "text-orange-600 dark:text-orange-400",
     bg: "bg-orange-500/10",
@@ -164,8 +164,9 @@ const socialLinks = [
 ];
 
 function Index() {
-  // Inject Organization Schema with all Co-Founders and Social Links for Search Engine Entity Separation
+  // Inject Organization Schema & Favicon tags dynamically
   useEffect(() => {
+    // 1. Organization JSON-LD Schema
     const schemaData = {
       "@context": "https://schema.org",
       "@type": "EducationalOrganization",
@@ -207,8 +208,25 @@ function Index() {
     script.text = JSON.stringify(schemaData);
     document.head.appendChild(script);
 
+    // 2. Dynamic Favicon Link Injection
+    const faviconIco = document.createElement("link");
+    faviconIco.rel = "icon";
+    faviconIco.type = "image/x-icon";
+    faviconIco.href = "https://www.edurack.in/favicon.ico";
+    document.head.appendChild(faviconIco);
+
+    const faviconPng = document.createElement("link");
+    faviconPng.rel = "icon";
+    faviconPng.type = "image/png";
+    faviconPng.setAttribute("sizes", "48x48");
+    faviconPng.href = "https://www.edurack.in/favicon-48x48.png";
+    document.head.appendChild(faviconPng);
+
+    // Cleanup when component unmounts
     return () => {
       document.head.removeChild(script);
+      document.head.removeChild(faviconIco);
+      document.head.removeChild(faviconPng);
     };
   }, []);
 
