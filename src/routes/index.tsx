@@ -180,18 +180,18 @@ function Index() {
           "name": "Vishal Sharma",
           "jobTitle": "Co-Founder"
         },
-        {
+         {
           "@type": "Person",
-          "name": "Archita Priyadarshinee",
+          "name": "Tarun Yadav",
           "jobTitle": "Co-Founder"
         },
         {
           "@type": "Person",
-          "name": "Tarun Yadav",
+          "name": "Archita Priyadarshinee",
           "jobTitle": "Co-Founder"
         }
       ],
-      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Archita Priyadarshinee, and Tarun Yadav, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants.",
+      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants.",
       "sameAs": [
         "https://www.edurack.in",
         "https://www.linkedin.com/company/edurack",
@@ -666,7 +666,7 @@ function AboutSection() {
                 </div>
                 <h3 className="font-display text-lg font-bold text-foreground">Co-Founding Team</h3>
                 <p className="text-sm text-muted-foreground">
-                  Founded and operated by <strong>Vishal Sharma</strong>, <strong>Archita Priyadarshinee</strong>, and <strong>Tarun Yadav</strong> to revolutionize competitive examination preparation across India.
+                  Founded and operated by <strong>Vishal Sharma</strong>, <strong>Tarun Yadav</strong>, and <strong>Archita Priyadarshinee</strong> to revolutionize competitive examination preparation across India.
                 </p>
               </div>
 
@@ -834,7 +834,7 @@ function Footer() {
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
-              Official web platform (edurack.in) founded by Vishal Sharma, Archita Priyadarshinee, and Tarun Yadav for NEET, JEE, CUET & IPMAT preparation.
+              Official web platform (edurack.in) founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee for NEET, JEE, CUET & IPMAT preparation.
             </p>
           </div>
           {footerColumns.map((col) => (
