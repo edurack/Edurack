@@ -105,21 +105,18 @@ export const listPromotableBatches = createServerFn({ method: "POST" })
       const id = String(b._id);
       const settings = settingsByBatchId.get(id);
       const myRequest = requestByBatchId.get(id);
+      const totalPoolPercent = (settings?.promotionPercent as number) ?? DEFAULT_BATCH_PROMOTION_PERCENT;
 
       return {
         batchId: id,
         batchName: b.name as string,
         thumbnailUrl: (b.thumbnailUrl as string | null) ?? null,
-        // Student discount % isn't collected anywhere yet in
-        // BatchPromotionSettings — it only tracks the promoter's earning
-        // boost. Defaulting to 0 here until a studentDiscountPercent field
-        // is added to that type; flag if students should see a discount
-        // baked in separately.
-        studentDiscountPercent: (settings?.studentDiscountPercent as number) ?? 0,
-        promoterEarningPercent: (settings?.promotionPercent as number) ?? DEFAULT_BATCH_PROMOTION_PERCENT,
+        totalPoolPercent,
         studentCount: purchaseCountByBatchId.get(id) ?? 0,
         requestStatus: (myRequest?.status as PromotableBatchView["requestStatus"]) ?? "none",
         couponCode: (myRequest?.couponCode as string | null) ?? null,
+        studentDiscountPercent: (myRequest?.studentDiscountPercent as number | undefined) ?? null,
+        promoterEarningPercent: (myRequest?.promoterEarningPercent as number | undefined) ?? null,
       };
     });
 
@@ -127,7 +124,7 @@ export const listPromotableBatches = createServerFn({ method: "POST" })
   });
 
 export const requestCoupon = createServerFn({ method: "POST" })
-  .validator((data: { token: string; batchId: string }) => data)
+  .validator((data: { token: string; batchId: string; studentDiscountPercent: number }) => data)
   .handler(async ({ data }) => {
     const promoterId = await requirePromoter(data.token);
     const db = await getDb();
@@ -140,6 +137,14 @@ export const requestCoupon = createServerFn({ method: "POST" })
     const settings = await db.collection("batchPromotionSettings").findOne({ batchId: data.batchId });
     if (!settings) throw new Error("This batch isn't open for promotion.");
 
+    const totalPoolPercent = (settings.promotionPercent as number) ?? DEFAULT_BATCH_PROMOTION_PERCENT;
+    const studentDiscountPercent = data.studentDiscountPercent;
+
+    if (studentDiscountPercent < 0 || studentDiscountPercent > totalPoolPercent) {
+      throw new Error(`Student discount must be between 0% and ${totalPoolPercent}% (the batch's total pool).`);
+    }
+    const promoterEarningPercent = totalPoolPercent - studentDiscountPercent;
+
     const { ObjectId } = await import("mongodb");
     const batch = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(data.batchId) });
     if (!batch) throw new Error("Batch not found.");
@@ -150,7 +155,9 @@ export const requestCoupon = createServerFn({ method: "POST" })
       batchName: batch.name as string,
       status: "pending",
       couponCode: null,
-      predictedEarningPercent: (settings.promotionPercent as number) ?? DEFAULT_BATCH_PROMOTION_PERCENT,
+      totalPoolPercent,
+      studentDiscountPercent,
+      promoterEarningPercent,
       requestedAt: new Date(),
       reviewedAt: null,
     });
@@ -179,7 +186,9 @@ export const listMyCouponRequests = createServerFn({ method: "POST" })
         batchName: r.batchName as string,
         status: r.status as "pending" | "approved" | "rejected",
         couponCode: (r.couponCode as string | null) ?? null,
-        predictedEarningPercent: r.predictedEarningPercent as number,
+        totalPoolPercent: r.totalPoolPercent as number,
+        studentDiscountPercent: r.studentDiscountPercent as number,
+        promoterEarningPercent: r.promoterEarningPercent as number,
         requestedAt: r.requestedAt instanceof Date ? r.requestedAt.toISOString() : null,
         reviewedAt: r.reviewedAt instanceof Date ? r.reviewedAt.toISOString() : null,
       })),

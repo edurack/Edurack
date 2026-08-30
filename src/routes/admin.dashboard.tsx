@@ -1204,17 +1204,19 @@ function OnboardingDetailsDrawer({
   const [publishingBatch, setPublishingBatch] = useState(false);
   const [publishBatchError, setPublishBatchError] = useState<string | null>(null);
 
-  async function load() {
-    setStatus("loading");
-    setErrorMessage(null);
-    try {
-      const token = await adminUser.getIdToken();
-      const result = await getMentorOnboardingDetails({ data: { token, applicationId } });
-      if (!result.details) {
-        setStatus("none");
-        return;
-    }    setStatus("ready");
-    } catch (err) {
+ async function load() {
+  setStatus("loading");
+  setErrorMessage(null);
+  try {
+    const token = await adminUser.getIdToken();
+    const result = await getMentorOnboardingDetails({ data: { token, applicationId } });
+    setDetails(result.details);
+    if (!result.details) {
+      setStatus("none");
+      return;
+    }
+    setStatus("ready");
+  } catch (err) {
       // Log the full error to the browser console for debugging, and keep
       // a short version on screen so it's visible without opening dev
       // tools — a bare "couldn't load" message hides exactly the info

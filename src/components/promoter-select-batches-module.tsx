@@ -11,9 +11,13 @@ import {
   Clock,
   ListChecks,
   ArrowLeft,
+  SlidersHorizontal,
 } from "lucide-react";
 import { listPromotableBatches, requestCoupon, listMyCouponRequests } from "@/server-functions/promoter-portal";
 import type { PromotableBatchView, PromoterCouponRequest } from "@/lib/promoter-types";
+
+const inputClass =
+  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
 
 function EmptyState({ message }: { message: string }) {
   return (
@@ -88,7 +92,7 @@ export function PromoterSelectBatchesModule({ getToken }: { getToken: () => stri
 function BrowseBatches({ getToken }: { getToken: () => string }) {
   const [batches, setBatches] = useState<PromotableBatchView[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [splitTarget, setSplitTarget] = useState<PromotableBatchView | null>(null);
 
   async function load() {
     setStatus("loading");
@@ -105,18 +109,6 @@ function BrowseBatches({ getToken }: { getToken: () => string }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function handleRequest(batchId: string) {
-    setRequestingId(batchId);
-    try {
-      await requestCoupon({ data: { token: getToken(), batchId } });
-      await load();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Could not request a coupon. Try again.");
-    } finally {
-      setRequestingId(null);
-    }
-  }
 
   if (status === "loading") {
     return (
@@ -143,72 +135,186 @@ function BrowseBatches({ getToken }: { getToken: () => string }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {batches.map((b) => (
-        <div key={b.batchId} className="clay flex flex-col p-4">
-          <div className="mb-3 h-32 w-full overflow-hidden rounded-2xl bg-foreground/5">
-            {b.thumbnailUrl ? (
-              <img src={b.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full items-center justify-center text-foreground/20">
-                <ImageIcon className="h-6 w-6" />
-              </div>
-            )}
-          </div>
+    <>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {batches.map((b) => (
+          <div key={b.batchId} className="clay flex flex-col p-4">
+            <div className="mb-3 h-32 w-full overflow-hidden rounded-2xl bg-foreground/5">
+              {b.thumbnailUrl ? (
+                <img src={b.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full items-center justify-center text-foreground/20">
+                  <ImageIcon className="h-6 w-6" />
+                </div>
+              )}
+            </div>
 
-          <p className="truncate text-sm font-bold text-foreground">{b.batchName}</p>
+            <p className="truncate text-sm font-bold text-foreground">{b.batchName}</p>
 
-          <div className="mt-2 flex flex-wrap gap-2">
-            {b.studentDiscountPercent > 0 && (
-              <span className="rounded-full bg-[var(--mint-soft)]/60 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                {b.studentDiscountPercent}% student off
-              </span>
-            )}
-            <span className="rounded-full bg-[var(--mint-soft)]/60 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-              You earn {b.promoterEarningPercent}%
-            </span>
-          </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {b.requestStatus === "none" ? (
+                <span className="rounded-full bg-[var(--mint-soft)]/60 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                  {b.totalPoolPercent}% pool — you decide the split
+                </span>
+              ) : (
+                <>
+                  {b.studentDiscountPercent !== null && b.studentDiscountPercent > 0 && (
+                    <span className="rounded-full bg-[var(--mint-soft)]/60 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                      {b.studentDiscountPercent}% student off
+                    </span>
+                  )}
+                  {b.promoterEarningPercent !== null && (
+                    <span className="rounded-full bg-[var(--mint-soft)]/60 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                      You earn {b.promoterEarningPercent}%
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
 
-          <p className="mt-2 flex items-center gap-1.5 text-xs text-foreground/50">
-            <Users2 className="h-3.5 w-3.5" />
-            {b.studentCount} student{b.studentCount !== 1 ? "s" : ""} enrolled
-          </p>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-foreground/50">
+              <Users2 className="h-3.5 w-3.5" />
+              {b.studentCount} student{b.studentCount !== 1 ? "s" : ""} enrolled
+            </p>
 
-          <div className="mt-auto pt-4">
-            {b.requestStatus === "none" && (
-              <button
-                onClick={() => handleRequest(b.batchId)}
-                disabled={requestingId === b.batchId}
-                className="clay-btn flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold disabled:opacity-70"
-              >
-                {requestingId === b.batchId ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+            <div className="mt-auto pt-4">
+              {b.requestStatus === "none" && (
+                <button
+                  onClick={() => setSplitTarget(b)}
+                  className="clay-btn flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold"
+                >
                   <Tag className="h-3.5 w-3.5" />
-                )}
-                Request Coupon
-              </button>
-            )}
-            {b.requestStatus === "pending" && (
-              <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold text-foreground/60">
-                <Clock className="h-3.5 w-3.5" />
-                Pending approval
-              </div>
-            )}
-            {b.requestStatus === "approved" && (
-              <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full bg-[var(--mint-soft)]/50 px-4 py-2.5 text-xs font-semibold text-foreground">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Code: {b.couponCode}
-              </div>
-            )}
-            {b.requestStatus === "rejected" && (
-              <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full bg-[var(--coral-soft)]/40 px-4 py-2.5 text-xs font-semibold text-foreground/70">
-                Request declined
-              </div>
-            )}
+                  Request Coupon
+                </button>
+              )}
+              {b.requestStatus === "pending" && (
+                <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-semibold text-foreground/60">
+                  <Clock className="h-3.5 w-3.5" />
+                  Pending approval
+                </div>
+              )}
+              {b.requestStatus === "approved" && (
+                <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full bg-[var(--mint-soft)]/50 px-4 py-2.5 text-xs font-semibold text-foreground">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Code: {b.couponCode}
+                </div>
+              )}
+              {b.requestStatus === "rejected" && (
+                <div className="clay-inset flex items-center justify-center gap-1.5 rounded-full bg-[var(--coral-soft)]/40 px-4 py-2.5 text-xs font-semibold text-foreground/70">
+                  Request declined
+                </div>
+              )}
+            </div>
           </div>
+        ))}
+      </div>
+
+      {splitTarget && (
+        <SplitPickerPopup
+          batch={splitTarget}
+          getToken={getToken}
+          onClose={() => setSplitTarget(null)}
+          onRequested={() => {
+            setSplitTarget(null);
+            load();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Lets the promoter decide, within the batch's total pool, how much goes
+// to the student's discount vs their own earning — e.g. a 10% pool could
+// become 6% student off / 4% earned, or any other split summing to 10%.
+function SplitPickerPopup({
+  batch,
+  getToken,
+  onClose,
+  onRequested,
+}: {
+  batch: PromotableBatchView;
+  getToken: () => string;
+  onClose: () => void;
+  onRequested: () => void;
+}) {
+  const [studentDiscountPercent, setStudentDiscountPercent] = useState(Math.round(batch.totalPoolPercent / 2));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const earningPercent = batch.totalPoolPercent - studentDiscountPercent;
+
+  async function handleConfirm() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await requestCoupon({ data: { token: getToken(), batchId: batch.batchId, studentDiscountPercent } });
+      onRequested();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit your request. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="clay w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center gap-2">
+          <SlidersHorizontal className="h-4 w-4 text-foreground/60" />
+          <h3 className="font-display text-base font-bold text-foreground">Set your split</h3>
         </div>
-      ))}
+        <p className="mt-1 text-xs text-foreground/60">
+          "{batch.batchName}" has a {batch.totalPoolPercent}% pool. Decide how much of it your students get off —
+          the rest is what you earn per sale.
+        </p>
+
+        <div className="mt-5">
+          <input
+            type="range"
+            min={0}
+            max={batch.totalPoolPercent}
+            value={studentDiscountPercent}
+            onChange={(e) => setStudentDiscountPercent(Number(e.target.value))}
+            className="w-full accent-[var(--sky-deep)]"
+          />
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="clay-inset rounded-2xl px-4 py-3 text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">Student off</p>
+              <p className="text-lg font-bold text-foreground">{studentDiscountPercent}%</p>
+            </div>
+            <div className="clay-inset rounded-2xl bg-[var(--mint-soft)]/30 px-4 py-3 text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">You earn</p>
+              <p className="text-lg font-bold text-emerald-700">{earningPercent}%</p>
+            </div>
+          </div>
+          <input
+            type="number"
+            min={0}
+            max={batch.totalPoolPercent}
+            value={studentDiscountPercent}
+            onChange={(e) =>
+              setStudentDiscountPercent(Math.max(0, Math.min(batch.totalPoolPercent, Number(e.target.value))))
+            }
+            className={inputClass + " mt-3"}
+          />
+        </div>
+
+        {error && <p className="mt-3 text-xs font-medium text-rose-600">{error}</p>}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={handleConfirm}
+            disabled={submitting}
+            className="clay-btn flex-1 rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-70"
+          >
+            {submitting ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Request Coupon"}
+          </button>
+          <button onClick={onClose} className="clay-btn-ghost rounded-full px-4 py-2.5 text-sm font-semibold">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -265,7 +371,8 @@ function OptedBatches({ getToken }: { getToken: () => string }) {
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-foreground">{r.batchName}</p>
               <p className="text-xs text-foreground/50">
-                Requested {formatDate(r.requestedAt)} · Predicted earning {r.predictedEarningPercent}%
+                Requested {formatDate(r.requestedAt)} · {r.studentDiscountPercent}% student off · You earn{" "}
+                {r.promoterEarningPercent}%
               </p>
             </div>
             <div className="shrink-0">

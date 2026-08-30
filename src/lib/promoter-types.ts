@@ -41,18 +41,23 @@ export type PromoterProfileUpdateInput = {
 // ─── Batch promotion offerings & coupon requests ────────────────────────────
 // A batch becomes "available to promote" the moment BatchPromotionSettings
 // exists for it (see admin-types.ts DEFAULT_BATCH_PROMOTION_PERCENT /
-// MAX_BATCH_PROMOTION_PERCENT — the mentor-set boost). This type is the
-// promoter-facing read of that same batch, joined with its own request
-// status, so Select Batches never has to guess at mentor-side fields.
+// MAX_BATCH_PROMOTION_PERCENT — the mentor-set boost). That percent is a
+// POOL, not a fixed split: the promoter decides, at request time, how much
+// of it becomes the student's discount vs their own earning. E.g. a 10%
+// pool could be split 6% student off / 4% promoter earning, or 2%/8%, or
+// any combination that sums to the pool — the promoter's call entirely.
 export type PromotableBatchView = {
   batchId: string;
   batchName: string;
   thumbnailUrl: string | null;
-  studentDiscountPercent: number; // % off the student gets via the coupon
-  promoterEarningPercent: number; // % the promoter earns per sale
+  totalPoolPercent: number; // mentor-set ceiling — student% + earning% must not exceed this
   studentCount: number;
   requestStatus: "none" | "pending" | "approved" | "rejected";
   couponCode: string | null; // only set once approved
+  // The split the promoter chose when they requested (or re-requested)
+  // this coupon. Null until a request exists.
+  studentDiscountPercent: number | null;
+  promoterEarningPercent: number | null;
 };
 
 export type PromoterCouponRequestStatus = "pending" | "approved" | "rejected";
@@ -64,7 +69,9 @@ export type PromoterCouponRequest = {
   batchName: string;
   status: PromoterCouponRequestStatus;
   couponCode: string | null; // admin sets this on approval
-  predictedEarningPercent: number; // snapshot at request time, for the "Opted batches" view
+  totalPoolPercent: number; // pool snapshot at request time
+  studentDiscountPercent: number; // promoter's chosen split
+  promoterEarningPercent: number; // = totalPoolPercent - studentDiscountPercent
   requestedAt: string | null;
   reviewedAt: string | null;
 };

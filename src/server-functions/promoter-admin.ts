@@ -135,7 +135,9 @@ export const listPromoterCouponRequests = createServerFn({ method: "GET" })
         batchName: r.batchName as string,
         status: r.status as PromoterCouponRequestStatus,
         couponCode: (r.couponCode as string | null) ?? null,
-        predictedEarningPercent: r.predictedEarningPercent as number,
+        totalPoolPercent: r.totalPoolPercent as number,
+        studentDiscountPercent: r.studentDiscountPercent as number,
+        promoterEarningPercent: r.promoterEarningPercent as number,
         requestedAt: r.requestedAt instanceof Date ? r.requestedAt.toISOString() : null,
         reviewedAt: r.reviewedAt instanceof Date ? r.reviewedAt.toISOString() : null,
       };

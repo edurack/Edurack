@@ -263,7 +263,9 @@ type CouponRequestRow = {
   batchName: string;
   status: "pending" | "approved" | "rejected";
   couponCode: string | null;
-  predictedEarningPercent: number;
+  totalPoolPercent: number;
+  studentDiscountPercent: number;
+  promoterEarningPercent: number;
   requestedAt: string | null;
 };
 
@@ -338,8 +340,8 @@ function CouponRequestQueue({
                 <div>
                   <p className="text-sm font-semibold text-foreground">{r.promoterName}</p>
                   <p className="text-xs text-foreground/50">
-                    @{r.promoterUsername} · {r.batchName} · {r.predictedEarningPercent}% earning ·{" "}
-                    {formatDate(r.requestedAt)}
+                    @{r.promoterUsername} · {r.batchName} · pool {r.totalPoolPercent}% → {r.studentDiscountPercent}%
+                    student off / {r.promoterEarningPercent}% earned · {formatDate(r.requestedAt)}
                   </p>
                 </div>
                 <Clock className="h-4 w-4 shrink-0 text-foreground/40" />
