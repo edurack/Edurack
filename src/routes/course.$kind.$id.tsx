@@ -32,6 +32,8 @@ import {
   ExternalLink,
   Download,
   ChevronRight,
+  Tag,
+  XCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
@@ -57,7 +59,7 @@ import {
   requestCallback,
   submitSupportTicket,
 } from "@/server-functions/batch-hub";
-import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
+import { createRazorpayOrder, verifyRazorpayPayment, previewCoupon } from "@/server-functions/payments";
 import { listMyAttemptsForTest } from "@/server-functions/test-results";
 
 declare global {
@@ -161,6 +163,15 @@ type AnnouncementRow = {
 
 type NoteRow = { id: string; fileName: string; fileUrl: string; watermarkApplied: boolean };
 
+// Coupon applied in the purchase bar — kept as local state until "Purchase"
+// is actually pressed, so retyping/retrying a code never creates a real
+// Razorpay order (see previewCoupon in payments.ts).
+type AppliedCoupon = {
+  code: string;
+  studentDiscountAmount: number;
+  discountedPrice: number;
+};
+
 function tabsForKind(kind: Kind): { key: TabKey; label: string; icon: typeof LayoutDashboard }[] {
   const base: { key: TabKey; label: string; icon: typeof LayoutDashboard }[] = [
     { key: "overview", label: "Overview", icon: LayoutDashboard },
@@ -195,6 +206,12 @@ function CourseHubPage() {
   const [pdfModal, setPdfModal] = useState<{ url: string; name: string } | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+
+  // ─── Coupon state (mentorship batches only) ──────────────────────────────
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const TABS = tabsForKind(kind);
 
@@ -253,6 +270,40 @@ function CourseHubPage() {
   const crossedPrice = kind === "bundle" ? bundle?.crossedPrice : mentorship?.crossedPrice;
   const discountPercent = kind === "bundle" ? bundle?.discountPercent : mentorship?.discountPercent;
   const showPurchaseBar = !isPurchased && sellingPrice !== undefined;
+  // sellingPrice is guaranteed defined whenever showPurchaseBar is true, but
+  // TypeScript can't trace that through a separate boolean — this fallback
+  // just satisfies the type checker; it's never actually 0 in practice
+  // since displayPrice is only ever rendered inside the showPurchaseBar block.
+  const safeSellingPrice = sellingPrice ?? 0;
+  const displayPrice = appliedCoupon ? appliedCoupon.discountedPrice : safeSellingPrice;
+
+  async function handleApplyCoupon() {
+    if (!user || !couponInput.trim() || sellingPrice === undefined) return;
+    setCouponError(null);
+    setCouponChecking(true);
+    try {
+      const token = await user.getIdToken();
+      const result = await previewCoupon({
+        data: { token, itemType: kind, itemId: id, couponCode: couponInput.trim() },
+      });
+      setAppliedCoupon({
+        code: couponInput.trim(),
+        studentDiscountAmount: result.studentDiscountAmount,
+        discountedPrice: result.discountedPrice,
+      });
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError(err instanceof Error ? err.message : "Couldn't apply that code.");
+    } finally {
+      setCouponChecking(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
+  }
 
   async function handlePurchase() {
     if (!user) return;
@@ -260,7 +311,9 @@ function CourseHubPage() {
     setPurchasing(true);
     try {
       const token = await user.getIdToken();
-      const order = await createRazorpayOrder({ data: { token, itemType: kind, itemId: id } });
+      const order = await createRazorpayOrder({
+        data: { token, itemType: kind, itemId: id, couponCode: appliedCoupon?.code },
+      });
       await loadRazorpayScript();
 
       const razorpay = new window.Razorpay({
@@ -319,7 +372,7 @@ function CourseHubPage() {
 
       <div
         className={`mx-auto flex max-w-6xl gap-6 px-3 pt-5 sm:px-6 sm:pt-6 ${
-          showPurchaseBar ? "pb-56 sm:pb-32" : "pb-28 sm:pb-8"
+          showPurchaseBar ? "pb-64 sm:pb-40" : "pb-28 sm:pb-8"
         }`}
       >
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
@@ -403,7 +456,7 @@ function CourseHubPage() {
       {/* ── Mobile bottom nav ───────────────────────────────────────────── */}
       <nav
         className={`clay fixed inset-x-3 z-30 flex items-center justify-around gap-0.5 rounded-3xl p-1.5 transition-all duration-300 md:hidden ${
-          showPurchaseBar ? "bottom-[6.75rem]" : "bottom-3"
+          showPurchaseBar ? "bottom-[8.5rem]" : "bottom-3"
         }`}
       >
         {TABS.map((t) => {
@@ -427,30 +480,86 @@ function CourseHubPage() {
       {/* ── Sticky purchase bar ─────────────────────────────────────────── */}
       {showPurchaseBar && (
         <div className="fixed inset-x-0 bottom-3 z-20 px-3">
-          <div className="clay mx-auto flex max-w-xl items-center justify-between gap-3 p-4 sm:p-5">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-display text-lg font-bold text-foreground">
-                  ₹{sellingPrice.toLocaleString()}
-                </span>
-                {crossedPrice && crossedPrice > sellingPrice && (
-                  <span className="text-sm text-foreground/40 line-through">
-                    ₹{crossedPrice.toLocaleString()}
-                  </span>
+          <div className="clay mx-auto max-w-xl p-4 sm:p-5">
+            {/* Coupon apply row — mentorship batches only, promoters never
+                promote bundles (see promoter-portal.ts) */}
+            {kind === "mentorship" && (
+              <div className="mb-3">
+                {appliedCoupon ? (
+                  <div className="clay-inset flex items-center justify-between gap-2 rounded-2xl bg-[var(--mint-soft)]/40 px-3.5 py-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                      <Tag className="h-3.5 w-3.5" />
+                      "{appliedCoupon.code}" applied — ₹{appliedCoupon.studentDiscountAmount.toLocaleString()} off
+                    </span>
+                    <button
+                      onClick={handleRemoveCoupon}
+                      className="text-foreground/40 hover:text-foreground/70"
+                      aria-label="Remove coupon"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleApplyCoupon();
+                          }
+                        }}
+                        placeholder="Have a coupon code?"
+                        className="clay-inset flex-1 rounded-2xl px-3.5 py-2 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleApplyCoupon}
+                        disabled={!couponInput.trim() || couponChecking}
+                        className="clay-btn-ghost shrink-0 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                      >
+                        {couponChecking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                      </button>
+                    </div>
+                    {couponError && <p className="mt-1.5 text-xs font-medium text-rose-600">{couponError}</p>}
+                  </div>
                 )}
-                {discountPercent ? (
-                  <span className="text-xs font-semibold text-[var(--sky-deep)]">{discountPercent}% OFF</span>
-                ) : null}
               </div>
-              <p className="truncate text-xs text-foreground/50">Purchase to unlock everything</p>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-display text-lg font-bold text-foreground">
+                    ₹{displayPrice.toLocaleString()}
+                  </span>
+                  {appliedCoupon ? (
+                    <span className="text-sm text-foreground/40 line-through">
+                      ₹{safeSellingPrice.toLocaleString()}
+                    </span>
+                  ) : (
+                    crossedPrice &&
+                    crossedPrice > safeSellingPrice && (
+                      <span className="text-sm text-foreground/40 line-through">
+                        ₹{crossedPrice.toLocaleString()}
+                      </span>
+                    )
+                  )}
+                  {!appliedCoupon && discountPercent ? (
+                    <span className="text-xs font-semibold text-[var(--sky-deep)]">{discountPercent}% OFF</span>
+                  ) : null}
+                </div>
+                <p className="truncate text-xs text-foreground/50">Purchase to unlock everything</p>
+              </div>
+              <button
+                onClick={handlePurchase}
+                disabled={purchasing}
+                className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
+              >
+                {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Purchase"}
+              </button>
             </div>
-            <button
-              onClick={handlePurchase}
-              disabled={purchasing}
-              className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
-            >
-              {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Purchase"}
-            </button>
           </div>
           {purchaseError && (
             <div className="clay-inset mx-auto mt-2 max-w-xl rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-center text-xs font-medium text-foreground">
@@ -792,10 +901,6 @@ function TestsTab({
 }) {
   const [attemptsByTest, setAttemptsByTest] = useState<Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>>({});
 
-  // Ticks every 30s so the LIVE / Starts / Held-on badge below actually
-  // re-evaluates over time instead of freezing at whatever it was when
-  // the page first loaded. This is purely cosmetic — it does NOT gate
-  // whether the test can be opened, see disabled={!isPurchased} below.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
@@ -839,9 +944,6 @@ function TestsTab({
   return (
     <div className="space-y-3">
       {tests.map((t) => {
-        // Uses the ticking `now` state instead of a one-off Date.now()
-        // call, so the badge below recomputes on every 30s tick. Purely
-        // informational — access is controlled only by isPurchased.
         const start = new Date(t.liveStart).getTime();
         const end = new Date(t.liveEnd).getTime();
         const isLive = now >= start && now <= end;
@@ -874,9 +976,6 @@ function TestsTab({
                 </p>
               </div>
 
-              {/* NOTE: disabled is `!isPurchased` only, in both branches
-                  below — the live/held-on badge above is informational,
-                  it never gates whether the test can be opened. */}
               {attempted ? (
                 <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
                   <button
@@ -1165,8 +1264,6 @@ function SessionKebabMenu({
   );
 }
 
-// ─── Assets tab — both bundle syllabus/planner docs AND mentorship batch
-// notes; opens via the redesigned in-page PDF modal, no Google redirect ────
 function AssetsTab({
   kind,
   bundle,
@@ -1312,7 +1409,6 @@ function AnnouncementsTab({
   );
 }
 
-// ─── Chat tab — student ↔ mentor DM, mentorship batches only ───────────────
 type ChatMessage = { id: string; sender: "mentor" | "student"; body: string; createdAt: string | null };
 
 function ChatTab({

@@ -78,6 +78,28 @@ function applyCouponDiscount(sellingPrice: number, coupon: ResolvedCoupon) {
   return { studentDiscountAmount, promoterEarning, discountedPrice };
 }
 
+// ─── Preview a coupon (no Razorpay order created) ──────────────────────────
+// Cheap validate-and-show-the-discount call for the checkout UI's "Apply"
+// button — students can retype/retry a code freely without spamming real
+// Razorpay order creation. createRazorpayOrder re-validates the code again
+// itself when the actual order is placed, so nothing here is trusted blindly.
+export const previewCoupon = createServerFn({ method: "POST" })
+  .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => data)
+  .handler(async ({ data }) => {
+    await requireSignedIn(data.token);
+    const { sellingPrice } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+    const coupon = await resolveCoupon(data.itemType, data.itemId, data.couponCode.trim());
+    const { studentDiscountAmount, discountedPrice } = applyCouponDiscount(sellingPrice, coupon);
+
+    return {
+      valid: true,
+      originalPrice: sellingPrice,
+      studentDiscountAmount,
+      discountedPrice,
+      studentDiscountPercent: coupon.studentDiscountPercent,
+    };
+  });
+
 // ─── Create order ──────────────────────────────────────────────────────────
 export const createRazorpayOrder = createServerFn({ method: "POST" })
   .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode?: string }) => data)
