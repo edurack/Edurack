@@ -1,8 +1,24 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, User, GraduationCap, Lock, Trophy, Building2, BookMarked, Play } from "lucide-react";
+import {
+  Loader2,
+  User,
+  GraduationCap,
+  Lock,
+  Trophy,
+  Building2,
+  BookMarked,
+  Video,
+  ExternalLink,
+  Check,
+  Megaphone,
+  TrendingUp,
+} from "lucide-react";
 import type { MentorProfileExtended, YearOfStudy } from "@/lib/admin-types";
 import { getMentorProfile, updateMyMentorProfile } from "@/server-functions/mentor-auth";
-import { VideoPlayer } from "@/components/clay-video-player";
+import { getMyIntroVideoStatus, setIntroVideoUploadedStatus } from "@/server-functions/mentor-profile-extras";
+import { listMyAssignedBatches } from "@/server-functions/mentor-portal";
+import { getBatchPromotionSettings, setBatchPromotionPercent } from "@/server-functions/mentor-earnings";
+import { DEFAULT_BATCH_PROMOTION_PERCENT, MAX_BATCH_PROMOTION_PERCENT } from "@/lib/admin-types";
 import {
   ModuleHeader,
   ClayField,
@@ -11,7 +27,6 @@ import {
   ErrorBanner,
   SuccessBanner,
   ImageUploadField,
-  LectureUploadField,
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
@@ -48,7 +63,7 @@ export function MentorProfileModule({ mentorToken }: { mentorToken: string }) {
     <div>
       <ModuleHeader
         title="Mentor Profile Control"
-        subtitle="Update the details students see on your mentorship page."
+        subtitle="Update the details students see on your mentorship page, and manage your batch promotion settings."
       />
 
       {loadError && (
@@ -61,8 +76,10 @@ export function MentorProfileModule({ mentorToken }: { mentorToken: string }) {
         <LoadingBlock />
       ) : profile ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+          <div className="space-y-6 lg:col-span-2">
             <EditableProfileForm profile={profile} mentorToken={mentorToken} onSaved={refresh} />
+            <IntroVideoDriveLinkPanel mentorToken={mentorToken} />
+            <BatchPromotionPanel mentorToken={mentorToken} />
           </div>
           <div className="sticky top-6 lg:col-span-1">
             <LockedInfoPanel profile={profile} />
@@ -87,7 +104,6 @@ function EditableProfileForm({
   const [profilePictureUrl, setProfilePictureUrl] = useState(profile.profilePictureUrl ?? "");
   const [aboutText, setAboutText] = useState(profile.aboutText ?? "");
   const [yearOfStudy, setYearOfStudy] = useState<YearOfStudy | "">(profile.yearOfStudy ?? "");
-  const [introVideoUrl, setIntroVideoUrl] = useState(profile.introVideoUrl ?? "");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +128,6 @@ function EditableProfileForm({
             profilePictureUrl: profilePictureUrl.trim() || null,
             aboutText: aboutText.trim(),
             yearOfStudy,
-            introVideoUrl: introVideoUrl.trim() || null,
           },
         },
       });
@@ -169,8 +184,6 @@ function EditableProfileForm({
           </div>
         </ClayField>
 
-        <IntroVideoUploader value={introVideoUrl} onChange={setIntroVideoUrl} mentorId={profile.id} />
-
         {error && <ErrorBanner message={error} />}
         {success && <SuccessBanner message="Profile updated." />}
 
@@ -186,43 +199,194 @@ function EditableProfileForm({
   );
 }
 
-// ─── Self-introduction video node ───────────────────────────────────────
-// Now a real upload (to the mentor-lectures Supabase bucket, 500MB cap,
-// resumable) instead of only previewing a local blob while a hosted URL
-// gets pasted in separately — the two-step "upload elsewhere, paste here"
-// flow this replaced was never actually wired to anything.
-function IntroVideoUploader({
-  value,
-  onChange,
-  mentorId,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  mentorId: string;
-}) {
+// ─── Self-introduction video — Google Drive link workflow ─────────────────
+// Replaces the old direct-upload flow entirely. Edurack shares a Drive
+// folder link where the mentor manually drops the file; this panel just
+// shows that link, admin's shooting instructions, and lets the mentor
+// flip a self-reported "I've uploaded it" status once they've done so.
+function IntroVideoDriveLinkPanel({ mentorToken }: { mentorToken: string }) {
+  const [status, setStatus] = useState<{
+    driveUploadLink: string | null;
+    instructions: string;
+    uploaded: boolean;
+    markedUploadedAt: string | null;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function refresh() {
+    const { status: s } = await getMyIntroVideoStatus({ data: { token: mentorToken } });
+    setStatus(s);
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  async function toggleUploaded() {
+    if (!status) return;
+    setSaving(true);
+    try {
+      await setIntroVideoUploadedStatus({ data: { token: mentorToken, uploaded: !status.uploaded } });
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div>
-      <LectureUploadField
-        label="Self-introduction video"
-        value={value}
-        onChange={onChange}
-        storagePath={`mentor-profiles/${mentorId}/intro`}
-      />
-      {value && (
-        <div className="clay-inset mt-3 overflow-hidden rounded-2xl">
-          <div className="aspect-video">
-            <VideoPlayer src={value} />
+    <Panel icon={Video} title="Self-introduction video">
+      {status === null ? (
+        <LoadingBlock compact />
+      ) : (
+        <div className="space-y-4">
+          <div className="clay-inset rounded-2xl px-4 py-3.5">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+              How we'd like it shot
+            </p>
+            <p className="text-sm text-foreground/70">{status.instructions}</p>
           </div>
+
+          {status.driveUploadLink ? (
+            <a
+              href={status.driveUploadLink}
+              target="_blank"
+              rel="noreferrer"
+              className="clay-btn-ghost inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-foreground/70"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open the Drive upload folder
+            </a>
+          ) : (
+            <p className="text-xs text-foreground/50">
+              Edurack hasn't shared your upload link yet — check back soon, or reach out via Help Desk.
+            </p>
+          )}
+
+          <label className="clay-inset flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-4 py-3.5">
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Check className={`h-4 w-4 ${status.uploaded ? "text-[var(--sky-deep)]" : "text-foreground/30"}`} />
+              I've uploaded my video to the Drive folder
+            </div>
+            <input
+              type="checkbox"
+              checked={status.uploaded}
+              onChange={toggleUploaded}
+              disabled={saving || !status.driveUploadLink}
+              className="h-4 w-4 accent-[var(--sky-deep)]"
+            />
+          </label>
+
+          {status.uploaded && status.markedUploadedAt && (
+            <p className="text-xs text-foreground/40">
+              Marked uploaded on {new Date(status.markedUploadedAt).toLocaleDateString()}.
+            </p>
+          )}
         </div>
       )}
-      {!value && (
-        <div className="clay-inset mt-3 flex aspect-video items-center justify-center rounded-2xl bg-[var(--sky-soft)]/60">
-          <div className="flex flex-col items-center gap-2 text-foreground/40">
-            <Play className="h-8 w-8" strokeWidth={1.5} />
-            <span className="text-xs font-medium">No intro video yet</span>
-          </div>
+    </Panel>
+  );
+}
+
+// ─── Batch Promotion Boost ──────────────────────────────────────────────────
+// Every batch starts promoters at a flat 10% commission on referred sales.
+// If a mentor isn't getting promoter pickup, they can raise it here — this
+// only affects what promoters earn, never the platform's own cut from the
+// mentor (that's the fixed 15% shown on the Overview page).
+type Batch = { id: string; name: string; track: string };
+
+function BatchPromotionPanel({ mentorToken }: { mentorToken: string }) {
+  const [batches, setBatches] = useState<Batch[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { batches: rows } = await listMyAssignedBatches({ data: { token: mentorToken } });
+      setBatches(rows);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  return (
+    <Panel icon={Megaphone} title="Batch promotion boost">
+      <p className="mb-4 text-xs text-foreground/50">
+        Every batch starts promoters off at {DEFAULT_BATCH_PROMOTION_PERCENT}% commission on referred sales. If
+        promoters aren't picking up your batch, raise this to make it more attractive — this comes out of your own
+        share, not the platform's commission.
+      </p>
+
+      {batches === null ? (
+        <LoadingBlock compact />
+      ) : batches.length === 0 ? (
+        <p className="text-xs text-foreground/50">No batches assigned yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {batches.map((b) => (
+            <BatchBoostRow key={b.id} mentorToken={mentorToken} batch={b} />
+          ))}
         </div>
       )}
+    </Panel>
+  );
+}
+
+function BatchBoostRow({ mentorToken, batch }: { mentorToken: string; batch: Batch }) {
+  const [percent, setPercent] = useState(DEFAULT_BATCH_PROMOTION_PERCENT);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { settings } = await getBatchPromotionSettings({ data: { token: mentorToken, batchId: batch.id } });
+      setPercent(settings.promotionPercent);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.id]);
+
+  async function save() {
+    setError(null);
+    setSuccess(false);
+    setSaving(true);
+    try {
+      await setBatchPromotionPercent({ data: { token: mentorToken, batchId: batch.id, promotionPercent: percent } });
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="clay-inset rounded-2xl px-4 py-3.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-foreground">
+          {batch.name} <span className="text-xs font-normal text-foreground/40">· {batch.track}</span>
+        </p>
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)]">
+          <TrendingUp className="h-3.5 w-3.5" />
+          {percent}%
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={DEFAULT_BATCH_PROMOTION_PERCENT}
+          max={MAX_BATCH_PROMOTION_PERCENT}
+          value={percent}
+          onChange={(e) => setPercent(Number(e.target.value))}
+          className="flex-1 accent-[var(--sky-deep)]"
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          className="clay-btn-ghost shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold text-foreground/70 disabled:opacity-70"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs font-medium text-rose-600">{error}</p>}
+      {success && <p className="mt-2 text-xs font-medium text-foreground/50">Saved.</p>}
     </div>
   );
 }

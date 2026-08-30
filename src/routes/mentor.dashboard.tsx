@@ -10,6 +10,7 @@ import {
   MessageSquare,
   LifeBuoy,
   Library,
+  ClipboardList,
   LogOut,
 } from "lucide-react";
 import { getMentorSession } from "@/server-functions/mentor-auth";
@@ -20,18 +21,23 @@ import { MentorSchedulerModule } from "@/components/mentor-scheduler-module";
 import { MentorChatModule } from "@/components/mentor-chat-module";
 import { MentorSupportModule } from "@/components/mentor-support-module";
 import { MentorLectureLibraryModule } from "@/components/mentor-lecture-library-module";
+import { MentorTestSeriesModule } from "@/components/mentor-test-series-module";
 
-type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library";
+type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library" | "testSeries";
 
 // Overview leads now — a mentor logging in sees what needs their attention,
 // not an edit form. Order after that roughly matches how often each tab
 // gets used day-to-day (schedule/chat before the rarer profile/support).
+// Test Series sits right after Announcements — it's a mentor-initiated,
+// occasionally-visited product-management area, same usage tier as
+// Announcements, and ahead of the rarer Profile/Help Desk tabs.
 const MODULES: { key: ModuleKey; label: string; icon: typeof User }[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "scheduler", label: "Live Sessions", icon: CalendarClock },
   { key: "chat", label: "Chat Desk", icon: MessageSquare },
   { key: "library", label: "Lecture Library", icon: Library },
   { key: "announcements", label: "Announcements", icon: Megaphone },
+  { key: "testSeries", label: "Test Series", icon: ClipboardList },
   { key: "profile", label: "Profile", icon: User },
   { key: "support", label: "Help Desk", icon: LifeBuoy },
 ];
@@ -185,6 +191,7 @@ function MentorDashboardPage() {
               {activeModule === "library" && <MentorLectureLibraryModule mentorToken={mentorToken} />}
               {activeModule === "chat" && <MentorChatModule mentorToken={mentorToken} />}
               {activeModule === "support" && <MentorSupportModule mentorToken={mentorToken} />}
+              {activeModule === "testSeries" && <MentorTestSeriesModule mentorToken={mentorToken} />}
             </div>
           </main>
         </div>

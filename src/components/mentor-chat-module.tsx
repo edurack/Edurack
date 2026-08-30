@@ -12,6 +12,8 @@ import {
   Plus,
   X,
   ArrowLeft,
+  PlayCircle,
+  Layers3,
 } from "lucide-react";
 import {
   listMyAssignedBatches,
@@ -23,6 +25,7 @@ import {
   uploadMentorNote,
   listMentorNotes,
   listBatchStudents,
+  listBatchLecturesForNoteScope,
 } from "@/server-functions/mentor-portal";
 import {
   ModuleHeader,
@@ -46,6 +49,8 @@ type Thread = {
 };
 type ChatMessage = { id: string; sender: "mentor" | "student"; body: string; createdAt: string | null };
 type Student = { uid: string; fullName: string; email: string | null };
+type LectureOption = { id: string; lectureTitle: string };
+type Note = { id: string; fileName: string; fileUrl: string; lectureSessionId: string | null; createdAt: string | null };
 
 export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
   const [batches, setBatches] = useState<Batch[] | null>(null);
@@ -64,7 +69,7 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
     <div>
       <ModuleHeader
         title="Student Chat Desk"
-        subtitle="Split-pane DM canvas with a lockable daily messaging window, plus watermark-gated note uploads."
+        subtitle="Split-pane DM canvas with a lockable daily messaging window, plus notes you can attach to the whole batch or a single lecture."
       />
 
       {batches === null ? (
@@ -99,10 +104,6 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
 }
 
 // ─── Split-pane chat canvas ────────────────────────────────────────────────
-// Mobile fix: previously both panes rendered at once, squeezed side by
-// side, on every screen size — unusable on a phone. Now, on narrow screens,
-// an active conversation replaces the thread list entirely (with a back
-// button to return), instead of both trying to share the same cramped row.
 function ChatCanvas({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [threads, setThreads] = useState<Thread[] | null>(null);
   const [activeStudentUid, setActiveStudentUid] = useState<string | null>(null);
@@ -484,29 +485,52 @@ function ChatLockControl({ mentorToken, batchId }: { mentorToken: string; batchI
   );
 }
 
-// ─── Anti-Piracy Document Gate ──────────────────────────────────────────────
-// Upload is a rare, deliberate action — collapsed behind a toggle so the
-// notes list (what you'd actually check regularly) leads instead.
+// ─── Note uploads — batch-wide or lecture-specific, no watermark ──────────
+// The old anti-piracy watermark step is gone entirely — notes are stored
+// and served exactly as uploaded. What replaced it: a scope choice at
+// upload time. "Whole batch" behaves like before (every purchaser sees
+// it); "One lecture" attaches the note to a specific AsyncLecture session,
+// so it only shows up alongside that recording rather than in the
+// shared batch-wide notes pool.
 function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId: string }) {
   const [fileName, setFileName] = useState("");
   const [fileUrl, setFileUrl] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
-  const [notes, setNotes] = useState<
-    { id: string; fileName: string; fileUrl: string; watermarkApplied: boolean; createdAt: string | null }[] | null
-  >(null);
+  const [scope, setScope] = useState<"batch" | string>("batch"); // "batch" or a lectureSessionId
+  const [lectures, setLectures] = useState<LectureOption[] | null>(null);
+  const [notes, setNotes] = useState<Note[] | null>(null);
+  const [filter, setFilter] = useState<"all" | "batch-only" | string>("all");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  async function refresh() {
-    const { notes: rows } = await listMentorNotes({ data: { token: mentorToken, batchId } });
+  async function refreshLectures() {
+    const { lectures: rows } = await listBatchLecturesForNoteScope({ data: { token: mentorToken, batchId } });
+    setLectures(rows);
+  }
+
+  async function refreshNotes(currentFilter: typeof filter) {
+    const { notes: rows } = await listMentorNotes({
+      data: {
+        token: mentorToken,
+        batchId,
+        lectureSessionId: currentFilter === "all" ? undefined : currentFilter,
+      },
+    });
     setNotes(rows);
   }
 
   useEffect(() => {
-    refresh();
+    refreshLectures();
+    setFilter("all");
+    refreshNotes("all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
+
+  useEffect(() => {
+    refreshNotes(filter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -518,19 +542,29 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
     setSaving(true);
     try {
       await uploadMentorNote({
-        data: { token: mentorToken, batchId, fileName: fileName.trim(), fileUrl: fileUrl.trim(), copyrightAcknowledged: acknowledged },
+        data: {
+          token: mentorToken,
+          batchId,
+          fileName: fileName.trim(),
+          fileUrl: fileUrl.trim(),
+          lectureSessionId: scope === "batch" ? null : scope,
+          copyrightAcknowledged: acknowledged,
+        },
       });
       setFileName("");
       setFileUrl("");
       setAcknowledged(false);
+      setScope("batch");
       setShowForm(false);
-      await refresh();
+      await refreshNotes(filter);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not upload. Try again.");
     } finally {
       setSaving(false);
     }
   }
+
+  const lectureTitleById = new Map((lectures ?? []).map((l) => [l.id, l.lectureTitle]));
 
   return (
     <Panel
@@ -568,6 +602,24 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
             />
           </ClayField>
 
+          <ClayField label="Push to" hint="Attach this note to the whole batch, or to just one lecture.">
+            <div className="relative">
+              <select value={scope} onChange={(e) => setScope(e.target.value)} className={inputClass + " appearance-none pr-10"}>
+                <option value="batch">Whole batch (all students)</option>
+                {(lectures ?? []).map((l) => (
+                  <option key={l.id} value={l.id}>
+                    Lecture only — {l.lectureTitle}
+                  </option>
+                ))}
+              </select>
+              {scope === "batch" ? (
+                <Layers3 className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/40" />
+              ) : (
+                <PlayCircle className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/40" />
+              )}
+            </div>
+          </ClayField>
+
           <label className="clay-inset flex cursor-pointer items-start gap-3 rounded-2xl px-4 py-3">
             <input
               type="checkbox"
@@ -577,10 +629,7 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
             />
             <div className="flex items-start gap-2 text-sm text-foreground">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" />
-              <span>
-                I confirm this document is copyright-safe to share, and understand the system will automatically
-                append a diagonal "Edurack" background watermark across every page before it reaches students.
-              </span>
+              <span>I confirm this document is copyright-safe to share with students.</span>
             </div>
           </label>
 
@@ -596,6 +645,34 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
         </form>
       )}
 
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {[
+          { key: "all", label: "All notes" },
+          { key: "batch-only", label: "Batch-wide" },
+        ].map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key as typeof filter)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              filter === f.key ? "clay-btn text-white" : "clay-btn-ghost text-foreground/60"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+        {(lectures ?? []).map((l) => (
+          <button
+            key={l.id}
+            onClick={() => setFilter(l.id)}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              filter === l.id ? "clay-btn text-white" : "clay-btn-ghost text-foreground/60"
+            }`}
+          >
+            {l.lectureTitle}
+          </button>
+        ))}
+      </div>
+
       {notes === null ? (
         <LoadingBlock compact />
       ) : notes.length === 0 ? (
@@ -608,12 +685,18 @@ function NoteUploadGate({ mentorToken, batchId }: { mentorToken: string; batchId
                 <FileText className="h-4 w-4 shrink-0 text-foreground/40" />
                 <span className="truncate text-sm text-foreground">{n.fileName}</span>
               </a>
-              <span
-                className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                  n.watermarkApplied ? "bg-[var(--mint-soft)]/60 text-foreground" : "bg-foreground/5 text-foreground/50"
-                }`}
-              >
-                {n.watermarkApplied ? "Watermarked" : "Pending watermark"}
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-foreground/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/50">
+                {n.lectureSessionId ? (
+                  <>
+                    <PlayCircle className="h-3 w-3" />
+                    {lectureTitleById.get(n.lectureSessionId) ?? "Lecture"}
+                  </>
+                ) : (
+                  <>
+                    <Layers3 className="h-3 w-3" />
+                    Whole batch
+                  </>
+                )}
               </span>
             </li>
           ))}

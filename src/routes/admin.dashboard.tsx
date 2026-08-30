@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Loader2,
@@ -46,6 +47,7 @@ import {
   Instagram,
   Linkedin,
   Twitter,
+  Megaphone,
   Send as SendIcon,
   Building2,
   Calendar,
@@ -91,6 +93,7 @@ type ModuleKey =
   | "students"
   | "applications"
   | "mentors"
+  | "promoters"
   | "dangerZone"
   | "tickets";
 
@@ -113,13 +116,14 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
     ],
   },
   {
-    label: "People",
-    items: [
-      { key: "students", label: "Students", icon: Users },
-      { key: "applications", label: "Applications", icon: FileCheck },
-      { key: "mentors", label: "Mentors", icon: GraduationCap },
-    ],
-  },
+  label: "People",
+  items: [
+    { key: "students", label: "Students", icon: Users },
+    { key: "applications", label: "Applications", icon: FileCheck },
+    { key: "mentors", label: "Mentors", icon: GraduationCap },
+    { key: "promoters", label: "Promoters", icon: Megaphone },  // ← add (Megaphone already imported)
+  ],
+},
   { label: "Support", items: [{ key: "tickets", label: "Tickets", icon: LifeBuoy }] },
   { label: "Danger Zone", items: [{ key: "dangerZone", label: "Danger Zone", icon: Trash2 }] },
 ];
@@ -371,6 +375,8 @@ function ModuleRouter({
       return <ApplicationsModule adminUser={adminUser} />;
     case "mentors":
       return <MentorHubModule adminUser={adminUser} />;
+    case "promoters":
+      return <PromoterHubModule adminUser={adminUser} />;
     case "tickets":
       return <TicketsModule adminUser={adminUser} />;
     case "dangerZone":

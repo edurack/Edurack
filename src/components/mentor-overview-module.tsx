@@ -1,10 +1,7 @@
-// The mentor portal previously had no home screen at all — it landed
-// straight on Profile Control, an editing form, as if that were the most
-// useful thing to see on login. This aggregates what already exists across
-// listMyAssignedBatches / listMentorshipSessions / listChatThreads /
-// listMyMentorTickets / getMentorProfileCompleteness — no new server
-// functions were needed, this is purely client-side composition of data
-// that was already there but never surfaced together.
+// The mentor portal previously had no home screen at all — this aggregates
+// what already existed across listMyAssignedBatches / listMentorshipSessions
+// / listChatThreads / listMyMentorTickets / getMentorProfileCompleteness,
+// plus (new) the earnings overview and test-series access status.
 import { useEffect, useState } from "react";
 import {
   CalendarClock,
@@ -16,6 +13,11 @@ import {
   Video,
   Users2,
   PlayCircle,
+  IndianRupee,
+  TrendingUp,
+  ClipboardList,
+  Lock,
+  Loader2,
 } from "lucide-react";
 import {
   listMyAssignedBatches,
@@ -24,9 +26,15 @@ import {
   listMyMentorTickets,
 } from "@/server-functions/mentor-portal";
 import { getMentorProfileCompleteness } from "@/server-functions/mentor-auth";
+import {
+  getMentorEarningsOverview,
+  getTestSeriesAccessStatus,
+  requestTestSeriesAccess,
+} from "@/server-functions/mentor-earnings";
+import { PLATFORM_COMMISSION_PERCENT, type MentorEarningsOverview, type TestSeriesAccessStatus } from "@/lib/admin-types";
 import { ModuleHeader, Panel, StatChip, LoadingBlock, EmptyState } from "@/components/mentor-portal-ui";
 
-type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library";
+type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library" | "testSeries";
 
 type SessionRow = {
   id: string;
@@ -256,6 +264,12 @@ export function MentorOverviewModule({
             </Panel>
           </div>
 
+          {/* ── Earnings ───────────────────────────────────────────── */}
+          <EarningsSection mentorToken={mentorToken} />
+
+          {/* ── Test Series access ────────────────────────────────── */}
+          <TestSeriesAccessSection mentorToken={mentorToken} onNavigate={onNavigate} />
+
           {/* ── Quick actions ──────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <QuickAction icon={LifeBuoy} label="Help Desk" onClick={() => onNavigate("support")} />
@@ -266,6 +280,171 @@ export function MentorOverviewModule({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Earnings section ───────────────────────────────────────────────────
+function EarningsSection({ mentorToken }: { mentorToken: string }) {
+  const [overview, setOverview] = useState<MentorEarningsOverview | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { overview: o } = await getMentorEarningsOverview({ data: { token: mentorToken } });
+      setOverview(o);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  return (
+    <Panel icon={IndianRupee} title="Earnings">
+      {overview === null ? (
+        <LoadingBlock compact />
+      ) : overview.purchases.length === 0 ? (
+        <EmptyState icon={IndianRupee} message="No purchases recorded against your batches yet." />
+      ) : (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3">
+            <StatChip icon={TrendingUp} label="Net earned (all-time)" value={`₹${overview.totalNetEarned.toLocaleString("en-IN")}`} tone="mint" />
+            <StatChip
+              icon={IndianRupee}
+              label={`Gross · ${PLATFORM_COMMISSION_PERCENT}% platform fee`}
+              value={`₹${overview.totalGross.toLocaleString("en-IN")}`}
+              tone="sky"
+            />
+          </div>
+
+          {overview.monthly.length > 0 && (
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                Monthly net earnings
+              </p>
+              <div className="flex items-end gap-2 overflow-x-auto pb-1">
+                {overview.monthly.map((m) => {
+                  const maxNet = Math.max(...overview.monthly.map((x) => x.netEarned), 1);
+                  const heightPercent = Math.max(6, Math.round((m.netEarned / maxNet) * 100));
+                  return (
+                    <div key={m.month} className="flex min-w-[52px] flex-col items-center gap-1.5">
+                      <div className="flex h-24 w-full items-end">
+                        <div
+                          className="w-full rounded-t-lg bg-[var(--sky-deep)]"
+                          style={{ height: `${heightPercent}%` }}
+                          title={`₹${m.netEarned.toLocaleString("en-IN")} net`}
+                        />
+                      </div>
+                      <span className="text-[10px] font-medium text-foreground/50">{m.month.slice(5)}/{m.month.slice(2, 4)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+              Purchase records
+            </p>
+            <div className="clay-inset max-h-72 overflow-y-auto rounded-2xl">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 bg-[var(--sky-soft)]/40 text-[10px] font-semibold uppercase tracking-wide text-foreground/50">
+                  <tr>
+                    <th className="px-4 py-2.5">Student</th>
+                    <th className="px-4 py-2.5">Batch</th>
+                    <th className="px-4 py-2.5">Amount</th>
+                    <th className="px-4 py-2.5">Net earned</th>
+                    <th className="px-4 py-2.5">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.purchases.map((p, i) => (
+                    <tr key={`${p.studentUid}-${p.batchId}-${i}`} className="border-t border-foreground/5">
+                      <td className="px-4 py-2.5 font-medium text-foreground">{p.studentName}</td>
+                      <td className="px-4 py-2.5 text-foreground/70">{p.batchName}</td>
+                      <td className="px-4 py-2.5 text-foreground/70">₹{p.amount.toLocaleString("en-IN")}</td>
+                      <td className="px-4 py-2.5 font-semibold text-[var(--sky-deep)]">₹{p.netEarned.toLocaleString("en-IN")}</td>
+                      <td className="px-4 py-2.5 text-xs text-foreground/40">
+                        {p.purchasedAt ? new Date(p.purchasedAt).toLocaleDateString() : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ─── Test Series access / request ───────────────────────────────────────
+function TestSeriesAccessSection({
+  mentorToken,
+  onNavigate,
+}: {
+  mentorToken: string;
+  onNavigate: (key: ModuleKey) => void;
+}) {
+  const [status, setStatus] = useState<TestSeriesAccessStatus | null>(null);
+  const [requesting, setRequesting] = useState(false);
+
+  async function refresh() {
+    const { status: s } = await getTestSeriesAccessStatus({ data: { token: mentorToken } });
+    setStatus(s);
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  async function handleRequest() {
+    setRequesting(true);
+    try {
+      await requestTestSeriesAccess({ data: { token: mentorToken } });
+      await refresh();
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  return (
+    <Panel icon={ClipboardList} title="Test Series">
+      {status === null ? (
+        <LoadingBlock compact />
+      ) : status.hasAccess ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-foreground/70">
+            You're approved to sell your own test series
+            {status.source === "onboarding" ? " (from your onboarding application)." : " (admin-approved)."}
+          </p>
+          <button
+            onClick={() => onNavigate("testSeries")}
+            className="clay-btn inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+          >
+            Manage test series <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : status.requested ? (
+        <div className="flex items-center gap-2 text-sm text-foreground/60">
+          <Lock className="h-4 w-4" />
+          Your request to sell test series is pending admin approval.
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-foreground/70">
+            Want to sell your own test series alongside your mentorship batch? Request access and Edurack will
+            review it.
+          </p>
+          <button
+            onClick={handleRequest}
+            disabled={requesting}
+            className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-foreground/70 disabled:opacity-70"
+          >
+            {requesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Request test series access"}
+          </button>
+        </div>
+      )}
+    </Panel>
   );
 }
 

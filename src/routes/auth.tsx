@@ -33,7 +33,18 @@ export const Route = createFileRoute("/auth")({
       { name: "description", content: "Sign in or create your Edurack account to access the NEET, JEE, CUET & IPMAT CBT engines, smart dashboards and mentor ecosystem." },
       { property: "og:title", content: "Sign in · Edurack" },
       { property: "og:description", content: "Access your NEET, JEE, CUET & IPMAT prep dashboard on Edurack." },
+      // Intentional: this is an auth/login page, not organic-search content.
+      // Keep noindex here — only remove noindex from public-facing pages
+      // (home, landing, exam-info pages), not from /auth, /dashboard, etc.
       { name: "robots", content: "noindex" },
+    ],
+    // PERF: preconnect to apis.google.com early — this is where the
+    // Firebase "Sign in with Google" popup/iframe flow (auth/iframe.js)
+    // ends up fetching from. Lighthouse flagged ~300ms LCP savings here.
+    // Keep total preconnects <= 4 across the app (fonts.googleapis.com +
+    // fonts.gstatic.com are already used elsewhere).
+    links: [
+      { rel: "preconnect", href: "https://apis.google.com" },
     ],
   }),
   component: AuthPage,
@@ -181,9 +192,23 @@ function AuthPage() {
 
         <div className="animate-in fade-in zoom-in-95 mb-6 flex flex-col items-center gap-3 duration-500">
           <div className="clay flex h-12 w-auto items-center justify-center p-2 sm:h-14">
+            {/*
+              PERF (Lighthouse: ~141 KiB image savings + CLS risk):
+              - width/height added below so the browser can reserve space
+                before the image loads (kills layout shift).
+              - Source is 443x502 displayed at ~62x70 — that's ~8x more
+                pixels than needed, served as an uncompressed PNG from a
+                third-party host (i.postimg.cc) with no cache-control you
+                control.
+              TODO (outside this file): export the logo as WebP/AVIF at
+              ~140x140 (2x for retina) and self-host it under /assets so it
+              ships with your own cache headers instead of postimg.cc's.
+            */}
             <img
               src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
               alt="Edurack"
+              width={62}
+              height={70}
               className="h-10 w-auto object-contain sm:h-12"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = "none";

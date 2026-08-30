@@ -151,6 +151,11 @@ export const getMentorSession = createServerFn({ method: "POST" })
 // onboarded before this module existed) default to empty string rather
 // than throwing, so older mentor documents render cleanly as "Not set yet"
 // in the LockedInfoPanel instead of crashing the page.
+//
+// introVideoUrl is still read here (legacy field, kept for backward compat
+// on old documents) but is no longer written by updateMyMentorProfile below
+// — the self-intro video is now the Drive-link workflow in
+// mentor-profile-extras.ts (getMyIntroVideoStatus / setIntroVideoUploadedStatus).
 export const getMentorProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -180,10 +185,12 @@ export const getMentorProfile = createServerFn({ method: "POST" })
 
 // Mentor-facing self-service update. The validator's input type is
 // MentorProfileUpdateInput, which structurally excludes aiimsIitRank,
-// enrolledCollege, and pursuedCourse — those three keys are never read from
-// `data.profile` here, so even a hand-crafted request body can't smuggle a
-// locked-field change through this endpoint. Locked-field writes only ever
-// happen via updateMentorLockedInfo below, gated by requireSuperAdmin.
+// enrolledCollege, pursuedCourse, AND (as of the Drive-link intro video
+// workflow) introVideoUrl — none of those are read from `data.profile`
+// here, so even a hand-crafted request body can't smuggle a locked-field
+// or retired-field change through this endpoint. Locked-field writes only
+// ever happen via updateMentorLockedInfo below, gated by requireSuperAdmin;
+// intro video status only ever changes via mentor-profile-extras.ts.
 export const updateMyMentorProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string; profile: MentorProfileUpdateInput }) => data)
   .handler(async ({ data }) => {
@@ -191,16 +198,13 @@ export const updateMyMentorProfile = createServerFn({ method: "POST" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
-    const { name, profilePictureUrl, aboutText, yearOfStudy, introVideoUrl } = data.profile;
+    const { name, profilePictureUrl, aboutText, yearOfStudy } = data.profile;
 
     if (!name.trim()) throw new Error("Name cannot be empty.");
-    if (!aboutText.trim()) throw new Error("About text cannot be empty.");if (aboutText.trim().length < 50) {
+    if (!aboutText.trim()) throw new Error("About text cannot be empty.");
+    if (aboutText.trim().length < 50) {
       throw new Error("About section should be at least 50 characters — give students a real sense of your journey.");
     }
-    if (introVideoUrl && !/^https?:\/\//.test(introVideoUrl)) {
-      throw new Error("Intro video URL must start with http:// or https://");
-    }
-
 
     await db.collection("mentors").updateOne(
       { _id: new ObjectId(mentorId) },
@@ -210,7 +214,6 @@ export const updateMyMentorProfile = createServerFn({ method: "POST" })
           profilePictureUrl,
           aboutText: aboutText.trim(),
           yearOfStudy,
-          introVideoUrl,
         },
       },
     );
@@ -247,6 +250,10 @@ export const updateMentorLockedInfo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// "Intro video" completeness now checks the Drive-link upload status
+// (mentorIntroVideoStatus.uploaded) instead of the retired introVideoUrl
+// field — a mentor who's ticked "I've uploaded it" counts as complete here
+// even though `mentors.introVideoUrl` itself is never populated anymore.
 export const getMentorProfileCompleteness = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -256,11 +263,13 @@ export const getMentorProfileCompleteness = createServerFn({ method: "POST" })
     const m = await db.collection("mentors").findOne({ _id: new ObjectId(mentorId) });
     if (!m) throw new Error("Mentor account not found.");
 
+    const introVideoStatus = await db.collection("mentorIntroVideoStatus").findOne({ mentorId });
+
     const checks = [
       { key: "profilePictureUrl", label: "Profile picture", done: Boolean(m.profilePictureUrl) },
       { key: "aboutText", label: "About section", done: ((m.aboutText as string) ?? "").length >= 50 },
       { key: "yearOfStudy", label: "Year of study", done: Boolean(m.yearOfStudy) },
-      { key: "introVideoUrl", label: "Intro video", done: Boolean(m.introVideoUrl) },
+      { key: "introVideoUrl", label: "Intro video", done: Boolean(introVideoStatus?.uploaded) },
     ];
     const completedCount = checks.filter((c) => c.done).length;
 

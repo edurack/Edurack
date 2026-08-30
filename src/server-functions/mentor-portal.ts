@@ -1,104 +1,19 @@
 // Server functions for the mentor-facing portal's communication tools.
 // Distinct from mentor-auth.ts (identity/session/profile) — this file
-// covers targeted batch announcements with an email broadcast hook. Live
-// session scheduling (Tracks A/B/C), chat, and support tickets will follow
-// in this same file as later modules, once we get to those steps.
+// covers batch announcements, the student chat desk + note uploads, live
+// session scheduling (Tracks A/B/C), the lecture library, and support
+// tickets.
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { MentorAnnouncement, MentorAnnouncementInput } from "@/lib/admin-types";
-import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
+import type {
+  MentorAnnouncement,
+  MentorAnnouncementInput,
+  LectureViewerDetail,
+  LectureWatchAlert,
+} from "@/lib/admin-types";
 
-
-async function watermarkPdf(sourceUrl: string): Promise<string> {
-  const response = await fetch(sourceUrl);
-  if (!response.ok) {
-    throw new Error("Could not fetch the PDF from that URL. Make sure it's publicly accessible.");
-  }
-  const originalBytes = await response.arrayBuffer();
-
-  const pdfDoc = await PDFDocument.load(originalBytes);
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const pages = pdfDoc.getPages();
-
-  for (const page of pages) {
-    const { width, height } = page.getSize();
-    const text = "EDURACK";
-    const fontSize = Math.min(width, height) / 6;
-    const textWidth = font.widthOfTextAtSize(text, fontSize);
-
-    // One large diagonal watermark centered on the page, low-opacity so it
-    // sits behind the readable content rather than obscuring it.
-    page.drawText(text, {
-      x: width / 2 - textWidth / 2,
-      y: height / 2,
-      size: fontSize,
-      font,
-      color: rgb(0.55, 0.55, 0.55),
-      opacity: 0.18,
-      rotate: degrees(45),
-    });
-
-    // A second, smaller repeating pass in the corners so cropping out the
-    // center watermark doesn't remove all traces of it.
-    const smallSize = fontSize / 3;
-    const smallWidth = font.widthOfTextAtSize(text, smallSize);
-    const corners: [number, number][] = [
-      [smallWidth / 2 + 20, height - 30],
-      [width - smallWidth / 2 - 20, 30],
-    ];
-    for (const [x, y] of corners) {
-      page.drawText(text, {
-        x: x - smallWidth / 2,
-        y,
-        size: smallSize,
-        font,
-        color: rgb(0.55, 0.55, 0.55),
-        opacity: 0.25,
-        rotate: degrees(45),
-      });
-    }
-  }
-
-  const watermarkedBytes = await pdfDoc.save();
-  const base64 = Buffer.from(watermarkedBytes).toString("base64");
-  return `data:application/pdf;base64,${base64}`;
-}
-
-export const uploadMentorNote = createServerFn({ method: "POST" })
-  .validator(
-    (data: { token: string; batchId: string; fileName: string; fileUrl: string; copyrightAcknowledged: boolean }) =>
-      data,
-  )
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    await requireOwnsBatch(mentorId, data.batchId);
-
-    if (!data.copyrightAcknowledged) {
-      throw new Error("You must acknowledge the copyright safety toggle before uploading.");
-    }
-    if (!data.fileUrl.trim() || !data.fileName.trim()) {
-      throw new Error("Provide the uploaded file's name and URL.");
-    }
-
-    const watermarkedDataUri = await watermarkPdf(data.fileUrl.trim());
-
-    const db = await getDb();
-    const result = await db.collection("mentorNotes").insertOne({
-      mentorId,
-      batchId: data.batchId,
-      fileName: data.fileName.trim(),
-      originalFileUrl: data.fileUrl.trim(),
-      fileUrl: watermarkedDataUri,
-      copyrightAcknowledged: true,
-      watermarkApplied: true,
-      createdAt: new Date(),
-    });
-    return { ok: true, id: String(result.insertedId) };
-  });
 // ─── Mentor session verification (mirrors mentor-auth.ts) ───────────────────
-// Duplicated rather than imported to keep this file's only dependency on
-// mentor-auth.ts being the shared token format, not a function coupling.
 function getSessionSecret(): string {
   const secret = process.env.MENTOR_SESSION_SECRET;
   if (!secret) {
@@ -139,9 +54,6 @@ async function requireMentor(token: string): Promise<string> {
   return verified.mentorId;
 }
 
-// Confirms the mentorId making the request actually owns/is assigned to the
-// batch they're posting into — prevents a mentor from broadcasting into a
-// batch that isn't theirs even if they know its id.
 async function requireOwnsBatch(mentorId: string, batchId: string) {
   const db = await getDb();
   const { ObjectId } = await import("mongodb");
@@ -153,123 +65,49 @@ async function requireOwnsBatch(mentorId: string, batchId: string) {
   return batch;
 }
 
-// ─── Email broadcast (mirrors the server-side EmailJS pattern used for OTP
-// delivery — private-key call from the server, never the client) ───────────
-async function sendAnnouncementEmail(params: {
-  toEmails: string[];
-  batchName: string;
-  title: string;
-  message: string;
-}): Promise<boolean> {
-  const serviceId = process.env.EMAILJS_SERVICE_ID;
-  const templateId = process.env.EMAILJS_TEMPLATE_ID_ANNOUNCEMENT;
-  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
-  const privateKey = process.env.EMAILJS_PRIVATE_KEY;
-
-  if (!serviceId || !templateId || !publicKey || !privateKey) {
-    // Same "flag as pending, don't fabricate success" pattern used for
-    // cbtEngineSynced — if EmailJS isn't configured, callers see
-    // emailStatus: "failed" rather than a false "sent".
-    return false;
-  }
-
-  try {
-    // EmailJS's REST API sends one email per call; batch students are
-    // looped here server-side. For large batches this should move to a
-    // queued job rather than a synchronous loop — flagged for follow-up,
-    // not blocking for now since mentorship batches are small cohorts.
-    const results = await Promise.allSettled(
-      params.toEmails.map((toEmail) =>
-        fetch("https://api.emailjs.com/api/v1.0/email/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            service_id: serviceId,
-            template_id: templateId,
-            user_id: publicKey,
-            accessToken: privateKey,
-            template_params: {
-              to_email: toEmail,
-              batch_name: params.batchName,
-              announcement_title: params.title,
-              announcement_message: params.message,
-            },
-          }),
-        }),
-      ),
-    );
-    return results.every((r) => r.status === "fulfilled");
-  } catch {
-    return false;
-  }
-}
-
 // ─── Targeted Batch Announcement Engine ─────────────────────────────────────
-
+// EmailJS broadcasting has been removed entirely — announcements are now
+// in-app only. In exchange, every post resolves and stores the actual
+// recipient names at send time so a mentor can see exactly who it reached,
+// rather than just a count.
 export const postMentorAnnouncement = createServerFn({ method: "POST" })
   .validator((data: { token: string; announcement: MentorAnnouncementInput }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
-    const batch = await requireOwnsBatch(mentorId, data.announcement.batchId);
+    await requireOwnsBatch(mentorId, data.announcement.batchId);
 
-    const { title, message, triggerEmail } = data.announcement;
+    const { title, message } = data.announcement;
     if (!title.trim()) throw new Error("Enter an announcement title.");
     if (!message.trim()) throw new Error("Write the announcement message.");
 
     const db = await getDb();
 
-    // Resolve recipients now — real purchase-confirmed students for this
-    // batch, same `purchases` collection referenced elsewhere as
-    // real-but-currently-empty pending Razorpay integration (see
-    // student-data.ts / catalog.ts). Once checkout writes real rows here,
-    // this resolves correctly with no further changes needed.
     const purchaseRows = await db
       .collection("purchases")
       .find({ itemType: "mentorship", itemId: data.announcement.batchId })
       .toArray();
     const recipientUids = purchaseRows.map((p) => p.uid as string);
 
-    let emailStatus: MentorAnnouncement["emailStatus"] = "not_requested";
-    let emailSentAt: string | null = null;
-
-    if (triggerEmail) {
-      if (recipientUids.length === 0) {
-        emailStatus = "failed";
-      } else {
-        const profiles = await db
-          .collection("profiles")
-          .find({ uid: { $in: recipientUids } }, { projection: { email: 1 } })
-          .toArray();
-        const emails = profiles.map((p) => p.email as string).filter(Boolean);
-
-        const sent = await sendAnnouncementEmail({
-          toEmails: emails,
-          batchName: batch.name as string,
-          title: title.trim(),
-          message: message.trim(),
-        });
-        emailStatus = sent ? "sent" : "failed";
-        emailSentAt = sent ? new Date().toISOString() : null;
-      }
+    let recipientNames: string[] = [];
+    if (recipientUids.length > 0) {
+      const profiles = await db
+        .collection("profiles")
+        .find({ uid: { $in: recipientUids } }, { projection: { fullName: 1 } })
+        .toArray();
+      recipientNames = profiles.map((p) => (p.fullName as string) || "Unnamed student");
     }
 
-    // Maps into the student dashboard feed collection — mirrors
-    // bundleAnnouncements' shape/purpose but scoped to mentorshipBatches so
-    // the existing listPublicBundleAnnouncements-style reader can be
-    // extended for mentorship batches without touching this write path.
     const result = await db.collection("mentorshipBatchAnnouncements").insertOne({
       mentorId,
       batchId: data.announcement.batchId,
       title: title.trim(),
       message: message.trim(),
-      emailTriggered: triggerEmail,
-      emailStatus,
-      emailSentAt,
       recipientCount: recipientUids.length,
+      recipientNames,
       createdAt: new Date(),
     });
 
-    return { ok: true, id: String(result.insertedId), emailStatus, recipientCount: recipientUids.length };
+    return { ok: true, id: String(result.insertedId), recipientCount: recipientUids.length, recipientNames };
   });
 
 export const listMentorAnnouncements = createServerFn({ method: "POST" })
@@ -291,10 +129,8 @@ export const listMentorAnnouncements = createServerFn({ method: "POST" })
       batchId: r.batchId as string,
       title: r.title as string,
       message: r.message as string,
-      emailTriggered: Boolean(r.emailTriggered),
-      emailStatus: r.emailStatus as MentorAnnouncement["emailStatus"],
-      emailSentAt: (r.emailSentAt as string | null) ?? null,
-      recipientCount: (r.recipientCount as number | null) ?? null,
+      recipientCount: (r.recipientCount as number | null) ?? 0,
+      recipientNames: (r.recipientNames as string[] | null) ?? [],
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       pinned: Boolean(r.pinned),
       editedAt: r.editedAt instanceof Date ? r.editedAt.toISOString() : null,
@@ -303,9 +139,54 @@ export const listMentorAnnouncements = createServerFn({ method: "POST" })
     return { announcements };
   });
 
-// Lists the batches this mentor is actually assigned to — used to populate
-// the batch-select dropdown in the announcement form, and to double-check
-// ownership client-side before even attempting a post.
+export const togglePinAnnouncement = createServerFn({ method: "POST" })
+  .validator((data: { token: string; announcementId: string; pinned: boolean }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
+    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
+    await db.collection("mentorshipBatchAnnouncements").updateOne(
+      { _id: new ObjectId(data.announcementId) },
+      { $set: { pinned: data.pinned } },
+    );
+    return { ok: true };
+  });
+
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+export const editMentorAnnouncement = createServerFn({ method: "POST" })
+  .validator((data: { token: string; announcementId: string; title: string; message: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
+    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
+
+    const age = Date.now() - (row.createdAt as Date).getTime();
+    if (age > EDIT_WINDOW_MS) throw new Error("This announcement can no longer be edited (15-minute window has passed).");
+
+    await db.collection("mentorshipBatchAnnouncements").updateOne(
+      { _id: new ObjectId(data.announcementId) },
+      { $set: { title: data.title.trim(), message: data.message.trim(), editedAt: new Date() } },
+    );
+    return { ok: true };
+  });
+
+export const deleteMentorAnnouncement = createServerFn({ method: "POST" })
+  .validator((data: { token: string; announcementId: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
+    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
+    await db.collection("mentorshipBatchAnnouncements").deleteOne({ _id: new ObjectId(data.announcementId) });
+    return { ok: true };
+  });
+
 export const listMyAssignedBatches = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -325,31 +206,23 @@ export const listMyAssignedBatches = createServerFn({ method: "POST" })
       })),
     };
   });
+
 // ─── Module 9: Smart Live Session Scheduler (Tracks A / B / C) ──────────────
 import type { SessionTrack, MentorshipSession, StudentSessionUsage, LectureComment } from "@/lib/admin-types";
-
 const MAX_SESSIONS_PER_STUDENT = 20;
 const MAX_DURATION_MINUTES = 180;
 
 type CreateSessionInput = {
   batchId: string;
   track: SessionTrack;
-  // Track A only
   studentUid?: string;
   durationMinutes?: number;
-  // Track A & B
   meetingLink?: string;
-  // Track C only
   lectureUrl?: string;
   lectureTitle?: string;
   scheduledAt: string;
 };
 
-// Resolves the students actually enrolled in a batch, via the same
-// `purchases` collection referenced throughout (real query, currently empty
-// until Razorpay checkout writes confirmed rows — same pattern as
-// hasPurchased in student-data.ts). Returns [] rather than throwing when
-// nothing has been purchased yet, so the UI can show an honest empty state.
 export const listBatchStudents = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -378,11 +251,6 @@ export const listBatchStudents = createServerFn({ method: "POST" })
     };
   });
 
-// Derived usage counter for the <= 20 one-on-one session cap. Counts
-// non-cancelled OneOnOne sessions for this mentor + student, scoped to the
-// batch — a student who's part of two different batches with the same
-// mentor gets a separate 20-session allowance per batch, since each batch
-// is a distinct purchased product.
 export const getStudentSessionUsage = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string; studentUid: string }) => data)
   .handler(async ({ data }) => {
@@ -406,10 +274,6 @@ export const getStudentSessionUsage = createServerFn({ method: "POST" })
     return { usage };
   });
 
-// Single entry point for all three tracks — the track-specific shape
-// requirements (studentUid+duration for A, meetingLink for A/B, lectureUrl+
-// title for C) are validated here server-side, not just left to the UI, so
-// a malformed request can never create a half-valid session document.
 export const createMentorshipSession = createServerFn({ method: "POST" })
   .validator((data: { token: string; session: CreateSessionInput }) => data)
   .handler(async ({ data }) => {
@@ -549,12 +413,45 @@ export const updateSessionStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const listAllStudentSessionUsage = createServerFn({ method: "POST" })
+  .validator((data: { token: string; batchId: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    await requireOwnsBatch(mentorId, data.batchId);
+
+    const db = await getDb();
+    const rows = await db
+      .collection("mentorshipSessions")
+      .aggregate([
+        { $match: { mentorId, batchId: data.batchId, track: "OneOnOne", status: { $ne: "cancelled" } } },
+        { $group: { _id: "$studentUid", count: { $sum: 1 } } },
+      ])
+      .toArray();
+
+    return {
+      usage: rows.map((r) => ({
+        studentUid: r._id as string,
+        sessionsUsed: r.count as number,
+        sessionsRemaining: Math.max(0, 20 - (r.count as number)),
+      })),
+    };
+  });
+
+export const bulkCancelSessions = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionIds: string[]; reason: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const result = await db.collection("mentorshipSessions").updateMany(
+      { _id: { $in: data.sessionIds.map((id) => new ObjectId(id)) }, mentorId, status: "scheduled" },
+      { $set: { status: "cancelled", cancelReason: data.reason.trim() || null } },
+    );
+    return { ok: true, cancelledCount: result.modifiedCount };
+  });
+
 // ─── Track C: Chat/Comment Auditor Canvas ───────────────────────────────────
-// NOTE: this covers the mentor's read/moderate side only. The actual
-// posting of a comment happens from the student-facing lecture player,
-// which doesn't exist as a route yet — a companion `postLectureComment`
-// server function belongs in student-data.ts or batch-hub.ts once that
-// player UI is built. Flagging so it isn't mistaken for already wired up.
 export const listLectureComments = createServerFn({ method: "POST" })
   .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
@@ -572,7 +469,7 @@ export const listLectureComments = createServerFn({ method: "POST" })
       .sort({ createdAt: -1 })
       .toArray();
 
-    const comments: LectureComment[] = rows.map((r) => ({
+    const comments: LectureComment[] = rows.map ((r)  => ({
       id: String(r._id),
       sessionId: r.sessionId as string,
       studentUid: r.studentUid as string,
@@ -608,13 +505,44 @@ export const setLectureCommentVisibility = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-  // ─── Module 4: Intermittent Student Chat Desk & Anti-Piracy Document Gate ──
-import type { } from "@/lib/admin-types"; // (no new types needed beyond what's added below in admin-types.ts)
+export const postMentorLectureComment = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionId: string; body: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    if (!data.body.trim()) throw new Error("Comment cannot be empty.");
 
-// Chat messages are scoped to mentorId + studentUid + batchId — a mentor's
-// DM thread with a given student is always batch-specific, matching how
-// sessions and announcements are already scoped, rather than one global
-// inbox per student.
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const session = await db.collection("mentorshipSessions").findOne({ _id: new ObjectId(data.sessionId) });
+    if (!session) throw new Error("Lecture not found.");
+    if (session.mentorId !== mentorId) throw new Error("You do not own this lecture session.");
+
+    const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(mentorId) });
+
+    await db.collection("lectureComments").insertOne({
+      sessionId: data.sessionId,
+      studentUid: null,
+      studentName: null,
+      isMentor: true,
+      mentorId,
+      mentorName: mentor?.name as string,
+      mentorProfilePictureUrl: (mentor?.profilePictureUrl as string | null) ?? null,
+      body: data.body.trim(),
+      hidden: false,
+      createdAt: new Date(),
+    });
+
+    return { ok: true };
+  });
+
+// ─── Module 4: Student Chat Desk & Note Uploads (batch- or lecture-scoped) ──
+// Watermarking has been removed entirely — notes are stored and served
+// exactly as uploaded. A note can now be attached either to the whole
+// batch (lectureSessionId omitted/null) or to one specific AsyncLecture
+// session within that batch (lectureSessionId set) — e.g. supplementary
+// material for just that recording rather than the whole cohort's shared
+// notes pool.
 export const listChatThreads = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -622,10 +550,6 @@ export const listChatThreads = createServerFn({ method: "POST" })
     await requireOwnsBatch(mentorId, data.batchId);
 
     const db = await getDb();
-    // One thread per distinct studentUid that has ANY message with this
-    // mentor in this batch — aggregated rather than a separate "threads"
-    // collection, so there's a single source of truth (chatMessages) and
-    // no risk of a thread existing with zero messages or vice versa.
     const threads = await db
       .collection("chatMessages")
       .aggregate([
@@ -687,10 +611,6 @@ export const listChatMessages = createServerFn({ method: "POST" })
     };
   });
 
-// Mentor-side send. Respects the daily lock window: if the mentor has
-// locked messaging for this batch (see setChatLockWindow below), sending
-// is blocked server-side — not just visually disabled in the UI — so a
-// stale client can't bypass the lock.
 export const sendChatMessage = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string; studentUid: string; body: string }) => data)
   .handler(async ({ data }) => {
@@ -715,10 +635,6 @@ export const sendChatMessage = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Interval timer lock/unlock — daily recurring window expressed as two
-// "HH:MM" strings rather than full datetimes, since the requirement is a
-// repeating daily window ("lock messaging outside 6–8 PM every day"), not
-// a one-off date range.
 function isCurrentlyLocked(lockedFrom: string, lockedUntil: string): boolean {
   if (!lockedFrom || !lockedUntil) return false;
   const now = new Date();
@@ -727,8 +643,6 @@ function isCurrentlyLocked(lockedFrom: string, lockedUntil: string): boolean {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const fromMinutes = fromH * 60 + fromM;
   const untilMinutes = untilH * 60 + untilM;
-  // "Locked" window is the range OUTSIDE lockedFrom–lockedUntil (that pair
-  // represents the ALLOWED open window); handles overnight wraparound too.
   if (fromMinutes <= untilMinutes) {
     return !(nowMinutes >= fromMinutes && nowMinutes < untilMinutes);
   }
@@ -773,7 +687,10 @@ export const getChatLockWindow = createServerFn({ method: "POST" })
     };
   });
 
-export const listMentorNotes = createServerFn({ method: "POST" })
+// Only async-lecture sessions in this batch are valid targets for a
+// lecture-specific note — used to populate the "attach to a lecture"
+// dropdown in the upload form.
+export const listBatchLecturesForNoteScope = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
@@ -781,23 +698,97 @@ export const listMentorNotes = createServerFn({ method: "POST" })
 
     const db = await getDb();
     const rows = await db
-      .collection("mentorNotes")
-      .find({ mentorId, batchId: data.batchId })
-      .sort({ createdAt: -1 })
+      .collection("mentorshipSessions")
+      .find({ mentorId, batchId: data.batchId, track: "AsyncLecture" })
+      .sort({ scheduledAt: -1 })
       .toArray();
+
+    return {
+      lectures: rows.map((r) => ({ id: String(r._id), lectureTitle: r.lectureTitle as string })),
+    };
+  });
+
+export const uploadMentorNote = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      token: string;
+      batchId: string;
+      fileName: string;
+      fileUrl: string;
+      lectureSessionId: string | null;
+      copyrightAcknowledged: boolean;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    await requireOwnsBatch(mentorId, data.batchId);
+
+    if (!data.copyrightAcknowledged) {
+      throw new Error("You must acknowledge the copyright safety toggle before uploading.");
+    }
+    if (!data.fileUrl.trim() || !data.fileName.trim()) {
+      throw new Error("Provide the uploaded file's name and URL.");
+    }
+
+    // No watermarking step — the uploaded file's URL is stored and served
+    // exactly as-is.
+    if (data.lectureSessionId) {
+      const session = await db_getLectureSessionScoped(mentorId, data.batchId, data.lectureSessionId);
+      if (!session) throw new Error("That lecture wasn't found in this batch.");
+    }
+
+    const db = await getDb();
+    const result = await db.collection("mentorNotes").insertOne({
+      mentorId,
+      batchId: data.batchId,
+      lectureSessionId: data.lectureSessionId ?? null,
+      fileName: data.fileName.trim(),
+      fileUrl: data.fileUrl.trim(),
+      copyrightAcknowledged: true,
+      createdAt: new Date(),
+    });
+    return { ok: true, id: String(result.insertedId) };
+  });
+
+async function db_getLectureSessionScoped(mentorId: string, batchId: string, sessionId: string) {
+  const { ObjectId } = await import("mongodb");
+  const db = await getDb();
+  return db.collection("mentorshipSessions").findOne({
+    _id: new ObjectId(sessionId),
+    mentorId,
+    batchId,
+    track: "AsyncLecture",
+  });
+}
+
+// lectureSessionId filter: omit for everything in the batch, pass a
+// sessionId to see only that lecture's notes, or pass the literal string
+// "batch-only" to see just the batch-wide (non-lecture-specific) notes.
+export const listMentorNotes = createServerFn({ method: "POST" })
+  .validator((data: { token: string; batchId: string; lectureSessionId?: string | "batch-only" }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    await requireOwnsBatch(mentorId, data.batchId);
+
+    const db = await getDb();
+    const filter: Record<string, unknown> = { mentorId, batchId: data.batchId };
+    if (data.lectureSessionId === "batch-only") filter.lectureSessionId = null;
+    else if (data.lectureSessionId) filter.lectureSessionId = data.lectureSessionId;
+
+    const rows = await db.collection("mentorNotes").find(filter).sort({ createdAt: -1 }).toArray();
 
     return {
       notes: rows.map((r) => ({
         id: String(r._id),
         fileName: r.fileName as string,
         fileUrl: r.fileUrl as string,
-        watermarkApplied: Boolean(r.watermarkApplied),
+        lectureSessionId: (r.lectureSessionId as string | null) ?? null,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       })),
     };
   });
 
-  // ─── Module 5: Internal Operations Help Desk (mentor-facing) ────────────────
+// ─── Module 5: Internal Operations Help Desk (mentor-facing) ────────────────
 import type { TicketCategory, TicketStatus, MentorSupportTicket } from "@/lib/admin-types";
 
 export const submitMentorTicket = createServerFn({ method: "POST" })
@@ -844,6 +835,7 @@ export const listMyMentorTickets = createServerFn({ method: "POST" })
     return { tickets };
   });
 
+// ─── Lecture Library ─────────────────────────────────────────────────────
 export const listMyLectureLibrary = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -896,100 +888,18 @@ export const listMyLectureLibrary = createServerFn({ method: "POST" })
     };
   });
 
-  export const togglePinAnnouncement = createServerFn({ method: "POST" })
-  .validator((data: { token: string; announcementId: string; pinned: boolean }) => data)
+// Per-student breakdown behind a lecture's aggregate stats — every student
+// who has ANY progress row for this lecture, how far they've watched,
+// whether they've finished it, and their rating if they left one. Students
+// who purchased the batch but haven't opened the lecture at all are
+// deliberately excluded here (there's no progress row to report on) —
+// "hasn't started" is a distinct, useful signal from "in progress", so if
+// you want that list too it should come from listBatchStudents minus this
+// result's studentUids on the client.
+export const listLectureViewersDetail = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
-    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
-    await db.collection("mentorshipBatchAnnouncements").updateOne(
-      { _id: new ObjectId(data.announcementId) },
-      { $set: { pinned: data.pinned } },
-    );
-    return { ok: true };
-  });
-
-const EDIT_WINDOW_MS = 15 * 60 * 1000;
-
-export const editMentorAnnouncement = createServerFn({ method: "POST" })
-  .validator((data: { token: string; announcementId: string; title: string; message: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
-    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
-
-    const age = Date.now() - (row.createdAt as Date).getTime();
-    if (age > EDIT_WINDOW_MS) throw new Error("This announcement can no longer be edited (15-minute window has passed).");
-
-    await db.collection("mentorshipBatchAnnouncements").updateOne(
-      { _id: new ObjectId(data.announcementId) },
-      { $set: { title: data.title.trim(), message: data.message.trim(), editedAt: new Date() } },
-    );
-    return { ok: true };
-  });
-
-export const deleteMentorAnnouncement = createServerFn({ method: "POST" })
-  .validator((data: { token: string; announcementId: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const row = await db.collection("mentorshipBatchAnnouncements").findOne({ _id: new ObjectId(data.announcementId) });
-    if (!row || row.mentorId !== mentorId) throw new Error("Announcement not found.");
-    await db.collection("mentorshipBatchAnnouncements").deleteOne({ _id: new ObjectId(data.announcementId) });
-    return { ok: true };
-  });
-
-  // Per-student 1:1 usage across the whole batch, for the visual usage bar —
-// batches the per-student getStudentSessionUsage calls into one round trip.
-export const listAllStudentSessionUsage = createServerFn({ method: "POST" })
-  .validator((data: { token: string; batchId: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    await requireOwnsBatch(mentorId, data.batchId);
-
-    const db = await getDb();
-    const rows = await db
-      .collection("mentorshipSessions")
-      .aggregate([
-        { $match: { mentorId, batchId: data.batchId, track: "OneOnOne", status: { $ne: "cancelled" } } },
-        { $group: { _id: "$studentUid", count: { $sum: 1 } } },
-      ])
-      .toArray();
-
-    return {
-      usage: rows.map((r) => ({
-        studentUid: r._id as string,
-        sessionsUsed: r.count as number,
-        sessionsRemaining: Math.max(0, 20 - (r.count as number)),
-      })),
-    };
-  });
-
-export const bulkCancelSessions = createServerFn({ method: "POST" })
-  .validator((data: { token: string; sessionIds: string[]; reason: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-
-    const result = await db.collection("mentorshipSessions").updateMany(
-      { _id: { $in: data.sessionIds.map((id) => new ObjectId(id)) }, mentorId, status: "scheduled" },
-      { $set: { status: "cancelled", cancelReason: data.reason.trim() || null } },
-    );
-    return { ok: true, cancelledCount: result.modifiedCount };
-  });
-
-export const postMentorLectureComment = createServerFn({ method: "POST" })
-  .validator((data: { token: string; sessionId: string; body: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    if (!data.body.trim()) throw new Error("Comment cannot be empty.");
-
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -997,20 +907,96 @@ export const postMentorLectureComment = createServerFn({ method: "POST" })
     if (!session) throw new Error("Lecture not found.");
     if (session.mentorId !== mentorId) throw new Error("You do not own this lecture session.");
 
-    const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(mentorId) });
+    const [progressRows, reviewRows] = await Promise.all([
+      db.collection("lectureProgress").find({ sessionId: data.sessionId }).toArray(),
+      db.collection("sessionReviews").find({ sessionId: data.sessionId }).toArray(),
+    ]);
 
-    await db.collection("lectureComments").insertOne({
-      sessionId: data.sessionId,
-      studentUid: null,
-      studentName: null,
-      isMentor: true,
+    const studentUids = [...new Set(progressRows.map((p) => p.studentUid as string))];
+    const profiles =
+      studentUids.length > 0
+        ? await db
+            .collection("profiles")
+            .find({ uid: { $in: studentUids } }, { projection: { uid: 1, fullName: 1 } })
+            .toArray()
+        : [];
+    const nameByUid = new Map(profiles.map((p) => [p.uid as string, (p.fullName as string) || "Student"]));
+    const ratingByUid = new Map(reviewRows.map((r) => [r.studentUid as string, r.rating as number]));
+
+    const viewers: LectureViewerDetail[] = progressRows.map((p) => ({
+      studentUid: p.studentUid as string,
+      studentName: nameByUid.get(p.studentUid as string) ?? "Student",
+      watchedPercent: Math.round(((p.watchedSeconds as number) / Math.max(1, p.totalSeconds as number)) * 100),
+      completed: Boolean(p.completed),
+      rating: ratingByUid.get(p.studentUid as string) ?? null,
+    }));
+
+    return { viewers: viewers.sort((a, b) => b.watchedPercent - a.watchedPercent) };
+  });
+
+// Fires a one-off nudge to every purchaser of the lecture's batch, pointing
+// them at this specific lecture. In-app only (mirrors the announcement
+// engine's post-EmailJS approach) — surfaced to students via whatever feed
+// reads lectureWatchAlerts on the student dashboard.
+export const sendLectureWatchAlert = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionId: string; message: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const session = await db.collection("mentorshipSessions").findOne({ _id: new ObjectId(data.sessionId) });
+    if (!session) throw new Error("Lecture not found.");
+    if (session.mentorId !== mentorId) throw new Error("You do not own this lecture session.");
+    if (!data.message.trim()) throw new Error("Write a short alert message.");
+
+    const batchId = session.batchId as string;
+    const purchaseRows = await db
+      .collection("purchases")
+      .find({ itemType: "mentorship", itemId: batchId })
+      .toArray();
+    const recipientCount = purchaseRows.length;
+
+    const result = await db.collection("lectureWatchAlerts").insertOne({
       mentorId,
-      mentorName: mentor?.name as string,
-      mentorProfilePictureUrl: (mentor?.profilePictureUrl as string | null) ?? null,
-      body: data.body.trim(),
-      hidden: false,
+      sessionId: data.sessionId,
+      batchId,
+      message: data.message.trim(),
+      recipientCount,
       createdAt: new Date(),
     });
 
-    return { ok: true };
+    const alert: LectureWatchAlert = {
+      id: String(result.insertedId),
+      mentorId,
+      sessionId: data.sessionId,
+      batchId,
+      message: data.message.trim(),
+      recipientCount,
+      createdAt: new Date().toISOString(),
+    };
+    return { ok: true, alert };
+  });
+
+export const listLectureWatchAlerts = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const db = await getDb();
+    const rows = await db
+      .collection("lectureWatchAlerts")
+      .find({ mentorId, sessionId: data.sessionId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const alerts: LectureWatchAlert[] = rows.map((r) => ({
+      id: String(r._id),
+      mentorId: r.mentorId as string,
+      sessionId: r.sessionId as string,
+      batchId: r.batchId as string,
+      message: r.message as string,
+      recipientCount: r.recipientCount as number,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
+    }));
+    return { alerts };
   });

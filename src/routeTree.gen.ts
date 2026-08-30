@@ -23,6 +23,8 @@ import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
 import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
 import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
+import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
+import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
 import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/mentor-onboarding/$applicationId'
@@ -104,6 +106,16 @@ const SimulatorLiveRoute = SimulatorLiveRouteImport.update({
   path: '/simulator/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PromoterDashboardRoute = PromoterDashboardRouteImport.update({
+  id: '/promoter/dashboard',
+  path: '/promoter/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PromoterAuthRoute = PromoterAuthRouteImport.update({
+  id: '/promoter/auth',
+  path: '/promoter/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MentorDashboardRoute = MentorDashboardRouteImport.update({
   id: '/mentor/dashboard',
   path: '/mentor/dashboard',
@@ -176,6 +188,8 @@ export interface FileRoutesByFullPath {
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/promoter/auth': typeof PromoterAuthRoute
+  '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
@@ -202,6 +216,8 @@ export interface FileRoutesByTo {
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/promoter/auth': typeof PromoterAuthRoute
+  '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
@@ -229,6 +245,8 @@ export interface FileRoutesById {
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/promoter/auth': typeof PromoterAuthRoute
+  '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
@@ -257,6 +275,8 @@ export interface FileRouteTypes {
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
+    | '/promoter/auth'
+    | '/promoter/dashboard'
     | '/simulator/live'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
@@ -283,6 +303,8 @@ export interface FileRouteTypes {
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
+    | '/promoter/auth'
+    | '/promoter/dashboard'
     | '/simulator/live'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
@@ -309,6 +331,8 @@ export interface FileRouteTypes {
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
     | '/mentor/dashboard'
+    | '/promoter/auth'
+    | '/promoter/dashboard'
     | '/simulator/live'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
@@ -336,6 +360,8 @@ export interface RootRouteChildren {
   MentorOnboardingApplicationIdRoute: typeof MentorOnboardingApplicationIdRoute
   MentorProfileMentorIdRoute: typeof MentorProfileMentorIdRoute
   MentorDashboardRoute: typeof MentorDashboardRoute
+  PromoterAuthRoute: typeof PromoterAuthRoute
+  PromoterDashboardRoute: typeof PromoterDashboardRoute
   SimulatorLiveRoute: typeof SimulatorLiveRoute
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
@@ -443,6 +469,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SimulatorLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/promoter/dashboard': {
+      id: '/promoter/dashboard'
+      path: '/promoter/dashboard'
+      fullPath: '/promoter/dashboard'
+      preLoaderRoute: typeof PromoterDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/promoter/auth': {
+      id: '/promoter/auth'
+      path: '/promoter/auth'
+      fullPath: '/promoter/auth'
+      preLoaderRoute: typeof PromoterAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mentor/dashboard': {
       id: '/mentor/dashboard'
       path: '/mentor/dashboard'
@@ -536,6 +576,8 @@ const rootRouteChildren: RootRouteChildren = {
   MentorOnboardingApplicationIdRoute: MentorOnboardingApplicationIdRoute,
   MentorProfileMentorIdRoute: MentorProfileMentorIdRoute,
   MentorDashboardRoute: MentorDashboardRoute,
+  PromoterAuthRoute: PromoterAuthRoute,
+  PromoterDashboardRoute: PromoterDashboardRoute,
   SimulatorLiveRoute: SimulatorLiveRoute,
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,

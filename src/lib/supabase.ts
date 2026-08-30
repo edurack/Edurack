@@ -26,12 +26,14 @@
 //   • mentor-images      (profile pictures)              — cap 50MB
 //   • mentor-files       (PDF notes)                     — cap 100MB
 //   • mentor-lectures    (lecture videos)                — cap 500MB
-//   • bundle-thumbnails  (NEW — bundle cover images)      — cap 20MB
-//   • bundle-documents   (NEW — syllabus/planner PDFs)    — cap 50MB
+//   • bundle-thumbnails  (bundle cover images)            — cap 20MB
+//   • bundle-documents   (syllabus/planner PDFs)          — cap 50MB
+//   • promoter-uploads   (NEW — promoter profile photos)  — cap 20MB
 //
 // Policies — same open-write-scoped-by-bucket pattern as mentor-uploads,
-// since admins already have their own auth (Firebase ID token, not
-// Supabase Auth), so there's no Supabase-side user to scope RLS to. Run
+// since neither admins nor promoters have a Supabase-side user to scope
+// RLS to (admins use a Firebase ID token, promoters use the HMAC session
+// token from promoter-auth.ts — Supabase Auth is never involved). Run
 // once per new bucket, swapping the bucket_id:
 //
 //   create policy "Admins can upload to bundle-thumbnails"
@@ -43,6 +45,11 @@
 //   on storage.objects for insert
 //   to anon
 //   with check (bucket_id = 'bundle-documents');
+//
+//   create policy "Promoters can upload to promoter-uploads"
+//   on storage.objects for insert
+//   to anon
+//   with check (bucket_id = 'promoter-uploads');
 //
 // (repeat the pattern for mentor-images / mentor-files / mentor-lectures
 // if those policies don't already exist from earlier work)
@@ -65,18 +72,25 @@ export const MAX_IMAGE_BYTES = 50 * 1024 * 1024; // 50MB
 export const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB
 export const MAX_LECTURE_BYTES = 500 * 1024 * 1024; // 500MB
 
-// ─── NEW: Admin bundle uploads (thumbnails, syllabus PDFs, planners) ────
+// ─── Admin bundle uploads (thumbnails, syllabus PDFs, planners) ─────────
 export const BUNDLE_THUMBNAILS_BUCKET = "bundle-thumbnails";
 export const BUNDLE_DOCUMENTS_BUCKET = "bundle-documents";
 
 export const MAX_BUNDLE_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
 export const MAX_BUNDLE_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
 
+// ─── NEW: Promoter uploads (profile photos) ──────────────────────────────
+// Deliberately its own bucket, not shared with MENTOR_UPLOADS_BUCKET or
+// MENTOR_IMAGES_BUCKET — promoters are a separate identity system end to
+// end (see promoter-auth.ts), so their storage stays separate too.
+export const PROMOTER_UPLOADS_BUCKET = "promoter-uploads";
+export const MAX_PROMOTER_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
+
 // Shared helper — uploads a single File to the given bucket under a
 // collision-proof generated name, and returns its public URL. Every
-// upload field in the admin dashboard (bundle thumbnail, syllabus PDF,
-// planner PDF) goes through this one function so the naming scheme and
-// error shape stay identical everywhere.
+// upload field across the admin dashboard, mentor portal, and promoter
+// portal goes through this one function so the naming scheme and error
+// shape stay identical everywhere.
 export async function uploadToSupabase(bucket: string, file: File): Promise<string> {
   const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
