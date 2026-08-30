@@ -1,21 +1,23 @@
 // Post-approval mentor onboarding: the detailed onboarding form filled in
 // after an application is approved (see mentor-applications.ts /
-// admin.ts's approveCreatorApplication), plus digital agreement signing.
+// admin.ts's approveCreatorApplication), plus scheduling the live
+// Google Meet call where the agreement is walked through and signed.
 // Deliberately public (no auth token check beyond validating the
 // applicationId + its approved status) — at this stage the mentor doesn't
 // have a platform account yet, same reasoning as submitCreatorApplication.
 //
-// Profile photo and batch thumbnail are uploaded directly from the browser
-// to Supabase Storage (see @/lib/supabase.ts and the wizard component) —
-// this server function only ever receives the resulting public URL, never
-// the raw file. Size limits (1MB photo / 5MB thumbnail) are enforced
-// client-side before the upload starts; the bucket's own "file size limit"
-// setting (set in the Supabase dashboard, see @/lib/supabase.ts) is the
-// actually-enforced backstop — a client can't bypass that one by editing
-// the wizard's JS, since Storage itself will reject an oversized write.
+// Profile photo is uploaded directly from the browser to Supabase Storage
+// (see @/lib/supabase.ts and the wizard component) — this server function
+// only ever receives the resulting public URL, never the raw file. Size
+// limits are enforced client-side before the upload starts; the bucket's
+// own "file size limit" setting (set in the Supabase dashboard, see
+// @/lib/supabase.ts) is the actually-enforced backstop.
+//
+// Batch thumbnails are no longer mentor-uploaded — EDURACK designs every
+// thumbnail before a batch goes live, so there's nothing to collect or
+// store here for that anymore.
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
-import { createHash } from "node:crypto";
 
 // Fixed platform terms — not mentor-editable. Kept as named constants so
 // the wizard, its validation, and this file all read from one source
@@ -23,6 +25,11 @@ import { createHash } from "node:crypto";
 export const FIXED_COMMISSION_PERCENT = 15;
 export const MIN_WEEKLY_HOURS = 4;
 export const MIN_BATCH_DURATION_MONTHS = 4;
+// Promotion commission a mentor can offer EDURACK on top of the fixed
+// platform commission, if they opt into promotion assistance. Mirrored by
+// the slider in the wizard's Materials & Promotion step.
+export const MIN_PROMOTION_PERCENT = 10;
+export const MAX_PROMOTION_PERCENT = 40;
 
 type MentorOnboardingInput = {
   applicationId: string;
@@ -34,17 +41,15 @@ type MentorOnboardingInput = {
   weeklyHours: number;
   wantsToSellTestSeries: boolean;
   wantsToRecordIntroVideo: boolean;
-  introVideoUrl: string;
   batchName: string;
-  batchThumbnailUrl: string;
-  needsThumbnailFromEdurack: boolean;
   batchPrice: number;
   batchDurationMonths: number;
   hasMinStudentCriteria: boolean;
   minStudentCriteriaDetails: string;
   needsPromotionAssistance: boolean;
-  hasSyllabusPdf: boolean;
+  promotionPercent: number;
   syllabusPdfUrl: string;
+  plannerPdfUrl: string;
   wantsPlannerDiscussionCall: boolean;
   commissionAgreed: boolean;
   wantsPlatformTour: boolean;
@@ -71,15 +76,18 @@ export const getApprovedApplicationSummary = createServerFn({ method: "GET" })
       approved: true as const,
       fullName: (app.personal as { fullName: string }).fullName,
       alreadySubmitted: Boolean(existingDetails?.submittedAt),
-      alreadySigned: Boolean(existingDetails?.signature),
+      // Drives the route's "submitted" phase — once a mentor has picked a
+      // Meet date, re-visiting the link shouldn't show the wizard again.
+      alreadyRequestedMeeting: Boolean(existingDetails?.meetingRequest),
     };
   });
 
 // ─── Draft-safe submit: upserts, so a mentor can come back and resubmit
-// before signing (submittedAt/updatedAt track this) without creating dupes.
-// This is the authoritative validation layer — the wizard enforces the
-// same minimums (weekly hours, batch duration, commission agreement) for a
-// good UX, but a request that skips the client can't skip these checks. ─
+// before requesting a call (submittedAt/updatedAt track this) without
+// creating dupes. This is the authoritative validation layer — the wizard
+// enforces the same minimums (weekly hours, batch duration, promotion %,
+// commission agreement) for a good UX, but a request that skips the
+// client can't skip these checks. ─
 export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
   .validator((data: MentorOnboardingInput) => data)
   .handler(async ({ data }) => {
@@ -103,16 +111,30 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
     if (!data.commissionAgreed) {
       throw new Error(`You must agree to the platform's fixed ${FIXED_COMMISSION_PERCENT}% commission rate.`);
     }
+    if (data.needsPromotionAssistance) {
+      if (
+        !data.promotionPercent ||
+        data.promotionPercent < MIN_PROMOTION_PERCENT ||
+        data.promotionPercent > MAX_PROMOTION_PERCENT
+      ) {
+        throw new Error(
+          `Promotion commission must be between ${MIN_PROMOTION_PERCENT}% and ${MAX_PROMOTION_PERCENT}%.`,
+        );
+      }
+    }
 
-    // Both fields now come in as Supabase Storage public URLs from the
-    // wizard's file-upload flow, not hand-typed links — a quick shape
-    // check catches anything that slipped through as plain text instead
-    // of an actual upload.
+    // Comes in as a Supabase Storage public URL from the wizard's
+    // file-upload flow, not a hand-typed link — a quick shape check
+    // catches anything that slipped through as plain text instead of an
+    // actual upload.
     if (data.profilePhotoUrl && !/^https?:\/\//i.test(data.profilePhotoUrl)) {
       throw new Error("Profile photo didn't upload correctly — please try uploading it again.");
     }
-    if (data.batchThumbnailUrl && !/^https?:\/\//i.test(data.batchThumbnailUrl)) {
-      throw new Error("Batch thumbnail didn't upload correctly — please try uploading it again.");
+    if (data.syllabusPdfUrl && !/^https?:\/\//i.test(data.syllabusPdfUrl)) {
+      throw new Error("Syllabus PDF didn't upload correctly — please try uploading it again.");
+    }
+    if (data.plannerPdfUrl && !/^https?:\/\//i.test(data.plannerPdfUrl)) {
+      throw new Error("Planner PDF didn't upload correctly — please try uploading it again.");
     }
 
     const wordCount = data.aboutText.trim().split(/\s+/).filter(Boolean).length;
@@ -123,6 +145,7 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
       {
         $set: {
           ...data,
+          promotionPercent: data.needsPromotionAssistance ? data.promotionPercent : 0,
           commissionPercent: FIXED_COMMISSION_PERCENT, // recorded explicitly, never mentor-set
           updatedAt: new Date(),
         },
@@ -134,18 +157,13 @@ export const submitMentorOnboardingDetails = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ─── Digital signature ──────────────────────────────────────────────────────
-// This is a "click-to-sign" record, not a formal digital-signature-provider
-// signature. It captures: a hash of the agreement link + version that was
-// shown at signing time (so a later change to the linked document is
-// detectable), the typed legal name, and a timestamp. IP/user-agent
-// capture depends on how your TanStack Start server exposes the request —
-// flagged below since I still don't have visibility into your server
-// entry setup to confirm the exact helper.
-export const signMentorAgreement = createServerFn({ method: "POST" })
-  .validator(
-    (data: { applicationId: string; typedFullName: string; agreementUrl: string; agreementVersion: string }) => data,
-  )
+// ─── Meeting request ────────────────────────────────────────────────────
+// Replaces the old typed-signature flow: instead of signing on their own,
+// the mentor just picks a date they're free for a Google Meet call, where
+// the EDURACK team walks through the Mentor Agreement and signs it with
+// them live. This just records that preference and a timestamp.
+export const requestMentorAgreementMeeting = createServerFn({ method: "POST" })
+  .validator((data: { applicationId: string; preferredMeetDate: string }) => data)
   .handler(async ({ data }) => {
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
@@ -154,38 +172,17 @@ export const signMentorAgreement = createServerFn({ method: "POST" })
     if (!app) throw new Error("Application not found.");
 
     const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
-    if (!details) throw new Error("Complete the onboarding form before signing.");
+    if (!details) throw new Error("Complete the onboarding form before requesting a call.");
 
-    if (!data.typedFullName?.trim()) throw new Error("Type your full legal name to confirm.");
-    // Require the typed name to reasonably match what they entered in the
-    // form itself — a lightweight check against someone signing as a
-    // different person than who filled out the form.
-    const normalizedTyped = data.typedFullName.trim().toLowerCase();
-    const normalizedForm = (details.fullName as string).trim().toLowerCase();
-    if (normalizedTyped !== normalizedForm) {
-      throw new Error("The typed name must match the full name entered in the onboarding form.");
-    }
-
-    // The agreement lives at an external link (not embedded text), so
-    // there's no document body to hash-lock. This hash instead fingerprints
-    // which link + version the mentor was shown at confirmation time, for
-    // an audit trail if the link target ever changes later.
-    const agreementHash = createHash("sha256").update(`${data.agreementUrl}::${data.agreementVersion}`).digest("hex");
+    if (!data.preferredMeetDate?.trim()) throw new Error("Pick a date you're free for the Google Meet call.");
 
     await db.collection("mentorOnboardingDetails").updateOne(
       { applicationId: data.applicationId },
       {
         $set: {
-          signature: {
-            typedFullName: data.typedFullName.trim(),
-            agreementUrl: data.agreementUrl,
-            agreementVersion: data.agreementVersion,
-            agreementHash,
-            signedAt: new Date(),
-            // TODO: populate from the actual request once confirmed — see
-            // prior note; needs this project's request-access API to fill.
-            ipAddress: null,
-            userAgent: null,
+          meetingRequest: {
+            preferredMeetDate: data.preferredMeetDate,
+            requestedAt: new Date(),
           },
         },
       },
@@ -218,17 +215,15 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
         weeklyHours: Number(details.weeklyHours ?? 0),
         wantsToSellTestSeries: Boolean(details.wantsToSellTestSeries),
         wantsToRecordIntroVideo: Boolean(details.wantsToRecordIntroVideo),
-        introVideoUrl: (details.introVideoUrl as string) ?? "",
         batchName: (details.batchName as string) ?? "",
-        batchThumbnailUrl: (details.batchThumbnailUrl as string) ?? "",
-        needsThumbnailFromEdurack: Boolean(details.needsThumbnailFromEdurack),
         batchPrice: Number(details.batchPrice ?? 0),
         batchDurationMonths: Number(details.batchDurationMonths ?? 0),
         hasMinStudentCriteria: Boolean(details.hasMinStudentCriteria),
         minStudentCriteriaDetails: (details.minStudentCriteriaDetails as string) ?? "",
         needsPromotionAssistance: Boolean(details.needsPromotionAssistance),
-        hasSyllabusPdf: Boolean(details.hasSyllabusPdf),
+        promotionPercent: Number(details.promotionPercent ?? 0),
         syllabusPdfUrl: (details.syllabusPdfUrl as string) ?? "",
+        plannerPdfUrl: (details.plannerPdfUrl as string) ?? "",
         wantsPlannerDiscussionCall: Boolean(details.wantsPlannerDiscussionCall),
         commissionPercent: Number(details.commissionPercent ?? FIXED_COMMISSION_PERCENT),
         commissionAgreed: Boolean(details.commissionAgreed),
@@ -236,13 +231,13 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
         preferredLaunchDate: (details.preferredLaunchDate as string) ?? "",
         submittedAt: details.submittedAt instanceof Date ? details.submittedAt.toISOString() : null,
         updatedAt: details.updatedAt instanceof Date ? details.updatedAt.toISOString() : null,
-        signature: details.signature
+        meetingRequest: details.meetingRequest
           ? {
-              typedFullName: (details.signature.typedFullName as string) ?? "",
-              agreementUrl: (details.signature.agreementUrl as string) ?? "",
-              agreementVersion: (details.signature.agreementVersion as string) ?? "",
-              signedAt:
-                details.signature.signedAt instanceof Date ? details.signature.signedAt.toISOString() : null,
+              preferredMeetDate: (details.meetingRequest.preferredMeetDate as string) ?? "",
+              requestedAt:
+                details.meetingRequest.requestedAt instanceof Date
+                  ? details.meetingRequest.requestedAt.toISOString()
+                  : null,
             }
           : null,
         profileCreated: Boolean(details.profileCreated),
@@ -258,6 +253,10 @@ export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
 // createMentor / updateMentorProfile / updateMentorLockedInfo functions in
 // admin.ts (see admin.dashboard.tsx's handleCreateProfile — this function
 // only records that it happened, it does not create the mentor itself).
+// Gated on a meeting request existing (rather than a signature, since
+// signing now happens live on the call, not through this flow) so a
+// profile can't be created for someone who never got as far as scheduling
+// that call.
 export const markMentorProfileCreated = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
@@ -266,7 +265,7 @@ export const markMentorProfileCreated = createServerFn({ method: "POST" })
 
     const details = await db.collection("mentorOnboardingDetails").findOne({ applicationId: data.applicationId });
     if (!details) throw new Error("This mentor hasn't submitted onboarding details yet.");
-    if (!details.signature) throw new Error("This mentor hasn't confirmed the mentor agreement yet.");
+    if (!details.meetingRequest) throw new Error("This mentor hasn't requested their agreement call yet.");
 
     await db.collection("mentorOnboardingDetails").updateOne(
       { applicationId: data.applicationId },

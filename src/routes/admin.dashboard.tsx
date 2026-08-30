@@ -54,8 +54,7 @@ import {
   Link2,
 } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
-import { signOutUser } from "@/lib/firebase";
-import {
+import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
   listStudents,
   getAdminStudentFullProfile,
@@ -192,8 +191,13 @@ function AdminDashboardPage() {
   }
 
   async function handleSignOut() {
-    await signOutUser();
-    navigate({ to: "/admin/auth" });
+    try {
+      await adminSignOutUser();
+    } catch (err) {
+      console.error("Sign out failed:", err);
+    } finally {
+      navigate({ to: "/admin/auth" });
+  }
   }
 
   if (loading || !adminUser || !isAdmin) {
@@ -1094,39 +1098,47 @@ function socialIcon(platform: string) {
 
 // ─── Approved-application onboarding details drawer ─────────────────────────
 // Shows what the mentor filled in on the post-approval onboarding wizard
-// (src/routes/mentor-onboarding/$applicationId.tsx) plus their signature
-// status. Only reachable from an "approved" application card below.
+// (src/routes/mentor-onboarding/$applicationId.tsx) plus whether they've
+// requested their agreement call. Only reachable from an "approved"
+// application card below.
+//
+// Kept in sync with server-functions/mentor-onboarding.ts's
+// getMentorOnboardingDetails return shape — the wizard no longer collects
+// a batch thumbnail (EDURACK designs every thumbnail) or an intro-video
+// URL, and signing happens live on a Google Meet call instead of a typed
+// signature, so this type has no `batchThumbnailUrl`, `introVideoUrl`,
+// `needsThumbnailFromEdurack`, `hasSyllabusPdf`, or `signature` fields.
 type MentorOnboardingDetails = {
   profilePhotoUrl: string;
   fullName: string;
   college: string;
   rank: string;
   aboutText: string;
-  weeklyHours: string;
+  weeklyHours: number;
   wantsToSellTestSeries: boolean;
   wantsToRecordIntroVideo: boolean;
-  introVideoUrl: string;
   batchName: string;
-  batchThumbnailUrl: string;
-  needsThumbnailFromEdurack: boolean;
   batchPrice: number;
   batchDurationMonths: number;
   hasMinStudentCriteria: boolean;
   minStudentCriteriaDetails: string;
   needsPromotionAssistance: boolean;
-  hasSyllabusPdf: boolean;
+  promotionPercent: number;
   syllabusPdfUrl: string;
+  plannerPdfUrl: string;
   wantsPlannerDiscussionCall: boolean;
-  expectedCommissionPercent: number;
+  commissionPercent: number;
+  commissionAgreed: boolean;
   wantsPlatformTour: boolean;
   preferredLaunchDate: string;
   submittedAt: string | null;
   updatedAt: string | null;
-  signature: {
-    typedFullName: string;
-    agreementUrl: string;
-    agreementVersion: string;
-    signedAt: string | null;
+  // Replaces the old typed-signature flow — the mentor picks a date for a
+  // live Google Meet call where the Mentor Agreement is walked through and
+  // signed with them, rather than signing on their own beforehand.
+  meetingRequest: {
+    preferredMeetDate: string;
+    requestedAt: string | null;
   } | null;
   profileCreated: boolean;
   mentorProfileId: string | null;
@@ -1179,10 +1191,11 @@ function OnboardingDetailsDrawer({
 
   // ─── Batch publishing form state ───────────────────────────────────────
   // Prefills whatever the onboarding wizard actually collected (name,
-  // thumbnail, price) and the application's examsTaught (if one resolves
-  // to a real ExamKey) — everything else (highlights, track, a crossed
-  // reference price) genuinely wasn't collected anywhere, so those start
-  // blank for the admin to fill in here before publishing.
+  // price) and the application's examsTaught (if one resolves to a real
+  // ExamKey) — everything else (highlights, track, a crossed reference
+  // price, and now the thumbnail too, since EDURACK designs it separately)
+  // genuinely wasn't collected anywhere, so those start blank for the
+  // admin to fill in here before publishing.
   const defaultExam: ExamKey = (examsTaughtHint.find((e) => (EXAM_KEYS as string[]).includes(e)) as ExamKey) ?? "neet";
   const [batchHighlights, setBatchHighlights] = useState<string[]>(["", ""]);
   const [batchTrack, setBatchTrack] = useState<Track>("Dropper");
@@ -1200,9 +1213,7 @@ function OnboardingDetailsDrawer({
       if (!result.details) {
         setStatus("none");
         return;
-      }
-      setDetails(result.details as MentorOnboardingDetails);
-      setStatus("ready");
+    }    setStatus("ready");
     } catch (err) {
       // Log the full error to the browser console for debugging, and keep
       // a short version on screen so it's visible without opening dev
@@ -1224,6 +1235,11 @@ function OnboardingDetailsDrawer({
   // reuses the existing, already-correct createMentor / updateMentorProfile
   // / updateMentorLockedInfo functions — just auto-fills them with what
   // was reviewed above, plus freshly generated credentials.
+  //
+  // Gated on a meeting request existing rather than a signature — signing
+  // now happens live on the Google Meet call, so an admin should have
+  // already walked through and signed the agreement with this mentor by
+  // the time they click this.
   //
   // Note: this deliberately does NOT auto-create a mentorship batch. The
   // batch price/duration collected during onboarding don't map cleanly
@@ -1299,7 +1315,8 @@ function OnboardingDetailsDrawer({
   // function "Create mentorship batch" in Mentor Hub uses, so the result
   // is indistinguishable from one created there by hand. Requires a
   // mentor profile to already exist (mentorProfileId), since a batch has
-  // to be assigned to someone.
+  // to be assigned to someone. No thumbnail is passed here — EDURACK
+  // designs it separately, so it's added afterward from Manage Bundles.
   async function handlePublishBatch() {
     if (!details || !details.mentorProfileId) return;
     setPublishBatchError(null);
@@ -1318,7 +1335,7 @@ function OnboardingDetailsDrawer({
         data: {
           token,
           batch: {
-            thumbnailUrl: details.batchThumbnailUrl || null,
+            thumbnailUrl: null,
             name: details.batchName,
             highlights: cleanHighlights,
             track: batchTrack,
@@ -1407,18 +1424,15 @@ function OnboardingDetailsDrawer({
               )}
               <p className="mt-2 flex items-center gap-1.5 text-xs text-foreground/50">
                 <Calendar className="h-3 w-3" />
-                Weekly commitment: {details.weeklyHours || "—"}
+                Weekly commitment: {details.weeklyHours ? `${details.weeklyHours} hrs/week` : "—"}
               </p>
             </div>
 
-            {/* Batch */}
+            {/* Batch — no thumbnail preview anymore since EDURACK designs
+                every batch thumbnail; nothing was uploaded during
+                onboarding for this. */}
             <DrawerSection icon={GraduationCap} title="Proposed batch">
               <div className="clay-inset px-3.5 py-3">
-                {details.batchThumbnailUrl && (
-                  <div className="mb-2.5 h-24 w-full overflow-hidden rounded-xl bg-foreground/5">
-                    <img src={details.batchThumbnailUrl} alt="" className="h-full w-full object-cover" />
-                  </div>
-                )}
                 <p className="font-semibold text-foreground">{details.batchName || "—"}</p>
                 <p className="mt-0.5 text-xs text-foreground/50">
                   {currency.format(details.batchPrice || 0)} · {details.batchDurationMonths || 0} month
@@ -1427,11 +1441,9 @@ function OnboardingDetailsDrawer({
                     ? details.minStudentCriteriaDetails || "Has criteria"
                     : "Open to all"}
                 </p>
-                {details.needsThumbnailFromEdurack && (
-                  <p className="mt-1 text-xs font-semibold text-[var(--sky-deep)]">
-                    Requested a thumbnail from EDURACK
-                  </p>
-                )}
+                <p className="mt-1 text-xs font-semibold text-[var(--sky-deep)]">
+                  Thumbnail: designed by EDURACK
+                </p>
               </div>
             </DrawerSection>
 
@@ -1444,25 +1456,49 @@ function OnboardingDetailsDrawer({
                 <li>
                   Intro video:{" "}
                   <strong className="text-foreground">
-                    {details.wantsToRecordIntroVideo ? details.introVideoUrl || "Yes, pending" : "No"}
+                    {details.wantsToRecordIntroVideo ? "Yes — team will follow up" : "No"}
                   </strong>
                 </li>
                 <li>
                   Needs promotion assistance:{" "}
-                  <strong className="text-foreground">{details.needsPromotionAssistance ? "Yes" : "No"}</strong>
-                </li>
-                <li>
-                  Syllabus/planner:{" "}
                   <strong className="text-foreground">
-                    {details.hasSyllabusPdf
-                      ? details.syllabusPdfUrl || "Provided"
-                      : details.wantsPlannerDiscussionCall
-                        ? "Wants a planning call"
-                        : "Not provided"}
+                    {details.needsPromotionAssistance ? `Yes — ${details.promotionPercent}% commission` : "No"}
                   </strong>
                 </li>
                 <li>
-                  Expected commission: <strong className="text-foreground">{details.expectedCommissionPercent}%</strong>
+                  Syllabus PDF:{" "}
+                  {details.syllabusPdfUrl ? (
+                    <a
+                      href={details.syllabusPdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      View file
+                    </a>
+                  ) : (
+                    <strong className="text-foreground">Not provided</strong>
+                  )}
+                </li>
+                <li>
+                  Planner PDF:{" "}
+                  {details.plannerPdfUrl ? (
+                    <a
+                      href={details.plannerPdfUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      View file
+                    </a>
+                  ) : (
+                    <strong className="text-foreground">
+                      {details.wantsPlannerDiscussionCall ? "Wants a planning call" : "Not provided"}
+                    </strong>
+                  )}
+                </li>
+                <li>
+                  Commission rate: <strong className="text-foreground">{details.commissionPercent}%</strong>
                 </li>
                 <li>
                   Wants platform tour: <strong className="text-foreground">{details.wantsPlatformTour ? "Yes" : "No"}</strong>
@@ -1474,33 +1510,41 @@ function OnboardingDetailsDrawer({
               </ul>
             </DrawerSection>
 
-            {/* Agreement / signature */}
+            {/* Agreement call — the mentor requested a date, but the actual
+                signing happens live on that Google Meet call, not here. */}
             <div
               className={`clay-inset rounded-2xl p-4 ${
-                details.signature ? "bg-[var(--mint-soft)]/30" : "bg-[var(--coral-soft)]/30"
+                details.meetingRequest ? "bg-[var(--mint-soft)]/30" : "bg-[var(--coral-soft)]/30"
               }`}
             >
-              {details.signature ? (
+              {details.meetingRequest ? (
                 <>
                   <p className="flex items-center gap-1.5 font-semibold text-foreground">
                     <CheckCircle2 className="h-4 w-4" />
-                    Agreement signed
+                    Agreement call requested
                   </p>
                   <p className="mt-1 text-xs text-foreground/60">
-                    Signed as "{details.signature.typedFullName}" on {formatDateTime(details.signature.signedAt)} ·
-                    version {details.signature.agreementVersion}
+                    Preferred date:{" "}
+                    {formatDate(details.meetingRequest.preferredMeetDate) !== "—"
+                      ? formatDate(details.meetingRequest.preferredMeetDate)
+                      : details.meetingRequest.preferredMeetDate}{" "}
+                    · requested {formatDateTime(details.meetingRequest.requestedAt)}
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/50">
+                    Sign the Mentor Agreement with them live on this call before creating their profile below.
                   </p>
                 </>
               ) : (
                 <p className="flex items-center gap-1.5 font-semibold text-foreground">
                   <AlertCircle className="h-4 w-4" />
-                  Agreement not yet signed
+                  Hasn't requested an agreement call yet
                 </p>
               )}
             </div>
 
             {/* Create profile — the actual "add this mentor to the portal"
-                action, gated on having reviewed a signed submission. */}
+                action, gated on a meeting request existing (signing itself
+                happens live on that call, not through this drawer). */}
             <div className="clay-inset rounded-2xl p-4">
               {details.profileCreated ? (
                 <>
@@ -1541,13 +1585,13 @@ function OnboardingDetailsDrawer({
               ) : (
                 <>
                   <p className="mb-3 text-xs text-foreground/60">
-                    {details.signature
-                      ? "Creates this mentor's login (username, password, secret code) from what they submitted above. You'll publish their mentorship batch next."
-                      : "This mentor needs to confirm the agreement before a profile can be created."}
+                    {details.meetingRequest
+                      ? "Creates this mentor's login (username, password, secret code) from what they submitted above. Make sure you've signed the agreement with them on their Google Meet call first. You'll publish their mentorship batch next."
+                      : "This mentor needs to request their agreement call before a profile can be created."}
                   </p>
                   <button
                     onClick={handleCreateProfile}
-                    disabled={!details.signature || creatingProfile}
+                    disabled={!details.meetingRequest || creatingProfile}
                     className="clay-btn inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {creatingProfile ? (
@@ -1568,8 +1612,9 @@ function OnboardingDetailsDrawer({
                 exists (a batch has to be assigned to somebody). Everything
                 already known from onboarding is shown read-only; the
                 genuinely-missing fields (highlights, track, exam, a
-                crossed reference price) are filled in here before
-                publishing for real via createMentorshipBatch. */}
+                crossed reference price, and the thumbnail — EDURACK
+                designs that separately) are filled in here or afterward
+                via createMentorshipBatch / Manage Bundles. */}
             {details.profileCreated && (
               <div className="clay-inset rounded-2xl p-4">
                 {details.batchCreated ? (
@@ -1584,15 +1629,11 @@ function OnboardingDetailsDrawer({
                       Publish mentorship batch
                     </p>
 
-                    {details.batchThumbnailUrl && (
-                      <div className="mb-2.5 h-20 w-full overflow-hidden rounded-xl bg-foreground/5">
-                        <img src={details.batchThumbnailUrl} alt="" className="h-full w-full object-cover" />
-                      </div>
-                    )}
                     <p className="text-sm font-semibold text-foreground">{details.batchName || "—"}</p>
                     <p className="mb-3 text-xs text-foreground/50">
                       {currency.format(details.batchPrice || 0)} · {details.batchDurationMonths || 0} month
-                      {details.batchDurationMonths === 1 ? "" : "s"} (from onboarding)
+                      {details.batchDurationMonths === 1 ? "" : "s"} (from onboarding) · no thumbnail yet — add
+                      one from Manage Bundles after publishing
                     </p>
 
                     <div className="space-y-2.5">

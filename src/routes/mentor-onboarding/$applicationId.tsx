@@ -1,21 +1,22 @@
-// Profile photo and batch thumbnail upload to Supabase Storage (see
-// @/lib/supabase.ts for the bucket + policy setup this needs). The upload
-// happens directly from the browser and this component only ever ends up
-// with a public URL — that URL is what gets submitted with the rest of
-// the form, same as if it had been hand-pasted.
+// Profile photo upload to Supabase Storage (see @/lib/supabase.ts for the
+// bucket + policy setup this needs). Syllabus/planner PDFs use the same
+// bucket and upload path. The upload happens directly from the browser and
+// this component only ever ends up with a public URL — that URL is what
+// gets submitted with the rest of the form, same as if it had been
+// hand-pasted.
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Loader2, ArrowRight, ArrowLeft, Check, Sparkles, User, GraduationCap, Award,
   FileText, Clock, ShoppingBag, Video, Tag, ImageIcon, IndianRupee,
   CalendarDays, Users2, Megaphone, BookMarked, MapPin, Rocket, CheckCircle2,
-  PenLine, AlertCircle, Upload, X, Link2, Eye, ShieldCheck, TrendingUp, Pencil,
+  AlertCircle, Upload, X, Eye, ShieldCheck, TrendingUp, Pencil,
 } from "lucide-react";
 import { supabase, MENTOR_UPLOADS_BUCKET } from "@/lib/supabase";
 import {
   getApprovedApplicationSummary,
   submitMentorOnboardingDetails,
-  signMentorAgreement,
+  requestMentorAgreementMeeting,
   FIXED_COMMISSION_PERCENT,
   MIN_WEEKLY_HOURS,
   MIN_BATCH_DURATION_MONTHS,
@@ -27,14 +28,22 @@ export const Route = createFileRoute("/mentor-onboarding/$applicationId")({
 
 // ─── Upload limits ────────────────────────────────────────────────────────
 const MAX_PHOTO_BYTES = 1 * 1024 * 1024; // 1MB — profile photo
-const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024; // 5MB — batch thumbnail
+const MAX_PDF_BYTES = 5 * 1024 * 1024; // 5MB — syllabus / planner PDF (matches the mentor-uploads bucket's file size limit)
+
+// Minimum promotion commission a mentor can offer EDURACK, on top of the
+// fixed platform commission, if they opt into promotion assistance.
+const MIN_PROMOTION_PERCENT = 10;
+const MAX_PROMOTION_PERCENT = 40;
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-async function uploadImage(file: File, path: string): Promise<string> {
+// Generic upload helper — used for the profile photo and both PDFs. Not
+// image-specific despite the historical name; file-type validation happens
+// in the field components themselves before this is ever called.
+async function uploadToBucket(file: File, path: string): Promise<string> {
   const { error } = await supabase.storage.from(MENTOR_UPLOADS_BUCKET).upload(path, file, {
     cacheControl: "3600",
     // upsert is deliberately NOT used here: Supabase requires SELECT +
@@ -48,13 +57,30 @@ async function uploadImage(file: File, path: string): Promise<string> {
   return data.publicUrl;
 }
 
-// Shared math so the live per-student earnings estimate (Your Batch step,
-// preview card, and Review step) always agrees with itself and with the
-// fixed commission rate — computed in exactly one place.
+// Shared math so the earnings breakdown (Your Batch step, preview card, and
+// Review step) always agrees with itself and with the fixed commission
+// rate — computed in exactly one place.
 function estimateEarningsPerStudent(price: string): number | null {
   const n = Number(price);
   if (!n || n <= 0) return null;
   return Math.round(n * (1 - FIXED_COMMISSION_PERCENT / 100));
+}
+
+// Live per-student earnings while dragging the promotion slider — factors
+// in both the fixed platform commission and whatever promotion commission
+// is currently selected, so the number updates as the mentor drags.
+function estimatePromotionEarnings(price: string, promotionPercent: number) {
+  const gross = Number(price);
+  if (!gross || gross <= 0) return null;
+  const platformCut = Math.round((gross * FIXED_COMMISSION_PERCENT) / 100);
+  const promotionCut = Math.round((gross * promotionPercent) / 100);
+  return {
+    gross,
+    platformCut,
+    promotionCut,
+    netWithPromotion: gross - platformCut - promotionCut,
+    netWithoutPromotion: gross - platformCut,
+  };
 }
 
 type FormState = {
@@ -66,21 +92,20 @@ type FormState = {
   weeklyHours: string;
   wantsToSellTestSeries: boolean | null;
   wantsToRecordIntroVideo: boolean | null;
-  introVideoUrl: string;
   batchName: string;
-  batchThumbnailUrl: string;
-  needsThumbnailFromEdurack: boolean;
   batchPrice: string;
   batchDurationMonths: string;
   hasMinStudentCriteria: boolean | null;
   minStudentCriteriaDetails: string;
   needsPromotionAssistance: boolean | null;
-  hasSyllabusPdf: boolean | null;
+  promotionPercent: string;
   syllabusPdfUrl: string;
+  plannerPdfUrl: string;
   wantsPlannerDiscussionCall: boolean;
   commissionAgreed: boolean;
   wantsPlatformTour: boolean | null;
   preferredLaunchDate: string;
+  preferredMeetDate: string;
 };
 
 const emptyForm: FormState = {
@@ -92,21 +117,20 @@ const emptyForm: FormState = {
   weeklyHours: "",
   wantsToSellTestSeries: null,
   wantsToRecordIntroVideo: null,
-  introVideoUrl: "",
   batchName: "",
-  batchThumbnailUrl: "",
-  needsThumbnailFromEdurack: false,
   batchPrice: "",
   batchDurationMonths: "",
   hasMinStudentCriteria: null,
   minStudentCriteriaDetails: "",
   needsPromotionAssistance: null,
-  hasSyllabusPdf: null,
+  promotionPercent: String(MIN_PROMOTION_PERCENT),
   syllabusPdfUrl: "",
+  plannerPdfUrl: "",
   wantsPlannerDiscussionCall: false,
   commissionAgreed: false,
   wantsPlatformTour: null,
   preferredLaunchDate: "",
+  preferredMeetDate: "",
 };
 
 const STEPS = [
@@ -156,7 +180,7 @@ const STEP_TIPS: { title: string; body: string }[] = [
   },
   {
     title: "Last step",
-    body: "Once you confirm, our team reviews your submission and reaches out to schedule your batch launch.",
+    body: "Our team will connect with you on a Google Meet to walk through the agreement together and sign it live on the call.",
   },
 ];
 
@@ -166,7 +190,7 @@ function draftKey(applicationId: string) {
 
 function MentorOnboardingPage() {
   const { applicationId } = Route.useParams();
-  const [phase, setPhase] = useState<"loading" | "invalid" | "form" | "signed">("loading");
+  const [phase, setPhase] = useState<"loading" | "invalid" | "form" | "submitted">("loading");
   const [form, setForm] = useState<FormState>(emptyForm);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -183,8 +207,8 @@ function MentorOnboardingPage() {
           setPhase("invalid");
           return;
         }
-        if (summary.alreadySigned) {
-          setPhase("signed");
+        if (summary.alreadyRequestedMeeting) {
+          setPhase("submitted");
           return;
         }
         setAlreadySubmitted(summary.alreadySubmitted);
@@ -206,7 +230,7 @@ function MentorOnboardingPage() {
   // Autosave every change to localStorage — this is the "temporary until
   // submitted" storage the mentor can safely close the tab on and resume.
   // Note: this stores the uploaded-file *download URLs*, not the files
-  // themselves, so drafts stay small even with photos attached.
+  // themselves, so drafts stay small even with photos/PDFs attached.
   useEffect(() => {
     if (phase !== "form") return;
     localStorage.setItem(draftKey(applicationId), JSON.stringify(form));
@@ -243,7 +267,9 @@ function MentorOnboardingPage() {
     }
     if (s === MATERIALS_STEP) {
       if (form.needsPromotionAssistance === null) return "Let us know if you'd like promotion assistance.";
-      if (form.hasSyllabusPdf === null) return "Let us know about your syllabus/planner PDF.";
+      if (form.needsPromotionAssistance && Number(form.promotionPercent) < MIN_PROMOTION_PERCENT) {
+        return `Promotion commission must be at least ${MIN_PROMOTION_PERCENT}%.`;
+      }
     }
     if (s === TERMS_STEP) {
       if (!form.commissionAgreed) return `You must agree to the fixed ${FIXED_COMMISSION_PERCENT}% commission rate to continue.`;
@@ -282,7 +308,7 @@ function MentorOnboardingPage() {
           wantsToRecordIntroVideo: Boolean(form.wantsToRecordIntroVideo),
           hasMinStudentCriteria: Boolean(form.hasMinStudentCriteria),
           needsPromotionAssistance: Boolean(form.needsPromotionAssistance),
-          hasSyllabusPdf: Boolean(form.hasSyllabusPdf),
+          promotionPercent: form.needsPromotionAssistance ? Number(form.promotionPercent) : 0,
           wantsPlatformTour: Boolean(form.wantsPlatformTour),
           commissionAgreed: form.commissionAgreed,
           weeklyHours: Number(form.weeklyHours),
@@ -303,9 +329,9 @@ function MentorOnboardingPage() {
     setStep((s) => Math.max(s - 1, 0));
   }
 
-  function handleSigned() {
+  function handleSubmittedMeetingRequest() {
     localStorage.removeItem(draftKey(applicationId));
-    setPhase("signed");
+    setPhase("submitted");
   }
 
   if (phase === "loading") {
@@ -333,7 +359,7 @@ function MentorOnboardingPage() {
     );
   }
 
-  if (phase === "signed") {
+  if (phase === "submitted") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="clay max-w-md p-8 text-center">
@@ -342,8 +368,8 @@ function MentorOnboardingPage() {
           </div>
           <p className="font-display text-lg font-bold text-foreground">You're all set</p>
           <p className="mt-2 text-sm text-foreground/60">
-            Your onboarding details and signed agreement are on file. Our team will follow up before
-            your batch goes live.
+            Your onboarding details are on file. Our team will reach out to schedule your Google Meet
+            call, where we'll walk through and sign the Mentor Agreement together.
           </p>
         </div>
       </div>
@@ -401,16 +427,19 @@ function MentorOnboardingPage() {
             <div key={step} className="animate-in fade-in slide-in-from-right-2 min-h-[16rem] duration-200">
               {step === ABOUT_YOU_STEP && <StepAboutYou form={form} set={set} applicationId={applicationId} />}
               {step === BEYOND_BATCH_STEP && <StepBeyondBatch form={form} set={set} />}
-              {step === YOUR_BATCH_STEP && <StepYourBatch form={form} set={set} applicationId={applicationId} />}
-              {step === MATERIALS_STEP && <StepMaterialsPromotion form={form} set={set} />}
+              {step === YOUR_BATCH_STEP && <StepYourBatch form={form} set={set} />}
+              {step === MATERIALS_STEP && (
+                <StepMaterialsPromotion form={form} set={set} applicationId={applicationId} />
+              )}
               {step === TERMS_STEP && <StepTermsLaunch form={form} set={set} />}
               {isReviewStep && <ReviewStep form={form} onEditStep={goToStep} />}
               {isAgreementStep && (
                 <AgreementStep
+                  form={form}
+                  set={set}
                   applicationId={applicationId}
-                  fullName={form.fullName}
                   onBack={handleBack}
-                  onSigned={handleSigned}
+                  onSubmitted={handleSubmittedMeetingRequest}
                 />
               )}
             </div>
@@ -537,20 +566,15 @@ function LivePreviewCard({
         )}
       </div>
 
-      {/* Batch mini-card */}
+      {/* Batch mini-card — thumbnail is always EDURACK-designed now, so this
+          just shows a placeholder rather than an upload preview. */}
       <div
         className={`clay-inset rounded-2xl p-4 transition-shadow duration-300 ${
           activeStep === YOUR_BATCH_STEP ? "ring-2 ring-[var(--sky-deep)]" : ""
         }`}
       >
-        <div className="mb-2 h-20 w-full overflow-hidden rounded-xl bg-slate-100">
-          {form.batchThumbnailUrl ? (
-            <img src={form.batchThumbnailUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center text-slate-300">
-              <ImageIcon className="h-5 w-5" />
-            </div>
-          )}
+        <div className="mb-2 flex h-20 w-full items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-slate-300">
+          <ImageIcon className="h-5 w-5" />
         </div>
         <p className="truncate text-sm font-bold text-slate-900">{form.batchName || "Your batch name"}</p>
         <p className="mt-0.5 text-xs text-slate-500">
@@ -625,13 +649,7 @@ function YesNoToggle({ value, onChange, yesLabel = "Yes", noLabel = "No" }: { va
   );
 }
 
-// ─── Image upload field ──────────────────────────────────────────────────
-// Shared by the profile photo (1MB cap) and batch thumbnail (5MB cap)
-// fields. Validates size client-side before ever starting the upload,
-// shows a preview once uploaded, and stores the resulting Storage
-// download URL back into form state — the rest of the form/submission
-// pipeline is unchanged, it just receives a real URL instead of a
-// hand-typed one.
+// ─── Profile photo upload field ───────────────────────────────────────────
 function ImageUploadField({
   label,
   icon,
@@ -639,8 +657,6 @@ function ImageUploadField({
   onChange,
   storagePath,
   maxBytes,
-  disabled,
-  shape = "square",
 }: {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -648,8 +664,6 @@ function ImageUploadField({
   onChange: (url: string) => void;
   storagePath: string;
   maxBytes: number;
-  disabled?: boolean;
-  shape?: "square" | "wide";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -674,7 +688,7 @@ function ImageUploadField({
       // Unique suffix per upload so "Replace photo" never collides with the
       // previous file at the same path — every upload is a fresh insert.
       const uniquePath = `${storagePath}-${Date.now()}.${ext}`;
-      const url = await uploadImage(file, uniquePath);
+      const url = await uploadToBucket(file, uniquePath);
       onChange(url);
     } catch {
       setError("Upload failed. Check your connection and try again.");
@@ -688,11 +702,7 @@ function ImageUploadField({
     <div>
       <Field label={label} icon={icon}>
         <div className="flex items-center gap-3">
-          <div
-            className={`clay-inset relative flex shrink-0 items-center justify-center overflow-hidden ${
-              shape === "square" ? "h-16 w-16 rounded-2xl" : "h-16 w-28 rounded-2xl"
-            }`}
-          >
+          <div className="clay-inset relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl">
             {uploading ? (
               <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
             ) : value ? (
@@ -707,15 +717,15 @@ function ImageUploadField({
               ref={inputRef}
               type="file"
               accept="image/*"
-              disabled={disabled || uploading}
+              disabled={uploading}
               onChange={(e) => handleFile(e.target.files?.[0])}
               className="hidden"
               id={`upload-${storagePath}`}
             />
             <label
-              htmlFor={disabled ? undefined : `upload-${storagePath}`}
+              htmlFor={`upload-${storagePath}`}
               className={`clay-btn-ghost inline-flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold ${
-                disabled || uploading ? "pointer-events-none opacity-50" : ""
+                uploading ? "pointer-events-none opacity-50" : ""
               }`}
             >
               <Upload className="h-3.5 w-3.5" />
@@ -740,6 +750,102 @@ function ImageUploadField({
   );
 }
 
+// ─── PDF upload field ──────────────────────────────────────────────────────
+// Shared by the syllabus and planner uploads in Step 4. Validates the file
+// is actually a PDF, uploads to the same Supabase bucket as the profile
+// photo, and stores the resulting public URL.
+function PdfUploadField({
+  label,
+  icon,
+  value,
+  onChange,
+  storagePath,
+}: {
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  value: string;
+  onChange: (url: string) => void;
+  storagePath: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+
+    if (file.type !== "application/pdf") {
+      setError("Please choose a PDF file.");
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setError(`That file is ${formatBytes(file.size)} — please choose one under ${formatBytes(MAX_PDF_BYTES)}.`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uniquePath = `${storagePath}-${Date.now()}.pdf`;
+      const url = await uploadToBucket(file, uniquePath);
+      onChange(url);
+    } catch {
+      setError("Upload failed. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+  <div>
+    <Field label={label} icon={icon}>
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf"
+          disabled={uploading}
+          onChange={(e) => handleFile(e.target.files?.[0])}
+          className="hidden"
+          id={`upload-${storagePath}`}
+        />
+        <label
+          htmlFor={`upload-${storagePath}`}
+          className={`clay-btn-ghost inline-flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold ${
+            uploading ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+          {value ? "Replace PDF" : "Upload PDF"}
+        </label>
+        {value && !uploading && (
+          <>
+            <a
+              href={value}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+            >
+              View uploaded file
+            </a>
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-rose-600"
+            >
+              <X className="h-3 w-3" />
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+      <p className="mt-1 text-[11px] text-slate-400">Max {formatBytes(MAX_PDF_BYTES)}, PDF only</p>
+    </Field>
+    {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
+  </div>
+);
+}
 // ─── Step 1: About You ───────────────────────────────────────────────────────
 
 function StepAboutYou({
@@ -820,36 +926,47 @@ function StepBeyondBatch({ form, set }: { form: FormState; set: <K extends keyof
           <YesNoToggle value={form.wantsToRecordIntroVideo} onChange={(v) => set("wantsToRecordIntroVideo", v)} />
         </Field>
         {form.wantsToRecordIntroVideo && (
-          <div className="mt-3">
-            <TextInput
-              value={form.introVideoUrl}
-              onChange={(e) => set("introVideoUrl", e.target.value)}
-              placeholder="Paste the video link once you've recorded it (optional for now)"
-            />
-          </div>
+          <p className="mt-3 rounded-2xl bg-[var(--sky-soft)]/40 px-4 py-3 text-xs text-slate-600">
+            Great — our team will connect with you shortly to help you record this.
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-// ─── Step 3: Your Batch (now with a live earnings estimate) ────────────────
+// ─── Step 3: Your Batch — batch thumbnail is now always EDURACK-designed,
+// so there's no upload here anymore. ────────────────────────────────────────
 
 function EarningsEstimate({ price }: { price: string }) {
+  const gross = Number(price);
   const perStudent = estimateEarningsPerStudent(price);
   if (perStudent === null) return null;
+  const commissionAmount = gross - perStudent;
+
   return (
-    <div className="clay-inset flex items-start gap-2.5 rounded-2xl bg-[var(--mint-soft)]/30 px-4 py-3">
-      <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-      <div>
-        <p className="text-sm font-semibold text-slate-800">
-          You'd earn approximately ₹{perStudent.toLocaleString()} per student
-        </p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Based on ₹{Number(price).toLocaleString()} price minus EDURACK's fixed {FIXED_COMMISSION_PERCENT}%
-          commission. 10 students ≈ ₹{(perStudent * 10).toLocaleString()}, 50 students ≈ ₹
-          {(perStudent * 50).toLocaleString()}.
-        </p>
+    <div className="clay-inset rounded-2xl bg-[var(--mint-soft)]/30 p-4">
+      <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+        <TrendingUp className="h-4 w-4 text-emerald-600" />
+        Your estimated earnings
+      </p>
+      <div className="space-y-1 text-xs text-slate-600">
+        <div className="flex items-center justify-between">
+          <span>Batch price (what the student pays)</span>
+          <span className="font-medium text-slate-800">₹{gross.toLocaleString()}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>EDURACK's commission ({FIXED_COMMISSION_PERCENT}%)</span>
+          <span className="font-medium text-rose-600">− ₹{commissionAmount.toLocaleString()}</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between border-t border-slate-200 pt-1.5 text-sm">
+          <span className="font-semibold text-slate-800">You earn, per student</span>
+          <span className="font-bold text-emerald-700">₹{perStudent.toLocaleString()}</span>
+        </div>
+      </div>
+      <div className="mt-2.5 flex gap-4 text-[11px] text-slate-500">
+        <span>10 students ≈ ₹{(perStudent * 10).toLocaleString()}</span>
+        <span>50 students ≈ ₹{(perStudent * 50).toLocaleString()}</span>
       </div>
     </div>
   );
@@ -858,41 +975,21 @@ function EarningsEstimate({ price }: { price: string }) {
 function StepYourBatch({
   form,
   set,
-  applicationId,
 }: {
   form: FormState;
   set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
-  applicationId: string;
 }) {
   return (
     <div className="space-y-4">
       <Field label="Batch name" icon={Tag}>
         <TextInput value={form.batchName} onChange={(e) => set("batchName", e.target.value)} placeholder="e.g. Organic Chemistry Mastery Batch" />
       </Field>
-      <div>
-        <ImageUploadField
-          label="Batch thumbnail"
-          icon={ImageIcon}
-          value={form.batchThumbnailUrl}
-          onChange={(url) => set("batchThumbnailUrl", url)}
-          storagePath={`${applicationId}/batch-thumbnail`}
-          maxBytes={MAX_THUMBNAIL_BYTES}
-          disabled={form.needsThumbnailFromEdurack}
-          shape="wide"
-        />
-        <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-          <input
-            type="checkbox"
-            checked={form.needsThumbnailFromEdurack}
-            onChange={(e) => {
-              set("needsThumbnailFromEdurack", e.target.checked);
-              if (e.target.checked) set("batchThumbnailUrl", "");
-            }}
-            className="h-4 w-4 rounded"
-          />
-          I don't have one — please design a thumbnail for my batch
-        </label>
+
+      <div className="clay-inset flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs text-slate-600">
+        <ImageIcon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+        <p>No need to design a thumbnail — the EDURACK team will create one for your batch before it goes live.</p>
       </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Field label="Batch price (₹)" icon={IndianRupee}>
@@ -947,41 +1044,140 @@ function StepYourBatch({
 
 // ─── Step 4: Materials & Promotion ───────────────────────────────────────────
 
-function StepMaterialsPromotion({ form, set }: { form: FormState; set: <K extends keyof FormState>(k: K, v: FormState[K]) => void }) {
+function StepMaterialsPromotion({
+  form,
+  set,
+  applicationId,
+}: {
+  form: FormState;
+  set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
+  applicationId: string;
+}) {
+  const promoEarnings = estimatePromotionEarnings(form.batchPrice, Number(form.promotionPercent));
+
   return (
     <div className="space-y-5">
       <div>
         <Field label="Do you need help promoting this batch?" icon={Megaphone}>
-          <YesNoToggle value={form.needsPromotionAssistance} onChange={(v) => set("needsPromotionAssistance", v)} />
+          <YesNoToggle
+            value={form.needsPromotionAssistance}
+            onChange={(v) => {
+              set("needsPromotionAssistance", v);
+              if (v && Number(form.promotionPercent) < MIN_PROMOTION_PERCENT) {
+                set("promotionPercent", String(MIN_PROMOTION_PERCENT));
+              }
+            }}
+          />
         </Field>
+
         {form.needsPromotionAssistance && (
-          <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            If EDURACK promotes your batch, an additional 10% commission is taken from each student
-            purchase made through that promotion, on top of the standard {FIXED_COMMISSION_PERCENT}%.
+          <div className="mt-3 space-y-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 p-4">
+            {/* Slider header */}
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                <Megaphone className="h-3.5 w-3.5" />
+                Promotion commission
+              </span>
+              <span className="font-display text-2xl font-bold text-amber-900">
+                {form.promotionPercent}%
+              </span>
+            </div>
+
+            {/* Slider */}
+            <div>
+              <input
+                type="range"
+                min={MIN_PROMOTION_PERCENT}
+                max={MAX_PROMOTION_PERCENT}
+                step={1}
+                value={form.promotionPercent}
+                onChange={(e) => set("promotionPercent", e.target.value)}
+                className="w-full accent-amber-600"
+              />
+              <div className="mt-1 flex justify-between text-[10px] font-medium text-amber-700/70">
+                <span>{MIN_PROMOTION_PERCENT}% min</span>
+                <span>{MAX_PROMOTION_PERCENT}% max</span>
+              </div>
+            </div>
+
+            {/* Live earnings breakdown */}
+            {promoEarnings ? (
+              <div className="rounded-xl bg-white/70 p-3.5">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <IndianRupee className="h-3.5 w-3.5 text-emerald-600" />
+                  What you'd take home per student
+                </p>
+                <div className="space-y-1 text-xs text-slate-600">
+                  <div className="flex items-center justify-between">
+                    <span>Batch price</span>
+                    <span className="font-medium text-slate-800">
+                      ₹{promoEarnings.gross.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Platform commission ({FIXED_COMMISSION_PERCENT}%)</span>
+                    <span className="font-medium text-rose-600">
+                      − ₹{promoEarnings.platformCut.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Promotion commission ({form.promotionPercent}%)</span>
+                    <span className="font-medium text-rose-600">
+                      − ₹{promoEarnings.promotionCut.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between border-t border-slate-200 pt-1.5 text-sm">
+                    <span className="font-semibold text-slate-800">You earn, per promoted student</span>
+                    <span className="font-bold text-emerald-700">
+                      ₹{promoEarnings.netWithPromotion.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-2 flex items-start gap-1 text-[11px] text-slate-500">
+                  <TrendingUp className="mt-0.5 h-3 w-3 shrink-0" />
+                  Without promotion you'd keep ₹{promoEarnings.netWithoutPromotion.toLocaleString()} per
+                  student — the ₹{promoEarnings.promotionCut.toLocaleString()} difference is what EDURACK
+                  takes for actively promoting your batch. You can adjust or turn this off later from your
+                  mentor dashboard.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-amber-700/70">
+                Set your batch price in the previous step to see live per-student earnings here.
+              </p>
+            )}
           </div>
         )}
       </div>
-      <div>
-        <Field label="Do you have a syllabus / planner PDF ready?" icon={BookMarked}>
-          <YesNoToggle value={form.hasSyllabusPdf} onChange={(v) => set("hasSyllabusPdf", v)} />
-        </Field>
-        {form.hasSyllabusPdf ? (
-          <div className="mt-3">
-            <TextInput
-              value={form.syllabusPdfUrl}
-              onChange={(e) => set("syllabusPdfUrl", e.target.value)}
-              placeholder="Paste the PDF link"
-            />
-          </div>
-        ) : (
-          <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+
+      <div className="space-y-3">
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+          <BookMarked className="h-3.5 w-3.5 text-slate-400" />
+          Syllabus & planner (optional)
+        </p>
+        <PdfUploadField
+          label="Syllabus PDF"
+          icon={FileText}
+          value={form.syllabusPdfUrl}
+          onChange={(url) => set("syllabusPdfUrl", url)}
+          storagePath={`${applicationId}/syllabus`}
+        />
+        <PdfUploadField
+          label="Planner PDF"
+          icon={CalendarDays}
+          value={form.plannerPdfUrl}
+          onChange={(url) => set("plannerPdfUrl", url)}
+          storagePath={`${applicationId}/planner`}
+        />
+        {!form.syllabusPdfUrl && !form.plannerPdfUrl && (
+          <label className="flex items-center gap-2 text-xs text-slate-600">
             <input
               type="checkbox"
               checked={form.wantsPlannerDiscussionCall}
               onChange={(e) => set("wantsPlannerDiscussionCall", e.target.checked)}
               className="h-4 w-4 rounded"
             />
-            Set up a quick call to plan this together
+            I don't have these ready — set up a quick call to plan this together
           </label>
         )}
       </div>
@@ -1033,8 +1229,7 @@ function StepTermsLaunch({ form, set }: { form: FormState; set: <K extends keyof
   );
 }
 
-// ─── Step 6: Review — see everything laid out together, edit any section
-// before it's actually submitted ────────────────────────────────────────────
+// ─── Step 6: Review ──────────────────────────────────────────────────────────
 
 function ReviewRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -1100,12 +1295,12 @@ function ReviewStep({ form, onEditStep }: { form: FormState; onEditStep: (step: 
 
       <ReviewSection title="Beyond This Batch" stepIndex={BEYOND_BATCH_STEP} onEditStep={onEditStep}>
         <ReviewRow label="Also sell a test series" value={form.wantsToSellTestSeries ? "Yes" : "No"} />
-        <ReviewRow label="Intro video" value={form.wantsToRecordIntroVideo ? (form.introVideoUrl || "Yes, pending") : "No"} />
+        <ReviewRow label="Intro video" value={form.wantsToRecordIntroVideo ? "Yes — team will follow up" : "No"} />
       </ReviewSection>
 
       <ReviewSection title="Your Batch" stepIndex={YOUR_BATCH_STEP} onEditStep={onEditStep}>
         <ReviewRow label="Batch name" value={form.batchName} />
-        <ReviewRow label="Thumbnail" value={form.needsThumbnailFromEdurack ? "Requested from EDURACK" : form.batchThumbnailUrl ? "Uploaded" : "Not set"} />
+        <ReviewRow label="Thumbnail" value="Designed by EDURACK" />
         <ReviewRow label="Price" value={form.batchPrice ? `₹${Number(form.batchPrice).toLocaleString()}` : ""} />
         <ReviewRow label="Duration" value={form.batchDurationMonths ? `${form.batchDurationMonths} months` : ""} />
         <ReviewRow
@@ -1118,11 +1313,15 @@ function ReviewStep({ form, onEditStep }: { form: FormState; onEditStep: (step: 
       </ReviewSection>
 
       <ReviewSection title="Materials & Promotion" stepIndex={MATERIALS_STEP} onEditStep={onEditStep}>
-        <ReviewRow label="Needs promotion help" value={form.needsPromotionAssistance ? "Yes" : "No"} />
         <ReviewRow
-          label="Syllabus/planner"
-          value={form.hasSyllabusPdf ? form.syllabusPdfUrl : form.wantsPlannerDiscussionCall ? "Wants a planning call" : "Not provided"}
+          label="Promotion help"
+          value={form.needsPromotionAssistance ? `Yes — ${form.promotionPercent}% commission` : "No"}
         />
+        <ReviewRow label="Syllabus PDF" value={form.syllabusPdfUrl ? "Uploaded" : "Not provided"} />
+        <ReviewRow label="Planner PDF" value={form.plannerPdfUrl ? "Uploaded" : "Not provided"} />
+        {!form.syllabusPdfUrl && !form.plannerPdfUrl && (
+          <ReviewRow label="Planning call" value={form.wantsPlannerDiscussionCall ? "Requested" : "Not requested"} />
+        )}
       </ReviewSection>
 
       <ReviewSection title="Terms & Launch" stepIndex={TERMS_STEP} onEditStep={onEditStep}>
@@ -1134,88 +1333,68 @@ function ReviewStep({ form, onEditStep }: { form: FormState; onEditStep: (step: 
   );
 }
 
-// ─── Agreement (external link) + confirmation ───────────────────────────────
-const AGREEMENT_VERSION = "v2-2026-08";
-
-// TODO: paste the actual agreement document link here once it's drafted
-// (Google Doc, PDF, DocuSign, whatever you land on). Left empty on purpose
-// — the wizard shows a "not ready yet" message instead of a dead link
-// until this is filled in.
-const AGREEMENT_LINK = "";
+// ─── Agreement — no more typed signature. Instead the mentor picks a date
+// for a Google Meet call, where the actual agreement is walked through and
+// signed live. ───────────────────────────────────────────────────────────────
 
 function AgreementStep({
+  form,
+  set,
   applicationId,
-  fullName,
   onBack,
-  onSigned,
+  onSubmitted,
 }: {
+  form: FormState;
+  set: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   applicationId: string;
-  fullName: string;
   onBack: () => void;
-  onSigned: () => void;
+  onSubmitted: () => void;
 }) {
-  const [typedName, setTypedName] = useState("");
-  const [agreed, setAgreed] = useState(false);
-  const [signing, setSigning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSign() {
+  async function handleRequestMeeting() {
     setError(null);
-    if (!agreed) return setError("Check the box confirming you've read the agreement.");
-    if (!typedName.trim()) return setError("Type your full legal name to confirm.");
+    if (!form.preferredMeetDate.trim()) return setError("Pick a date you're free for the Google Meet call.");
 
-    setSigning(true);
+    setSubmitting(true);
     try {
-      await signMentorAgreement({
-        data: { applicationId, typedFullName: typedName, agreementUrl: AGREEMENT_LINK, agreementVersion: AGREEMENT_VERSION },
+      await requestMentorAgreementMeeting({
+        data: { applicationId, preferredMeetDate: form.preferredMeetDate },
       });
-      onSigned();
+      onSubmitted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not confirm. Try again.");
+      setError(err instanceof Error ? err.message : "Could not save. Try again.");
     } finally {
-      setSigning(false);
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="space-y-4">
       <div className="clay-inset rounded-2xl p-4">
-        <p className="mb-3 text-sm text-slate-700">
-          Please read the EDURACK Mentor Agreement before confirming below.
+        <p className="mb-2 text-sm font-semibold text-slate-800">Final step — the Mentor Agreement</p>
+        <p className="text-sm text-slate-600">
+          Our team will connect with you shortly on a Google Meet call to walk through the Mentor
+          Agreement together, answer any questions, and digitally sign it with you live on the call.
         </p>
-        {AGREEMENT_LINK ? (
-          <a
-            href={AGREEMENT_LINK}
-            target="_blank"
-            rel="noreferrer"
-            className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
-          >
-            <Link2 className="h-3.5 w-3.5" />
-            Open the Mentor Agreement
-          </a>
-        ) : (
-          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Agreement link isn't set up yet — reach out to the EDURACK team before continuing.
-          </p>
-        )}
+        <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          The agreement will cover
+        </p>
+        <ul className="mt-1.5 list-inside list-disc space-y-1 text-xs text-slate-600">
+          <li>EDURACK's fixed {FIXED_COMMISSION_PERCENT}% platform commission on every sale</li>
+          <li>Your responsibilities — batch delivery, weekly commitment, student support</li>
+          <li>Payout schedule and how earnings are calculated and disbursed</li>
+          <li>Content and conduct guidelines for your batch and profile</li>
+          <li>Terms for ending the mentorship arrangement, on either side</li>
+        </ul>
       </div>
 
-      <label className="flex items-start gap-2.5 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={agreed}
-          onChange={(e) => setAgreed(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded"
-        />
-        I have read and agree to the Mentor Agreement linked above.
-      </label>
-
-      <Field label="Type your full legal name to confirm" icon={PenLine}>
+      <Field label="What date works for you for this Google Meet call?" icon={CalendarDays}>
         <TextInput
-          value={typedName}
-          onChange={(e) => setTypedName(e.target.value)}
-          placeholder={fullName || "Your full legal name"}
+          type="date"
+          value={form.preferredMeetDate}
+          onChange={(e) => set("preferredMeetDate", e.target.value)}
         />
       </Field>
 
@@ -1232,12 +1411,12 @@ function AgreementStep({
         </button>
         <button
           type="button"
-          onClick={handleSign}
-          disabled={signing}
+          onClick={handleRequestMeeting}
+          disabled={submitting}
           className="clay-btn flex flex-1 items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold disabled:opacity-70"
         >
-          {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          Confirm Agreement
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Confirm & Request Call
         </button>
       </div>
     </div>
