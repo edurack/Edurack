@@ -29,18 +29,50 @@ export const getMyPurchases = createServerFn({ method: "GET" })
     const mentorshipIds = purchases
       .filter((p) => p.itemType === "mentorship")
       .map((p) => new ObjectId(p.itemId as string));
+    const mentorTestIds = purchases
+      .filter((p) => p.itemType === "mentorTest")
+      .map((p) => new ObjectId(p.itemId as string));
 
-    const [bundles, mentorshipBatches] = await Promise.all([
+    const [bundles, mentorshipBatches, testCoreDocs, soldTestDocs] = await Promise.all([
       bundleIds.length > 0 ? db.collection("bundles").find({ _id: { $in: bundleIds } }).toArray() : [],
       mentorshipIds.length > 0
         ? db.collection("mentorshipBatches").find({ _id: { $in: mentorshipIds } }).toArray()
         : [],
+      // A "mentorTest" purchase can point at either the old Test Series
+      // testCores collection or the newer standalone soldTests collection
+      // — same dual-source pattern already used in payments.ts's
+      // lookupItemPriceAndTitle. Check both; an itemId only ever exists
+      // in one of them.
+      mentorTestIds.length > 0 ? db.collection("testCores").find({ _id: { $in: mentorTestIds } }).toArray() : [],
+      mentorTestIds.length > 0 ? db.collection("soldTests").find({ _id: { $in: mentorTestIds } }).toArray() : [],
     ]);
     const bundleById = new Map(bundles.map((b) => [String(b._id), b]));
     const mentorshipById = new Map(mentorshipBatches.map((b) => [String(b._id), b]));
+    const testCoreById = new Map(testCoreDocs.map((t) => [String(t._id), t]));
+    const soldTestById = new Map(soldTestDocs.map((t) => [String(t._id), t]));
 
     return {
       purchases: purchases.map((p) => {
+        if (p.itemType === "mentorTest") {
+          const testCore = testCoreById.get(p.itemId as string);
+          const soldTest = soldTestById.get(p.itemId as string);
+          const title = testCore
+            ? (testCore.name as string)
+            : soldTest
+              ? (soldTest.name as string)
+              : "Item no longer available";
+          return {
+            itemType: "mentorTest" as const,
+            itemId: p.itemId as string,
+            title,
+            track: null,
+            thumbnailUrl: null,
+            amount: p.amount as number,
+            razorpayPaymentId: p.razorpayPaymentId as string,
+            purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
+          };
+        }
+
         const item =
           p.itemType === "bundle" ? bundleById.get(p.itemId as string) : mentorshipById.get(p.itemId as string);
         return {
@@ -56,7 +88,6 @@ export const getMyPurchases = createServerFn({ method: "GET" })
       }),
     };
   });
-
 // ─── Per-batch performance summary (Profile page) ──────────────────────────
 export const getMyBatchPerformance = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)

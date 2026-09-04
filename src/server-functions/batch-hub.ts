@@ -823,6 +823,7 @@ export const getPublicSoldTestDetail = createServerFn({ method: "GET" })
         totalQuestions: t.totalQuestions as number,
         durationMinutes: t.durationMinutes as number,
         subjects: (t.subjects as string[]) ?? [],
+        instructions: (t.instructions as string) ?? "",
         price: t.approvedPrice as number,
       },
     };
