@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PromoterHubModule } from "@/components/promoter-hub-module";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
+import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
 import {
   Loader2,
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
   ClipboardCheck,
   Smartphone,
   X,
+  MonitorOff,
   Menu,
   Package,
   Boxes,
@@ -52,16 +54,24 @@ import {
   Building2,
   Calendar,
   Link2,
+  BadgeCheck,
+  PhoneCall,
+  Tag,
+
 } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
+  listAllPurchasesAdmin, 
   listStudents,
+  updateApplicationVerification,
   getAdminStudentFullProfile,
+  adminListDevicesForUser,
   listAllTicketsAdmin,
   updateTicketStatus,
   replyToTicket,
   listCreatorApplications,
+  adminTerminateDeviceSession,
   approveCreatorApplication,
   rejectCreatorApplication,
   reopenCreatorApplication,
@@ -72,7 +82,16 @@ import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   createMentor,
   updateMentorProfile,
   createMentorshipBatch,
+
 } from "@/server-functions/admin";
+import {
+  listAllPromoterTicketsAdmin,
+  respondToPromoterTicket,
+} from "@/server-functions/promoter-admin"; // ← new import line
+import {
+  listCallbackRequestsAdmin,
+  markCallbackRequestContacted,
+} from "@/server-functions/callback-requests"; // ← new import line
 import { updateMentorLockedInfo } from "@/server-functions/mentor-auth";
 import { getMentorOnboardingDetails, markMentorProfileCreated, markMentorshipBatchLinked } from "@/server-functions/mentor-onboarding";
 import { EXAM_KEYS, EXAM_LABELS as EXAM_LABEL_MAP, type Track, type ExamKey } from "@/lib/admin-types";
@@ -81,6 +100,7 @@ import { TestCoreModule } from "@/components/test-core-module";
 import { QuestionIngestionModule } from "@/components/question-ingestion-module";
 import { BundleInspectorModule } from "@/components/bundle-inspector-module";
 import { MentorHubModule } from "@/components/mentor-hub-module";
+import { SellTestsAdminModule } from "@/components/sell-tests-admin-module";
 
 type ModuleKey =
   | "overview"
@@ -88,6 +108,7 @@ type ModuleKey =
   | "bundleManage"
   | "testCore"
   | "questions"
+  | "sellTests"
   | "inspector"
   | "students"
   | "applications"
@@ -111,7 +132,9 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "bundleManage", label: "Manage Bundles", icon: Boxes },
       { key: "testCore", label: "Test Core", icon: ClipboardList },
       { key: "questions", label: "Questions", icon: ListChecks },
+      { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
+
     ],
   },
   {
@@ -139,9 +162,10 @@ export const Route = createFileRoute("/admin/dashboard")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  validateSearch: (search: Record<string, unknown>): { tab?: ModuleKey } => {
+  validateSearch: (search: Record<string, unknown>): { tab?: ModuleKey; ticketId?: string } => {
     const raw = typeof search.tab === "string" ? (search.tab as ModuleKey) : undefined;
-    return { tab: raw && MODULE_KEYS.includes(raw) ? raw : undefined };
+    const ticketId = typeof search.ticketId === "string" ? search.ticketId : undefined;
+    return { tab: raw && MODULE_KEYS.includes(raw) ? raw : undefined, ticketId };
   },
   component: AdminDashboardPage,
 });
@@ -174,7 +198,7 @@ function formatDateTime(iso: string | null) {
 function AdminDashboardPage() {
   const { adminUser, isAdmin, loading } = useAdminClaim();
   const navigate = useNavigate();
-  const { tab } = Route.useSearch();
+  const { tab, ticketId } = Route.useSearch();
   const activeModule: ModuleKey = tab ?? "overview";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -267,13 +291,13 @@ function AdminDashboardPage() {
           )}
 
           <main className="min-w-0 flex-1 px-4 py-6">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} />
+            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} />
           </main>
         </div>
 
         <main className="hidden min-w-0 flex-1 px-8 py-8 md:block">
           <div className="mx-auto max-w-5xl">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} />
+            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} />
           </div>
         </main>
       </div>
@@ -356,9 +380,11 @@ function SidebarContent({
 function ModuleRouter({
   activeModule,
   adminUser,
+  ticketId,
 }: {
   activeModule: ModuleKey;
   adminUser: { getIdToken: () => Promise<string> };
+  ticketId?: string;
 }) {
   switch (activeModule) {
     case "overview":
@@ -373,6 +399,8 @@ function ModuleRouter({
       return <QuestionIngestionModule adminUser={adminUser} />;
     case "inspector":
       return <BundleInspectorModule adminUser={adminUser} />;
+    case "sellTests":
+      return <SellTestsAdminModule adminUser={adminUser} />;
     case "students":
       return <StudentsModule adminUser={adminUser} />;
     case "applications":
@@ -382,7 +410,7 @@ function ModuleRouter({
     case "promoters":
       return <PromoterHubModule adminUser={adminUser} />;
     case "tickets":
-      return <TicketsModule adminUser={adminUser} />;
+      return <TicketsModule adminUser={adminUser} initialTicketId={ticketId} />;
     case "dangerZone":
       return <DangerZoneModule adminUser={adminUser} />;
     default:
@@ -428,6 +456,28 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
+        active ? "clay-btn text-white" : "clay-chip text-foreground/70 hover:bg-foreground/5"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ─── Module: Overview ────────────────────────────────────────────────────────
 type RecentPurchase = {
   studentName: string;
@@ -436,7 +486,6 @@ type RecentPurchase = {
   amount: number;
   purchasedAt: string | null;
 };
-type TopBundle = { title: string; revenue: number; purchaseCount: number };
 type Analytics = {
   totalStudents: number;
   totalRevenue: number;
@@ -444,12 +493,87 @@ type Analytics = {
   totalPurchases: number;
   mockTestsTaken: number;
   recentPurchases: RecentPurchase[];
-  topBundles: TopBundle[];
+  topBundles: { title: string; revenue: number; purchaseCount: number }[];
 };
+
+type PurchaseLedgerRow = {
+  id: string;
+  uid: string;
+  studentName: string;
+  studentEmail: string | null;
+  studentMobile: string | null;
+  itemType: "bundle" | "mentorship";
+  itemId: string;
+  itemTitle: string;
+  amount: number;
+  razorpayPaymentId: string | null;
+  purchasedAt: string | null;
+  mentorId: string | null;
+  mentorName: string | null;
+  platformAmount: number;
+  mentorNetAmount: number;
+  promotionPercent: number | null;
+};
+
+type TopRevenueItem = {
+  itemId: string;
+  itemType: "bundle" | "mentorship";
+  title: string;
+  mentorName: string | null;
+  revenue: number;
+  purchaseCount: number;
+  platformAmount: number;
+  mentorNetAmount: number;
+  promotionPercent: number | null;
+};
+
+const RECENT_PAGE_SIZE = 8;
+
+function purchaseMatchesQuery(row: PurchaseLedgerRow, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    row.studentName,
+    row.studentEmail ?? "",
+    row.studentMobile ?? "",
+    row.itemTitle,
+    row.itemType,
+    row.mentorName ?? "",
+    row.razorpayPaymentId ?? "",
+    String(row.amount),
+    formatDate(row.purchasedAt),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value: string | number) {
+  const str = String(value);
+  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
 
 function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [ledger, setLedger] = useState<PurchaseLedgerRow[] | null>(null);
+  const [ledgerStatus, setLedgerStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  const [recentQuery, setRecentQuery] = useState("");
+  const [recentVisible, setRecentVisible] = useState(RECENT_PAGE_SIZE);
+  const [selectedPurchase, setSelectedPurchase] = useState<PurchaseLedgerRow | null>(null);
 
   async function load() {
     setStatus("loading");
@@ -463,10 +587,114 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
     }
   }
 
+  async function loadLedger() {
+    setLedgerStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const { rows } = await listAllPurchasesAdmin({ data: { token } });
+      setLedger(rows as PurchaseLedgerRow[]);
+      setLedgerStatus("ready");
+    } catch {
+      setLedgerStatus("error");
+    }
+  }
+
   useEffect(() => {
     load();
+    loadLedger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const filteredRecent = useMemo(() => {
+    if (!ledger) return [];
+    return ledger.filter((r) => purchaseMatchesQuery(r, recentQuery));
+  }, [ledger, recentQuery]);
+
+  const visibleRecent = filteredRecent.slice(0, recentVisible);
+
+  const topRevenueItems: TopRevenueItem[] = useMemo(() => {
+    if (!ledger) return [];
+    const byItem = new Map<string, TopRevenueItem>();
+    for (const r of ledger) {
+      const key = `${r.itemType}:${r.itemId}`;
+      const entry = byItem.get(key) ?? {
+        itemId: r.itemId,
+        itemType: r.itemType,
+        title: r.itemTitle,
+        mentorName: r.mentorName,
+        revenue: 0,
+        purchaseCount: 0,
+        platformAmount: 0,
+        mentorNetAmount: 0,
+        promotionPercent: r.promotionPercent,
+      };
+      entry.revenue += r.amount;
+      entry.purchaseCount += 1;
+      entry.platformAmount += r.platformAmount;
+      entry.mentorNetAmount += r.mentorNetAmount;
+      byItem.set(key, entry);
+    }
+    return Array.from(byItem.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+  }, [ledger]);
+
+  function handleDownloadRevenueCsv() {
+    if (!ledger || ledger.length === 0) return;
+
+    const lines: string[] = [];
+    lines.push(
+      ["Date", "Student", "Item", "Type", "Amount", "Edurack Earned", "Mentor", "Mentor Net Earned", "Promotion Boost % (configured)", "Payment ID"]
+        .map(csvCell)
+        .join(","),
+    );
+    for (const r of ledger) {
+      lines.push(
+        [
+          formatDate(r.purchasedAt),
+          r.studentName,
+          r.itemTitle,
+          r.itemType,
+          r.amount,
+          r.platformAmount,
+          r.mentorName ?? "—",
+          r.mentorNetAmount,
+          r.promotionPercent != null ? `${r.promotionPercent}%` : "—",
+          r.razorpayPaymentId ?? "—",
+        ]
+          .map(csvCell)
+          .join(","),
+      );
+    }
+
+    const totalPlatform = ledger.reduce((sum, r) => sum + r.platformAmount, 0);
+    const totalGross = ledger.reduce((sum, r) => sum + r.amount, 0);
+    const netByMentor = new Map<string, number>();
+    for (const r of ledger) {
+      if (!r.mentorName) continue;
+      netByMentor.set(r.mentorName, (netByMentor.get(r.mentorName) ?? 0) + r.mentorNetAmount);
+    }
+
+    lines.push("");
+    lines.push(["SUMMARY"].map(csvCell).join(","));
+    lines.push(["Total revenue (gross)", totalGross].map(csvCell).join(","));
+    lines.push(["Total Edurack earned (platform commission)", totalPlatform].map(csvCell).join(","));
+    lines.push("");
+    lines.push(["Net earned by mentor"].map(csvCell).join(","));
+    for (const [name, net] of netByMentor.entries()) {
+      lines.push([name, net].map(csvCell).join(","));
+    }
+    lines.push("");
+    lines.push(
+      [
+        "Note: \"Promotion Boost %\" is the configured promoter incentive rate on that mentorship batch. Purchase records do not currently store which promoter (if any) referred a specific sale, so actual promotion spend per transaction cannot be calculated from this export.",
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+
+    downloadCsv(`edurack-revenue-${new Date().toISOString().slice(0, 10)}.csv`, lines.join("\n"));
+  }
 
   if (status === "error") {
     return (
@@ -493,14 +721,22 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
           loading={loading}
           value={analytics ? analytics.totalStudents.toLocaleString() : "—"}
         />
-        <MetricCard
-          icon={IndianRupee}
-          accent="mint"
-          label="Total Revenue"
-          loading={loading}
-          value={analytics ? currency.format(analytics.totalRevenue) : "—"}
-          sub={analytics ? `${currency.format(analytics.monthlyRevenue)} this month` : undefined}
-        />
+        <button
+          type="button"
+          onClick={handleDownloadRevenueCsv}
+          disabled={!ledger || ledger.length === 0}
+          className="text-left disabled:cursor-not-allowed disabled:opacity-60"
+          title="Click to download the full revenue CSV"
+        >
+          <MetricCard
+            icon={IndianRupee}
+            accent="mint"
+            label="Total Revenue (click to export CSV)"
+            loading={loading}
+            value={analytics ? currency.format(analytics.totalRevenue) : "—"}
+            sub={analytics ? `${currency.format(analytics.monthlyRevenue)} this month` : undefined}
+          />
+        </button>
         <MetricCard
           icon={ClipboardCheck}
           accent="coral"
@@ -518,76 +754,211 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Recent purchases feed */}
+        {/* Recent purchases feed — searchable, paginated, click for full detail */}
         <div className="clay p-5 sm:p-6">
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-3 flex items-center gap-2">
             <Wallet className="h-4 w-4 text-foreground/60" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">Recent purchases</h2>
           </div>
-          {loading ? (
+
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+            <input
+              value={recentQuery}
+              onChange={(e) => {
+                setRecentQuery(e.target.value);
+                setRecentVisible(RECENT_PAGE_SIZE);
+              }}
+              placeholder="Search name, email, mobile, item, mentor, amount, payment ID…"
+              className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+            />
+          </div>
+
+          {ledgerStatus === "loading" ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="clay-inset h-14 animate-pulse rounded-2xl bg-foreground/5" />
               ))}
             </div>
-          ) : !analytics || analytics.recentPurchases.length === 0 ? (
-            <EmptyState message="No purchases yet." />
+          ) : ledgerStatus === "error" ? (
+            <ErrorState message="Couldn't load purchases." onRetry={loadLedger} />
+          ) : filteredRecent.length === 0 ? (
+            <EmptyState message={recentQuery ? "No purchases match your search." : "No purchases yet."} />
           ) : (
-            <ul className="space-y-2">
-              {analytics.recentPurchases.map((p, i) => (
-                <li key={i} className="clay-inset flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{p.studentName}</p>
-                    <p className="truncate text-xs text-foreground/50">
-                      {p.itemTitle} · {formatDate(p.purchasedAt)}
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
-                      p.itemType === "bundle" ? "text-foreground/80" : "text-[var(--sky-deep)]"
-                    }`}
-                  >
-                    {currency.format(p.amount)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="space-y-2">
+                {visibleRecent.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPurchase(p)}
+                      className="clay-inset flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors duration-200 hover:bg-foreground/5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{p.studentName}</p>
+                        <p className="truncate text-xs text-foreground/50">
+                          {p.itemTitle} · {formatDate(p.purchasedAt)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full px-2.5 py-1 text-xs font-bold text-foreground/80">
+                        {currency.format(p.amount)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {recentVisible < filteredRecent.length && (
+                <button
+                  onClick={() => setRecentVisible((v) => v + RECENT_PAGE_SIZE)}
+                  className="clay-btn-ghost mt-3 w-full rounded-full px-4 py-2 text-xs font-semibold"
+                >
+                  Show more ({filteredRecent.length - recentVisible} more)
+                </button>
+              )}
+            </>
           )}
         </div>
 
-        {/* Top bundles by revenue */}
+        {/* Top revenue items — bundles (100% platform) vs mentorship batches (split) */}
         <div className="clay p-5 sm:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Layers3 className="h-4 w-4 text-foreground/60" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-              Top bundles by revenue
+              Top items by revenue
             </h2>
           </div>
-          {loading ? (
+          {ledgerStatus === "loading" ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="clay-inset h-14 animate-pulse rounded-2xl bg-foreground/5" />
+                <div key={i} className="clay-inset h-20 animate-pulse rounded-2xl bg-foreground/5" />
               ))}
             </div>
-          ) : !analytics || analytics.topBundles.length === 0 ? (
-            <EmptyState message="No bundle sales yet." />
+          ) : topRevenueItems.length === 0 ? (
+            <EmptyState message="No sales yet." />
           ) : (
             <ul className="space-y-2">
-              {analytics.topBundles.map((b, i) => (
-                <li key={i} className="clay-inset px-4 py-3">
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">{b.title}</p>
-                    <span className="shrink-0 text-sm font-bold text-[var(--sky-deep)]">
-                      {currency.format(b.revenue)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-foreground/50">
-                    {b.purchaseCount} purchase{b.purchaseCount !== 1 ? "s" : ""}
-                  </p>
-                </li>
-              ))}
+              {topRevenueItems.map((b) => {
+                const platformPct = b.revenue > 0 ? Math.round((b.platformAmount / b.revenue) * 100) : 0;
+                return (
+                  <li key={`${b.itemType}:${b.itemId}`} className="clay-inset px-4 py-3">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-foreground">{b.title}</p>
+                      <span className="shrink-0 text-sm font-bold text-[var(--sky-deep)]">
+                        {currency.format(b.revenue)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-foreground/50">
+                      {b.purchaseCount} purchase{b.purchaseCount !== 1 ? "s" : ""}
+                      {b.itemType === "mentorship" && b.mentorName ? ` · Mentor: ${b.mentorName}` : " · Test series"}
+                      {b.promotionPercent != null ? ` · Promo boost: ${b.promotionPercent}% (configured)` : ""}
+                    </p>
+                    <div className="clay-inset mt-2 flex h-2 overflow-hidden rounded-full">
+                      <div className="h-full bg-[var(--sky-deep)]" style={{ width: `${platformPct}%` }} />
+                      <div className="h-full bg-[var(--mint-soft)]" style={{ width: `${100 - platformPct}%` }} />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-foreground/50">
+                      <span>Edurack: {currency.format(b.platformAmount)} ({platformPct}%)</span>
+                      {b.itemType === "mentorship" && (
+                        <span>Mentor: {currency.format(b.mentorNetAmount)} ({100 - platformPct}%)</span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
+        </div>
+      </div>
+
+      {selectedPurchase && (
+        <PurchaseDetailDrawer purchase={selectedPurchase} onClose={() => setSelectedPurchase(null)} />
+      )}
+    </div>
+  );
+}
+
+function PurchaseDetailDrawer({ purchase, onClose }: { purchase: PurchaseLedgerRow; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="clay relative flex h-full w-full max-w-md flex-col overflow-y-auto rounded-l-3xl rounded-r-none p-5 sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-foreground/60 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Close
+          </button>
+          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70 sm:hidden">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="clay-inset p-4">
+            <p className="font-display text-lg font-bold text-foreground">{purchase.itemTitle}</p>
+            <p className="mt-1 text-xs uppercase tracking-wide text-foreground/40">
+              {purchase.itemType === "bundle" ? "Test series bundle" : "Mentorship batch"}
+            </p>
+            <p className="mt-3 text-2xl font-bold text-foreground">{currency.format(purchase.amount)}</p>
+            <p className="text-xs text-foreground/50">{formatDateTime(purchase.purchasedAt)}</p>
+          </div>
+
+          <DrawerSection icon={Users2} title="Student">
+            <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+              <li>
+                Name: <strong className="text-foreground">{purchase.studentName}</strong>
+              </li>
+              <li>
+                Email: <strong className="text-foreground">{purchase.studentEmail ?? "—"}</strong>
+              </li>
+              <li>
+                Mobile: <strong className="text-foreground">{purchase.studentMobile ?? "—"}</strong>
+              </li>
+              <li>
+                UID: <span className="font-mono text-xs">{purchase.uid}</span>
+              </li>
+            </ul>
+          </DrawerSection>
+
+          <DrawerSection icon={IndianRupee} title="Revenue split">
+            <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+              <li>
+                Edurack earned: <strong className="text-foreground">{currency.format(purchase.platformAmount)}</strong>
+              </li>
+              {purchase.itemType === "mentorship" && (
+                <>
+                  <li>
+                    Mentor: <strong className="text-foreground">{purchase.mentorName ?? "Unassigned"}</strong>
+                  </li>
+                  <li>
+                    Mentor net earned: <strong className="text-foreground">{currency.format(purchase.mentorNetAmount)}</strong>
+                  </li>
+                  <li>
+                    Promotion boost rate:{" "}
+                    <strong className="text-foreground">
+                      {purchase.promotionPercent != null ? `${purchase.promotionPercent}% (configured on batch)` : "—"}
+                    </strong>
+                  </li>
+                </>
+              )}
+            </ul>
+          </DrawerSection>
+
+          <DrawerSection icon={FileText} title="Payment">
+            <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+              <li>
+                Payment ID: <span className="font-mono text-xs">{purchase.razorpayPaymentId ?? "—"}</span>
+              </li>
+              <li>
+                Purchase ID: <span className="font-mono text-xs">{purchase.id}</span>
+              </li>
+              <li>
+                Item ID: <span className="font-mono text-xs">{purchase.itemId}</span>
+              </li>
+            </ul>
+          </DrawerSection>
         </div>
       </div>
     </div>
@@ -633,8 +1004,8 @@ function MetricCard({
       {sub && !loading && <p className="mt-0.5 text-[11px] text-foreground/40">{sub}</p>}
     </div>
   );
-}
 
+}
 // ─── Module: Student Directory (with 360° profile drawer) ──────────────────
 type StudentRow = {
   uid: string;
@@ -658,7 +1029,14 @@ type StudentFullProfile = {
     track: string;
     joinedAt: string | null;
   };
-  purchases: { itemType: "bundle" | "mentorship"; title: string; amount: number; purchasedAt: string | null }[];
+  purchases: {
+    itemType: "bundle" | "mentorship";
+    itemId: string;
+    title: string;
+    amount: number;
+    razorpayPaymentId: string | null;
+    purchasedAt: string | null;
+  }[];
   batchPerformance: {
     bundleId: string;
     bundleTitle: string;
@@ -677,6 +1055,293 @@ type StudentFullProfile = {
     createdAt: string | null;
   }[];
 };
+
+function StudentProfileDrawer({
+  uid,
+  adminUser,
+  onClose,
+}: {
+  uid: string;
+  adminUser: { getIdToken: () => Promise<string> };
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const [data, setData] = useState<StudentFullProfile | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [expandedPurchaseIdx, setExpandedPurchaseIdx] = useState<number | null>(null);
+  const [terminatingDeviceId, setTerminatingDeviceId] = useState<string | null>(null);
+  const [terminateError, setTerminateError] = useState<string | null>(null);
+
+  async function load() {
+    setStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const result = await getAdminStudentFullProfile({ data: { token, uid } });
+      setData(result as StudentFullProfile);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  async function handleTerminateDevice(deviceId: string) {
+    if (!confirm("Terminate this device? The student will be signed out of it immediately.")) return;
+    setTerminatingDeviceId(deviceId);
+    setTerminateError(null);
+    try {
+      const token = await adminUser.getIdToken();
+      await adminTerminateDeviceSession({ data: { token, uid, deviceId } });
+      setData((prev) => (prev ? { ...prev, devices: prev.devices.filter((d) => d.deviceId !== deviceId) } : prev));
+    } catch (err) {
+      setTerminateError(err instanceof Error ? err.message : "Could not terminate this device.");
+    } finally {
+      setTerminatingDeviceId(null);
+    }
+  }
+
+  function goToTicket(ticketId: string) {
+    navigate({ to: "/admin/dashboard", search: { tab: "tickets", ticketId }, replace: true });
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="clay relative flex h-full w-full max-w-lg flex-col overflow-y-auto rounded-l-3xl rounded-r-none p-5 sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-foreground/60 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Close
+          </button>
+          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70 sm:hidden">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {status === "loading" ? (
+          <div className="space-y-4">
+            <div className="h-20 animate-pulse rounded-2xl bg-foreground/5" />
+            <div className="h-32 animate-pulse rounded-2xl bg-foreground/5" />
+            <div className="h-32 animate-pulse rounded-2xl bg-foreground/5" />
+          </div>
+        ) : status === "error" || !data ? (
+          <ErrorState message="Couldn't load this student's profile." onRetry={load} />
+        ) : (
+          <div className="space-y-5">
+            {/* Identity */}
+            <div className="clay-inset p-4">
+              <div className="flex items-center gap-3">
+                <div className="clay flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
+                  <span className="font-display text-xl font-bold text-foreground/60">
+                    {data.profile.fullName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-display text-lg font-bold text-foreground">{data.profile.fullName}</p>
+                  <p className="text-xs text-foreground/50">Joined {formatDate(data.profile.joinedAt)}</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-1.5 text-sm text-foreground/70">
+                {data.profile.email && (
+                  <p className="flex items-center gap-2">
+                    <Mail className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+                    {data.profile.email}
+                  </p>
+                )}
+                {data.profile.mobile && (
+                  <p className="flex items-center gap-2">
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+                    {data.profile.mobile}
+                  </p>
+                )}
+                {data.profile.city && (
+                  <p className="flex items-center gap-2">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+                    {data.profile.city}
+                  </p>
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
+                  Class: {data.profile.currentClass || "—"}
+                </span>
+                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
+                  Board: {data.profile.board || "—"}
+                </span>
+                <span className="clay-chip bg-[var(--sky-soft)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
+                  Target: {data.profile.targetExam}
+                </span>
+                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
+                  Track: {data.profile.track || "—"}
+                </span>
+              </div>
+            </div>
+
+            {/* Purchases — click to see the full stored payment record */}
+            <DrawerSection icon={ShoppingBag} title={`Purchases (${data.purchases.length})`}>
+              {data.purchases.length === 0 ? (
+                <p className="text-sm text-foreground/60">No purchases yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.purchases.map((p, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedPurchaseIdx(expandedPurchaseIdx === i ? null : i)}
+                        className="clay-inset flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{p.title}</p>
+                          <p className="text-xs text-foreground/50">{formatDate(p.purchasedAt)}</p>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-foreground/80">
+                          {currency.format(p.amount)}
+                        </span>
+                      </button>
+                      {expandedPurchaseIdx === i && (
+                        <div className="clay-inset mt-1.5 space-y-1.5 rounded-2xl bg-foreground/5 px-4 py-3 text-xs text-foreground/70">
+                          <p>
+                            Type: <strong className="text-foreground">{p.itemType}</strong>
+                          </p>
+                          <p>
+                            Item ID: <span className="font-mono">{p.itemId}</span>
+                          </p>
+                          <p>
+                            Amount: <strong className="text-foreground">{currency.format(p.amount)}</strong>
+                          </p>
+                          <p>
+                            Razorpay payment ID:{" "}
+                            <span className="font-mono">{p.razorpayPaymentId ?? "—"}</span>
+                          </p>
+                          <p>
+                            Purchased at:{" "}
+                            <strong className="text-foreground">{formatDateTime(p.purchasedAt)}</strong>
+                          </p>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DrawerSection>
+
+            {/* Performance */}
+            <DrawerSection icon={ClipboardCheck} title="Batch performance">
+              {data.batchPerformance.length === 0 ? (
+                <p className="text-sm text-foreground/60">No test attempts yet.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {data.batchPerformance.map((b) => (
+                    <li key={b.bundleId} className="clay-inset px-3.5 py-3">
+                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                        <span className="truncate font-semibold text-foreground">{b.bundleTitle}</span>
+                        <span className="shrink-0 text-xs text-foreground/50">
+                          {b.testsAttempted} tests · {b.totalAttempts} attempts
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-foreground/60">
+                        <span>Avg {b.averagePercent}%</span>
+                        <span>Best {b.bestPercent}%</span>
+                      </div>
+                      <div className="clay-inset mt-2 h-2 overflow-hidden rounded-full">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            b.averagePercent < 40 ? "bg-[var(--coral-soft)]" : "bg-[var(--sky-deep)]"
+                          }`}
+                          style={{ width: `${b.averagePercent}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DrawerSection>
+
+            {/* Devices — terminate a session directly */}
+            <DrawerSection icon={Smartphone} title={`Devices (${data.devices.length})`}>
+              {terminateError && (
+                <p className="mb-2 text-xs font-medium text-rose-600">{terminateError}</p>
+              )}
+              {data.devices.length === 0 ? (
+                <p className="text-sm text-foreground/60">No device history.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.devices.map((d) => (
+                    <li key={d.deviceId} className="clay-inset flex items-center justify-between gap-2 px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{d.deviceLabel}</p>
+                        <p className="truncate text-xs text-foreground/50">
+                          {d.ip} · {d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : "unknown"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleTerminateDevice(d.deviceId)}
+                        disabled={terminatingDeviceId === d.deviceId}
+                        className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--coral-soft)] disabled:opacity-50"
+                      >
+                        {terminatingDeviceId === d.deviceId ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <MonitorOff className="h-3.5 w-3.5" />
+                        )}
+                        Terminate
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DrawerSection>
+
+            {/* Tickets — click to jump straight to Tickets and resolve it */}
+            <DrawerSection icon={LifeBuoy} title={`Tickets (${data.tickets.length})`}>
+              {data.tickets.length === 0 ? (
+                <p className="text-sm text-foreground/60">No tickets filed.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.tickets.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => goToTicket(t.id)}
+                        className="clay-inset flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left transition-colors duration-200 hover:bg-foreground/5"
+                      >
+                        <div className="min-w-0">
+                          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                            <SourceBadge itemType={t.itemType} />
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                t.status === "resolved"
+                                  ? "bg-[var(--mint-soft)] text-foreground"
+                                  : "bg-[var(--coral-soft)]/60 text-foreground"
+                              }`}
+                            >
+                              {t.status}
+                            </span>
+                          </div>
+                          <p className="truncate text-sm font-semibold text-foreground">{t.subject}</p>
+                          <p className="mt-0.5 truncate text-xs text-foreground/60">{t.message}</p>
+                          <p className="mt-1 text-[11px] text-foreground/40">{formatDateTime(t.createdAt)}</p>
+                        </div>
+                        <ArrowUpRight className="h-4 w-4 shrink-0 text-foreground/30" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DrawerSection>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function StudentsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
   const [students, setStudents] = useState<StudentRow[] | null>(null);
@@ -808,216 +1473,6 @@ function StudentsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
   );
 }
 
-function StudentProfileDrawer({
-  uid,
-  adminUser,
-  onClose,
-}: {
-  uid: string;
-  adminUser: { getIdToken: () => Promise<string> };
-  onClose: () => void;
-}) {
-  const [data, setData] = useState<StudentFullProfile | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-
-  async function load() {
-    setStatus("loading");
-    try {
-      const token = await adminUser.getIdToken();
-      const result = await getAdminStudentFullProfile({ data: { token, uid } });
-      setData(result as StudentFullProfile);
-      setStatus("ready");
-    } catch {
-      setStatus("error");
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
-
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="clay relative flex h-full w-full max-w-lg flex-col overflow-y-auto rounded-l-3xl rounded-r-none p-5 sm:p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-semibold text-foreground/60 hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Close
-          </button>
-          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70 sm:hidden">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {status === "loading" ? (
-          <div className="space-y-4">
-            <div className="h-20 animate-pulse rounded-2xl bg-foreground/5" />
-            <div className="h-32 animate-pulse rounded-2xl bg-foreground/5" />
-            <div className="h-32 animate-pulse rounded-2xl bg-foreground/5" />
-          </div>
-        ) : status === "error" || !data ? (
-          <ErrorState message="Couldn't load this student's profile." onRetry={load} />
-        ) : (
-          <div className="space-y-5">
-            {/* Identity */}
-            <div className="clay-inset p-4">
-              <div className="flex items-center gap-3">
-                <div className="clay flex h-14 w-14 shrink-0 items-center justify-center rounded-full">
-                  <span className="font-display text-xl font-bold text-foreground/60">
-                    {data.profile.fullName.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate font-display text-lg font-bold text-foreground">{data.profile.fullName}</p>
-                  <p className="text-xs text-foreground/50">Joined {formatDate(data.profile.joinedAt)}</p>
-                </div>
-              </div>
-              <div className="mt-4 space-y-1.5 text-sm text-foreground/70">
-                {data.profile.email && (
-                  <p className="flex items-center gap-2">
-                    <Mail className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
-                    {data.profile.email}
-                  </p>
-                )}
-                {data.profile.mobile && (
-                  <p className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
-                    {data.profile.mobile}
-                  </p>
-                )}
-                {data.profile.city && (
-                  <p className="flex items-center gap-2">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
-                    {data.profile.city}
-                  </p>
-                )}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
-                  Class: {data.profile.currentClass || "—"}
-                </span>
-                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
-                  Board: {data.profile.board || "—"}
-                </span>
-                <span className="clay-chip bg-[var(--sky-soft)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground">
-                  Target: {data.profile.targetExam}
-                </span>
-                <span className="clay-chip px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/70">
-                  Track: {data.profile.track || "—"}
-                </span>
-              </div>
-            </div>
-
-            {/* Purchases */}
-            <DrawerSection icon={ShoppingBag} title={`Purchases (${data.purchases.length})`}>
-              {data.purchases.length === 0 ? (
-                <p className="text-sm text-foreground/60">No purchases yet.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {data.purchases.map((p, i) => (
-                    <li key={i} className="clay-inset flex items-center justify-between gap-2 px-3.5 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{p.title}</p>
-                        <p className="text-xs text-foreground/50">{formatDate(p.purchasedAt)}</p>
-                      </div>
-                      <span className="shrink-0 text-sm font-semibold text-foreground/80">
-                        {currency.format(p.amount)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </DrawerSection>
-
-            {/* Performance */}
-            <DrawerSection icon={ClipboardCheck} title="Batch performance">
-              {data.batchPerformance.length === 0 ? (
-                <p className="text-sm text-foreground/60">No test attempts yet.</p>
-              ) : (
-                <ul className="space-y-3">
-                  {data.batchPerformance.map((b) => (
-                    <li key={b.bundleId} className="clay-inset px-3.5 py-3">
-                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                        <span className="truncate font-semibold text-foreground">{b.bundleTitle}</span>
-                        <span className="shrink-0 text-xs text-foreground/50">
-                          {b.testsAttempted} tests · {b.totalAttempts} attempts
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-foreground/60">
-                        <span>Avg {b.averagePercent}%</span>
-                        <span>Best {b.bestPercent}%</span>
-                      </div>
-                      <div className="clay-inset mt-2 h-2 overflow-hidden rounded-full">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${
-                            b.averagePercent < 40 ? "bg-[var(--coral-soft)]" : "bg-[var(--sky-deep)]"
-                          }`}
-                          style={{ width: `${b.averagePercent}%` }}
-                        />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </DrawerSection>
-
-            {/* Devices */}
-            <DrawerSection icon={Smartphone} title={`Devices (${data.devices.length})`}>
-              {data.devices.length === 0 ? (
-                <p className="text-sm text-foreground/60">No device history.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {data.devices.map((d) => (
-                    <li key={d.deviceId} className="clay-inset px-3.5 py-2.5">
-                      <p className="text-sm font-semibold text-foreground">{d.deviceLabel}</p>
-                      <p className="text-xs text-foreground/50">
-                        {d.ip} · {d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : "unknown"}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </DrawerSection>
-
-            {/* Tickets */}
-            <DrawerSection icon={LifeBuoy} title={`Tickets (${data.tickets.length})`}>
-              {data.tickets.length === 0 ? (
-                <p className="text-sm text-foreground/60">No tickets filed.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {data.tickets.map((t) => (
-                    <li key={t.id} className="clay-inset px-3.5 py-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        <SourceBadge itemType={t.itemType} />
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                            t.status === "resolved"
-                              ? "bg-[var(--mint-soft)] text-foreground"
-                              : "bg-[var(--coral-soft)]/60 text-foreground"
-                          }`}
-                        >
-                          {t.status}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-foreground">{t.subject}</p>
-                      <p className="mt-0.5 text-xs text-foreground/60">{t.message}</p>
-                      <p className="mt-1 text-[11px] text-foreground/40">{formatDateTime(t.createdAt)}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </DrawerSection>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function DrawerSection({
   icon: Icon,
@@ -1069,14 +1524,19 @@ type Application = {
     batchTitle: string;
     targetCategory: string;
     pricingTier: string;
-    // Optional so applications filed before this field existed don't break.
     examsTaught?: string[];
   };
-  socialLinks: SocialLink[];
-  status: ApplicationStatus;
-  rejectionReason: string | null;
-  reviewedAt: string | null;
-  submittedAt: string | null;
+    socialLinks: SocialLink[];
+    status: ApplicationStatus;
+    rejectionReason: string | null;
+    reviewedAt: string | null;
+    submittedAt: string | null;
+    verification: {
+      agreementDone: boolean;
+      userVerified: boolean;
+      verifiedUserTag: string | null;
+      verifiedAt: string | null;
+  };
 };
 
 function socialIcon(platform: string) {
@@ -1339,6 +1799,7 @@ function OnboardingDetailsDrawer({
           batch: {
             thumbnailUrl: null,
             name: details.batchName,
+            syllabusPdfUrl: details.syllabusPdfUrl || null,
             highlights: cleanHighlights,
             track: batchTrack,
             exam: batchExam,
@@ -1928,9 +2389,14 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
             {filtered.map((app) => (
               <li key={app.id} className="clay-inset rounded-2xl p-4 sm:p-5">
                 {/* Header row */}
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="font-display text-base font-bold text-foreground">{app.personal.fullName}</p>
+                    <p className="font-display text-base font-bold text-foreground">
+                      {app.verification.verifiedUserTag ?? app.personal.fullName}
+                    </p>
+                    {app.verification.verifiedUserTag && (
+                      <p className="text-xs text-foreground/40">Real name: {app.personal.fullName}</p>
+                    )}
                     <p className="mt-0.5 flex items-center gap-1.5 text-xs text-foreground/50">
                       <Calendar className="h-3 w-3" />
                       Applied {formatDate(app.submittedAt)}
@@ -2090,7 +2556,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                         Reopen
                       </button>
                     )}
-                    {app.status === "approved" && (
+                      {app.status === "approved" && (
                       <>
                         <CopyLinkButton applicationId={app.id} />
                         <button
@@ -2103,6 +2569,16 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       </>
                     )}
                   </div>
+                )}
+
+                {app.status === "approved" && (
+                  <VerificationChecklist
+                    app={app}
+                    adminUser={adminUser}
+                    onUpdated={(verification) =>
+                      setApplications((prev) => prev?.map((a) => (a.id === app.id ? { ...a, verification } : a)) ?? null)
+                    }
+                  />
                 )}
               </li>
             ))}
@@ -2135,7 +2611,86 @@ function StatusPill({ status }: { status: ApplicationStatus }) {
   );
 }
 
-// ─── Module: Support Tickets ─────────────────────────────────────────────────
+function VerificationChecklist({
+  app,
+  adminUser,
+  onUpdated,
+}: {
+  app: Application;
+  adminUser: { getIdToken: () => Promise<string> };
+  onUpdated: (verification: Application["verification"]) => void;
+}) {
+  const [agreementDone, setAgreementDone] = useState(app.verification.agreementDone);
+  const [userVerified, setUserVerified] = useState(app.verification.userVerified);
+  const [saving, setSaving] = useState(false);
+
+  const isFullyVerified = app.verification.agreementDone && app.verification.userVerified && app.verification.verifiedUserTag;
+
+  async function save(nextAgreementDone: boolean, nextUserVerified: boolean) {
+    setSaving(true);
+    try {
+      const token = await adminUser.getIdToken();
+      const result = await updateApplicationVerification({
+        data: { token, applicationId: app.id, agreementDone: nextAgreementDone, userVerified: nextUserVerified },
+      });
+      onUpdated({
+        agreementDone: nextAgreementDone,
+        userVerified: nextUserVerified,
+        verifiedUserTag: result.verifiedUserTag,
+        verifiedAt: result.verifiedUserTag ? new Date().toISOString() : null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="clay-inset mt-3 space-y-2.5 rounded-2xl p-4">
+      <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-foreground/50">
+        <ShieldCheck className="h-3.5 w-3.5" />
+        Verification checklist
+      </p>
+
+      <label className="flex items-center gap-2.5 text-sm text-foreground/80">
+        <input
+          type="checkbox"
+          checked={agreementDone}
+          disabled={saving}
+          onChange={(e) => {
+            setAgreementDone(e.target.checked);
+            save(e.target.checked, userVerified);
+          }}
+        />
+        Agreement done (signed live on the Google Meet call)
+      </label>
+
+      <label className="flex items-center gap-2.5 text-sm text-foreground/80">
+        <input
+          type="checkbox"
+          checked={userVerified}
+          disabled={saving}
+          onChange={(e) => {
+            setUserVerified(e.target.checked);
+            save(agreementDone, e.target.checked);
+          }}
+        />
+        User identity verified
+      </label>
+
+      {isFullyVerified && (
+        <div className="clay-inset flex items-center gap-2 rounded-xl bg-[var(--mint-soft)]/40 px-3 py-2">
+          <BadgeCheck className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-foreground/50">Verified user tag</p>
+            <p className="truncate font-mono text-sm font-semibold text-foreground">{app.verification.verifiedUserTag}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Module: Support Tickets — 4 tabs: Student / Mentor / Promoter / Callback ──
 type AdminTicket = {
   id: string;
   uid: string;
@@ -2152,15 +2707,98 @@ type AdminTicket = {
   repliedAt: string | null;
 };
 
+type AdminMentorTicket = {
+  id: string;
+  mentorId: string;
+  mentorName: string;
+  category: string;
+  message: string;
+  status: string;
+  adminResponse: string | null;
+  respondedAt: string | null;
+  createdAt: string | null;
+};
+
+type AdminPromoterTicket = {
+  id: string;
+  promoterId: string;
+  promoterName: string;
+  subject: string;
+  category: string;
+  description: string;
+  status: string;
+  adminResponse: string | null;
+  respondedAt: string | null;
+  createdAt: string | null;
+};
+
+type CallbackRequest = {
+  id: string;
+  studentName: string;
+  mobileNumber: string;
+  examTrack: string;
+  academicClass: string;
+  discussionTopic: string;
+  status: "pending" | "contacted";
+  requestedAt: string | null;
+  contactedAt: string | null;
+};
+
 type SourceFilter = "all" | "platform" | "bundle" | "mentorship";
 type StatusFilter = "all" | "open" | "resolved";
+type TicketTab = "students" | "mentors" | "promoters" | "callbacks";
 
-function TicketsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
+function TicketsModule({
+  adminUser,
+  initialTicketId,
+}: {
+  adminUser: { getIdToken: () => Promise<string> };
+  initialTicketId?: string;
+}) {
+  const [tab, setTab] = useState<TicketTab>("students");
+
+  return (
+    <div>
+      <ModuleHeader title="Support Tickets" subtitle="Everything students, mentors, and promoters have raised, plus callback requests." />
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        <FilterChip active={tab === "students"} onClick={() => setTab("students")}>
+          Student Tickets
+        </FilterChip>
+        <FilterChip active={tab === "mentors"} onClick={() => setTab("mentors")}>
+          Mentor Tickets
+        </FilterChip>
+        <FilterChip active={tab === "promoters"} onClick={() => setTab("promoters")}>
+          Promoter Tickets
+        </FilterChip>
+        <FilterChip active={tab === "callbacks"} onClick={() => setTab("callbacks")}>
+          Call Back Requests
+        </FilterChip>
+      </div>
+
+      {tab === "students" && <StudentTicketsPanel adminUser={adminUser} initialTicketId={initialTicketId} />}
+      {tab === "mentors" && <MentorTicketsPanel adminUser={adminUser} />}
+      {tab === "promoters" && <PromoterTicketsPanel adminUser={adminUser} />}
+      {tab === "callbacks" && <CallbackRequestsPanel adminUser={adminUser} />}
+    </div>
+  );
+}
+
+// ─── A) Student tickets (unchanged behavior, just extracted into its own panel) ──
+function StudentTicketsPanel({
+  adminUser,
+  initialTicketId,
+}: {
+  adminUser: { getIdToken: () => Promise<string> };
+  initialTicketId?: string;
+}) {
   const [tickets, setTickets] = useState<AdminTicket[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [highlightedId, setHighlightedId] = useState<string | null>(initialTicketId ?? null);
+  const ticketRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
   async function load() {
     setStatus("loading");
@@ -2179,6 +2817,19 @@ function TicketsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!initialTicketId || !tickets) return;
+    const exists = tickets.some((t) => t.id === initialTicketId);
+    if (!exists) return;
+    setQuery("");
+    setSourceFilter("all");
+    setStatusFilter("all");
+    setHighlightedId(initialTicketId);
+    const el = ticketRefs.current[initialTicketId];
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTicketId, tickets]);
+
   const filtered = useMemo(() => {
     if (!tickets) return [];
     const q = query.trim().toLowerCase();
@@ -2194,8 +2845,6 @@ function TicketsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<s
 
   return (
     <div>
-      <ModuleHeader title="Support Tickets" subtitle="Every ticket a student has filed, with where it came from." />
-
       {tickets && openCount > 0 && (
         <div className="clay-inset mb-4 flex items-center gap-2 rounded-2xl bg-[var(--coral-soft)]/30 px-4 py-3 text-sm text-foreground/70">
           <MessageSquareText className="h-4 w-4 shrink-0" />
@@ -2248,14 +2897,16 @@ function TicketsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<s
                 key={t.id}
                 ticket={t}
                 adminUser={adminUser}
-                onReplied={(reply) =>
+                highlighted={highlightedId === t.id}
+                onCardRef={(el) => {
+                  ticketRefs.current[t.id] = el;
+                }}
+                onReplied={(reply) => {
                   setTickets(
-                    (prev) =>
-                      prev?.map((row) =>
-                        row.id === t.id ? { ...row, adminReply: reply, status: "resolved" } : row,
-                      ) ?? null,
-                  )
-                }
+                    (prev) => prev?.map((row) => (row.id === t.id ? { ...row, adminReply: reply, status: "resolved" } : row)) ?? null,
+                  );
+                  if (highlightedId === t.id) setHighlightedId(null);
+                }}
               />
             ))}
           </ul>
@@ -2268,15 +2919,19 @@ function TicketsModule({ adminUser }: { adminUser: { getIdToken: () => Promise<s
 function AdminTicketCard({
   ticket,
   adminUser,
+  highlighted,
+  onCardRef,
   onReplied,
 }: {
   ticket: AdminTicket;
   adminUser: { getIdToken: () => Promise<string> };
+  highlighted?: boolean;
+  onCardRef?: (el: HTMLLIElement | null) => void;
   onReplied: (reply: string) => void;
 }) {
   const [replyDraft, setReplyDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [showReplyBox, setShowReplyBox] = useState(false);
+  const [showReplyBox, setShowReplyBox] = useState(Boolean(highlighted) && ticket.status !== "resolved");
 
   async function sendReply() {
     if (!replyDraft.trim()) return;
@@ -2293,18 +2948,16 @@ function AdminTicketCard({
   }
 
   return (
-    <li className="clay-inset rounded-2xl p-4">
+    <li
+      ref={onCardRef}
+      className={`clay-inset rounded-2xl p-4 transition-shadow duration-300 ${highlighted ? "ring-2 ring-[var(--sky-deep)]" : ""}`}
+    >
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <SourceBadge
-            itemType={ticket.source.type}
-            itemTitle={ticket.source.type !== "platform" ? ticket.source.itemTitle : undefined}
-          />
+          <SourceBadge itemType={ticket.source.type} itemTitle={ticket.source.type !== "platform" ? ticket.source.itemTitle : undefined} />
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-              ticket.status === "resolved"
-                ? "bg-[var(--mint-soft)] text-foreground"
-                : "bg-[var(--coral-soft)]/60 text-foreground"
+              ticket.status === "resolved" ? "bg-[var(--mint-soft)] text-foreground" : "bg-[var(--coral-soft)]/60 text-foreground"
             }`}
           >
             {ticket.status}
@@ -2316,15 +2969,10 @@ function AdminTicketCard({
       <p className="text-sm font-semibold text-foreground">{ticket.subject}</p>
       <p className="mt-1 text-sm text-foreground/70">{ticket.message}</p>
 
-      {/* Contact details — the whole point: reach the student without
-          hunting through the student directory. */}
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-foreground/60">
         <span className="font-semibold text-foreground">{ticket.studentName}</span>
         {ticket.studentEmail && (
-          <a
-            href={`mailto:${ticket.studentEmail}`}
-            className="inline-flex items-center gap-1 text-[var(--sky-deep)] hover:underline"
-          >
+          <a href={`mailto:${ticket.studentEmail}`} className="inline-flex items-center gap-1 text-[var(--sky-deep)] hover:underline">
             <Mail className="h-3 w-3" />
             {ticket.studentEmail}
           </a>
@@ -2362,6 +3010,7 @@ function AdminTicketCard({
             onChange={(e) => setReplyDraft(e.target.value)}
             placeholder="Write a reply to the student…"
             rows={3}
+            autoFocus={highlighted}
             className="clay-inset w-full rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
           />
           <div className="flex gap-2">
@@ -2373,10 +3022,7 @@ function AdminTicketCard({
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Send reply & resolve
             </button>
-            <button
-              onClick={() => setShowReplyBox(false)}
-              className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold"
-            >
+            <button onClick={() => setShowReplyBox(false)} className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold">
               Cancel
             </button>
           </div>
@@ -2394,25 +3040,537 @@ function AdminTicketCard({
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+// ─── B) Mentor tickets ────────────────────────────────────────────────────
+function MentorTicketsPanel({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
+  const [tickets, setTickets] = useState<AdminMentorTicket[] | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [query, setQuery] = useState("");
+
+  async function load() {
+    setStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const { tickets: rows } = await listAllMentorTickets({ data: { token } });
+      setTickets(rows as AdminMentorTicket[]);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!tickets) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return tickets;
+    return tickets.filter((t) => t.mentorName.toLowerCase().includes(q) || t.category.toLowerCase().includes(q));
+  }, [tickets, query]);
+
+  const openCount = tickets?.filter((t) => t.status !== "Resolved").length ?? 0;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
-        active ? "clay-btn text-white" : "clay-chip text-foreground/70"
-      }`}
-    >
-      {children}
-    </button>
+    <div>
+      {tickets && openCount > 0 && (
+        <div className="clay-inset mb-4 flex items-center gap-2 rounded-2xl bg-[var(--coral-soft)]/30 px-4 py-3 text-sm text-foreground/70">
+          <MessageSquareText className="h-4 w-4 shrink-0" />
+          <p>
+            <strong>{openCount}</strong> mentor ticket{openCount !== 1 ? "s" : ""} not yet resolved.
+          </p>
+        </div>
+      )}
+      <div className="clay p-5 sm:p-6">
+        <div className="relative mb-4 w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by mentor or category…"
+            className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+          />
+        </div>
+
+        {status === "loading" ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="clay-inset h-28 animate-pulse rounded-2xl bg-foreground/5" />
+            ))}
+          </div>
+        ) : status === "error" ? (
+          <ErrorState message="Couldn't load mentor tickets." onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <EmptyState message={tickets && tickets.length > 0 ? "No tickets match your search." : "No mentor tickets filed yet."} />
+        ) : (
+          <ul className="space-y-3">
+            {filtered.map((t) => (
+              <MentorTicketCard
+                key={t.id}
+                ticket={t}
+                adminUser={adminUser}
+                onResolved={(response, newStatus) =>
+                  setTickets(
+                    (prev) => prev?.map((row) => (row.id === t.id ? { ...row, adminResponse: response, status: newStatus } : row)) ?? null,
+                  )
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MentorTicketCard({
+  ticket,
+  adminUser,
+  onResolved,
+}: {
+  ticket: AdminMentorTicket;
+  adminUser: { getIdToken: () => Promise<string> };
+  onResolved: (response: string, status: string) => void;
+}) {
+  const [replyDraft, setReplyDraft] = useState(ticket.adminResponse ?? "");
+  const [showReplyBox, setShowReplyBox] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  async function sendReply(status: "In Progress" | "Resolved") {
+    if (!replyDraft.trim()) return;
+    setSending(true);
+    try {
+      const token = await adminUser.getIdToken();
+      await respondToMentorTicket({ data: { token, ticketId: ticket.id, adminResponse: replyDraft, status } });
+      onResolved(replyDraft.trim(), status);
+      setShowReplyBox(false);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <li className="clay-inset rounded-2xl p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+            {ticket.category}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+              ticket.status === "Resolved"
+                ? "bg-[var(--mint-soft)] text-foreground"
+                : ticket.status === "In Progress"
+                  ? "bg-[var(--sky-soft)] text-foreground"
+                  : "bg-[var(--coral-soft)]/60 text-foreground"
+            }`}
+          >
+            {ticket.status}
+          </span>
+        </div>
+        <span className="text-xs text-foreground/40">{formatDateTime(ticket.createdAt)}</span>
+      </div>
+
+      <p className="text-sm font-semibold text-foreground">{ticket.mentorName}</p>
+      <p className="mt-1 text-sm text-foreground/70">{ticket.message}</p>
+
+      {ticket.adminResponse && !showReplyBox ? (
+        <div className="clay-inset mt-3 rounded-xl px-4 py-3">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">Your response</p>
+          <p className="text-sm text-foreground/80">{ticket.adminResponse}</p>
+          <button
+            onClick={() => setShowReplyBox(true)}
+            className="mt-2 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+          >
+            Edit response
+          </button>
+        </div>
+      ) : showReplyBox || !ticket.adminResponse ? (
+        <div className="mt-3 space-y-2">
+          {!showReplyBox && (
+            <button
+              onClick={() => setShowReplyBox(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+            >
+              <MessageSquareText className="h-3.5 w-3.5" />
+              Respond
+            </button>
+          )}
+          {showReplyBox && (
+            <>
+              <textarea
+                value={replyDraft}
+                onChange={(e) => setReplyDraft(e.target.value)}
+                placeholder="Write a response to the mentor…"
+                rows={3}
+                className="clay-inset w-full rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => sendReply("Resolved")}
+                  disabled={sending || !replyDraft.trim()}
+                  className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Send & mark resolved
+                </button>
+                <button
+                  onClick={() => sendReply("In Progress")}
+                  disabled={sending || !replyDraft.trim()}
+                  className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  Send & keep in progress
+                </button>
+                <button onClick={() => setShowReplyBox(false)} className="text-xs font-semibold text-foreground/50 hover:text-foreground/70">
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+// ─── C) Promoter tickets ──────────────────────────────────────────────────
+function PromoterTicketsPanel({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
+  const [tickets, setTickets] = useState<AdminPromoterTicket[] | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [query, setQuery] = useState("");
+
+  async function load() {
+    setStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const { tickets: rows } = await listAllPromoterTicketsAdmin({ data: { token } });
+      setTickets(rows as AdminPromoterTicket[]);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!tickets) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return tickets;
+    return tickets.filter(
+      (t) => t.promoterName.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.category.toLowerCase().includes(q),
+    );
+  }, [tickets, query]);
+
+  const openCount = tickets?.filter((t) => t.status !== "resolved").length ?? 0;
+
+  return (
+    <div>
+      {tickets && openCount > 0 && (
+        <div className="clay-inset mb-4 flex items-center gap-2 rounded-2xl bg-[var(--coral-soft)]/30 px-4 py-3 text-sm text-foreground/70">
+          <MessageSquareText className="h-4 w-4 shrink-0" />
+          <p>
+            <strong>{openCount}</strong> promoter ticket{openCount !== 1 ? "s" : ""} not yet resolved.
+          </p>
+        </div>
+      )}
+      <div className="clay p-5 sm:p-6">
+        <div className="relative mb-4 w-full sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by promoter, subject, or category…"
+            className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+          />
+        </div>
+
+        {status === "loading" ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="clay-inset h-28 animate-pulse rounded-2xl bg-foreground/5" />
+            ))}
+          </div>
+        ) : status === "error" ? (
+          <ErrorState message="Couldn't load promoter tickets." onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <EmptyState message={tickets && tickets.length > 0 ? "No tickets match your search." : "No promoter tickets filed yet."} />
+        ) : (
+          <ul className="space-y-3">
+            {filtered.map((t) => (
+              <PromoterTicketCard
+                key={t.id}
+                ticket={t}
+                adminUser={adminUser}
+                onResolved={(response, newStatus) =>
+                  setTickets(
+                    (prev) => prev?.map((row) => (row.id === t.id ? { ...row, adminResponse: response, status: newStatus } : row)) ?? null,
+                  )
+                }
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PromoterTicketCard({
+  ticket,
+  adminUser,
+  onResolved,
+}: {
+  ticket: AdminPromoterTicket;
+  adminUser: { getIdToken: () => Promise<string> };
+  onResolved: (response: string, status: string) => void;
+}) {
+  const [replyDraft, setReplyDraft] = useState(ticket.adminResponse ?? "");
+  const [showReplyBox, setShowReplyBox] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  async function sendReply(status: "in_progress" | "resolved") {
+    if (!replyDraft.trim()) return;
+    setSending(true);
+    try {
+      const token = await adminUser.getIdToken();
+        await respondToPromoterTicket({ data: { token, ticketId: ticket.id, adminResponse: replyDraft, status: status === "resolved" ? "Resolved" : "In Progress" } });      onResolved(replyDraft.trim(), status);
+      setShowReplyBox(false);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <li className="clay-inset rounded-2xl p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+            {ticket.category}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+              ticket.status === "resolved"
+                ? "bg-[var(--mint-soft)] text-foreground"
+                : ticket.status === "in_progress"
+                  ? "bg-[var(--sky-soft)] text-foreground"
+                  : "bg-[var(--coral-soft)]/60 text-foreground"
+            }`}
+          >
+            {ticket.status.replace("_", " ")}
+          </span>
+        </div>
+        <span className="text-xs text-foreground/40">{formatDateTime(ticket.createdAt)}</span>
+      </div>
+
+      <p className="text-sm font-semibold text-foreground">{ticket.promoterName}</p>
+      <p className="mt-0.5 text-sm font-medium text-foreground/80">{ticket.subject}</p>
+      <p className="mt-1 text-sm text-foreground/70">{ticket.description}</p>
+
+      {ticket.adminResponse && !showReplyBox ? (
+        <div className="clay-inset mt-3 rounded-xl px-4 py-3">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">Your response</p>
+          <p className="text-sm text-foreground/80">{ticket.adminResponse}</p>
+          <button onClick={() => setShowReplyBox(true)} className="mt-2 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
+            Edit response
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {!showReplyBox && (
+            <button
+              onClick={() => setShowReplyBox(true)}
+              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold"
+            >
+              <MessageSquareText className="h-3.5 w-3.5" />
+              Respond
+            </button>
+          )}
+          {showReplyBox && (
+            <>
+              <textarea
+                value={replyDraft}
+                onChange={(e) => setReplyDraft(e.target.value)}
+                placeholder="Write a response to the promoter…"
+                rows={3}
+                className="clay-inset w-full rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => sendReply("resolved")}
+                  disabled={sending || !replyDraft.trim()}
+                  className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  Send & mark resolved
+                </button>
+                <button
+                  onClick={() => sendReply("in_progress")}
+                  disabled={sending || !replyDraft.trim()}
+                  className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50"
+                >
+                  Send & keep in progress
+                </button>
+                <button onClick={() => setShowReplyBox(false)} className="text-xs font-semibold text-foreground/50 hover:text-foreground/70">
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+// ─── D) Call back requests (from edurack.in/contact) ──────────────────────
+function CallbackRequestsPanel({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
+  const [requests, setRequests] = useState<CallbackRequest[] | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "contacted">("pending");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function load() {
+    setStatus("loading");
+    try {
+      const token = await adminUser.getIdToken();
+      const { requests: rows } = await listCallbackRequestsAdmin({ data: { token } });
+      setRequests(rows as CallbackRequest[]);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggleContacted(id: string, contacted: boolean) {
+    setBusyId(id);
+    try {
+      const token = await adminUser.getIdToken();
+      await markCallbackRequestContacted({ data: { token, requestId: id, contacted } });
+      setRequests(
+        (prev) =>
+          prev?.map((r) =>
+            r.id === id ? { ...r, status: contacted ? "contacted" : "pending", contactedAt: contacted ? new Date().toISOString() : null } : r,
+          ) ?? null,
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const filtered = useMemo(() => {
+    if (!requests) return [];
+    const q = query.trim().toLowerCase();
+    return requests.filter((r) => {
+      if (statusFilter !== "all" && r.status !== statusFilter) return false;
+      if (q && !(r.studentName.toLowerCase().includes(q) || r.mobileNumber.includes(q))) return false;
+      return true;
+    });
+  }, [requests, query, statusFilter]);
+
+  const pendingCount = requests?.filter((r) => r.status === "pending").length ?? 0;
+
+  return (
+    <div>
+      {requests && pendingCount > 0 && (
+        <div className="clay-inset mb-4 flex items-center gap-2 rounded-2xl bg-[var(--sky-soft)]/50 px-4 py-3 text-sm text-foreground/70">
+          <PhoneCall className="h-4 w-4 shrink-0" />
+          <p>
+            <strong>{pendingCount}</strong> call back request{pendingCount !== 1 ? "s" : ""} waiting.
+          </p>
+        </div>
+      )}
+      <div className="clay p-5 sm:p-6">
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name or mobile number…"
+              className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["pending", "contacted", "all"] as const).map((f) => (
+              <FilterChip key={f} active={statusFilter === f} onClick={() => setStatusFilter(f)}>
+                {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+              </FilterChip>
+            ))}
+          </div>
+        </div>
+
+        {status === "loading" ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="clay-inset h-20 animate-pulse rounded-2xl bg-foreground/5" />
+            ))}
+          </div>
+        ) : status === "error" ? (
+          <ErrorState message="Couldn't load callback requests." onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <EmptyState message={requests && requests.length > 0 ? "No requests match your filters." : "No callback requests yet."} />
+        ) : (
+          <ul className="space-y-2">
+            {filtered.map((r) => (
+              <li key={r.id} className="clay-inset rounded-2xl px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{r.studentName}</p>
+                    <a href={`tel:${r.mobileNumber}`} className="inline-flex items-center gap-1 text-xs text-[var(--sky-deep)] hover:underline">
+                      <Phone className="h-3 w-3" />
+                      {r.mobileNumber}
+                    </a>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                      r.status === "contacted" ? "bg-[var(--mint-soft)] text-foreground" : "bg-[var(--sky-soft)] text-foreground"
+                    }`}
+                  >
+                    {r.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-foreground/60">
+                  <span className="clay-chip px-2.5 py-1">{r.examTrack}</span>
+                  <span className="clay-chip px-2.5 py-1">{r.academicClass}</span>
+                  <span className="clay-chip px-2.5 py-1">{r.discussionTopic}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-foreground/40">
+                    Requested {formatDateTime(r.requestedAt)}
+                    {r.contactedAt && ` · Contacted ${formatDateTime(r.contactedAt)}`}
+                  </p>
+                  <button
+                    onClick={() => toggleContacted(r.id, r.status !== "contacted")}
+                    disabled={busyId === r.id}
+                    className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  >
+                    {busyId === r.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : r.status === "contacted" ? (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    )}
+                    {r.status === "contacted" ? "Mark pending" : "Mark contacted"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 

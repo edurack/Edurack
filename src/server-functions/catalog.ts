@@ -320,3 +320,81 @@ export const listPublicMentors = createServerFn({ method: "GET" })
       }),
     };
   });
+
+  // ─── Public: standalone Sold Tests, browsable independent of any batch ────
+// Only genuinely ready tests are ever listed: status "live" (admin approved
+// a price) AND fully ingested (every question actually added) — same gate
+// used in listAttachedSoldTestsForStudent and payments.ts's
+// lookupItemPriceAndTitle, so anything a student sees here is something
+// they can buy and immediately attempt.
+export const listPublicSoldTests = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireSignedIn(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const tests = await db.collection("soldTests").find({ status: "live" }).sort({ createdAt: -1 }).toArray();
+    if (tests.length === 0) return { tests: [] };
+
+    const testIds = tests.map((t) => String(t._id));
+    const questionCounts = await db
+      .collection("questions")
+      .aggregate([{ $match: { testId: { $in: testIds } } }, { $group: { _id: "$testId", count: { $sum: 1 } } }])
+      .toArray();
+    const addedByTestId = new Map(questionCounts.map((r) => [r._id as string, r.count as number]));
+    const ready = tests.filter((t) => (addedByTestId.get(String(t._id)) ?? 0) >= (t.totalQuestions as number));
+    if (ready.length === 0) return { tests: [] };
+
+    const mentorIds = [...new Set(ready.map((t) => t.mentorId as string))];
+    const mentors = mentorIds.length
+      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } }).toArray()
+      : [];
+    const nameByMentorId = new Map(mentors.map((m) => [String(m._id), m.name as string]));
+
+    return {
+      tests: ready.map((t) => ({
+        id: String(t._id),
+        name: t.name as string,
+        mentorName: nameByMentorId.get(t.mentorId as string) ?? "Edurack Mentor",
+        totalQuestions: t.totalQuestions as number,
+        durationMinutes: t.durationMinutes as number,
+        subjects: (t.subjects as string[]) ?? [],
+        price: t.approvedPrice as number,
+      })),
+    };
+  });
+
+  // ─── Public: one mentor's live standalone Sold Tests, for their profile page ─
+export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
+  .validator((data: { token: string; mentorId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireSignedIn(data.token);
+    const db = await getDb();
+
+    const tests = await db
+      .collection("soldTests")
+      .find({ mentorId: data.mentorId, status: "live" })
+      .sort({ createdAt: -1 })
+      .toArray();
+    if (tests.length === 0) return { tests: [] };
+
+    const testIds = tests.map((t) => String(t._id));
+    const questionCounts = await db
+      .collection("questions")
+      .aggregate([{ $match: { testId: { $in: testIds } } }, { $group: { _id: "$testId", count: { $sum: 1 } } }])
+      .toArray();
+    const addedByTestId = new Map(questionCounts.map((r) => [r._id as string, r.count as number]));
+    const ready = tests.filter((t) => (addedByTestId.get(String(t._id)) ?? 0) >= (t.totalQuestions as number));
+
+    return {
+      tests: ready.map((t) => ({
+        id: String(t._id),
+        name: t.name as string,
+        totalQuestions: t.totalQuestions as number,
+        durationMinutes: t.durationMinutes as number,
+        subjects: (t.subjects as string[]) ?? [],
+        price: t.approvedPrice as number,
+      })),
+    };
+  });

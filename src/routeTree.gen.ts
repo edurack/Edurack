@@ -22,6 +22,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
 import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
+import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
 import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
 import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
 import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
@@ -99,6 +100,11 @@ const TestResultAttemptIdRoute = TestResultAttemptIdRouteImport.update({
 const TestAnalysisTestIdRoute = TestAnalysisTestIdRouteImport.update({
   id: '/test-analysis/$testId',
   path: '/test-analysis/$testId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SoldTestIdRoute = SoldTestIdRouteImport.update({
+  id: '/sold-test/$id',
+  path: '/sold-test/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SimulatorLiveRoute = SimulatorLiveRouteImport.update({
@@ -191,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
+  '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -219,6 +226,7 @@ export interface FileRoutesByTo {
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
+  '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/simulator/live': typeof SimulatorLiveRoute
+  '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
@@ -278,6 +287,7 @@ export interface FileRouteTypes {
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/simulator/live'
+    | '/sold-test/$id'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/simulator/live'
+    | '/sold-test/$id'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/simulator/live'
+    | '/sold-test/$id'
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
@@ -363,6 +375,7 @@ export interface RootRouteChildren {
   PromoterAuthRoute: typeof PromoterAuthRoute
   PromoterDashboardRoute: typeof PromoterDashboardRoute
   SimulatorLiveRoute: typeof SimulatorLiveRoute
+  SoldTestIdRoute: typeof SoldTestIdRoute
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
   TestTestIdRoute: typeof TestTestIdRoute
@@ -460,6 +473,13 @@ declare module '@tanstack/react-router' {
       path: '/test-analysis/$testId'
       fullPath: '/test-analysis/$testId'
       preLoaderRoute: typeof TestAnalysisTestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sold-test/$id': {
+      id: '/sold-test/$id'
+      path: '/sold-test/$id'
+      fullPath: '/sold-test/$id'
+      preLoaderRoute: typeof SoldTestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/simulator/live': {
@@ -579,6 +599,7 @@ const rootRouteChildren: RootRouteChildren = {
   PromoterAuthRoute: PromoterAuthRoute,
   PromoterDashboardRoute: PromoterDashboardRoute,
   SimulatorLiveRoute: SimulatorLiveRoute,
+  SoldTestIdRoute: SoldTestIdRoute,
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,
   TestTestIdRoute: TestTestIdRoute,

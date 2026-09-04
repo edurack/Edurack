@@ -32,7 +32,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
 
   async function refreshAnnouncements(batchId: string) {
     if (!batchId) return;
-    const { announcements: rows } = await listMentorAnnouncements({ data: { token: mentorToken, batchId } });
+    const { announcements: rows } = (await listMentorAnnouncements({ data: { token: mentorToken, batchId } })) as { announcements: MentorAnnouncement[] };
     setAnnouncements(rows);
   }
 
@@ -126,8 +126,7 @@ function BroadcastPanel({
 
     setPosting(true);
     try {
-      await postMentorAnnouncement({ data: { token: mentorToken, announcement: { batchId, title, message, triggerEmail } } });
-      setTitle("");
+await postMentorAnnouncement({ data: { token: mentorToken, announcement: { batchId, title, message, triggerEmail } } });      setTitle("");
       setMessage("");
       onPosted();
     } catch (err) {

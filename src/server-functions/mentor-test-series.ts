@@ -1,32 +1,19 @@
-// Mentor-owned Test Series — a separate product line from a mentor's
-// mentorship batch. Gated by getTestSeriesAccessStatus in
-// mentor-earnings.ts; nothing here re-checks that gate, since a mentor
-// without access simply never gets shown the UI that calls these, and
-// each write is scoped to mentorId regardless.
-//
-// NOTE: this file covers series/test authoring + the mentor's own results
-// view. It deliberately does NOT include the student-facing "take this
-// test" flow — that's the same shape of work as getTestForTaking /
-// submitTestAttempt in test-engine.ts, just re-pointed at
-// mentorTests/mentorQuestions instead of testCores/questions, and doesn't
-// exist as a route yet. Flagging so it isn't mistaken for already wired
-// up — listMentorTestResults below will simply return zero attempts until
-// that student-facing submission path is built and starts writing to
-// mentorTestAttempts.
+// A mentor's test series is NOT a separate product — it's tests appended
+// into ONE auto-created Bundle per (mentor, batch) pair, named
+// "{Mentor} {Batch} Test Series". Admin ingests questions into it via the
+// normal Test Core / Question Ingestion flow. Students access it two ways:
+// free tests unlock for anyone who purchased the batch; paid tests can be
+// bought standalone by anyone, batch purchase not required — mirrored in
+// the exam-engine access check (not shown here — see note at bottom).
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import {
-  TEST_SERIES_PLATFORM_COMMISSION_PERCENT,
-  DEFAULT_TEST_SERIES_MARKETING_PERCENT,
-  type MentorTestSeries,
-  type MentorTestSeriesInput,
-  type MentorTest,
-  type MentorTestInput,
-  type SubjectWeightage,
-  type MentorTestResultsOverview,
-  type MentorTestSubjectComparison,
-  type MentorTestStudentResult,
+import type {
+  SubjectWeightage,
+  MentorTestResultsOverview,
+  MentorTestSubjectComparison,
+  MentorTestStudentResult,
+  MentorTestIngestionProgress,
 } from "@/lib/admin-types";
 
 function getSessionSecret(): string {
@@ -59,191 +46,251 @@ async function requireMentor(token: string): Promise<string> {
   return verified.mentorId;
 }
 
-const MAX_MARKETING_PERCENT = 30;
-
-// ─── Test Series (the sellable product) ─────────────────────────────────────
-export const createMentorTestSeries = createServerFn({ method: "POST" })
-  .validator((data: { token: string; series: MentorTestSeriesInput }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { name, price, marketingPercent } = data.series;
-
-    if (!name.trim()) throw new Error("Give this test series a name.");
-    if (!price || price <= 0) throw new Error("Enter a valid price.");
-    if (marketingPercent < DEFAULT_TEST_SERIES_MARKETING_PERCENT || marketingPercent > MAX_MARKETING_PERCENT) {
-      throw new Error(`Marketing percentage must be between ${DEFAULT_TEST_SERIES_MARKETING_PERCENT}% and ${MAX_MARKETING_PERCENT}%.`);
-    }
-
-    const db = await getDb();
-    const result = await db.collection("mentorTestSeries").insertOne({
-      mentorId,
-      name: name.trim(),
-      price,
-      platformCommissionPercent: TEST_SERIES_PLATFORM_COMMISSION_PERCENT, // fixed, never mentor-set
-      marketingPercent,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    return { ok: true, id: String(result.insertedId) };
-  });
-
-export const updateMentorTestSeries = createServerFn({ method: "POST" })
-  .validator((data: { token: string; id: string; series: MentorTestSeriesInput }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-
-    const existing = await db.collection("mentorTestSeries").findOne({ _id: new ObjectId(data.id) });
-    if (!existing || existing.mentorId !== mentorId) throw new Error("Test series not found.");
-
-    const { name, price, marketingPercent } = data.series;
-    if (!name.trim()) throw new Error("Give this test series a name.");
-    if (!price || price <= 0) throw new Error("Enter a valid price.");
-    if (marketingPercent < DEFAULT_TEST_SERIES_MARKETING_PERCENT || marketingPercent > MAX_MARKETING_PERCENT) {
-      throw new Error(`Marketing percentage must be between ${DEFAULT_TEST_SERIES_MARKETING_PERCENT}% and ${MAX_MARKETING_PERCENT}%.`);
-    }
-
-    await db.collection("mentorTestSeries").updateOne(
-      { _id: new ObjectId(data.id) },
-      { $set: { name: name.trim(), price, marketingPercent, updatedAt: new Date() } },
-    );
-    return { ok: true };
-  });
-
-export const listMyTestSeries = createServerFn({ method: "POST" })
-  .validator((data: { token: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const db = await getDb();
-    const rows = await db.collection("mentorTestSeries").find({ mentorId }).sort({ createdAt: -1 }).toArray();
-
-    const series: MentorTestSeries[] = rows.map((r) => ({
-      id: String(r._id),
-      mentorId: r.mentorId as string,
-      name: r.name as string,
-      price: r.price as number,
-      platformCommissionPercent: r.platformCommissionPercent as number,
-      marketingPercent: r.marketingPercent as number,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
-      updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : null,
-    }));
-    return { series };
-  });
-
-async function requireOwnsSeries(mentorId: string, seriesId: string) {
+async function requireOwnsBatch(mentorId: string, batchId: string) {
   const { ObjectId } = await import("mongodb");
   const db = await getDb();
-  const series = await db.collection("mentorTestSeries").findOne({ _id: new ObjectId(seriesId) });
-  if (!series || series.mentorId !== mentorId) throw new Error("Test series not found.");
-  return series;
+  const batch = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(batchId) });
+  if (!batch) throw new Error("Batch not found.");
+  if (batch.assignedMentorId !== mentorId) throw new Error("You are not the assigned mentor for this batch.");
+  return batch;
 }
 
-// ─── Individual tests within a series ───────────────────────────────────────
+async function requireTestSeriesAccess(mentorId: string) {
+  const db = await getDb();
+  const onboarding = await db.collection("mentorOnboardingDetails").findOne({ mentorProfileId: mentorId });
+  const request = await db.collection("testSeriesAccessRequests").findOne({ mentorId });
+  const hasAccess = Boolean(onboarding?.wantsToSellTestSeries) || Boolean(request?.adminGranted);
+  if (!hasAccess) throw new Error("You don't have test series access yet. Request it from your Earnings tab.");
+}
+
+// ─── Get-or-create the one bundle backing this mentor's batch series ──────
+async function getOrCreateBatchSeriesBundle(mentorId: string, batchId: string): Promise<string> {
+  const db = await getDb();
+  const existing = await db.collection("bundles").findOne({ mentorId, batchId, kind: "mentorBatchSeries" });
+  if (existing) return String(existing._id);
+
+  const { ObjectId } = await import("mongodb");
+  const [mentor, batch] = await Promise.all([
+    db.collection("mentors").findOne({ _id: new ObjectId(mentorId) }),
+    db.collection("mentorshipBatches").findOne({ _id: new ObjectId(batchId) }),
+  ]);
+  if (!mentor || !batch) throw new Error("Could not resolve mentor or batch.");
+
+  const now = new Date();
+  const result = await db.collection("bundles").insertOne({
+    kind: "mentorBatchSeries",
+    title: `${mentor.name as string} ${batch.name as string} Test Series`,
+    track: batch.track,
+    exam: batch.exam,
+    domainSubject: null,
+    features: [],
+    // Not sold as a whole — placeholders only, admin UI hides these for this kind.
+    sellingPrice: 0,
+    crossedPrice: 0,
+    uploadWindowStart: now.toISOString().slice(0, 10),
+    uploadWindowEnd: now.toISOString().slice(0, 10),
+    expiryDate: now.toISOString().slice(0, 10),
+    thumbnailUrl: null,
+    syllabusPdfUrls: [],
+    plannerUrls: [],
+    mentorId,
+    batchId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return String(result.insertedId);
+}
+
+// ─── Append a test to this mentor's batch series ───────────────────────────
+type AppendTestInput = {
+  batchId: string;
+  name: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  weightage: SubjectWeightage[];
+  liveStart: string;
+  liveEnd: string;
+  instructions: string;
+  referencePdfUrl: string | null;
+  price: number | null; // null/0 = free
+};
+
 function validateWeightage(totalQuestions: number, subjects: string[], weightage: SubjectWeightage[]) {
   if (subjects.length === 0) throw new Error("Add at least one subject.");
   const sum = weightage.reduce((s, w) => s + w.questionCount, 0);
   if (sum !== totalQuestions) {
-    throw new Error(`Subject-wise question counts total ${sum}, but Total Questions is ${totalQuestions}. They must match.`);
+    throw new Error(`Subject counts total ${sum}, but Total Questions is ${totalQuestions}. They must match.`);
   }
   if (weightage.some((w) => w.questionCount <= 0)) {
     throw new Error("Every subject needs a question count greater than 0.");
   }
 }
 
-export const createMentorTest = createServerFn({ method: "POST" })
-  .validator((data: { token: string; test: MentorTestInput }) => data)
+export const appendMentorTest = createServerFn({ method: "POST" })
+  .validator((data: { token: string; test: AppendTestInput }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
-    await requireOwnsSeries(mentorId, data.test.testSeriesId);
+    await requireTestSeriesAccess(mentorId);
+    await requireOwnsBatch(mentorId, data.test.batchId);
 
-    const { name, durationMinutes, totalQuestions, subjects, weightage, pdfUrl } = data.test;
+    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd, price } = data.test;
     if (!name.trim()) throw new Error("Give this test a name.");
+    if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter a valid total question count.");
     if (!durationMinutes || durationMinutes <= 0) throw new Error("Enter a valid test duration.");
-    if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter the total number of questions.");
     validateWeightage(totalQuestions, subjects, weightage);
+    if (!liveStart || !liveEnd) throw new Error("Set both the live start and end window.");
+    if (new Date(liveEnd) <= new Date(liveStart)) throw new Error("Live end must be after live start.");
+    if (!data.test.referencePdfUrl) throw new Error("Upload the question paper PDF for Edurack to ingest from.");
+    if (price != null && price < 0) throw new Error("Price can't be negative.");
+
+    const bundleId = await getOrCreateBatchSeriesBundle(mentorId, data.test.batchId);
 
     const db = await getDb();
-    const result = await db.collection("mentorTests").insertOne({
-      testSeriesId: data.test.testSeriesId,
-      mentorId,
+    const result = await db.collection("testCores").insertOne({
+      bundleId,
       name: name.trim(),
-      durationMinutes,
       totalQuestions,
+      durationMinutes,
       subjects,
       weightage,
-      pdfUrl: pdfUrl?.trim() || null,
+      liveStart,
+      liveEnd,
+      instructions: data.test.instructions.trim() || "Standard exam rules apply.",
+      referencePdfUrl: data.test.referencePdfUrl,
+      mentorId,
+      price: price && price > 0 ? price : null,
+      publishedToBatch: false, // never visible to students until mentor explicitly publishes
       createdAt: new Date(),
     });
-    return { ok: true, id: String(result.insertedId) };
+    return { ok: true, id: String(result.insertedId), bundleId };
   });
 
 export const updateMentorTest = createServerFn({ method: "POST" })
-  .validator((data: { token: string; id: string; test: MentorTestInput }) => data)
+  .validator((data: { token: string; id: string; test: Omit<AppendTestInput, "batchId"> }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
-    const existing = await db.collection("mentorTests").findOne({ _id: new ObjectId(data.id) });
+    const existing = await db.collection("testCores").findOne({ _id: new ObjectId(data.id) });
     if (!existing || existing.mentorId !== mentorId) throw new Error("Test not found.");
 
-    const { name, durationMinutes, totalQuestions, subjects, weightage, pdfUrl } = data.test;
+    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd, price } = data.test;
     if (!name.trim()) throw new Error("Give this test a name.");
+    if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter a valid total question count.");
     if (!durationMinutes || durationMinutes <= 0) throw new Error("Enter a valid test duration.");
-    if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter the total number of questions.");
     validateWeightage(totalQuestions, subjects, weightage);
+    if (new Date(liveEnd) <= new Date(liveStart)) throw new Error("Live end must be after live start.");
+    if (price != null && price < 0) throw new Error("Price can't be negative.");
 
-    await db.collection("mentorTests").updateOne(
+    await db.collection("testCores").updateOne(
       { _id: new ObjectId(data.id) },
       {
         $set: {
           name: name.trim(),
-          durationMinutes,
           totalQuestions,
+          durationMinutes,
           subjects,
           weightage,
-          pdfUrl: pdfUrl?.trim() || null,
+          liveStart,
+          liveEnd,
+          instructions: data.test.instructions.trim(),
+          referencePdfUrl: data.test.referencePdfUrl,
+          price: price && price > 0 ? price : null,
         },
       },
     );
     return { ok: true };
   });
 
-export const listMentorTestsForSeries = createServerFn({ method: "POST" })
-  .validator((data: { token: string; testSeriesId: string }) => data)
+// ─── The publish gate — nothing is visible to students until this fires ───
+export const setTestPublishedToBatch = createServerFn({ method: "POST" })
+  .validator((data: { token: string; id: string; published: boolean }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
-    await requireOwnsSeries(mentorId, data.testSeriesId);
-
+    const { ObjectId } = await import("mongodb");
     const db = await getDb();
-    const rows = await db
-      .collection("mentorTests")
-      .find({ testSeriesId: data.testSeriesId })
-      .sort({ createdAt: -1 })
-      .toArray();
 
-    const tests: MentorTest[] = rows.map((r) => ({
-      id: String(r._id),
-      testSeriesId: r.testSeriesId as string,
-      mentorId: r.mentorId as string,
-      name: r.name as string,
-      durationMinutes: r.durationMinutes as number,
-      totalQuestions: r.totalQuestions as number,
-      subjects: r.subjects as string[],
-      weightage: r.weightage as SubjectWeightage[],
-      pdfUrl: (r.pdfUrl as string | null) ?? null,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
-    }));
-    return { tests };
+    const test = await db.collection("testCores").findOne({ _id: new ObjectId(data.id) });
+    if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
+
+    if (data.published) {
+      const added = await db.collection("questions").countDocuments({ testId: data.id });
+      if (added < (test.totalQuestions as number)) {
+        throw new Error(
+          `Edurack has only added ${added} of ${test.totalQuestions} questions so far — you can publish once ingestion is complete.`,
+        );
+      }
+    }
+
+    await db.collection("testCores").updateOne({ _id: new ObjectId(data.id) }, { $set: { publishedToBatch: data.published } });
+    return { ok: true };
   });
 
-// ─── Results: subject comparison + per-student breakdown ───────────────────
-// Reads from mentorTestAttempts — same shape family as testAttempts in
-// test-engine.ts (subjectBreakdown per attempt) — populated once the
-// student-facing submission endpoint mentioned at the top of this file is
-// built. Until then this returns an honest zero-attempts result rather
-// than throwing, so the UI can render its empty state.
+// ─── List every test appended for one batch, with live ingestion progress ─
+export const listMyBatchSeriesTests = createServerFn({ method: "POST" })
+  .validator((data: { token: string; batchId: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    await requireOwnsBatch(mentorId, data.batchId);
+
+    const db = await getDb();
+    const bundle = await db.collection("bundles").findOne({ mentorId, batchId: data.batchId, kind: "mentorBatchSeries" });
+    if (!bundle) return { tests: [] };
+
+    const tests = await db
+      .collection("testCores")
+      .find({ bundleId: String(bundle._id), mentorId })
+      .sort({ createdAt: -1 })
+      .toArray();
+    if (tests.length === 0) return { tests: [] };
+
+    const testIds = tests.map((t) => String(t._id));
+    const questionRows = await db
+      .collection("questions")
+      .find({ testId: { $in: testIds } }, { projection: { testId: 1, subject: 1 } })
+      .toArray();
+
+    const progress: MentorTestIngestionProgress[] = tests.map((t) => {
+      const testId = String(t._id);
+      const weightage = (t.weightage as SubjectWeightage[]) ?? [];
+      const mine = questionRows.filter((q) => q.testId === testId);
+      const subjects = weightage.map((w) => ({
+        subject: w.subject,
+        required: w.questionCount,
+        added: mine.filter((q) => q.subject === w.subject).length,
+      }));
+      return {
+        testId,
+        testName: t.name as string,
+        totalQuestions: t.totalQuestions as number,
+        subjects,
+        totalAdded: mine.length,
+        publishedToBatch: Boolean(t.publishedToBatch),
+      };
+    });
+
+    return {
+      tests: tests.map((t, i) => ({
+        id: String(t._id),
+        name: t.name as string,
+        totalQuestions: t.totalQuestions as number,
+        durationMinutes: t.durationMinutes as number,
+        subjects: (t.subjects as string[]) ?? [],
+        weightage: (t.weightage as SubjectWeightage[]) ?? [],
+        liveStart: t.liveStart as string,
+        liveEnd: t.liveEnd as string,
+        instructions: (t.instructions as string) ?? "",
+        referencePdfUrl: (t.referencePdfUrl as string | null) ?? null,
+        price: (t.price as number | null) ?? null,
+        publishedToBatch: Boolean(t.publishedToBatch),
+        progress: progress[i],
+      })),
+    };
+  });
+
+// ─── Results — unchanged from the real exam engine's testAttempts ─────────
 export const getMentorTestResults = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
@@ -251,11 +298,10 @@ export const getMentorTestResults = createServerFn({ method: "POST" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
-    const test = await db.collection("mentorTests").findOne({ _id: new ObjectId(data.testId) });
+    const test = await db.collection("testCores").findOne({ _id: new ObjectId(data.testId) });
     if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
 
-    const attempts = await db.collection("mentorTestAttempts").find({ testId: data.testId }).toArray();
-
+    const attempts = await db.collection("testAttempts").find({ testId: data.testId }).toArray();
     if (attempts.length === 0) {
       const empty: MentorTestResultsOverview = {
         testId: data.testId,
@@ -275,16 +321,8 @@ export const getMentorTestResults = createServerFn({ method: "POST" })
     const nameByUid = new Map(profiles.map((p) => [p.uid as string, (p.fullName as string) || "Student"]));
 
     const subjectTotals = new Map<string, { correct: number; incorrect: number; unanswered: number; percentSum: number; count: number }>();
-
     const studentResults: MentorTestStudentResult[] = attempts.map((a) => {
-      const breakdown = (a.subjectBreakdown ?? []) as {
-        subject: string;
-        correct: number;
-        incorrect: number;
-        unanswered: number;
-        marks: number;
-      }[];
-
+      const breakdown = (a.subjectBreakdown ?? []) as { subject: string; correct: number; incorrect: number; unanswered: number; marks: number }[];
       for (const s of breakdown) {
         const attempted = s.correct + s.incorrect;
         const percent = attempted > 0 ? (s.correct / attempted) * 100 : 0;
@@ -296,7 +334,6 @@ export const getMentorTestResults = createServerFn({ method: "POST" })
         t.count += 1;
         subjectTotals.set(s.subject, t);
       }
-
       return {
         studentUid: a.uid as string,
         studentName: nameByUid.get(a.uid as string) ?? "Student",

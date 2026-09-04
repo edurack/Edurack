@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { requestStudentCallback } from "@/server-functions/callback-requests";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -84,36 +85,31 @@ function ContactPage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-  async function handleSubmit(e: FormEvent) {
+    async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
     setSubmitting(true);
 
-    // NOTE: payload shape for the future `callback_requests` MongoDB
-    // collection / `requestStudentCallback` server function.
-    const payload = {
-      studentName: form.studentName,
-      mobileNumber: form.mobileNumber,
-      examTrack: form.examTrack,
-      academicClass: form.academicClass,
-      discussionTopic: form.discussionTopic,
-      requestedAt: new Date().toISOString(),
-    };
-
     try {
-      // await requestStudentCallback(payload);
-      await new Promise((resolve) => setTimeout(resolve, 1200)); // simulated latency
-      console.log("Callback request payload ready for MongoDB:", payload);
+      await requestStudentCallback({
+        data: {
+          studentName: form.studentName,
+          mobileNumber: form.mobileNumber,
+          examTrack: form.examTrack as ExamTrack,
+          academicClass: form.academicClass,
+          discussionTopic: form.discussionTopic as DiscussionTopic,
+        },
+      });
       setSubmitted(true);
     } catch (err) {
       console.error("Failed to submit callback request", err);
-      setErrors({ studentName: "Something went wrong. Please try again." });
+      setErrors({ studentName: err instanceof Error ? err.message : "Something went wrong. Please try again." });
     } finally {
       setSubmitting(false);
     }
   }
-
+  
   if (submitted) {
     return <SuccessState onReset={() => { setForm(initialFormState); setSubmitted(false); }} />;
   }

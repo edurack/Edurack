@@ -11,11 +11,15 @@ import {
   Layers3,
   UserX,
   ChevronRight,
+  Tag,
+  ClipboardList,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { VideoPlayer } from "@/components/clay-video-player";
 import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
+import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
 
 export const Route = createFileRoute("/mentor-profile/$mentorId")({
   component: MentorProfilePage,
@@ -36,6 +40,15 @@ type Mentor = {
 };
 
 type Batch = { id: string; name: string; track: string; thumbnailUrl: string | null };
+
+type SoldTestEntry = {
+  id: string;
+  name: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  price: number;
+};
 
 function StarRating({ rating }: { rating: number }) {
   const rounded = Math.round(rating);
@@ -59,6 +72,7 @@ function MentorProfilePage() {
   const navigate = useNavigate();
   const [mentor, setMentor] = useState<Mentor | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -69,13 +83,17 @@ function MentorProfilePage() {
     if (!user) return;
     (async () => {
       const token = await user.getIdToken();
-      const { mentor: m, batches: b } = await getPublicMentorFullProfile({ data: { token, mentorId } });
+      const [{ mentor: m, batches: b }, { tests: st }] = await Promise.all([
+        getPublicMentorFullProfile({ data: { token, mentorId } }),
+        listPublicSoldTestsForMentor({ data: { token, mentorId } }),
+      ]);
       if (!m) {
         setNotFound(true);
         return;
       }
       setMentor(m);
       setBatches(b);
+      setSoldTests(st as SoldTestEntry[]);
     })();
   }, [user, mentorId]);
 
@@ -248,6 +266,60 @@ function MentorProfilePage() {
                             {b.track}
                           </span>
                         )}
+                      </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Individual Tests — standalone Sold Tests by this mentor,
+                genuinely missing before this fix. ────────────────────── */}
+            <div className="clay p-5 sm:p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-foreground/60" />
+                  <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
+                    Individual tests by {mentor.name.split(" ")[0]}
+                  </h2>
+                </div>
+                {soldTests && soldTests.length > 0 && (
+                  <span className="clay-chip rounded-full px-2.5 py-0.5 text-[10px] font-bold text-foreground/60">
+                    {soldTests.length}
+                  </span>
+                )}
+              </div>
+
+              {soldTests === null ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+                </div>
+              ) : soldTests.length === 0 ? (
+                <p className="text-sm text-foreground/60">No individual tests published yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {soldTests.map((t) => (
+                    <Link
+                      key={t.id}
+                      to="/sold-test/$id"
+                      params={{ id: t.id }}
+                      className="clay-inset group flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="clay flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+                        <ClipboardList className="h-4 w-4 text-foreground/40" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-foreground">{t.name}</p>
+                        <p className="mt-0.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/50">
+                          <span className="flex items-center gap-1">
+                            <ClipboardList className="h-2.5 w-2.5" /> {t.totalQuestions}Q
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Timer className="h-2.5 w-2.5" /> {t.durationMinutes}m
+                          </span>
+                          <span>₹{t.price}</span>
+                        </p>
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30 transition-transform duration-200 group-hover:translate-x-0.5" />
                     </Link>

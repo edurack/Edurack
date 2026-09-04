@@ -69,7 +69,7 @@ export const MENTOR_FILES_BUCKET = "mentor-files";
 export const MENTOR_LECTURES_BUCKET = "mentor-lectures";
 
 export const MAX_IMAGE_BYTES = 50 * 1024 * 1024; // 50MB
-export const MAX_FILE_BYTES = 100 * 1024 * 1024; // 100MB
+export const MAX_FILE_BYTES = 50 * 1024 * 1024; // 100MB
 export const MAX_LECTURE_BYTES = 500 * 1024 * 1024; // 500MB
 
 // ─── Admin bundle uploads (thumbnails, syllabus PDFs, planners) ─────────

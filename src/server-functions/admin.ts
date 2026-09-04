@@ -4,6 +4,7 @@ import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorAppro
 import { getDb } from "@/lib/mongo";
 import { scryptSync, randomBytes } from "node:crypto";
 import type { ExamKey, Track } from "@/lib/admin-types";
+import { PLATFORM_COMMISSION_PERCENT, DEFAULT_BATCH_PROMOTION_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
 
 // ─── Authorization helper ────────────────────────────────────────────────
 // Every admin-only server function below calls this first. It verifies the
@@ -17,6 +18,15 @@ async function requireAdmin(token: string) {
     throw new Error("Forbidden: admin access required");
   }
   return decoded;
+}
+
+function generateVerifiedUserTag(fullName: string): string {
+  const clean = fullName.trim().replace(/[^a-zA-Z]/g, "");
+  const base = clean.length > 0 ? clean.slice(0, 14) : "User";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+  return `${base}${suffix}`;
 }
 
 // ─── Admin auth / claim bootstrap ────────────────────────────────────────
@@ -95,6 +105,8 @@ export const adminListDevicesForUser = createServerFn({ method: "POST" })
       .sort({ lastSeenAt: -1 })
       .toArray();
 
+  
+
     return {
       sessions: sessions.map((s) => ({
         deviceId: s.deviceId as string,
@@ -103,6 +115,17 @@ export const adminListDevicesForUser = createServerFn({ method: "POST" })
         lastSeenAt: s.lastSeenAt instanceof Date ? s.lastSeenAt.toISOString() : null,
       })),
     };
+  });
+
+// ─── Terminate a student's device session (Students module "Terminate" action)
+export const adminTerminateDeviceSession = createServerFn({ method: "POST" })
+  .validator((data: { token: string; uid: string; deviceId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const result = await db.collection("sessions").deleteOne({ uid: data.uid, deviceId: data.deviceId });
+    if (result.deletedCount === 0) throw new Error("Device session not found — it may have already been removed.");
+    return { ok: true };
   });
 
 // ─── Module 2: Test Series Manager ───────────────────────────────────────
@@ -164,6 +187,8 @@ type BundleInput = {
   thumbnailUrl: string | null;
   syllabusPdfUrls: string[];
   plannerUrls: string[];
+  mentorId?: string | null;        // NEW
+  marketingPercent?: number | null;
 };
 
 export const createBundle = createServerFn({ method: "POST" })
@@ -204,6 +229,8 @@ export const listBundles = createServerFn({ method: "GET" })
         plannerUrls: (r.plannerUrls as string[]) ?? [],
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
         updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : null,
+        mentorId: (r.mentorId as string | null) ?? null,
+        marketingPercent: (r.marketingPercent as number | null) ?? null,
       })),
     };
   });
@@ -321,6 +348,8 @@ type TestCoreInput = {
   liveStart: string;
   liveEnd: string;
   instructions: string;
+  mentorId?: string | null;         // NEW
+  referencePdfUrl?: string | null;
 };
 
 export const createTestCore = createServerFn({ method: "POST" })
@@ -358,6 +387,8 @@ export const listTestCoresForBundle = createServerFn({ method: "GET" })
         liveEnd: r.liveEnd as string,
         instructions: (r.instructions as string) ?? "",
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
+        mentorId: (r.mentorId as string | null) ?? null,
+        referencePdfUrl: (r.referencePdfUrl as string | null) ?? null,
       })),
     };
   });
@@ -554,6 +585,7 @@ export const createMentor = createServerFn({ method: "POST" })
       passwordSalt: salt,
       profilePictureUrl: null,
       trackingIndex: "",
+      status: "active",
       // Mentor Portal (Module 6b) fields — seeded empty on creation so every
       // mentor document has a uniform shape from day one. aboutText /
       // yearOfStudy / introVideoUrl are mentor-editable (updateMyMentorProfile
@@ -585,6 +617,7 @@ export const listMentors = createServerFn({ method: "GET" })
         secretCode: r.secretCode as string,
         profilePictureUrl: (r.profilePictureUrl as string | null) ?? null,
         trackingIndex: (r.trackingIndex as string) ?? "",
+        status: (r.status as "active" | "terminated") ?? "active",
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       })),
     };
@@ -605,6 +638,7 @@ export const updateMentorProfile = createServerFn({ method: "POST" })
 
 type MentorshipBatchInput = {
   thumbnailUrl: string | null;
+  syllabusPdfUrl: string | null;
   name: string;
   highlights: string[];
   track: Track;
@@ -637,6 +671,7 @@ export const listMentorshipBatches = createServerFn({ method: "GET" })
       batches: rows.map((r) => ({
         id: String(r._id),
         thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
+        syllabusPdfUrl: (r.syllabusPdfUrl as string | null) ?? null,
         name: r.name as string,
         highlights: (r.highlights as string[]) ?? [],
         track: (r.track as Track) ?? "11th",
@@ -901,12 +936,14 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
     const bundleById = new Map(bundles.map((b) => [String(b._id), b]));
     const mentorshipById = new Map(mentorshipBatches.map((b) => [String(b._id), b]));
 
-    const purchaseRows = purchases.map((p) => {
+        const purchaseRows = purchases.map((p) => {
       const item = p.itemType === "bundle" ? bundleById.get(p.itemId as string) : mentorshipById.get(p.itemId as string);
       return {
         itemType: p.itemType as "bundle" | "mentorship",
+        itemId: p.itemId as string,
         title: item ? ((p.itemType === "bundle" ? item.title : item.name) as string) : "Item no longer available",
         amount: p.amount as number,
+        razorpayPaymentId: (p.razorpayPaymentId as string | null) ?? null,
         purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
       };
     });
@@ -1057,20 +1094,31 @@ export const listCreatorApplications = createServerFn({ method: "GET" })
     const rows = await db.collection("creatorApplications").find({}).sort({ submittedAt: -1 }).toArray();
 
     return {
-      applications: rows.map((r) => ({
-        id: String(r._id),
-        personal: r.personal as { fullName: string; email: string; mobileNumber: string; city: string },
-        credentials: r.credentials as { institution: string; yearOfStudy: string; examRank: string },
-        mentorship: {
-          ...(r.mentorship as { batchTitle: string; targetCategory: string; pricingTier: string }),
-          examsTaught: ((r.mentorship as { examsTaught?: string[] })?.examsTaught ?? []) as string[],
-        },
-        socialLinks: (r.socialLinks ?? []) as SocialLink[],
-        status: (r.status as "pending" | "approved" | "rejected") ?? "pending",
-        rejectionReason: (r.rejectionReason as string) ?? null,
-        reviewedAt: r.reviewedAt instanceof Date ? r.reviewedAt.toISOString() : null,
-        submittedAt: r.submittedAt instanceof Date ? r.submittedAt.toISOString() : null,
-      })),
+      applications: rows.map((r) => {
+        const verification = r.verification as
+          | { agreementDone?: boolean; userVerified?: boolean; verifiedUserTag?: string | null; verifiedAt?: Date | null }
+          | undefined;
+        return {
+          id: String(r._id),
+          personal: r.personal as { fullName: string; email: string; mobileNumber: string; city: string },
+          credentials: r.credentials as { institution: string; yearOfStudy: string; examRank: string },
+          mentorship: {
+            ...(r.mentorship as { batchTitle: string; targetCategory: string; pricingTier: string }),
+            examsTaught: ((r.mentorship as { examsTaught?: string[] })?.examsTaught ?? []) as string[],
+          },
+          socialLinks: (r.socialLinks ?? []) as SocialLink[],
+          status: (r.status as "pending" | "approved" | "rejected") ?? "pending",
+          rejectionReason: (r.rejectionReason as string) ?? null,
+          reviewedAt: r.reviewedAt instanceof Date ? r.reviewedAt.toISOString() : null,
+          submittedAt: r.submittedAt instanceof Date ? r.submittedAt.toISOString() : null,
+          verification: {
+            agreementDone: Boolean(verification?.agreementDone),
+            userVerified: Boolean(verification?.userVerified),
+            verifiedUserTag: verification?.verifiedUserTag ?? null,
+            verifiedAt: verification?.verifiedAt instanceof Date ? verification.verifiedAt.toISOString() : null,
+          },
+        };
+      }),
     };
   });
 
@@ -1173,6 +1221,46 @@ export const reopenCreatorApplication = createServerFn({ method: "POST" })
       { $set: { status: "pending", rejectionReason: null, reviewedAt: null } },
     );
     return { ok: true };
+  });
+
+
+// ─── Verification checklist (agreement done + identity verified) ───────────
+// The verified-user tag is generated exactly once, the first time both
+// checklist items become true, and persisted from then on — re-saving
+// with both still true keeps the same tag instead of regenerating it.
+// Unchecking either box clears the tag, so re-verifying later produces a
+// fresh one rather than resurrecting a stale identifier.
+export const updateApplicationVerification = createServerFn({ method: "POST" })
+  .validator((data: { token: string; applicationId: string; agreementDone: boolean; userVerified: boolean }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const app = await db.collection("creatorApplications").findOne({ _id: new ObjectId(data.applicationId) });
+    if (!app) throw new Error("Application not found.");
+
+    const existing = app.verification as { verifiedUserTag?: string | null } | undefined;
+    const bothChecked = data.agreementDone && data.userVerified;
+    const verifiedUserTag = bothChecked
+      ? existing?.verifiedUserTag ?? generateVerifiedUserTag((app.personal as { fullName: string }).fullName)
+      : null;
+
+    await db.collection("creatorApplications").updateOne(
+      { _id: new ObjectId(data.applicationId) },
+      {
+        $set: {
+          verification: {
+            agreementDone: data.agreementDone,
+            userVerified: data.userVerified,
+            verifiedUserTag,
+            verifiedAt: bothChecked ? new Date() : null,
+          },
+        },
+      },
+    );
+
+    return { ok: true, verifiedUserTag };
   });
 
   // ─── Danger Zone: cascade-safe deletion for bundles and test series ────────
@@ -1307,5 +1395,493 @@ export const deleteTestCore = createServerFn({ method: "POST" })
     await db.collection("testAttempts").deleteMany({ testId: data.testId });
     await db.collection("testCores").deleteOne({ _id: new ObjectId(data.testId) });
 
+    return { ok: true };
+  });
+
+  // ─── New: full purchase ledger for Overview — recent-purchases search,
+// "show more" pagination, click-to-expand full detail, top-revenue-item
+// platform/mentor split, and the Total Revenue CSV export all read from
+// this single enriched list, so every view stays consistent with the same
+// numbers.
+//
+// IMPORTANT SCHEMA NOTE: `promotionPercent` below is the *configured*
+// promoter-boost rate on the mentorship batch (from batchPromotionSettings,
+// set by the mentor — see mentor-earnings.ts). It is NOT proof a promoter
+// was actually involved in this specific sale, because `purchases`
+// documents carry no promoterId/couponCode field anywhere in this schema.
+// Until checkout stamps that attribution onto the purchase, real
+// per-sale promotion spend cannot be computed — only this configured rate
+// can be shown, and it's labeled as such on the client.
+type PurchaseLedgerRow = {
+  id: string;
+  uid: string;
+  studentName: string;
+  studentEmail: string | null;
+  studentMobile: string | null;
+  itemType: "bundle" | "mentorship" | "mentorTest"; // NEW: mentorTest
+  itemId: string;
+  itemTitle: string;
+  amount: number;
+  razorpayPaymentId: string | null;
+  purchasedAt: string | null;
+  mentorId: string | null;
+  mentorName: string | null;
+  platformAmount: number;
+  mentorNetAmount: number;
+  promotionPercent: number | null;
+};
+
+export const listAllPurchasesAdmin = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const purchases = await db.collection("purchases").find({}).sort({ purchasedAt: -1 }).toArray();
+
+    const uids = [...new Set(purchases.map((p) => p.uid as string))];
+    const bundleIds = purchases.filter((p) => p.itemType === "bundle").map((p) => new ObjectId(p.itemId as string));
+    const mentorshipIds = purchases.filter((p) => p.itemType === "mentorship").map((p) => new ObjectId(p.itemId as string));
+    const mentorTestIds = purchases.filter((p) => p.itemType === "mentorTest").map((p) => new ObjectId(p.itemId as string));
+
+    const [profiles, bundles, mentorshipBatches, mentorTests] = await Promise.all([
+      uids.length
+        ? db.collection("profiles").find({ uid: { $in: uids } }, { projection: { uid: 1, fullName: 1, email: 1, mobile: 1 } }).toArray()
+        : [],
+      bundleIds.length ? db.collection("bundles").find({ _id: { $in: bundleIds } }).toArray() : [],
+      mentorshipIds.length ? db.collection("mentorshipBatches").find({ _id: { $in: mentorshipIds } }).toArray() : [],
+      mentorTestIds.length ? db.collection("testCores").find({ _id: { $in: mentorTestIds } }).toArray() : [],
+    ]);
+
+    const profileByUid = new Map(profiles.map((p) => [p.uid as string, p]));
+    const bundleById = new Map(bundles.map((b) => [String(b._id), b]));
+    const mentorshipById = new Map(mentorshipBatches.map((b) => [String(b._id), b]));
+    const mentorTestById = new Map(mentorTests.map((t) => [String(t._id), t]));
+
+    // mentorId can come from either a mentorship batch's assignedMentorId
+    // or a mentorTest's own mentorId field.
+    const mentorIds = [
+      ...new Set([
+        ...mentorshipBatches.map((b) => b.assignedMentorId as string | null).filter((id): id is string => Boolean(id)),
+        ...mentorTests.map((t) => t.mentorId as string | null).filter((id): id is string => Boolean(id)),
+      ]),
+    ];
+    const mentors = mentorIds.length
+      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }).toArray()
+      : [];
+    const mentorNameById = new Map(mentors.map((m) => [String(m._id), m.name as string]));
+
+    const mentorshipBatchIds = mentorshipBatches.map((b) => String(b._id));
+    const promotionSettings = mentorshipBatchIds.length
+      ? await db.collection("batchPromotionSettings").find({ batchId: { $in: mentorshipBatchIds } }).toArray()
+      : [];
+    const promotionPercentByBatchId = new Map(promotionSettings.map((s) => [s.batchId as string, s.promotionPercent as number]));
+
+    const rows: PurchaseLedgerRow[] = purchases.map((p) => {
+      const profile = profileByUid.get(p.uid as string);
+      const amount = p.amount as number;
+      const base = {
+        id: String(p._id),
+        uid: p.uid as string,
+        studentName: (profile?.fullName as string) || "Student",
+        studentEmail: (profile?.email as string | null) ?? null,
+        studentMobile: (profile?.mobile as string | null) ?? null,
+        amount,
+        razorpayPaymentId: (p.razorpayPaymentId as string | null) ?? null,
+        purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
+      };
+
+      if (p.itemType === "bundle") {
+        const bundle = bundleById.get(p.itemId as string);
+        return {
+          ...base,
+          itemType: "bundle" as const,
+          itemId: p.itemId as string,
+          itemTitle: (bundle?.title as string) ?? "Deleted item",
+          mentorId: null,
+          mentorName: null,
+          platformAmount: amount,
+          mentorNetAmount: 0,
+          promotionPercent: null,
+        };
+      }
+
+      if (p.itemType === "mentorTest") {
+        const test = mentorTestById.get(p.itemId as string);
+        const mentorId = (test?.mentorId as string | null) ?? null;
+        // Prefer the percent snapshotted on the purchase at order-creation
+        // time (payments.ts) — falls back to the current flat rate only
+        // for purchases made before that snapshot existed.
+        const commissionPercent = (p.platformCommissionPercent as number | undefined) ?? MENTOR_TEST_STANDALONE_COMMISSION_PERCENT;
+        const platformAmount = Math.round(amount * (commissionPercent / 100));
+        return {
+          ...base,
+          itemType: "mentorTest" as const,
+          itemId: p.itemId as string,
+          itemTitle: (test?.name as string) ?? "Deleted test",
+          mentorId,
+          mentorName: mentorId ? mentorNameById.get(mentorId) ?? "Unknown mentor" : null,
+          platformAmount,
+          mentorNetAmount: amount - platformAmount,
+          promotionPercent: null, // promoters don't promote individual tests
+        };
+      }
+
+      // mentorship
+      const batch = mentorshipById.get(p.itemId as string);
+      const assignedMentorId = (batch?.assignedMentorId as string | null) ?? null;
+      const commissionPercent = (p.platformCommissionPercent as number | undefined) ?? PLATFORM_COMMISSION_PERCENT;
+      const platformAmount = Math.round(amount * (commissionPercent / 100));
+      return {
+        ...base,
+        itemType: "mentorship" as const,
+        itemId: p.itemId as string,
+        itemTitle: (batch?.name as string) ?? "Deleted item",
+        mentorId: assignedMentorId,
+        mentorName: assignedMentorId ? mentorNameById.get(assignedMentorId) ?? "Unknown mentor" : null,
+        platformAmount,
+        mentorNetAmount: amount - platformAmount,
+        promotionPercent: assignedMentorId
+          ? promotionPercentByBatchId.get(p.itemId as string) ?? DEFAULT_BATCH_PROMOTION_PERCENT
+          : null,
+      };
+    });
+
+    return { rows };
+  });
+
+  // ─── Terminate / reactivate a mentor account ────────────────────────────
+// Flips a status flag checked by requireMentor on every mentor-authenticated
+// request (see mentor-auth.ts) — an existing session token stays
+// cryptographically valid but is rejected on its very next use once
+// terminated is true.
+export const setMentorAccountStatus = createServerFn({ method: "POST" })
+  .validator((data: { token: string; mentorId: string; terminated: boolean }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const result = await db.collection("mentors").updateOne(
+      { _id: new ObjectId(data.mentorId) },
+      { $set: { status: data.terminated ? "terminated" : "active" } },
+    );
+    if (result.matchedCount === 0) throw new Error("Mentor not found.");
+    return { ok: true };
+  });
+
+// ─── Full mentor detail for the directory's expanded profile view — merges
+// the base mentor document, their onboarding submission (if they came
+// through the approved-application flow), intro video status, and every
+// batch assigned to them (manually created or published from onboarding —
+// both live in the same mentorshipBatches collection). ───────────────────
+export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
+  .validator((data: { token: string; mentorId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(data.mentorId) });
+    if (!mentor) throw new Error("Mentor not found.");
+
+    const onboarding = await db.collection("mentorOnboardingDetails").findOne({ mentorProfileId: data.mentorId });
+
+    let email: string | null = null;
+    if (onboarding?.applicationId) {
+      const app = await db
+        .collection("creatorApplications")
+        .findOne({ _id: new ObjectId(onboarding.applicationId as string) });
+      email = (app?.personal as { email?: string } | undefined)?.email ?? null;
+    }
+
+    const introVideo = await db.collection("mentorIntroVideoStatus").findOne({ mentorId: data.mentorId });
+
+    const batches = await db
+      .collection("mentorshipBatches")
+      .find({ assignedMentorId: data.mentorId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return {
+      detail: {
+        id: String(mentor._id),
+        username: mentor.username as string,
+        name: mentor.name as string,
+        secretCode: mentor.secretCode as string,
+        profilePictureUrl: (mentor.profilePictureUrl as string | null) ?? null,
+        trackingIndex: (mentor.trackingIndex as string) ?? "",
+        status: (mentor.status as "active" | "terminated") ?? "active",
+        email,
+        aboutText: (mentor.aboutText as string) ?? "",
+        yearOfStudy: (mentor.yearOfStudy as string) ?? "",
+        aiimsIitRank: (mentor.aiimsIitRank as string) ?? "",
+        enrolledCollege: (mentor.enrolledCollege as string) ?? "",
+        pursuedCourse: (mentor.pursuedCourse as string) ?? "",
+        createdAt: mentor.createdAt instanceof Date ? mentor.createdAt.toISOString() : null,
+        introVideo: introVideo
+          ? {
+              driveUploadLink: (introVideo.driveUploadLink as string | null) ?? null,
+              uploaded: Boolean(introVideo.uploaded),
+              markedUploadedAt:
+                introVideo.markedUploadedAt instanceof Date ? introVideo.markedUploadedAt.toISOString() : null,
+            }
+          : null,
+        onboarding: onboarding
+          ? {
+              weeklyHours: Number(onboarding.weeklyHours ?? 0),
+              wantsToSellTestSeries: Boolean(onboarding.wantsToSellTestSeries),
+              wantsToRecordIntroVideo: Boolean(onboarding.wantsToRecordIntroVideo),
+              batchName: (onboarding.batchName as string) ?? "",
+              batchPrice: Number(onboarding.batchPrice ?? 0),
+              batchDurationMonths: Number(onboarding.batchDurationMonths ?? 0),
+              hasMinStudentCriteria: Boolean(onboarding.hasMinStudentCriteria),
+              minStudentCriteriaDetails: (onboarding.minStudentCriteriaDetails as string) ?? "",
+              needsPromotionAssistance: Boolean(onboarding.needsPromotionAssistance),
+              promotionPercent: Number(onboarding.promotionPercent ?? 0),
+              syllabusPdfUrl: (onboarding.syllabusPdfUrl as string) ?? "",
+              plannerPdfUrl: (onboarding.plannerPdfUrl as string) ?? "",
+              commissionPercent: Number(onboarding.commissionPercent ?? 0),
+              preferredLaunchDate: (onboarding.preferredLaunchDate as string) ?? "",
+              submittedAt: onboarding.submittedAt instanceof Date ? onboarding.submittedAt.toISOString() : null,
+            }
+          : null,
+        batches: batches.map((b) => ({
+          id: String(b._id),
+          name: b.name as string,
+          sellingPrice: b.sellingPrice as number,
+          crossedPrice: b.crossedPrice as number,
+          track: b.track as string,
+          exam: b.exam as string,
+          thumbnailUrl: (b.thumbnailUrl as string | null) ?? null,
+          createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : null,
+        })),
+      },
+    };
+  });
+
+// ─── Reset a mentor's password and email it to them ─────────────────────
+// Mentors aren't Firebase users, so there's no "reset link" — this
+// generates a fresh password, hashes and stores it exactly like createMentor
+// does, and emails the plain password directly (same manual-handoff pattern
+// as resolvePromoterPasswordReset in promoter-admin.ts). Requires an email
+// on file, which only exists for mentors who came through an approved
+// application (the email lives on that application, never on the mentor
+// document itself) — a mentor with no linked application has nothing to
+// send to, and this throws a clear error rather than failing silently.
+export const resetMentorPasswordEmail = createServerFn({ method: "POST" })
+  .validator((data: { token: string; mentorId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const { scryptSync, randomBytes } = await import("node:crypto");
+    const db = await getDb();
+
+    const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(data.mentorId) });
+    if (!mentor) throw new Error("Mentor not found.");
+
+    const onboarding = await db.collection("mentorOnboardingDetails").findOne({ mentorProfileId: data.mentorId });
+    if (!onboarding?.applicationId) {
+      throw new Error("No email on file for this mentor — they weren't onboarded through an approved application.");
+    }
+    const app = await db
+      .collection("creatorApplications")
+      .findOne({ _id: new ObjectId(onboarding.applicationId as string) });
+    const email = (app?.personal as { email?: string } | undefined)?.email;
+    if (!email) throw new Error("No email on file for this mentor.");
+
+    const newPassword = randomBytes(6).toString("hex"); // 12-char password
+    const salt = randomBytes(16).toString("hex");
+    const hash = scryptSync(newPassword, salt, 64).toString("hex");
+
+    await db.collection("mentors").updateOne(
+      { _id: new ObjectId(data.mentorId) },
+      { $set: { passwordHash: hash, passwordSalt: salt } },
+    );
+
+    const { sendMail } = await import("@/lib/mailer");
+    const { mentorPasswordResetEmailHtml } = await import("@/lib/email-templates");
+    await sendMail({
+      to: email,
+      subject: "Your Edurack mentor password has been reset",
+      html: mentorPasswordResetEmailHtml({
+        fullName: mentor.name as string,
+        username: mentor.username as string,
+        newPassword,
+      }),
+    });
+
+    return { ok: true, email };
+  });
+// ─── Sell Tests: admin question ingestion queue ────────────────────────────
+// Mirrors the shape QuestionIngestionModule's TestOption uses (id, name,
+// subjects, weightage) so the exact same question-entry pattern — and the
+// exact same listQuestionsForTestSubject / createQuestion functions this
+// file already exports — work unchanged for Sold Tests. Sold Test
+// questions are inserted with bundleId: "" (Sold Tests have no bundle);
+// nothing downstream reads bundleId for a testId that isn't in testCores.
+export const listSoldTestsForIngestion = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const { ObjectId } = await import("mongodb");
+
+    const rows = await db.collection("soldTests").find({ status: "awaiting_ingestion" }).sort({ updatedAt: -1 }).toArray();
+    if (rows.length === 0) return { tests: [] };
+
+    const mentorIds = [...new Set(rows.map((r) => r.mentorId as string))];
+    const mentors = mentorIds.length
+      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } }).toArray()
+      : [];
+    const nameByMentorId = new Map(mentors.map((m) => [String(m._id), m.name as string]));
+
+    const testIds = rows.map((r) => String(r._id));
+    const questionRows = await db
+      .collection("questions")
+      .find({ testId: { $in: testIds } }, { projection: { testId: 1, subject: 1 } })
+      .toArray();
+
+    return {
+      tests: rows.map((r) => {
+        const testId = String(r._id);
+        const weightage = (r.weightage as { subject: string; questionCount: number }[]) ?? [];
+        const mine = questionRows.filter((q) => q.testId === testId);
+        return {
+          id: testId,
+          name: r.name as string,
+          mentorName: nameByMentorId.get(r.mentorId as string) ?? "Unknown mentor",
+          totalQuestions: r.totalQuestions as number,
+          subjects: (r.subjects as string[]) ?? [],
+          weightage,
+          referencePdfUrl: (r.referencePdfUrl as string | null) ?? null,
+          progress: weightage.map((w) => ({
+            subject: w.subject,
+            required: w.questionCount,
+            added: mine.filter((q) => q.subject === w.subject).length,
+          })),
+          totalAdded: mine.length,
+        };
+      }),
+    };
+  });
+
+// Admin explicitly hands a fully-ingested test off to the mentor for
+// content review — this is the only moment questions become visible to
+// the mentor (via listSoldTestQuestionsForMentorReview in
+// mentor-sell-tests.ts). A test still mid-ingestion is never mentor-visible.
+export const sendSoldTestToMentorForReview = createServerFn({ method: "POST" })
+  .validator((data: { token: string; id: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
+    if (!test) throw new Error("Test not found.");
+    if (test.status !== "awaiting_ingestion") throw new Error("This test isn't awaiting ingestion.");
+
+    const added = await db.collection("questions").countDocuments({ testId: data.id });
+    if (added < (test.totalQuestions as number)) {
+      throw new Error(`Only ${added} of ${test.totalQuestions} questions have been added so far — finish ingestion first.`);
+    }
+
+    await db.collection("soldTests").updateOne(
+      { _id: new ObjectId(data.id) },
+      { $set: { status: "awaiting_mentor_review", sentToMentorAt: new Date(), updatedAt: new Date() } },
+    );
+    return { ok: true };
+  });
+
+  // ─── Sell Tests: access requests + price approval queue ───────────────────
+export const listSellTestsAccessRequests = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const { ObjectId } = await import("mongodb");
+    const rows = await db.collection("sellTestsAccessRequests").find({}).sort({ requestedAt: -1 }).toArray();
+    const mentorIds = rows.map((r) => r.mentorId as string);
+    const mentors = mentorIds.length
+      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } }).toArray()
+      : [];
+    const nameByMentorId = new Map(mentors.map((m) => [String(m._id), m.name as string]));
+    return {
+      requests: rows.map((r) => ({
+        mentorId: r.mentorId as string,
+        mentorName: nameByMentorId.get(r.mentorId as string) ?? "Unknown mentor",
+        adminGranted: Boolean(r.adminGranted),
+        requestedAt: r.requestedAt instanceof Date ? r.requestedAt.toISOString() : null,
+      })),
+    };
+  });
+
+export const setSellTestsAccess = createServerFn({ method: "POST" })
+  .validator((data: { token: string; mentorId: string; granted: boolean }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    await db.collection("sellTestsAccessRequests").updateOne(
+      { mentorId: data.mentorId },
+      { $set: { mentorId: data.mentorId, adminGranted: data.granted } },
+      { upsert: true },
+    );
+    return { ok: true };
+  });
+
+export const listSoldTestsForApproval = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const { ObjectId } = await import("mongodb");
+    const rows = await db
+      .collection("soldTests")
+      .find({ status: { $in: ["awaiting_price_approval", "live"] } })
+      .sort({ updatedAt: -1 })
+      .toArray();
+    const mentorIds = [...new Set(rows.map((r) => r.mentorId as string))];
+    const mentors = mentorIds.length
+      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } }).toArray()
+      : [];
+    const nameByMentorId = new Map(mentors.map((m) => [String(m._id), m.name as string]));
+    return {
+      tests: rows.map((r) => ({
+        id: String(r._id),
+        mentorId: r.mentorId as string,
+        mentorName: nameByMentorId.get(r.mentorId as string) ?? "Unknown mentor",
+        name: r.name as string,
+        totalQuestions: r.totalQuestions as number,
+        referencePdfUrl: (r.referencePdfUrl as string | null) ?? null,
+        proposedPrice: r.proposedPrice as number,
+        approvedPrice: (r.approvedPrice as number | null) ?? null,
+        status: r.status as string,
+        ingestionFeeAmount: r.ingestionFeeAmount as number,
+        contentApprovedByMentor: Boolean(r.contentApprovedByMentor),
+        mentorReviewedAt: r.mentorReviewedAt instanceof Date ? r.mentorReviewedAt.toISOString() : null,
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
+      })),
+    };
+  });
+
+// Sets the final student-facing price (defaults to the mentor's ask, but
+// admin can override) and flips status to "live" — the exact moment it
+// becomes purchasable through the existing student payments.ts flow.
+export const approveSoldTestPrice = createServerFn({ method: "POST" })
+  .validator((data: { token: string; id: string; approvedPrice: number }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    if (!data.approvedPrice || data.approvedPrice <= 0) throw new Error("Enter a valid price.");
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
+    if (!test) throw new Error("Test not found.");
+    if (test.status !== "awaiting_price_approval") {
+      throw new Error("This test isn't awaiting price approval — the mentor needs to approve the content first.");
+    }
+    await db.collection("soldTests").updateOne(
+      { _id: new ObjectId(data.id) },
+      { $set: { approvedPrice: data.approvedPrice, status: "live", updatedAt: new Date() } },
+    );
     return { ok: true };
   });

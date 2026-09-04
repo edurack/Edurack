@@ -240,3 +240,33 @@ export function mentorRejectedEmailHtml(params: { fullName: string; reason: stri
   `;
   return emailLayout({ previewText: "An update on your mentor application", bodyHtml: body });
 }
+
+// ─── Mentor password reset (admin-triggered) ──────────────────────────────
+export function mentorPasswordResetEmailHtml(params: {
+  fullName: string;
+  username: string;
+  newPassword: string;
+}): string {
+  const body = `
+    <p style="margin: 0 0 4px 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: ${BRAND.color};">
+      Password reset
+    </p>
+    <h1 style="margin: 0 0 12px 0; font-size: 22px; line-height: 30px; color: ${BRAND.text};">
+      Hi ${params.fullName}, here's your new password
+    </h1>
+    <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      An Edurack admin reset your mentor portal password. Use these to sign in, then change it once you're in.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${BRAND.border}; border-radius: 10px; overflow: hidden;">
+      <tr>
+        <td style="padding: 14px 18px; border-bottom: 1px solid ${BRAND.border}; font-size: 14px; color: ${BRAND.muted};">Username</td>
+        <td style="padding: 14px 18px; border-bottom: 1px solid ${BRAND.border}; font-size: 14px; color: ${BRAND.text}; text-align: right; font-family: monospace;">${params.username}</td>
+      </tr>
+      <tr>
+        <td style="padding: 14px 18px; font-size: 14px; color: ${BRAND.muted};">New password</td>
+        <td style="padding: 14px 18px; font-size: 15px; font-weight: 700; color: ${BRAND.text}; text-align: right; font-family: monospace;">${params.newPassword}</td>
+      </tr>
+    </table>
+  `;
+  return emailLayout({ previewText: "Your Edurack mentor password has been reset", bodyHtml: body });
+}

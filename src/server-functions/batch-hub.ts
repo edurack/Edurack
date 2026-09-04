@@ -143,7 +143,7 @@ export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
 // isPurchased will correctly report false for everyone until real Razorpay
 // integration exists and starts writing confirmed orders here.
 export const hasPurchased = createServerFn({ method: "GET" })
-  .validator((data: { token: string; itemType: "bundle" | "mentorship"; itemId: string }) => data)
+  .validator((data: { token: string; itemType: "bundle" | "mentorship" | "mentorTest"; itemId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
@@ -625,6 +625,61 @@ export const getMyMentorForBatch = createServerFn({ method: "GET" })
     };
   });
 
+// ─── Student-facing: a mentor's batch test series ───────────────────────────
+// Only tests the mentor has explicitly published (`publishedToBatch: true`)
+// are ever returned here — a fully-ingested-but-unpublished test stays
+// completely invisible to students, even ones who've already purchased the
+// batch. Each row is pre-annotated with whether *this* student can access
+// it: a free test (price: null) unlocks via the ordinary mentorship batch
+// purchase; a paid test unlocks via its own standalone "mentorTest"
+// purchase and does NOT require the batch to be purchased at all — see
+// payments.ts's lookupItemPriceAndTitle/resolveCommissionPercent for how
+// that purchase type is priced and split.
+export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GET" })
+  .validator((data: { token: string; batchId: string }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await requireSignedIn(data.token);
+    const db = await getDb();
+
+    const bundle = await db.collection("bundles").findOne({ batchId: data.batchId, kind: "mentorBatchSeries" });
+    if (!bundle) return { tests: [] };
+
+    const tests = await db
+      .collection("testCores")
+      .find({ bundleId: String(bundle._id), publishedToBatch: true })
+      .sort({ liveStart: 1 })
+      .toArray();
+    if (tests.length === 0) return { tests: [] };
+
+    const hasBatchPurchase = Boolean(
+      await db.collection("purchases").findOne({ uid: decoded.uid, itemType: "mentorship", itemId: data.batchId }),
+    );
+
+    const testIds = tests.map((t) => String(t._id));
+    const testPurchases = await db
+      .collection("purchases")
+      .find({ uid: decoded.uid, itemType: "mentorTest", itemId: { $in: testIds } })
+      .toArray();
+    const purchasedTestIds = new Set(testPurchases.map((p) => p.itemId as string));
+
+    return {
+      tests: tests.map((t) => {
+        const price = (t.price as number | null) ?? null;
+        const unlocked = price ? purchasedTestIds.has(String(t._id)) : hasBatchPurchase;
+        return {
+          id: String(t._id),
+          name: t.name as string,
+          totalQuestions: t.totalQuestions as number,
+          timeLimitMinutes: t.durationMinutes as number,
+          liveStart: t.liveStart as string,
+          liveEnd: t.liveEnd as string,
+          price,
+          unlocked,
+        };
+      }),
+    };
+  });
+
 export const listMyChatWithMentor = createServerFn({ method: "GET" })
   .validator((data: { token: string; batchId: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
@@ -687,5 +742,88 @@ export const getChatLockStatusForStudent = createServerFn({ method: "GET" })
       isLockedNow: isCurrentlyLockedForStudent(lock.lockedFrom as string, lock.lockedUntil as string),
       openFrom: lock.lockedFrom as string,
       openUntil: lock.lockedUntil as string,
+    };
+  });
+
+  // ─── Student-facing: Sold Tests attached to a mentorship batch ────────────
+// Same free-with-batch / paid-standalone model as
+// listMentorBatchSeriesTestsForStudent, but for the separate "Sell Tests"
+// product (soldTests collection) rather than Test Series (testCores).
+// Sold Tests have no scheduled live window — they're just available once
+// unlocked — so this row shape has no liveStart/liveEnd.
+// Same ingestion-completeness gate as payments.ts's
+// lookupItemPriceAndTitle: a "live" (admin-approved) test that isn't
+// fully ingested yet must not appear as available, even to students who've
+// already purchased the batch.
+export const listAttachedSoldTestsForStudent = createServerFn({ method: "GET" })
+  .validator((data: { token: string; batchId: string }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await requireSignedIn(data.token);
+    const db = await getDb();
+
+    const tests = await db
+      .collection("soldTests")
+      .find({ attachedBatchIds: data.batchId, status: "live" })
+      .sort({ createdAt: -1 })
+      .toArray();
+    if (tests.length === 0) return { tests: [] };
+
+    const testIds = tests.map((t) => String(t._id));
+    const questionCounts = await db
+      .collection("questions")
+      .aggregate([{ $match: { testId: { $in: testIds } } }, { $group: { _id: "$testId", count: { $sum: 1 } } }])
+      .toArray();
+    const addedByTestId = new Map(questionCounts.map((r) => [r._id as string, r.count as number]));
+    const readyTests = tests.filter((t) => (addedByTestId.get(String(t._id)) ?? 0) >= (t.totalQuestions as number));
+    if (readyTests.length === 0) return { tests: [] };
+
+    const hasBatchPurchase = Boolean(
+      await db.collection("purchases").findOne({ uid: decoded.uid, itemType: "mentorship", itemId: data.batchId }),
+    );
+
+    const readyTestIds = readyTests.map((t) => String(t._id));
+    const testPurchases = await db
+      .collection("purchases")
+      .find({ uid: decoded.uid, itemType: "mentorTest", itemId: { $in: readyTestIds } })
+      .toArray();
+    const purchasedTestIds = new Set(testPurchases.map((p) => p.itemId as string));
+
+    return {
+      tests: readyTests.map((t) => ({
+        id: String(t._id),
+        name: t.name as string,
+        totalQuestions: t.totalQuestions as number,
+        durationMinutes: t.durationMinutes as number,
+        price: t.approvedPrice as number, // always a real price here — "free" means free-because-batch-purchased, not price:null like testCores
+        unlocked: hasBatchPurchase || purchasedTestIds.has(String(t._id)),
+      })),
+    };
+  });
+
+  // ─── Public: single Sold Test detail (for its standalone purchase page) ───
+export const getPublicSoldTestDetail = createServerFn({ method: "GET" })
+  .validator((data: { token: string; testId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireSignedIn(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const t = await db.collection("soldTests").findOne({ _id: new ObjectId(data.testId) });
+    if (!t || t.status !== "live" || !t.approvedPrice) return { test: null };
+
+    const addedCount = await db.collection("questions").countDocuments({ testId: data.testId });
+    if (addedCount < (t.totalQuestions as number)) return { test: null };
+
+    const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(t.mentorId as string) });
+    return {
+      test: {
+        id: String(t._id),
+        name: t.name as string,
+        mentorName: (mentor?.name as string) ?? "Edurack Mentor",
+        totalQuestions: t.totalQuestions as number,
+        durationMinutes: t.durationMinutes as number,
+        subjects: (t.subjects as string[]) ?? [],
+        price: t.approvedPrice as number,
+      },
     };
   });

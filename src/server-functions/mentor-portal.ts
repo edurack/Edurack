@@ -76,7 +76,7 @@ export const postMentorAnnouncement = createServerFn({ method: "POST" })
     const mentorId = await requireMentor(data.token);
     await requireOwnsBatch(mentorId, data.announcement.batchId);
 
-    const { title, message } = data.announcement;
+    const { title, message, triggerEmail } = data.announcement;
     if (!title.trim()) throw new Error("Enter an announcement title.");
     if (!message.trim()) throw new Error("Write the announcement message.");
 
@@ -89,12 +89,32 @@ export const postMentorAnnouncement = createServerFn({ method: "POST" })
     const recipientUids = purchaseRows.map((p) => p.uid as string);
 
     let recipientNames: string[] = [];
+    let emailTriggered = false;
+    let emailStatus: "sent" | "failed" | null = null;
+
     if (recipientUids.length > 0) {
       const profiles = await db
         .collection("profiles")
-        .find({ uid: { $in: recipientUids } }, { projection: { fullName: 1 } })
+        .find({ uid: { $in: recipientUids } }, { projection: { fullName: 1, email: 1 } })
         .toArray();
       recipientNames = profiles.map((p) => (p.fullName as string) || "Unnamed student");
+
+      if (triggerEmail) {
+        emailTriggered = true;
+        const emails = profiles.map((p) => p.email as string | null).filter((e): e is string => Boolean(e));
+        if (emails.length > 0) {
+          try {
+            const { sendMailBatch } = await import("@/lib/mailer");
+            const { bundleAnnouncementEmailHtml } = await import("@/lib/email-templates");
+            const html = bundleAnnouncementEmailHtml({ bundleTitle: title.trim(), message: message.trim() });
+            const result = await sendMailBatch(emails.map((to) => ({ to, subject: title.trim(), html })));
+            emailStatus = result.failed === 0 ? "sent" : result.sent > 0 ? "sent" : "failed";
+          } catch (err) {
+            console.error(`[postMentorAnnouncement] email send failed for batchId=${data.announcement.batchId}:`, err);
+            emailStatus = "failed";
+          }
+        }
+      }
     }
 
     const result = await db.collection("mentorshipBatchAnnouncements").insertOne({
@@ -104,12 +124,14 @@ export const postMentorAnnouncement = createServerFn({ method: "POST" })
       message: message.trim(),
       recipientCount: recipientUids.length,
       recipientNames,
+      emailTriggered,
+      emailStatus,
       createdAt: new Date(),
     });
 
     return { ok: true, id: String(result.insertedId), recipientCount: recipientUids.length, recipientNames };
   });
-
+  
 export const listMentorAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -124,17 +146,19 @@ export const listMentorAnnouncements = createServerFn({ method: "POST" })
       .toArray();
 
     const announcements: MentorAnnouncement[] = rows.map((r) => ({
-      id: String(r._id),
-      mentorId: r.mentorId as string,
-      batchId: r.batchId as string,
-      title: r.title as string,
-      message: r.message as string,
-      recipientCount: (r.recipientCount as number | null) ?? 0,
-      recipientNames: (r.recipientNames as string[] | null) ?? [],
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
-      pinned: Boolean(r.pinned),
-      editedAt: r.editedAt instanceof Date ? r.editedAt.toISOString() : null,
-    }));
+        id: String(r._id),
+        mentorId: r.mentorId as string,
+        batchId: r.batchId as string,
+        title: r.title as string,
+        message: r.message as string,
+        recipientCount: (r.recipientCount as number | null) ?? 0,
+        recipientNames: (r.recipientNames as string[] | null) ?? [],
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
+        pinned: Boolean(r.pinned),
+        editedAt: r.editedAt instanceof Date ? r.editedAt.toISOString() : null,
+        emailTriggered: Boolean(r.emailTriggered),          // ← add
+        emailStatus: (r.emailStatus as "sent" | "failed" | "pending" | null) ?? null,  // ← add
+      }));
 
     return { announcements };
   });

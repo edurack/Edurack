@@ -13,10 +13,13 @@ import {
   BadgeCheck,
   Target,
   Layers,
+  Tag,
+  ClipboardList,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
-import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors } from "@/server-functions/catalog";
+import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";
 import { getMyPurchases } from "@/server-functions/student-data";
 import { AppHeader } from "@/components/app-header";
 
@@ -36,11 +39,6 @@ const EXAM_LABELS: Record<ExamKey, string> = {
   ipmat: "IPMAT",
 };
 
-// Maps a student's free-text targetExam (from onboarding, e.g. "JEE Main +
-// Advanced", "NEET + AIIMS") down to one of the four platform exam keys, so
-// recommendations can match on exam even though the profile field itself
-// isn't a strict enum. Falls back to null (no exam match applied) rather
-// than guessing wrong.
 function resolveExamKey(targetExam: string): ExamKey | null {
   const t = targetExam.toLowerCase();
   if (t.includes("neet")) return "neet";
@@ -60,9 +58,6 @@ type Bundle = {
   id: string;
   title: string;
   track: string;
-  // Optional and defaulted below — older catalog rows or a not-yet-updated
-  // catalog.ts won't send this, so every read of `exam` goes through
-  // `?? "neet"` rather than assuming the field exists.
   exam?: ExamKey;
   features: string[];
   sellingPrice: number;
@@ -97,6 +92,40 @@ type MentorDirectoryEntry = {
   searchText: string;
 };
 
+// Standalone Sold Tests — deliberately NOT folded into the Listing type
+// below. Listing assumes every entry has a Track and an ExamKey for
+// filtering/recommending, and Sold Tests have neither (they're subject-
+// tagged, not track/exam-tagged). Rather than fake those fields, they get
+// their own type, their own section, and their own search group — ranked
+// after batches everywhere, per how this was scoped.
+type SoldTestEntry = {
+  id: string;
+  name: string;
+  mentorName: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  price: number;
+  purchased: boolean;
+  searchText: string;
+};
+
+function soldTestToEntry(t: {
+  id: string;
+  name: string;
+  mentorName: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  price: number;
+}, purchasedKeys: Set<string>): SoldTestEntry {
+  return {
+    ...t,
+    purchased: purchasedKeys.has(`mentorTest:${t.id}`),
+    searchText: `${t.name} ${t.mentorName} ${t.subjects.join(" ")}`.toLowerCase(),
+  };
+}
+
 type Listing = {
   id: string;
   kind: "Test Series" | "Mentorship";
@@ -109,9 +138,6 @@ type Listing = {
   discountPercent: number;
   metaLines: { icon: typeof Calendar; text: string }[];
   searchText: string;
-  // Whether the signed-in student already owns this item, derived from
-  // getMyPurchases() and keyed as `${itemType}:${itemId}` to exactly match
-  // the shape purchases.ts hands back. Drives Buy Now vs Study Now below.
   purchased: boolean;
 };
 
@@ -167,6 +193,7 @@ function DashboardPage() {
   const [bundles, setBundles] = useState<Bundle[] | null>(null);
   const [batches, setBatches] = useState<MentorshipBatch[] | null>(null);
   const [mentors, setMentors] = useState<MentorDirectoryEntry[] | null>(null);
+  const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [purchasedKeys, setPurchasedKeys] = useState<Set<string> | null>(null);
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("All");
   const [examFilter, setExamFilter] = useState<ExamFilter>("All");
@@ -182,14 +209,21 @@ function DashboardPage() {
     if (!user) return;
     (async () => {
       const token = await user.getIdToken();
-      const [{ profile: p }, { bundles: bundleRows }, { batches: batchRows }, { mentors: mentorRows }, { purchases }] =
-        await Promise.all([
-          getProfile({ data: { token } }),
-          listPublicBundles({ data: { token } }),
-          listPublicMentorshipBatches({ data: { token } }),
-          listPublicMentors({ data: { token } }),
-          getMyPurchases({ data: { token } }),
-        ]);
+      const [
+        { profile: p },
+        { bundles: bundleRows },
+        { batches: batchRows },
+        { mentors: mentorRows },
+        { tests: soldTestRows },
+        { purchases },
+      ] = await Promise.all([
+        getProfile({ data: { token } }),
+        listPublicBundles({ data: { token } }),
+        listPublicMentorshipBatches({ data: { token } }),
+        listPublicMentors({ data: { token } }),
+        listPublicSoldTests({ data: { token } }),
+        getMyPurchases({ data: { token } }),
+      ]);
       if (p) {
         setProfile({
           fullName: p.fullName,
@@ -200,7 +234,9 @@ function DashboardPage() {
       setBundles(bundleRows as Bundle[]);
       setBatches(batchRows as MentorshipBatch[]);
       setMentors(mentorRows as MentorDirectoryEntry[]);
-      setPurchasedKeys(new Set(purchases.map((pu) => `${pu.itemType}:${pu.itemId}`)));
+      const purchasedSet = new Set(purchases.map((pu) => `${pu.itemType}:${pu.itemId}`));
+      setPurchasedKeys(purchasedSet);
+      setSoldTests((soldTestRows as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
     })();
   }, [user]);
 
@@ -217,10 +253,6 @@ function DashboardPage() {
 
   const recommended = useMemo(() => {
     if (!allListings || !track) return [];
-    // Match on track always; match on exam too when we could confidently
-    // resolve one from the student's targetExam string. If we couldn't
-    // (unrecognized or not-yet-set targetExam), fall back to track-only so
-    // nothing silently disappears from recommendations.
     return allListings.filter((l) => l.track === track && (!examKey || l.exam === examKey));
   }, [allListings, track, examKey]);
 
@@ -244,6 +276,12 @@ function DashboardPage() {
     return allListings.filter((l) => l.searchText.includes(q)).slice(0, 8);
   }, [allListings, q]);
 
+  // Ranked after batches, per how search ordering was scoped.
+  const matchedTests = useMemo(() => {
+    if (!soldTests || !q) return [];
+    return soldTests.filter((t) => t.searchText.includes(q)).slice(0, 5);
+  }, [soldTests, q]);
+
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -263,7 +301,6 @@ function DashboardPage() {
       <AppHeader user={user} displayName={profile?.fullName} />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        {/* ── Welcome card — one cohesive block instead of scattered pills ── */}
         <div className="clay mb-6 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -294,15 +331,15 @@ function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Always-open unified search ───────────────────────────────── */}
         <UnifiedSearch
           query={query}
           onQueryChange={setQuery}
           mentors={mentors}
           matchedMentors={matchedMentors}
           matchedListings={matchedListings}
+          matchedTests={matchedTests}
           hasQuery={hasQuery}
-          loading={mentors === null || allListings === null}
+          loading={mentors === null || allListings === null || soldTests === null}
         />
 
         {track && !hasQuery && (
@@ -395,18 +432,48 @@ function DashboardPage() {
             )}
           </section>
         )}
+
+        {/* ── Individual Tests — standalone Sold Tests, its own section,
+            deliberately below batches/test series per how this was scoped ── */}
+        {!hasQuery && (
+          <section className="mt-10">
+            <div className="mb-5">
+              <h2 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                Individual Tests
+              </h2>
+              <p className="mt-1 text-sm text-foreground/60">
+                Single tests you can buy on their own — no batch or test series purchase required.
+              </p>
+            </div>
+
+            {soldTests === null ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+              </div>
+            ) : soldTests.length === 0 ? (
+              <div className="clay p-8 text-center text-sm text-foreground/60">
+                No individual tests available yet — check back soon.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {soldTests.map((t) => (
+                  <SoldTestCard key={t.id} test={t} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );
 }
 
-// ─── Unified search — always open, results replace the browse sections
-// below it while a query is active, mentors ranked above batches ───────────
 function UnifiedSearch({
   query,
   onQueryChange,
   matchedMentors,
   matchedListings,
+  matchedTests,
   hasQuery,
   loading,
 }: {
@@ -415,10 +482,11 @@ function UnifiedSearch({
   mentors: MentorDirectoryEntry[] | null;
   matchedMentors: MentorDirectoryEntry[];
   matchedListings: Listing[];
+  matchedTests: SoldTestEntry[];
   hasQuery: boolean;
   loading: boolean;
 }) {
-  const hasResults = matchedMentors.length > 0 || matchedListings.length > 0;
+  const hasResults = matchedMentors.length > 0 || matchedListings.length > 0 || matchedTests.length > 0;
 
   return (
     <div>
@@ -427,7 +495,7 @@ function UnifiedSearch({
         <input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search mentors, test series, mentorships…"
+          placeholder="Search mentors, test series, mentorships, individual tests…"
           className="w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
         />
       </div>
@@ -463,6 +531,19 @@ function UnifiedSearch({
                   <div className="space-y-1.5">
                     {matchedListings.map((l) => (
                       <ListingResultRow key={`${l.kind}-${l.id}`} listing={l} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {matchedTests.length > 0 && (
+                <div>
+                  <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                    Individual Tests
+                  </p>
+                  <div className="space-y-1.5">
+                    {matchedTests.map((t) => (
+                      <SoldTestResultRow key={t.id} test={t} />
                     ))}
                   </div>
                 </div>
@@ -541,6 +622,32 @@ function ListingResultRow({ listing }: { listing: Listing }) {
         <span className="shrink-0 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold text-foreground">
           Owned
         </span>
+      )}
+      <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30" />
+    </button>
+  );
+}
+
+function SoldTestResultRow({ test }: { test: SoldTestEntry }) {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate({ to: "/sold-test/$id", params: { id: test.id } })}
+      className="clay-inset flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors duration-200 hover:bg-foreground/5"
+    >
+      <div className="clay flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
+        <Tag className="h-4 w-4 text-foreground/40" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">{test.name}</p>
+        <p className="truncate text-xs text-foreground/50">By {test.mentorName} · Individual Test</p>
+      </div>
+      {test.purchased ? (
+        <span className="shrink-0 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold text-foreground">
+          Owned
+        </span>
+      ) : (
+        <span className="shrink-0 text-xs font-bold text-foreground/70">₹{test.price}</span>
       )}
       <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30" />
     </button>
@@ -627,6 +734,76 @@ function ListingCard({ listing }: { listing: Listing }) {
             className="clay-btn flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
           >
             <span>{listing.purchased ? "Study Now" : "Buy Now"}</span>
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="View details"
+            onClick={goToDetail}
+            className="clay-btn-ghost flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-foreground/60 transition-transform duration-200 hover:-translate-y-0.5"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sold Test card — simpler than ListingCard: no track/exam badge (Sold
+// Tests carry neither), just questions/duration meta and mentor credit.
+function SoldTestCard({ test }: { test: SoldTestEntry }) {
+  const navigate = useNavigate();
+
+  function goToDetail() {
+    navigate({ to: "/sold-test/$id", params: { id: test.id } });
+  }
+
+  return (
+    <div className="clay flex flex-col overflow-hidden p-3">
+      <div className="clay-inset relative flex h-32 items-center justify-center overflow-hidden rounded-2xl bg-[var(--mint-soft)]">
+        <ClipboardList className="h-10 w-10 text-foreground/40" strokeWidth={1.5} />
+        <span className="absolute right-2 top-2 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-foreground/70 shadow-sm">
+          Individual Test
+        </span>
+      </div>
+
+      <div className="flex flex-1 flex-col p-3 pt-4">
+        <h3 className="mb-2 font-display text-base font-bold tracking-tight text-foreground">{test.name}</h3>
+
+        <div className="mb-4 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-xs text-foreground/60">
+            <Users2 className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+            <span className="truncate">By {test.mentorName}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-foreground/60">
+            <ClipboardList className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+            <span className="truncate">{test.totalQuestions} questions</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-foreground/60">
+            <Timer className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+            <span className="truncate">{test.durationMinutes} min</span>
+          </div>
+        </div>
+
+        <div className="mb-3 flex items-baseline gap-2">
+          {test.purchased ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--mint-soft)] px-3 py-1 text-xs font-bold text-foreground">
+              <BadgeCheck className="h-3.5 w-3.5" />
+              Purchased
+            </span>
+          ) : (
+            <span className="font-display text-lg font-bold text-foreground">₹{test.price.toLocaleString()}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={goToDetail}
+            className="clay-btn flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+          >
+            <span>{test.purchased ? "Start Test" : "Buy Now"}</span>
             <ArrowRight className="h-4 w-4" />
           </button>
           <button

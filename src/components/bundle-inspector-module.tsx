@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ChevronRight, Package, ClipboardList, Trash2, Pencil, Check, X } from "lucide-react";
+import { Loader2, ChevronRight, Package, ClipboardList, Trash2, Pencil, Check, X, Search } from "lucide-react";
 import type { TestSeriesBundle, TestCore, Question } from "@/lib/admin-types";
 import {
   listBundles,
@@ -45,23 +45,94 @@ function Breadcrumb({ items }: { items: { label: string; onClick?: () => void }[
   );
 }
 
+function SearchBar({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative mb-4">
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="clay-inset w-full rounded-2xl py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function matches(haystack: (string | number | null | undefined)[], query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return haystack
+    .filter((v) => v !== null && v !== undefined)
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+}
+
 export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
   const [bundles, setBundles] = useState<TestSeriesBundle[] | null>(null);
+  const [bundleQuery, setBundleQuery] = useState("");
   const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
   const [tests, setTests] = useState<TestCore[] | null>(null);
+  const [testQuery, setTestQuery] = useState("");
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[] | null>(null);
+  const [questionQuery, setQuestionQuery] = useState("");
 
   const selectedBundle = bundles?.find((b) => b.id === selectedBundleId) ?? null;
   const selectedTest = tests?.find((t) => t.id === selectedTestId) ?? null;
 
+  const filteredBundles = useMemo(() => {
+    if (!bundles) return [];
+    return bundles.filter((b) =>
+      matches([b.title, b.track, b.exam, b.domainSubject, ...(b.features ?? [])], bundleQuery),
+    );
+  }, [bundles, bundleQuery]);
+
+  const filteredTests = useMemo(() => {
+    if (!tests) return [];
+    return tests.filter((t) =>
+      matches([t.name, ...(t.subjects ?? []), t.instructions, t.totalQuestions, t.durationMinutes], testQuery),
+    );
+  }, [tests, testQuery]);
+
+  const filteredQuestions = useMemo(() => {
+    if (!questions) return [];
+    return questions.filter((q) =>
+      matches(
+        [
+          q.questionNo,
+          q.subject,
+          q.body,
+          q.options.A,
+          q.options.B,
+          q.options.C,
+          q.options.D,
+          q.correctOption,
+          q.solution,
+          q.difficulty,
+          q.isPYQ ? "pyq" : "",
+          q.pyqYear,
+        ],
+        questionQuery,
+      ),
+    );
+  }, [questions, questionQuery]);
+
   const questionsBySubject = useMemo(() => {
-    if (!questions) return {};
-    return questions.reduce<Record<string, Question[]>>((acc, q) => {
+    return filteredQuestions.reduce<Record<string, Question[]>>((acc, q) => {
       (acc[q.subject] ??= []).push(q);
       return acc;
     }, {});
-  }, [questions]);
+  }, [filteredQuestions]);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +147,8 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
     setSelectedBundleId(id);
     setSelectedTestId(null);
     setQuestions(null);
+    setTestQuery("");
+    setQuestionQuery("");
     const token = await adminUser.getIdToken();
     const { testCores } = await listTestCoresForBundle({ data: { token, bundleId: id } });
     setTests(testCores as TestCore[]);
@@ -83,6 +156,7 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
 
   async function openTest(id: string) {
     setSelectedTestId(id);
+    setQuestionQuery("");
     const token = await adminUser.getIdToken();
     const { questions: rows } = await listQuestionsForTest({ data: { token, testId: id } });
     setQuestions(rows as Question[]);
@@ -113,15 +187,18 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
       <div>
         <ModuleHeader title="Bundle Inspector" subtitle="Click a bundle to review its tests and questions." />
         <div className="clay p-5 sm:p-6">
+          <SearchBar value={bundleQuery} onChange={setBundleQuery} placeholder="Search by title, track, exam, subject, or feature…" />
           {bundles === null ? (
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
             </div>
           ) : bundles.length === 0 ? (
             <p className="text-sm text-foreground/60">No bundles yet.</p>
+          ) : filteredBundles.length === 0 ? (
+            <p className="text-sm text-foreground/60">No bundles match your search.</p>
           ) : (
             <ul className="space-y-2">
-              {bundles.map((b) => (
+              {filteredBundles.map((b) => (
                 <li key={b.id}>
                   <button
                     onClick={() => openBundle(b.id)}
@@ -165,15 +242,18 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
             <ClipboardList className="h-4 w-4 text-foreground/60" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">Tests</h2>
           </div>
+          <SearchBar value={testQuery} onChange={setTestQuery} placeholder="Search by test name, subject, or instructions…" />
           {tests === null ? (
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
             </div>
           ) : tests.length === 0 ? (
             <p className="text-sm text-foreground/60">No tests in this bundle yet.</p>
+          ) : filteredTests.length === 0 ? (
+            <p className="text-sm text-foreground/60">No tests match your search.</p>
           ) : (
             <ul className="space-y-2">
-              {tests.map((t) => (
+              {filteredTests.map((t) => (
                 <li key={t.id}>
                   <button
                     onClick={() => openTest(t.id)}
@@ -209,14 +289,26 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
 
       {selectedTest && <EditableTestCard test={selectedTest} adminUser={adminUser} onSaved={refreshTests} />}
 
-      <div className="mt-6 space-y-6">
+      <div className="clay mt-6 p-5 sm:p-6">
+        <SearchBar
+          value={questionQuery}
+          onChange={setQuestionQuery}
+          placeholder="Search by question text, option, solution, subject, difficulty, or PYQ year…"
+        />
+      </div>
+
+      <div className="mt-4 space-y-6">
         {questions === null ? (
           <div className="flex justify-center py-6">
             <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
           </div>
-        ) : Object.keys(questionsBySubject).length === 0 ? (
+        ) : questions.length === 0 ? (
           <div className="clay p-8 text-center text-sm text-foreground/60">
             No questions added to this test yet.
+          </div>
+        ) : Object.keys(questionsBySubject).length === 0 ? (
+          <div className="clay p-8 text-center text-sm text-foreground/60">
+            No questions match your search.
           </div>
         ) : (
           Object.entries(questionsBySubject).map(([subject, subjectQuestions]) => (

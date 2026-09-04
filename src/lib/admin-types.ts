@@ -27,6 +27,7 @@ export type StudentAcademicProfile = {
 // ─── Module 1 & 2: Test Series Bundles ──────────────────────────────────────
 export type TestSeriesBundle = {
   id: string;
+  kind: "standard" | "mentorBatchSeries"; // NEW
   title: string;
   track: Track;
   exam: ExamKey;
@@ -40,6 +41,8 @@ export type TestSeriesBundle = {
   thumbnailUrl: string | null;
   syllabusPdfUrls: string[];
   plannerUrls: string[];
+  mentorId: string | null; // set for both mentor-submitted kinds
+  batchId: string | null;  // NEW — set only when kind === "mentorBatchSeries"
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -70,6 +73,12 @@ export type TestCore = {
   liveStart: string;
   liveEnd: string;
   instructions: string;
+  mentorId: string | null;
+  referencePdfUrl: string | null;
+  // NEW — per-test pricing + publish gate for mentor batch series tests.
+  // Both null/false for ordinary admin-created tests.
+  price: number | null;        // null or 0 = free to batch purchasers
+  publishedToBatch: boolean;   // mentor's explicit "send to batch" toggle
   createdAt: string | null;
 };
 
@@ -104,12 +113,14 @@ export type Mentor = {
   name: string;
   profilePictureUrl: string | null;
   secretCode: string;
+  status: "active" | "terminated";
   createdAt: string | null;
 };
 
 export type MentorshipBatch = {
   id: string;
   thumbnailUrl: string | null;
+  syllabusPdfUrl: string | null;
   name: string;
   highlights: string[];
   track: Track;
@@ -244,6 +255,7 @@ export type LectureWatchAlert = {
 // are now in-app only. recipientNames replaces the old emailStatus fields
 // so mentors can see exactly who a broadcast reached.
 export type MentorAnnouncement = {
+  emailStatus: string;
   id: string;
   mentorId: string;
   batchId: string;
@@ -252,6 +264,7 @@ export type MentorAnnouncement = {
   recipientCount: number;
   recipientNames: string[];
   createdAt: string | null;
+  emailTriggered: boolean;
   pinned?: boolean;
   editedAt?: string | null;
 };
@@ -260,6 +273,7 @@ export type MentorAnnouncementInput = {
   batchId: string;
   title: string;
   message: string;
+  triggerEmail: boolean;
 };
 
 // ─── Module 11: Support Ticketing ────────────────────────────────────────────
@@ -377,16 +391,18 @@ export type BatchPromotionSettings = {
 
 // ─── Module 14: Mentor Earnings Overview ────────────────────────────────────
 export const PLATFORM_COMMISSION_PERCENT = 15;
-
+export const QUESTION_INGESTION_FEE_PERCENT = 5; 
+export const MENTOR_TEST_STANDALONE_COMMISSION_PERCENT = 5;
 export type StudentPurchaseRecord = {
   studentUid: string;
   studentName: string;
-  batchId: string;
-  batchName: string;
+  batchId: string;      // for source:"test", this is the testId instead
+  batchName: string;    // for source:"test", this is the test name instead
   amount: number;
   platformCommission: number;
   netEarned: number;
   purchasedAt: string | null;
+  source: "batch" | "test"; // NEW
 };
 
 export type MonthlyEarningsPoint = {
@@ -397,6 +413,15 @@ export type MonthlyEarningsPoint = {
   purchaseCount: number;
 };
 
+export type MentorTestIngestionProgress = {
+  testId: string;
+  testName: string;
+  totalQuestions: number;
+  subjects: { subject: string; required: number; added: number }[];
+  totalAdded: number;
+  publishedToBatch: boolean;
+};
+
 export type MentorEarningsOverview = {
   totalNetEarned: number;
   totalGross: number;
@@ -404,90 +429,78 @@ export type MentorEarningsOverview = {
   purchases: StudentPurchaseRecord[];
 };
 
-// ─── Module 15: Mentor-Owned Test Series ────────────────────────────────────
-// A mentor can request to sell their own test series (separate product
-// from their mentorship batch). Access is granted either because they
-// opted in at onboarding (wantsToSellTestSeries, see mentor-onboarding.ts)
-// or because admin approves a later in-portal request.
-export type TestSeriesAccessSource = "onboarding" | "admin_granted" | "none";
+// ─── Module 15: Mentor "Sell Tests" ─────────────────────────────────────────
+// Standalone tests, independent of both Test Series and Mentorship
+// Batches. Full lifecycle:
+//   draft -> awaiting_payment -> awaiting_ingestion -> awaiting_mentor_review
+//   -> awaiting_price_approval -> live
+// 1) Mentor creates + submits + pays the locked ₹1/question ingestion fee.
+// 2) Admin ingests the questions (Question Ingestion-style flow, scoped to
+//    this test) until every subject's count matches its weightage.
+// 3) Admin sends it to the mentor for a content review.
+// 4) Mentor reviews the actual questions and approves the content.
+// 5) Admin sets/approves the final student-facing price -> test goes live.
+// Once live it can ALSO be attached to any of the mentor's own mentorship
+// batches — free for that batch's purchasers — while staying independently
+// purchasable by anyone else.
+export type SellTestsAccessSource = "admin_granted" | "none";
 
-export type TestSeriesAccessStatus = {
+export type SellTestsAccessStatus = {
   hasAccess: boolean;
-  source: TestSeriesAccessSource;
+  source: SellTestsAccessSource;
   requested: boolean;
   requestedAt: string | null;
 };
 
-export const TEST_SERIES_PLATFORM_COMMISSION_PERCENT = 20;
-export const DEFAULT_TEST_SERIES_MARKETING_PERCENT = 10;
+export const INGESTION_FEE_PER_QUESTION = 1; // ₹1/question, locked, mentor pays this to Edurack
 
-export type MentorTestSeries = {
+export type SoldTestStatus =
+  | "draft"                    // being filled in, not yet submitted
+  | "awaiting_payment"         // submitted, ingestion fee not yet paid
+  | "awaiting_ingestion"       // fee paid, admin needs to add the questions
+  | "awaiting_mentor_review"   // admin finished ingestion, sent to mentor to review
+  | "awaiting_price_approval"  // mentor approved content, admin needs to set the final price
+  | "live";                    // approved, purchasable by students
+
+export type SoldTest = {
   id: string;
   mentorId: string;
   name: string;
-  price: number;
-  platformCommissionPercent: number; // fixed at creation, ~20%
-  marketingPercent: number; // editable, like the batch boost feature
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  weightage: SubjectWeightage[];
+  instructions: string;
+  referencePdfUrl: string | null;
+  ingestionFeeAmount: number;             // totalQuestions * INGESTION_FEE_PER_QUESTION, locked at submission
+  ingestionFeePaid: boolean;
+  ingestionFeeRazorpayPaymentId: string | null;
+  proposedPrice: number;                  // mentor's ask
+  approvedPrice: number | null;           // null until admin approves; may differ from proposedPrice
+  status: SoldTestStatus;
+  sentToMentorAt: string | null;          // when admin sent it for mentor review
+  contentApprovedByMentor: boolean;
+  mentorReviewedAt: string | null;
+  attachedBatchIds: string[];             // batches it's been appended to (free for their purchasers)
   createdAt: string | null;
   updatedAt: string | null;
 };
 
-export type MentorTestSeriesInput = {
+export type SoldTestInput = {
   name: string;
-  price: number;
-  marketingPercent: number;
-};
-
-// One test inside a mentor's test series — mirrors TestCore's shape
-// (name, duration, total questions, subject-wise distribution) but is
-// owned by mentorTestSeriesId instead of a Super Admin bundleId, and can
-// carry a reference PDF for the paper itself.
-export type MentorTest = {
-  id: string;
-  testSeriesId: string;
-  mentorId: string;
-  name: string;
-  durationMinutes: number;
   totalQuestions: number;
+  durationMinutes: number;
   subjects: string[];
   weightage: SubjectWeightage[];
-  pdfUrl: string | null;
-  createdAt: string | null;
+  instructions: string;
+  referencePdfUrl: string | null;
+  proposedPrice: number;
 };
 
-export type MentorTestInput = {
-  testSeriesId: string;
-  name: string;
-  durationMinutes: number;
-  totalQuestions: number;
-  subjects: string[];
-  weightage: SubjectWeightage[];
-  pdfUrl: string | null;
-};
-
-// Result views, scoped to one mentor's own test — same shape family as
-// test-results.ts's student-facing analysis, but aggregated for the mentor.
-export type MentorTestSubjectComparison = {
-  subject: string;
-  correct: number;
-  incorrect: number;
-  unanswered: number;
-  averagePercent: number;
-};
-
-export type MentorTestStudentResult = {
-  studentUid: string;
-  studentName: string;
-  score: number;
-  totalMarks: number;
-  subjectBreakdown: { subject: string; correct: number; incorrect: number; unanswered: number; marks: number }[];
-  submittedAt: string | null;
-};
-
-export type MentorTestResultsOverview = {
+export type SoldTestIngestionProgress = {
   testId: string;
   testName: string;
-  attemptCount: number;
-  subjectComparison: MentorTestSubjectComparison[];
-  studentResults: MentorTestStudentResult[];
+  totalQuestions: number;
+  subjects: { subject: string; required: number; added: number }[];
+  totalAdded: number;
 };

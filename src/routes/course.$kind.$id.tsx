@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { listAttachedSoldTestsForStudent } from "@/server-functions/batch-hub";
 import {
   Loader2,
   LayoutDashboard,
@@ -58,6 +59,7 @@ import {
   hasPurchased,
   requestCallback,
   submitSupportTicket,
+  listMentorBatchSeriesTestsForStudent,
 } from "@/server-functions/batch-hub";
 import { createRazorpayOrder, verifyRazorpayPayment, previewCoupon } from "@/server-functions/payments";
 import { listMyAttemptsForTest } from "@/server-functions/test-results";
@@ -67,6 +69,7 @@ declare global {
     Razorpay: new (options: Record<string, unknown>) => { open: () => void };
   }
 }
+
 
 const RAZORPAY_SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -92,8 +95,7 @@ export const Route = createFileRoute("/course/$kind/$id")({
 });
 
 type Kind = "bundle" | "mentorship";
-type TabKey = "overview" | "tests" | "assets" | "announcements" | "chat" | "help";
-
+type TabKey = "overview" | "tests" | "seriesTests" | "assets" | "announcements" | "chat" | "help";
 type BundleDetail = {
   id: string;
   title: string;
@@ -153,6 +155,18 @@ type SessionRow = {
   status: "scheduled" | "completed" | "cancelled";
 };
 
+type BatchSeriesTestRow = {
+  id: string;
+  name: string;
+  totalQuestions: number;
+  timeLimitMinutes: number;
+  liveStart: string | null;   // null for Sold Tests — no scheduled window
+  liveEnd: string | null;
+  price: number | null;       // null = free-with-batch (Test Series style)
+  unlocked: boolean;
+  includedWithBatch: boolean; // NEW — true when unlocked came from batch purchase, not an individual buy
+};
+
 type AnnouncementRow = {
   id: string;
   title?: string | null;
@@ -180,9 +194,14 @@ function tabsForKind(kind: Kind): { key: TabKey; label: string; icon: typeof Lay
       label: kind === "bundle" ? "Tests" : "Sessions",
       icon: kind === "bundle" ? ClipboardList : CalendarClock,
     },
+  ];
+  if (kind === "mentorship") {
+    base.push({ key: "seriesTests", label: "Test Series", icon: ClipboardList }); // NEW
+  }
+  base.push(
     { key: "assets", label: "Assets", icon: FolderOpen },
     { key: "announcements", label: "Updates", icon: Megaphone },
-  ];
+  );
   if (kind === "mentorship") {
     base.push({ key: "chat", label: "Chat", icon: MessageSquare });
   }
@@ -429,8 +448,11 @@ function CourseHubPage() {
             {activeTab === "tests" && kind === "bundle" && (
               <TestsTab tests={tests} isPurchased={isPurchased} navigate={navigate} user={user} />
             )}
-            {activeTab === "tests" && kind === "mentorship" && (
+           {activeTab === "tests" && kind === "mentorship" && (
               <SessionsTab sessions={sessions} isPurchased={isPurchased} batchId={id} user={user} />
+            )}
+            {activeTab === "seriesTests" && kind === "mentorship" && (
+              <BatchSeriesTestsTab batchId={id} isPurchased={isPurchased} user={user} navigate={navigate} />
             )}
             {activeTab === "assets" && (
               <AssetsTab
@@ -1172,6 +1194,268 @@ function SessionsTab({
                   onSaved={refreshStatuses}
                 />
               </div>
+            </div>
+          </LockGate>
+        );
+      })}
+    </div>
+  );
+}
+
+function BatchSeriesTestsTab({
+  batchId,
+  isPurchased,
+  user,
+  navigate,
+}: {
+  batchId: string;
+  isPurchased: boolean;
+  user: { getIdToken: () => Promise<string>; email?: string | null };
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const [tests, setTests] = useState<BatchSeriesTestRow[] | null>(null);
+const [attemptsByTest, setAttemptsByTest] = useState<
+  Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>
+>({});
+  const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function refresh() {
+    const token = await user.getIdToken();
+    const [{ tests: seriesTests }, { tests: soldTests }] = await Promise.all([
+      listMentorBatchSeriesTestsForStudent({ data: { token, batchId } }),
+      listAttachedSoldTestsForStudent({ data: { token, batchId } }),
+    ]);
+
+    const mergedSeries: BatchSeriesTestRow[] = seriesTests.map((t) => ({
+      id: t.id,
+      name: t.name,
+      totalQuestions: t.totalQuestions,
+      timeLimitMinutes: t.timeLimitMinutes,
+      liveStart: t.liveStart,
+      liveEnd: t.liveEnd,
+      price: t.price,
+      unlocked: t.unlocked,
+      includedWithBatch: t.price === null && t.unlocked, // free-with-batch tests are "included" once the batch is purchased
+    }));
+
+    const mergedSold: BatchSeriesTestRow[] = soldTests.map((t) => ({
+      id: t.id,
+      name: t.name,
+      totalQuestions: t.totalQuestions,
+      timeLimitMinutes: t.durationMinutes,
+      liveStart: null,
+      liveEnd: null,
+      price: t.price,
+      unlocked: t.unlocked,
+      includedWithBatch: isPurchased && t.unlocked, // unlocked via batch purchase, not an individual buy — Sold Tests always carry a real price, never null
+    }));
+
+    setTests([...mergedSeries, ...mergedSold]);
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId]);
+
+  useEffect(() => {
+    if (!tests) return;
+    const unlocked = tests.filter((t) => t.unlocked);
+    if (unlocked.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const token = await user.getIdToken();
+      const entries = await Promise.all(
+        unlocked.map(async (t) => {
+          const { attempts } = await listMyAttemptsForTest({ data: { token, testId: t.id } });
+          if (attempts.length === 0) return [t.id, undefined] as const;
+          const best = attempts.reduce((max, a) => (a.score > max.score ? a : max), attempts[0]);
+          return [t.id, { count: attempts.length, bestScore: best.score, totalMarks: best.totalMarks }] as const;
+        }),
+      );
+      if (cancelled) return;
+      setAttemptsByTest(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tests]);
+
+  // A per-test standalone purchase — same Razorpay flow as the main
+  // purchase bar, scoped to itemType "mentorTest" and this test's own id.
+  // Batch purchase is not required for this to work. Works identically
+  // whether the test came from Test Series or Sell Tests — both are
+  // "mentorTest" purchases on the backend (payments.ts checks testCores,
+  // then falls back to soldTests).
+  async function handleBuyTest(test: BatchSeriesTestRow) {
+    setPurchaseError(null);
+    setPurchasingId(test.id);
+    try {
+      const token = await user.getIdToken();
+      const order = await createRazorpayOrder({ data: { token, itemType: "mentorTest", itemId: test.id } });
+      await loadRazorpayScript();
+
+      const razorpay = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "Edurack",
+        description: order.itemTitle,
+        prefill: { email: user.email ?? undefined },
+        theme: { color: "#0284c7" },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const freshToken = await user.getIdToken();
+            await verifyRazorpayPayment({
+              data: {
+                token: freshToken,
+                itemType: "mentorTest",
+                itemId: test.id,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              },
+            });
+            await refresh();
+          } catch {
+            setPurchaseError("Payment succeeded but verification failed. Contact support with your payment ID.");
+          } finally {
+            setPurchasingId(null);
+          }
+        },
+        modal: { ondismiss: () => setPurchasingId(null) },
+      });
+      razorpay.open();
+    } catch (err) {
+      console.error("Test checkout start error:", err);
+      setPurchaseError("Could not start checkout. Please try again.");
+      setPurchasingId(null);
+    }
+  }
+
+  if (tests === null) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+      </div>
+    );
+  }
+
+  if (tests.length === 0) {
+    return (
+      <div className="clay p-8 text-center text-sm text-foreground/60">
+        Your mentor hasn't sent any tests to this batch yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {purchaseError && (
+        <div className="clay-inset rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-center text-xs font-medium text-foreground">
+          {purchaseError}
+        </div>
+      )}
+
+      {tests.map((t) => {
+        const start = t.liveStart ? new Date(t.liveStart).getTime() : null;
+        const end = t.liveEnd ? new Date(t.liveEnd).getTime() : null;
+        const isLive = start !== null && end !== null && now >= start && now <= end;
+        const isUpcoming = start !== null && now < start;
+        const attempted = attemptsByTest[t.id];
+        // A Test Series free test (price: null) locks behind the batch
+        // purchase, same as the Sessions tab. A Sold Test always carries a
+        // real price, so it's never card-locked this way — it either shows
+        // "Included with batch" (unlocked via batch purchase) or a Buy
+        // button, but the card itself is never grayed out.
+        const isFree = t.price === null;
+        const lockedByBatch = isFree && !isPurchased;
+
+        return (
+          <LockGate key={t.id} locked={lockedByBatch}>
+            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                  <span className="truncate">{t.name}</span>
+                  {t.includedWithBatch ? (
+                    <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                      Included with batch
+                    </span>
+                  ) : isFree ? (
+                    <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                      Free with batch
+                    </span>
+                  ) : (
+                    <span className="clay-chip rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/70">
+                      ₹{t.price}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-foreground/50">
+                  {t.totalQuestions} questions · {t.timeLimitMinutes} min
+                </p>
+                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                  {start === null ? (
+                    <span className="text-foreground/50">Available now</span>
+                  ) : isLive ? (
+                    <span className="inline-flex items-center gap-1.5 text-[var(--coral-soft)]">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
+                    </span>
+                  ) : isUpcoming ? (
+                    <span className="text-foreground/50">Starts {new Date(t.liveStart as string).toLocaleString()}</span>
+                  ) : (
+                    <span className="text-foreground/50">Held on: {new Date(t.liveStart as string).toLocaleString()}</span>
+                  )}
+                  {attempted && (
+                    <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                      Attempted {attempted.count}x · Best {attempted.bestScore}/{attempted.totalMarks}
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {!t.unlocked ? (
+                <button
+                  onClick={() => handleBuyTest(t)}
+                  disabled={purchasingId === t.id}
+                  className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70"
+                >
+                  {purchasingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${t.price}`}
+                </button>
+              ) : attempted ? (
+                <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
+                  <button
+                    onClick={() => navigate({ to: "/test-analysis/$testId", params: { testId: t.id } })}
+                    className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    Analysis
+                  </button>
+                  <button
+                    onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
+                    className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline"
+                  >
+                    Retake
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
+                  className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  Start Test
+                </button>
+              )}
             </div>
           </LockGate>
         );

@@ -12,6 +12,7 @@ import {
   Library,
   ClipboardList,
   LogOut,
+  Tag,
 } from "lucide-react";
 import { getMentorSession } from "@/server-functions/mentor-auth";
 import { MentorOverviewModule } from "@/components/mentor-overview-module";
@@ -22,15 +23,25 @@ import { MentorChatModule } from "@/components/mentor-chat-module";
 import { MentorSupportModule } from "@/components/mentor-support-module";
 import { MentorLectureLibraryModule } from "@/components/mentor-lecture-library-module";
 import { MentorTestSeriesModule } from "@/components/mentor-test-series-module";
+import { MentorSellTestsModule } from "@/components/mentor-sell-tests-module";
 
-type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library" | "testSeries";
+type ModuleKey =
+  | "overview"
+  | "profile"
+  | "announcements"
+  | "scheduler"
+  | "chat"
+  | "support"
+  | "library"
+  | "testSeries"
+  | "sellTests";
 
 // Overview leads now — a mentor logging in sees what needs their attention,
 // not an edit form. Order after that roughly matches how often each tab
 // gets used day-to-day (schedule/chat before the rarer profile/support).
-// Test Series sits right after Announcements — it's a mentor-initiated,
-// occasionally-visited product-management area, same usage tier as
-// Announcements, and ahead of the rarer Profile/Help Desk tabs.
+// Test Series and Sell Tests sit right after Announcements — both are
+// mentor-initiated, occasionally-visited product-management areas, same
+// usage tier as Announcements, and ahead of the rarer Profile/Help Desk tabs.
 const MODULES: { key: ModuleKey; label: string; icon: typeof User }[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "scheduler", label: "Live Sessions", icon: CalendarClock },
@@ -38,6 +49,7 @@ const MODULES: { key: ModuleKey; label: string; icon: typeof User }[] = [
   { key: "library", label: "Lecture Library", icon: Library },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "testSeries", label: "Test Series", icon: ClipboardList },
+  { key: "sellTests", label: "Sell Tests", icon: Tag },
   { key: "profile", label: "Profile", icon: User },
   { key: "support", label: "Help Desk", icon: LifeBuoy },
 ];
@@ -59,6 +71,7 @@ type MentorIdentity = {
   name: string;
   username: string;
   profilePictureUrl: string | null;
+  email?: string | null;
 };
 
 function MentorDashboardPage() {
@@ -192,6 +205,9 @@ function MentorDashboardPage() {
               {activeModule === "chat" && <MentorChatModule mentorToken={mentorToken} />}
               {activeModule === "support" && <MentorSupportModule mentorToken={mentorToken} />}
               {activeModule === "testSeries" && <MentorTestSeriesModule mentorToken={mentorToken} />}
+              {activeModule === "sellTests" && (
+                <MentorSellTestsModule mentorToken={mentorToken} mentorEmail={mentor.email ?? null} />
+              )}
             </div>
           </main>
         </div>

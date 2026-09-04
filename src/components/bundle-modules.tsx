@@ -51,6 +51,8 @@ type BundleRow = {
   uploadWindowEnd: string;
   expiryDate: string;
   thumbnailUrl: string | null;
+  mentorId: string | null;
+  marketingPercent: number | null;
   syllabusPdfUrls: string[];
   plannerUrls: string[];
   createdAt: string | null;
@@ -873,7 +875,7 @@ function BundleCard({
     }
   }
 
-  return (
+return (
     <div className="clay p-5 sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
@@ -885,7 +887,14 @@ function BundleCard({
             )}
           </div>
           <div>
-            <p className="font-display text-base font-bold text-foreground">{bundle.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-display text-base font-bold text-foreground">{bundle.title}</p>
+              {bundle.mentorId && (
+                <span className="clay-chip shrink-0 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                  Mentor-submitted
+                </span>
+              )}
+            </div>
             <p className="text-xs text-foreground/50">
               {EXAM_LABELS[bundle.exam as ExamOption] ?? bundle.exam} · {bundle.track} · ₹{bundle.sellingPrice}{" "}
               <span className="line-through opacity-60">₹{bundle.crossedPrice}</span> · expires{" "}
@@ -967,7 +976,6 @@ function BundleCard({
       {announceOpen && <BundleAnnouncementPanel bundleId={bundle.id} adminUser={adminUser} />}
     </div>
   );
-}
 
 type BundleAnnouncementRow = {
   id: string;
@@ -1047,4 +1055,4 @@ function BundleAnnouncementPanel({ bundleId, adminUser }: { bundleId: string; ad
       )}
     </div>
   );
-}
+}}

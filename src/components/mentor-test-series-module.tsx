@@ -1,36 +1,39 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Loader2,
   Plus,
   X,
   Pencil,
-  ClipboardList,
   Tag,
   Scale,
   Timer,
   FileText,
   ArrowLeft,
-  IndianRupee,
-  TrendingUp,
   BarChart3,
   Trophy,
+  CalendarRange,
+  ListChecks,
+  IndianRupee,
+  Gift,
+  Send,
+  Lock,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import {
-  createMentorTestSeries,
-  updateMentorTestSeries,
-  listMyTestSeries,
-  createMentorTest,
+  appendMentorTest,
   updateMentorTest,
-  listMentorTestsForSeries,
+  setTestPublishedToBatch,
+  listMyBatchSeriesTests,
   getMentorTestResults,
 } from "@/server-functions/mentor-test-series";
-import {
-  TEST_SERIES_PLATFORM_COMMISSION_PERCENT,
-  DEFAULT_TEST_SERIES_MARKETING_PERCENT,
-  type MentorTestSeries,
-  type MentorTest,
-  type SubjectWeightage,
-  type MentorTestResultsOverview,
+import { getTestSeriesAccessStatus, requestTestSeriesAccess } from "@/server-functions/mentor-earnings";
+import { listMyAssignedBatches } from "@/server-functions/mentor-portal";
+import type {
+  SubjectWeightage,
+  MentorTestResultsOverview,
+  MentorTestIngestionProgress,
+  TestSeriesAccessStatus,
 } from "@/lib/admin-types";
 import {
   ModuleHeader,
@@ -43,8 +46,6 @@ import {
   StatChip,
   inputClass,
 } from "@/components/mentor-portal-ui";
-
-const MAX_MARKETING_PERCENT = 30;
 
 function parseSubjectTags(raw: string): string[] {
   const seen = new Set<string>();
@@ -59,127 +60,223 @@ function parseSubjectTags(raw: string): string[] {
   return out;
 }
 
-type View = { screen: "series" } | { screen: "tests"; series: MentorTestSeries } | { screen: "results"; test: MentorTest };
+type BatchOption = { id: string; name: string; track: string };
+
+type TestRow = {
+  id: string;
+  name: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  subjects: string[];
+  weightage: SubjectWeightage[];
+  liveStart: string;
+  liveEnd: string;
+  instructions: string;
+  referencePdfUrl: string | null;
+  price: number | null;
+  publishedToBatch: boolean;
+  progress: MentorTestIngestionProgress;
+};
+
+const REFRESH_INTERVAL_MS = 15000;
 
 export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string }) {
-  const [view, setView] = useState<View>({ screen: "series" });
+  const [status, setStatus] = useState<TestSeriesAccessStatus | null>(null);
+  const [requesting, setRequesting] = useState(false);
+
+  async function refreshStatus() {
+    const { status: s } = await getTestSeriesAccessStatus({ data: { token: mentorToken } });
+    setStatus(s);
+  }
+
+  useEffect(() => {
+    refreshStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  async function handleRequest() {
+    setRequesting(true);
+    try {
+      await requestTestSeriesAccess({ data: { token: mentorToken } });
+      await refreshStatus();
+    } finally {
+      setRequesting(false);
+    }
+  }
 
   return (
     <div>
       <ModuleHeader
-        title="Your Test Series"
-        subtitle="A separate product from your mentorship batch — set your own price, marketing %, and build out tests with subject-wise distribution."
+        title="Test Series"
+        subtitle="Offer tests to your own batch's students — free with the batch, or sold individually. Edurack ingests the questions from your PDF; you decide when it goes live."
       />
 
-      {view.screen === "series" && (
-        <SeriesListScreen mentorToken={mentorToken} onOpenSeries={(series) => setView({ screen: "tests", series })} />
-      )}
-      {view.screen === "tests" && (
-        <TestsScreen
-          mentorToken={mentorToken}
-          series={view.series}
-          onBack={() => setView({ screen: "series" })}
-          onOpenResults={(test) => setView({ screen: "results", test })}
-        />
-      )}
-      {view.screen === "results" && (
-        <ResultsScreen
-          mentorToken={mentorToken}
-          test={view.test}
-          onBack={() =>
-            setView({
-              screen: "tests",
-              series: { id: view.test.testSeriesId } as MentorTestSeries,
-            })
-          }
-        />
+      {status === null ? (
+        <LoadingBlock />
+      ) : !status.hasAccess ? (
+        <Panel icon={Lock} title="Not enabled yet">
+          <p className="mb-4 text-sm text-foreground/70">
+            Test series access lets you append tests to your mentorship batch — Edurack ingests the questions from a
+            PDF you provide, and you decide whether each test is free for your batch students or sold individually,
+            and when it goes live.
+          </p>
+          {status.requested ? (
+            <p className="clay-inset inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-foreground/60">
+              <CheckCircle2 className="h-3.5 w-3.5 text-[var(--sky-deep)]" />
+              Request sent — waiting on Edurack to enable this for you.
+            </p>
+          ) : (
+            <button
+              onClick={handleRequest}
+              disabled={requesting}
+              className="clay-btn inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-70"
+            >
+              {requesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Request access
+            </button>
+          )}
+        </Panel>
+      ) : (
+        <BatchSeriesScreen mentorToken={mentorToken} />
       )}
     </div>
   );
 }
 
-// ─── Screen 1: list of series, create/edit ─────────────────────────────────
-function SeriesListScreen({
-  mentorToken,
-  onOpenSeries,
-}: {
-  mentorToken: string;
-  onOpenSeries: (series: MentorTestSeries) => void;
-}) {
-  const [series, setSeries] = useState<MentorTestSeries[] | null>(null);
+// ─── Pick which batch (usually just one) to manage tests for ──────────────
+function BatchSeriesScreen({ mentorToken }: { mentorToken: string }) {
+  const [batches, setBatches] = useState<BatchOption[] | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { batches: rows } = await listMyAssignedBatches({ data: { token: mentorToken } });
+      setBatches(rows as BatchOption[]);
+      if (rows.length > 0) setSelectedBatchId(rows[0].id);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  if (batches === null) return <LoadingBlock />;
+  if (batches.length === 0) {
+    return <EmptyState icon={ListChecks} message="You don't have a mentorship batch assigned yet." />;
+  }
+
+  const selected = batches.find((b) => b.id === selectedBatchId) ?? batches[0];
+
+  return (
+    <div className="space-y-6">
+      {batches.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {batches.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setSelectedBatchId(b.id)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+                selected.id === b.id ? "clay-btn text-white" : "clay-chip text-foreground/70"
+              }`}
+            >
+              {b.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <TestsForBatch key={selected.id} mentorToken={mentorToken} batchId={selected.id} batchName={selected.name} />
+    </div>
+  );
+}
+
+// ─── Screen: tests appended for one batch, with live ingestion progress ───
+type Screen = { name: "list" } | { name: "results"; testId: string; testName: string };
+
+function TestsForBatch({ mentorToken, batchId, batchName }: { mentorToken: string; batchId: string; batchName: string }) {
+  const [tests, setTests] = useState<TestRow[] | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [editingSeries, setEditingSeries] = useState<MentorTestSeries | null>(null);
+  const [editingTest, setEditingTest] = useState<TestRow | null>(null);
+  const [screen, setScreen] = useState<Screen>({ name: "list" });
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function refresh() {
-    const { series: rows } = await listMyTestSeries({ data: { token: mentorToken } });
-    setSeries(rows);
+    const { tests: rows } = await listMyBatchSeriesTests({ data: { token: mentorToken, batchId } });
+    setTests(rows as TestRow[]);
   }
 
   useEffect(() => {
     refresh();
+    intervalRef.current = setInterval(refresh, REFRESH_INTERVAL_MS);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mentorToken]);
+  }, [batchId]);
+
+  if (screen.name === "results") {
+    return (
+      <ResultsScreen
+        mentorToken={mentorToken}
+        testId={screen.testId}
+        testName={screen.testName}
+        onBack={() => setScreen({ name: "list" })}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {(showForm || editingSeries) && (
-        <SeriesForm
+      {(showForm || editingTest) && (
+        <TestForm
           mentorToken={mentorToken}
-          existing={editingSeries}
+          batchId={batchId}
+          existing={editingTest}
           onSaved={() => {
             setShowForm(false);
-            setEditingSeries(null);
+            setEditingTest(null);
             refresh();
           }}
           onCancel={() => {
             setShowForm(false);
-            setEditingSeries(null);
+            setEditingTest(null);
           }}
         />
       )}
 
       <Panel
-        icon={ClipboardList}
-        title="Your series"
+        icon={ListChecks}
+        title={`Tests for ${batchName}`}
         action={
           !showForm &&
-          !editingSeries && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
-            >
-              <Plus className="h-3.5 w-3.5" /> New series
-            </button>
+          !editingTest && (
+            <div className="flex items-center gap-2">
+              <button onClick={refresh} className="text-foreground/40 hover:text-foreground/70" aria-label="Refresh">
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => setShowForm(true)}
+                className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+              >
+                <Plus className="h-3.5 w-3.5" /> New test
+              </button>
+            </div>
           )
         }
       >
-        {series === null ? (
+        {tests === null ? (
           <LoadingBlock compact />
-        ) : series.length === 0 ? (
-          <EmptyState icon={ClipboardList} message="You haven't created a test series yet." />
+        ) : tests.length === 0 ? (
+          <EmptyState icon={FileText} message="No tests appended yet." />
         ) : (
-          <ul className="space-y-2">
-            {series.map((s) => (
-              <li key={s.id} className="clay-inset flex items-center justify-between gap-3 px-4 py-3.5">
-                <button onClick={() => onOpenSeries(s)} className="min-w-0 flex-1 text-left">
-                  <p className="truncate text-sm font-semibold text-foreground">{s.name}</p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground/50">
-                    <span className="inline-flex items-center gap-1">
-                      <IndianRupee className="h-3 w-3" /> {s.price.toLocaleString("en-IN")}
-                    </span>
-                    <span>Platform {s.platformCommissionPercent}%</span>
-                    <span className="inline-flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3" /> Marketing {s.marketingPercent}%
-                    </span>
-                  </p>
-                </button>
-                <button
-                  onClick={() => setEditingSeries(s)}
-                  className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
-              </li>
+          <ul className="space-y-3">
+            {tests.map((t) => (
+              <TestListItem
+                key={t.id}
+                test={t}
+                mentorToken={mentorToken}
+                onEdit={() => setEditingTest(t)}
+                onOpenResults={() => setScreen({ name: "results", testId: t.id, testName: t.name })}
+                onChanged={refresh}
+              />
             ))}
           </ul>
         )}
@@ -188,106 +285,137 @@ function SeriesListScreen({
   );
 }
 
-function SeriesForm({
+function TestListItem({
+  test,
   mentorToken,
-  existing,
-  onSaved,
-  onCancel,
+  onEdit,
+  onOpenResults,
+  onChanged,
 }: {
+  test: TestRow;
   mentorToken: string;
-  existing: MentorTestSeries | null;
-  onSaved: () => void;
-  onCancel: () => void;
+  onEdit: () => void;
+  onOpenResults: () => void;
+  onChanged: () => void;
 }) {
-  const [name, setName] = useState(existing?.name ?? "");
-  const [price, setPrice] = useState(existing ? String(existing.price) : "");
-  const [marketingPercent, setMarketingPercent] = useState(existing?.marketingPercent ?? DEFAULT_TEST_SERIES_MARKETING_PERCENT);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
+  const ready = test.progress.totalAdded >= test.totalQuestions;
+  const percent = test.totalQuestions > 0 ? Math.min(100, Math.round((test.progress.totalAdded / test.totalQuestions) * 100)) : 0;
 
-    if (!name.trim()) return setError("Give this test series a name.");
-    const priceNum = Number(price);
-    if (!priceNum || priceNum <= 0) return setError("Enter a valid price.");
-
-    setSaving(true);
+  async function togglePublish() {
+    setPublishError(null);
+    setPublishing(true);
     try {
-      if (existing) {
-        await updateMentorTestSeries({
-          data: { token: mentorToken, id: existing.id, series: { name: name.trim(), price: priceNum, marketingPercent } },
-        });
-      } else {
-        await createMentorTestSeries({
-          data: { token: mentorToken, series: { name: name.trim(), price: priceNum, marketingPercent } },
-        });
-      }
-      onSaved();
+      await setTestPublishedToBatch({ data: { token: mentorToken, id: test.id, published: !test.publishedToBatch } });
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save. Try again.");
+      setPublishError(err instanceof Error ? err.message : "Could not update. Try again.");
     } finally {
-      setSaving(false);
+      setPublishing(false);
     }
   }
 
   return (
-    <Panel
-      icon={existing ? Pencil : Plus}
-      title={existing ? "Edit test series" : "New test series"}
-      action={
-        <button onClick={onCancel} className="text-foreground/40 hover:text-foreground/70">
-          <X className="h-4 w-4" />
-        </button>
-      }
-    >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <ClayField label="Series name">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. NEET Full Syllabus Test Series"
-            className={inputClass}
-          />
-        </ClayField>
-
-        <ClayField label="Price (₹)">
-          <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="numeric" className={inputClass} />
-        </ClayField>
-
-        <ClayField
-          label={`Marketing % (editable, floor ${DEFAULT_TEST_SERIES_MARKETING_PERCENT}%)`}
-          hint={`Fixed platform commission is ${TEST_SERIES_PLATFORM_COMMISSION_PERCENT}% and isn't editable — this is separate, and comes out of your own share, same idea as the batch promotion boost.`}
-        >
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={DEFAULT_TEST_SERIES_MARKETING_PERCENT}
-              max={MAX_MARKETING_PERCENT}
-              value={marketingPercent}
-              onChange={(e) => setMarketingPercent(Number(e.target.value))}
-              className="flex-1 accent-[var(--sky-deep)]"
-            />
-            <span className="w-12 shrink-0 text-right text-sm font-semibold text-[var(--sky-deep)]">{marketingPercent}%</span>
+    <li className="clay-inset rounded-2xl px-4 py-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-sm font-semibold text-foreground">{test.name}</p>
+            {test.price ? (
+              <span className="clay-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/70">
+                <IndianRupee className="h-2.5 w-2.5" /> {test.price}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                <Gift className="h-2.5 w-2.5" /> Free with batch
+              </span>
+            )}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                test.publishedToBatch ? "bg-[var(--sky-soft)] text-foreground" : "bg-[var(--coral-soft)]/60 text-foreground"
+              }`}
+            >
+              {test.publishedToBatch ? "Live to students" : "Not sent to batch"}
+            </span>
           </div>
-        </ClayField>
+          <p className="mt-1 text-xs text-foreground/50">
+            {test.totalQuestions} questions · {test.durationMinutes} min · {test.subjects.join(", ")}
+            {test.referencePdfUrl && (
+              <>
+                {" · "}
+                <a href={test.referencePdfUrl} target="_blank" rel="noreferrer" className="text-[var(--sky-deep)] hover:underline">
+                  Reference PDF
+                </a>
+              </>
+            )}
+          </p>
+          <p className="mt-0.5 text-[11px] text-foreground/40">
+            Live window: {new Date(test.liveStart).toLocaleString()} → {new Date(test.liveEnd).toLocaleString()}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button onClick={onOpenResults} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
+            <BarChart3 className="h-3.5 w-3.5" /> Results
+          </button>
+          <button onClick={onEdit} className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground/50 hover:text-foreground/70">
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
+        </div>
+      </div>
 
-        {error && <ErrorBanner message={error} />}
+      {/* Ingestion progress — updates automatically as Edurack adds questions */}
+      <div className="mt-3">
+        <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-foreground/50">
+          <span>Questions added by Edurack</span>
+          <span>{test.progress.totalAdded} / {test.totalQuestions}</span>
+        </div>
+        <div className="clay-inset h-2 overflow-hidden rounded-full">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${ready ? "bg-[var(--mint-soft)]" : "bg-[var(--sky-deep)]"}`}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        {test.progress.subjects.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {test.progress.subjects.map((s) => (
+              <span
+                key={s.subject}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  s.added >= s.required ? "bg-[var(--mint-soft)] text-foreground" : "clay-chip text-foreground/60"
+                }`}
+              >
+                {s.subject}: {s.added}/{s.required}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : existing ? "Save changes" : "Create series"}
-        </button>
-      </form>
-    </Panel>
+      {publishError && <p className="mt-2 text-xs font-medium text-rose-600">{publishError}</p>}
+
+      <div className="mt-3">
+        {!ready && !test.publishedToBatch ? (
+          <p className="text-[11px] text-foreground/40">Publish unlocks once Edurack finishes adding all questions.</p>
+        ) : (
+          <button
+            onClick={togglePublish}
+            disabled={publishing || (!ready && !test.publishedToBatch)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50 ${
+              test.publishedToBatch ? "clay-btn-ghost text-foreground/70" : "clay-btn text-white"
+            }`}
+          >
+            {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            {test.publishedToBatch ? "Remove from batch" : "Send to batch"}
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 
-// ─── Screen 2: tests within a series ────────────────────────────────────────
+// ─── Subject weightage editor ───────────────────────────────────────────────
 function SubjectWeightageEditor({
   subjectTagsRaw,
   onSubjectTagsRawChange,
@@ -354,124 +482,17 @@ function SubjectWeightageEditor({
   );
 }
 
-function TestsScreen({
-  mentorToken,
-  series,
-  onBack,
-  onOpenResults,
-}: {
-  mentorToken: string;
-  series: MentorTestSeries;
-  onBack: () => void;
-  onOpenResults: (test: MentorTest) => void;
-}) {
-  const [tests, setTests] = useState<MentorTest[] | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editingTest, setEditingTest] = useState<MentorTest | null>(null);
-
-  async function refresh() {
-    const { tests: rows } = await listMentorTestsForSeries({ data: { token: mentorToken, testSeriesId: series.id } });
-    setTests(rows);
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series.id]);
-
-  return (
-    <div className="space-y-6">
-      <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground/50 hover:text-foreground/70">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to series
-      </button>
-
-      {(showForm || editingTest) && (
-        <TestForm
-          mentorToken={mentorToken}
-          testSeriesId={series.id}
-          existing={editingTest}
-          onSaved={() => {
-            setShowForm(false);
-            setEditingTest(null);
-            refresh();
-          }}
-          onCancel={() => {
-            setShowForm(false);
-            setEditingTest(null);
-          }}
-        />
-      )}
-
-      <Panel
-        icon={FileText}
-        title={`Tests in ${series.name ?? "this series"}`}
-        action={
-          !showForm &&
-          !editingTest && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
-            >
-              <Plus className="h-3.5 w-3.5" /> New test
-            </button>
-          )
-        }
-      >
-        {tests === null ? (
-          <LoadingBlock compact />
-        ) : tests.length === 0 ? (
-          <EmptyState icon={FileText} message="No tests added to this series yet." />
-        ) : (
-          <ul className="space-y-2">
-            {tests.map((t) => (
-              <li key={t.id} className="clay-inset flex items-center justify-between gap-3 px-4 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{t.name}</p>
-                  <p className="mt-0.5 text-xs text-foreground/50">
-                    {t.totalQuestions} questions · {t.durationMinutes} min · {t.subjects.join(", ")}
-                    {t.pdfUrl && (
-                      <>
-                        {" · "}
-                        <a href={t.pdfUrl} target="_blank" rel="noreferrer" className="text-[var(--sky-deep)] hover:underline">
-                          Paper PDF
-                        </a>
-                      </>
-                    )}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <button
-                    onClick={() => onOpenResults(t)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" /> Results
-                  </button>
-                  <button
-                    onClick={() => setEditingTest(t)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground/50 hover:text-foreground/70"
-                  >
-                    <Pencil className="h-3.5 w-3.5" /> Edit
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-    </div>
-  );
-}
-
+// ─── Append / edit a test ───────────────────────────────────────────────────
 function TestForm({
   mentorToken,
-  testSeriesId,
+  batchId,
   existing,
   onSaved,
   onCancel,
 }: {
   mentorToken: string;
-  testSeriesId: string;
-  existing: MentorTest | null;
+  batchId: string;
+  existing: TestRow | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -482,8 +503,14 @@ function TestForm({
   const [weightageMap, setWeightageMap] = useState<Record<string, number>>(
     existing ? Object.fromEntries(existing.weightage.map((w) => [w.subject, w.questionCount])) : {},
   );
-  const [pdfUrl, setPdfUrl] = useState(existing?.pdfUrl ?? "");
-  const [pdfName, setPdfName] = useState("");
+  const [liveStart, setLiveStart] = useState(existing?.liveStart ?? "");
+  const [liveEnd, setLiveEnd] = useState(existing?.liveEnd ?? "");
+  const [instructions, setInstructions] = useState(existing?.instructions ?? "");
+  const [referencePdfUrl, setReferencePdfUrl] = useState(existing?.referencePdfUrl ?? "");
+  const [referencePdfName, setReferencePdfName] = useState("");
+  const [isPaid, setIsPaid] = useState(Boolean(existing?.price));
+  const [price, setPrice] = useState(existing?.price ? String(existing.price) : "");
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -513,14 +540,34 @@ function TestForm({
     const sum = weightage.reduce((s, w) => s + w.questionCount, 0);
     if (sum !== total) return setError(`Subject counts total ${sum}, but Total Questions is ${total}. They must match.`);
     if (weightage.some((w) => w.questionCount <= 0)) return setError("Every subject needs a question count greater than 0.");
+    if (!liveStart || !liveEnd) return setError("Set both the live start and end window.");
+    if (new Date(liveEnd) <= new Date(liveStart)) return setError("Live end must be after live start.");
+    if (!referencePdfUrl) return setError("Upload the question paper PDF for Edurack to ingest from.");
+
+    let priceNum: number | null = null;
+    if (isPaid) {
+      priceNum = Number(price);
+      if (!priceNum || priceNum <= 0) return setError("Enter a valid price, or switch this test to free.");
+    }
 
     setSaving(true);
     try {
-      const payload = { testSeriesId, name: name.trim(), durationMinutes: duration, totalQuestions: total, subjects: parsedSubjects, weightage, pdfUrl: pdfUrl || null };
+      const payload = {
+        name: name.trim(),
+        totalQuestions: total,
+        durationMinutes: duration,
+        subjects: parsedSubjects,
+        weightage,
+        liveStart,
+        liveEnd,
+        instructions: instructions.trim(),
+        referencePdfUrl,
+        price: priceNum,
+      };
       if (existing) {
         await updateMentorTest({ data: { token: mentorToken, id: existing.id, test: payload } });
       } else {
-        await createMentorTest({ data: { token: mentorToken, test: payload } });
+        await appendMentorTest({ data: { token: mentorToken, test: { ...payload, batchId } } });
       }
       onSaved();
     } catch (err) {
@@ -541,6 +588,17 @@ function TestForm({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        <FileUploadField
+          label="Question paper PDF — Edurack ingests the questions from this"
+          value={referencePdfUrl}
+          fileName={referencePdfName}
+          onChange={(url, name) => {
+            setReferencePdfUrl(url);
+            setReferencePdfName((prev) => prev || name);
+          }}
+          storagePath={`mentor-test-series/${batchId}`}
+        />
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <ClayField label="Test name">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mock #1" className={inputClass} />
@@ -569,16 +627,60 @@ function TestForm({
           totalQuestions={totalQuestions}
         />
 
-        <FileUploadField
-          label="Test paper PDF (reference)"
-          value={pdfUrl}
-          fileName={pdfName}
-          onChange={(url, name) => {
-            setPdfUrl(url);
-            setPdfName((prev) => prev || name);
-          }}
-          storagePath={`mentor-test-series/${testSeriesId}`}
-        />
+        <ClayField label="Live window">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="relative">
+              <CalendarRange className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+              <input type="datetime-local" value={liveStart} onChange={(e) => setLiveStart(e.target.value)} className={inputClass + " pl-10"} />
+            </div>
+            <input type="datetime-local" value={liveEnd} onChange={(e) => setLiveEnd(e.target.value)} className={inputClass} />
+          </div>
+        </ClayField>
+
+        <ClayField label="Instructions for students (optional)">
+          <textarea
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            rows={3}
+            placeholder="e.g. Negative marking applies."
+            className={inputClass + " resize-none"}
+          />
+        </ClayField>
+
+        <ClayField label="Pricing" hint="Free tests unlock for anyone who's purchased your batch. Paid tests can be bought individually — even by students who haven't purchased the batch.">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPaid(false)}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                !isPaid ? "clay-btn text-white" : "clay-chip text-foreground/70"
+              }`}
+            >
+              <Gift className="h-3.5 w-3.5" /> Free with batch
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPaid(true)}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                isPaid ? "clay-btn text-white" : "clay-chip text-foreground/70"
+              }`}
+            >
+              <IndianRupee className="h-3.5 w-3.5" /> Sell individually
+            </button>
+          </div>
+          {isPaid && (
+            <div className="relative mt-2">
+              <IndianRupee className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                inputMode="numeric"
+                placeholder="Price for this test alone"
+                className={inputClass + " pl-10"}
+              />
+            </div>
+          )}
+        </ClayField>
 
         {error && <ErrorBanner message={error} />}
 
@@ -587,35 +689,45 @@ function TestForm({
           disabled={saving}
           className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : existing ? "Save changes" : "Add test"}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : existing ? "Save changes" : "Append test"}
         </button>
       </form>
     </Panel>
   );
 }
 
-// ─── Screen 3: results ──────────────────────────────────────────────────────
-function ResultsScreen({ mentorToken, test, onBack }: { mentorToken: string; test: MentorTest; onBack: () => void }) {
+// ─── Results ─────────────────────────────────────────────────────────────
+function ResultsScreen({
+  mentorToken,
+  testId,
+  testName,
+  onBack,
+}: {
+  mentorToken: string;
+  testId: string;
+  testName: string;
+  onBack: () => void;
+}) {
   const [overview, setOverview] = useState<MentorTestResultsOverview | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { overview: o } = await getMentorTestResults({ data: { token: mentorToken, testId: test.id } });
+      const { overview: o } = await getMentorTestResults({ data: { token: mentorToken, testId } });
       setOverview(o);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [test.id]);
+  }, [testId]);
 
   return (
     <div className="space-y-6">
       <button onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground/50 hover:text-foreground/70">
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to tests
+        <ArrowLeft className="h-3.5 w-3.5" /> Back
       </button>
 
       {overview === null ? (
         <LoadingBlock />
       ) : overview.attemptCount === 0 ? (
-        <EmptyState icon={BarChart3} message="No student has attempted this test yet." />
+        <EmptyState icon={BarChart3} message={`No student has attempted "${testName}" yet.`} />
       ) : (
         <>
           <Panel icon={BarChart3} title={`Subject-wise comparison — ${overview.testName}`}>

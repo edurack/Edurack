@@ -74,9 +74,22 @@ function verifyMentorToken(token: string): { mentorId: string } | null {
 // signed HMAC token and returns the mentor's Mongo _id as a string — throws
 // the same "session expired" error whether the token is malformed, tampered
 // with, or genuinely expired, so nothing leaks about why it failed.
+// Now hits the DB on every call (was purely stateless before) — necessary
+// because a terminated mentor's existing token is otherwise still
+// cryptographically valid until it naturally expires up to 7 days later.
+// This is the single choke point every mentor-facing server function
+// routes through, so termination takes effect on the very next request.
 async function requireMentor(token: string): Promise<string> {
   const verified = verifyMentorToken(token);
   if (!verified) throw new Error("Session expired. Please sign in again.");
+  const { ObjectId } = await import("mongodb");
+  const db = await getDb();
+  const mentor = await db
+    .collection("mentors")
+    .findOne({ _id: new ObjectId(verified.mentorId) }, { projection: { status: 1 } });
+  if (!mentor || mentor.status === "terminated") {
+    throw new Error("This account has been deactivated. Please contact Edurack support.");
+  }
   return verified.mentorId;
 }
 
@@ -100,10 +113,11 @@ export const mentorLogin = createServerFn({ method: "POST" })
     const db = await getDb();
     const mentor = await db.collection("mentors").findOne({ username: data.username });
 
-    // Same error message whether the username doesn't exist or the
-    // password is wrong — don't leak which one it was.
     if (!mentor || !verifyPassword(data.password, mentor.passwordHash as string, mentor.passwordSalt as string)) {
       throw new Error("Incorrect username or password.");
+    }
+    if (mentor.status === "terminated") {
+      throw new Error("This account has been deactivated. Please contact Edurack support.");
     }
 
     const token = signMentorToken(String(mentor._id));

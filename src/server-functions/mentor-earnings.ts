@@ -12,6 +12,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   DEFAULT_BATCH_PROMOTION_PERCENT,
   MAX_BATCH_PROMOTION_PERCENT,
+  MENTOR_TEST_STANDALONE_COMMISSION_PERCENT,
   PLATFORM_COMMISSION_PERCENT,
   type BatchPromotionSettings,
   type MentorEarningsOverview,
@@ -44,9 +45,22 @@ function verifyMentorToken(token: string): { mentorId: string } | null {
   return { mentorId };
 }
 
+// Now hits the DB on every call (was purely stateless before) — necessary
+// because a terminated mentor's existing token is otherwise still
+// cryptographically valid until it naturally expires up to 7 days later.
+// This is the single choke point every mentor-facing server function
+// routes through, so termination takes effect on the very next request.
 async function requireMentor(token: string): Promise<string> {
   const verified = verifyMentorToken(token);
   if (!verified) throw new Error("Session expired. Please sign in again.");
+  const { ObjectId } = await import("mongodb");
+  const db = await getDb();
+  const mentor = await db
+    .collection("mentors")
+    .findOne({ _id: new ObjectId(verified.mentorId) }, { projection: { status: 1 } });
+  if (!mentor || mentor.status === "terminated") {
+    throw new Error("This account has been deactivated. Please contact Edurack support.");
+  }
   return verified.mentorId;
 }
 
@@ -113,33 +127,44 @@ export const getMentorEarningsOverview = createServerFn({ method: "POST" })
     const db = await getDb();
 
     const batches = await db.collection("mentorshipBatches").find({ assignedMentorId: mentorId }).toArray();
-    if (batches.length === 0) {
+    const batchIds = batches.map((b) => String(b._id));
+    const batchNameById = new Map(batches.map((b) => [String(b._id), b.name as string]));
+
+    // Every test this mentor has ever appended (any batch), regardless of
+    // publish status — a sold test still counts toward earnings once
+    // purchased, even if later unpublished.
+    const mentorTests = await db.collection("testCores").find({ mentorId }).toArray();
+    const testIds = mentorTests.map((t) => String(t._id));
+    const testNameById = new Map(mentorTests.map((t) => [String(t._id), t.name as string]));
+
+    if (batchIds.length === 0 && testIds.length === 0) {
       const empty: MentorEarningsOverview = { totalNetEarned: 0, totalGross: 0, monthly: [], purchases: [] };
       return { overview: empty };
     }
 
-    const batchIds = batches.map((b) => String(b._id));
-    const batchNameById = new Map(batches.map((b) => [String(b._id), b.name as string]));
+    const [batchPurchaseRows, testPurchaseRows] = await Promise.all([
+      batchIds.length
+        ? db.collection("purchases").find({ itemType: "mentorship", itemId: { $in: batchIds } }).sort({ purchasedAt: -1 }).toArray()
+        : [],
+      testIds.length
+        ? db.collection("purchases").find({ itemType: "mentorTest", itemId: { $in: testIds } }).sort({ purchasedAt: -1 }).toArray()
+        : [],
+    ]);
 
-    const purchaseRows = await db
-      .collection("purchases")
-      .find({ itemType: "mentorship", itemId: { $in: batchIds } })
-      .sort({ purchasedAt: -1 })
-      .toArray();
-
-    const studentUids = [...new Set(purchaseRows.map((p) => p.uid as string))];
-    const profiles =
-      studentUids.length > 0
-        ? await db
-            .collection("profiles")
-            .find({ uid: { $in: studentUids } }, { projection: { uid: 1, fullName: 1 } })
-            .toArray()
-        : [];
+    const studentUids = [...new Set([...batchPurchaseRows, ...testPurchaseRows].map((p) => p.uid as string))];
+    const profiles = studentUids.length
+      ? await db.collection("profiles").find({ uid: { $in: studentUids } }, { projection: { uid: 1, fullName: 1 } }).toArray()
+      : [];
     const nameByUid = new Map(profiles.map((p) => [p.uid as string, (p.fullName as string) || "Student"]));
 
-    const purchases: StudentPurchaseRecord[] = purchaseRows.map((p) => {
+    const batchPurchases: StudentPurchaseRecord[] = batchPurchaseRows.map((p) => {
       const amount = p.amount as number;
-      const platformCommission = Math.round(amount * (PLATFORM_COMMISSION_PERCENT / 100));
+      // Percent snapshotted at order creation (payments.ts) — includes the
+      // +5% question-ingestion fee automatically if this mentor had test
+      // series access at the time of that sale. Falls back to the flat
+      // rate for purchases made before this was tracked.
+      const commissionPercent = (p.platformCommissionPercent as number | undefined) ?? PLATFORM_COMMISSION_PERCENT;
+      const platformCommission = Math.round(amount * (commissionPercent / 100));
       return {
         studentUid: p.uid as string,
         studentName: nameByUid.get(p.uid as string) ?? "Student",
@@ -149,13 +174,35 @@ export const getMentorEarningsOverview = createServerFn({ method: "POST" })
         platformCommission,
         netEarned: amount - platformCommission,
         purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
+        source: "batch",
       };
     });
+
+    const testPurchases: StudentPurchaseRecord[] = testPurchaseRows.map((p) => {
+      const amount = p.amount as number;
+      const commissionPercent = (p.platformCommissionPercent as number | undefined) ?? MENTOR_TEST_STANDALONE_COMMISSION_PERCENT;
+      const platformCommission = Math.round(amount * (commissionPercent / 100));
+      return {
+        studentUid: p.uid as string,
+        studentName: nameByUid.get(p.uid as string) ?? "Student",
+        batchId: p.itemId as string,
+        batchName: testNameById.get(p.itemId as string) ?? "Test",
+        amount,
+        platformCommission,
+        netEarned: amount - platformCommission,
+        purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
+        source: "test",
+      };
+    });
+
+    const purchases = [...batchPurchases, ...testPurchases].sort((a, b) =>
+      (b.purchasedAt ?? "").localeCompare(a.purchasedAt ?? ""),
+    );
 
     const monthlyMap = new Map<string, MonthlyEarningsPoint>();
     for (const p of purchases) {
       if (!p.purchasedAt) continue;
-      const month = p.purchasedAt.slice(0, 7); // "YYYY-MM"
+      const month = p.purchasedAt.slice(0, 7);
       const entry = monthlyMap.get(month) ?? { month, grossAmount: 0, platformCommission: 0, netEarned: 0, purchaseCount: 0 };
       entry.grossAmount += p.amount;
       entry.platformCommission += p.platformCommission;

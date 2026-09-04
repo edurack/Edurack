@@ -7,6 +7,7 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { sendMail } from "@/lib/mailer";
 import { purchaseConfirmationEmailHtml } from "@/lib/email-templates";
+import { PLATFORM_COMMISSION_PERCENT, QUESTION_INGESTION_FEE_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
@@ -21,11 +22,41 @@ function getRazorpayCredentials() {
   return { keyId, keySecret };
 }
 
-type ItemType = "bundle" | "mentorship";
+// "mentorTest" — a single paid test appended to a mentor's batch series,
+// bought standalone (no batch purchase required). See testCores.price /
+// testCores.publishedToBatch in admin-types.ts.
+type ItemType = "bundle" | "mentorship" | "mentorTest";
 
 async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
   const { ObjectId } = await import("mongodb");
   const db = await getDb();
+
+ if (itemType === "mentorTest") {
+  const test = await db.collection("testCores").findOne({ _id: new ObjectId(itemId) });
+  if (test) {
+    if (!test.price || (test.price as number) <= 0) throw new Error("This test isn't sold individually.");
+    if (!test.publishedToBatch) throw new Error("This test isn't available for purchase yet.");
+    return { sellingPrice: test.price as number, title: test.name as string };
+  }
+
+  // Standalone Sell Tests — extra safety check beyond the old testCores
+  // flow: status "live" only means admin approved a price, it says
+  // nothing about whether Edurack has actually finished ingesting every
+  // question yet. Count the real rows rather than trusting the flag.
+  const soldTest = await db.collection("soldTests").findOne({ _id: new ObjectId(itemId) });
+  if (!soldTest) throw new Error("Test not found");
+  if (soldTest.status !== "live" || !soldTest.approvedPrice) {
+    throw new Error("This test isn't available for purchase yet.");
+  }
+  const addedCount = await db.collection("questions").countDocuments({ testId: itemId });
+  if (addedCount < (soldTest.totalQuestions as number)) {
+    throw new Error(
+      `Edurack has only added ${addedCount} of ${soldTest.totalQuestions} questions so far — this test isn't ready for purchase yet.`,
+    );
+  }
+  return { sellingPrice: soldTest.approvedPrice as number, title: soldTest.name as string };
+}
+
   const collection = itemType === "bundle" ? "bundles" : "mentorshipBatches";
   const doc = await db.collection(collection).findOne({ _id: new ObjectId(itemId) });
   if (!doc) throw new Error("Item not found");
@@ -36,14 +67,44 @@ async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
   };
 }
 
+// Whether the mentor assigned to a mentorship batch currently has
+// test-series access — mirrors requireTestSeriesAccess in
+// mentor-test-series.ts, duplicated here (no shared mentor-session context
+// in this file) rather than imported, matching this codebase's existing
+// convention for cross-file session/access checks.
+async function mentorHasTestSeriesAccess(mentorId: string): Promise<boolean> {
+  const db = await getDb();
+  const [onboarding, request] = await Promise.all([
+    db.collection("mentorOnboardingDetails").findOne({ mentorProfileId: mentorId }),
+    db.collection("testSeriesAccessRequests").findOne({ mentorId }),
+  ]);
+  return Boolean(onboarding?.wantsToSellTestSeries) || Boolean(request?.adminGranted);
+}
+
+// The commission percent taken from a purchase — snapshotted into the
+// Razorpay order's notes at creation time so it can never drift if the
+// mentor's access status changes between order creation and payment
+// verification (or afterward). Bundles are unaffected (100% platform,
+// unchanged) — only mentorship batches and standalone mentorTest sales
+// carry a mentor split.
+async function resolveCommissionPercent(itemType: ItemType, itemId: string): Promise<number | null> {
+  if (itemType === "mentorTest") return MENTOR_TEST_STANDALONE_COMMISSION_PERCENT;
+  if (itemType === "mentorship") {
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const batch = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(itemId) });
+    const mentorId = (batch?.assignedMentorId as string | null) ?? null;
+    if (!mentorId) return PLATFORM_COMMISSION_PERCENT;
+    const hasAccess = await mentorHasTestSeriesAccess(mentorId);
+    return hasAccess ? PLATFORM_COMMISSION_PERCENT + QUESTION_INGESTION_FEE_PERCENT : PLATFORM_COMMISSION_PERCENT;
+  }
+  return null; // bundle — ledger already treats this as 100% platform
+}
+
 // ─── Promoter coupon integration ────────────────────────────────────────────
 // Coupons only ever apply to mentorship batches — promoters never promote
-// bundles (see promoter-portal.ts: listPromotableBatches only reads
-// mentorshipBatches). Looks up an APPROVED promoterCouponRequests doc
-// matching this exact batch + code and returns the split that was locked
-// in when the promoter requested it (see promoter-portal.ts's
-// requestCoupon) — this file never recomputes or re-derives that split,
-// it only reads what was already approved.
+// bundles or standalone tests (see promoter-portal.ts: listPromotableBatches
+// only reads mentorshipBatches).
 type ResolvedCoupon = {
   promoterId: string;
   couponCode: string;
@@ -79,10 +140,6 @@ function applyCouponDiscount(sellingPrice: number, coupon: ResolvedCoupon) {
 }
 
 // ─── Preview a coupon (no Razorpay order created) ──────────────────────────
-// Cheap validate-and-show-the-discount call for the checkout UI's "Apply"
-// button — students can retype/retry a code freely without spamming real
-// Razorpay order creation. createRazorpayOrder re-validates the code again
-// itself when the actual order is placed, so nothing here is trusted blindly.
 export const previewCoupon = createServerFn({ method: "POST" })
   .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => data)
   .handler(async ({ data }) => {
@@ -119,9 +176,8 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
       studentDiscountAmount = applied.studentDiscountAmount;
     }
 
-    // Razorpay's Node SDK is CJS; import it dynamically so it isn't pulled
-    // into the SSR bundle unless this function actually runs (same
-    // externalization lesson learned from firebase-admin/mongodb earlier).
+    const commissionPercent = await resolveCommissionPercent(data.itemType, data.itemId);
+
     const { default: Razorpay } = await import("razorpay");
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
 
@@ -129,21 +185,14 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     const order = await razorpay.orders.create({
       amount: amountPaise,
       currency: "INR",
-      // Razorpay caps `receipt` at 40 characters. itemType + a full 24-char
-      // Mongo ObjectId + timestamp blew past that (49 chars for
-      // "mentorship_<id>_<ts>"), which is exactly the kind of thing that
-      // produces a generic 400 from their API. Use a 1-letter type code and
-      // just the last 12 chars of the id — still unique enough for a
-      // receipt label, well under the limit.
-      receipt: `${data.itemType === "bundle" ? "b" : "m"}_${data.itemId.slice(-12)}_${Date.now()}`,
-      // Coupon details are baked into the order's own notes at creation
-      // time — this is the tamper-resistant source of truth verifyRazorpayPayment
-      // reads back from Razorpay directly, rather than trusting whatever
-      // the client resubmits at verification.
+      // Razorpay caps `receipt` at 40 characters — 1-letter type code + last
+      // 12 chars of the id keeps this well under the limit for all three types.
+      receipt: `${data.itemType === "bundle" ? "b" : data.itemType === "mentorship" ? "m" : "t"}_${data.itemId.slice(-12)}_${Date.now()}`,
       notes: {
         uid: decoded.uid,
         itemType: data.itemType,
         itemId: data.itemId,
+        ...(commissionPercent != null ? { platformCommissionPercent: String(commissionPercent) } : {}),
         ...(coupon
           ? {
               couponCode: coupon.couponCode,
@@ -194,20 +243,15 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
     const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
     const db = await getDb();
 
-    // Re-fetch the order from Razorpay itself to read back whatever coupon
-    // notes were attached at creation — this is the authoritative source,
-    // not anything the client sends here. A tampered/replayed verify call
-    // can't invent a discount that was never actually on the order.
     const { default: Razorpay } = await import("razorpay");
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
     const order = await razorpay.orders.fetch(data.razorpayOrderId);
     const notes = (order.notes ?? {}) as Record<string, string>;
 
     const hasCoupon = Boolean(notes.couponCode && notes.promoterId);
-    const amountCharged = Number(order.amount) / 100; // what actually got charged, post-discount if a coupon applied
+    const amountCharged = Number(order.amount) / 100;
+    const platformCommissionPercent = notes.platformCommissionPercent ? Number(notes.platformCommissionPercent) : null;
 
-    // Upsert on (uid, itemType, itemId) so a retried/duplicate verification
-    // call can't create two purchase records for the same item.
     await db.collection("purchases").updateOne(
       { uid: decoded.uid, itemType: data.itemType, itemId: data.itemId },
       {
@@ -219,15 +263,13 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
           razorpayOrderId: data.razorpayOrderId,
           razorpayPaymentId: data.razorpayPaymentId,
           purchasedAt: new Date(),
+          ...(platformCommissionPercent != null ? { platformCommissionPercent } : {}),
           ...(hasCoupon ? { couponCode: notes.couponCode, promoterId: notes.promoterId } : {}),
         },
       },
       { upsert: true },
     );
 
-    // Record the promoter's sale — same upsert-on-identity idempotency as
-    // the purchase write above, so a retried verify call never double-counts
-    // a promoter's earnings for one purchase.
     if (hasCoupon) {
       try {
         const studentDiscountPercent = Number(notes.studentDiscountPercent);
@@ -258,10 +300,6 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
           { upsert: true },
         );
       } catch (err) {
-        // A failure here must never undo the already-confirmed purchase —
-        // same "log and swallow" pattern as the confirmation email below.
-        // Worst case the promoter's sale doesn't show up and needs a
-        // manual reconciliation; the student's access is never affected.
         console.error(
           `[verifyRazorpayPayment] promoterSales write failed for uid=${decoded.uid}, itemId=${data.itemId}:`,
           err,
@@ -269,12 +307,6 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
       }
     }
 
-    // Combined "congrats + payment successful" email. The payment is
-    // already captured and the purchase record already written above, so a
-    // failed send here must never undo the purchase or fail this request —
-    // it's logged and swallowed, not thrown. Firebase's decoded ID token
-    // carries the account's email directly, so no extra DB lookup is
-    // needed to find where to send it.
     if (decoded.email) {
       try {
         await sendMail({
@@ -282,7 +314,7 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
           subject: `Payment successful — ${title}`,
           html: purchaseConfirmationEmailHtml({
             itemTitle: title,
-            itemType: data.itemType,
+            itemType: data.itemType === "mentorTest" ? "bundle" : data.itemType, // template only distinguishes bundle/mentorship copy
             amount: amountCharged,
           }),
         });
