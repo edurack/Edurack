@@ -1,40 +1,32 @@
 // src/lib/mailer.ts
-// SERVER-ONLY. Centralized AWS SES sender — replaces the old EmailJS REST
-// calls that used to live in src/lib/otp.ts. Every outbound email in the
-// app should go through sendMail() (single) or sendMailBatch() (many) so
-// there's one transport to configure, monitor, and swap out later if needed.
-import nodemailer from "nodemailer";
-import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
+// SERVER-ONLY. Centralized email sender — now backed by Resend instead of
+// AWS SES (SES production access was denied). Every outbound email in the
+// app goes through sendMail() (single) or sendMailBatch() (many); the
+// exported function signatures are unchanged from the SES version so no
+// caller (otp.ts, admin.ts, promoter-admin.ts, mentor-onboarding.ts, etc.)
+// needs to change.
+import { Resend } from "resend";
 
-const AWS_REGION = process.env.AWS_REGION;
-const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
-const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const rawEmailFrom = process.env.EMAIL_FROM;
 
-if (!AWS_REGION || !AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-  throw new Error(
-    "AWS SES is not configured — AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY must be set",
-  );
+if (!RESEND_API_KEY) {
+  throw new Error("Resend is not configured — RESEND_API_KEY must be set");
 }
-if (!EMAIL_FROM) {
+if (!rawEmailFrom) {
   throw new Error("EMAIL_FROM is not set");
 }
 
-const sesClient = new SESv2Client({
-  region: AWS_REGION,
-  credentials: {
-    accessKeyId: AWS_ACCESS_KEY_ID,
-    secretAccessKey: AWS_SECRET_ACCESS_KEY,
-  },
-});
+// Reassigned to a plain `string` (rather than `string | undefined`) so
+// every function below — not just the code right after this check — sees
+// the narrowed type without needing a `!` non-null assertion at each call site.
+const EMAIL_FROM: string = rawEmailFrom;
 
-const transporter = nodemailer.createTransport({
-  SES: { sesClient, SendEmailCommand },
-});
+const resend = new Resend(RESEND_API_KEY);
 
-// Thrown instead of the raw SES/Nodemailer error so callers can catch one
+// Thrown instead of the raw Resend error so callers can catch one
 // well-known type and decide how to respond to the client, without needing
-// to know anything about the SES SDK's own error shapes.
+// to know anything about the Resend SDK's own error shape.
 export class MailSendError extends Error {
   override readonly cause?: unknown;
 
@@ -53,15 +45,26 @@ export type SendMailParams = {
 
 export async function sendMail({ to, subject, html }: SendMailParams): Promise<{ messageId: string }> {
   try {
-    const info = await transporter.sendMail({
+    const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
       to,
       subject,
       html,
     });
-    console.log(`[mailer] sent to=${to} subject="${subject}" messageId=${info.messageId}`);
-    return { messageId: info.messageId as string };
+
+    // The Resend SDK doesn't throw on API-level failures (bad address,
+    // domain not verified, rate limit, etc.) — it resolves with an `error`
+    // field instead. Normalize that into the same thrown-error path as a
+    // network/SDK failure so every caller only has to catch MailSendError.
+    if (error) {
+      console.error(`[mailer] FAILED to=${to} subject="${subject}":`, error);
+      throw new MailSendError(`Failed to send email to ${to}`, error);
+    }
+
+    console.log(`[mailer] sent to=${to} subject="${subject}" messageId=${data?.id}`);
+    return { messageId: data?.id ?? "" };
   } catch (error) {
+    if (error instanceof MailSendError) throw error;
     console.error(`[mailer] FAILED to=${to} subject="${subject}":`, error);
     throw new MailSendError(`Failed to send email to ${to}`, error);
   }
@@ -74,9 +77,8 @@ export type SendMailBatchResult = {
 };
 
 // Sends a list of emails one at a time with a delay between each, instead
-// of Promise.all-ing them — SES sandbox (and most fresh production
-// accounts) caps you at ~1 send/second, and blasting them concurrently
-// just produces a wall of throttling errors.
+// of Promise.all-ing them — Resend's default rate limit is 2 requests/sec,
+// and blasting them concurrently just produces a wall of 429s.
 //
 // A failure on one recipient never stops the rest of the batch from
 // sending — failures are collected and returned, not thrown, so a single
@@ -86,13 +88,14 @@ export type SendMailBatchResult = {
 // to completion. For a serverless deployment (e.g. Vercel) with a request
 // timeout, a large recipient list can exceed that timeout before the batch
 // finishes. Fine for small purchaser/announcement lists today — once
-// audiences grow, move this to a real background job/queue instead of
-// calling it directly from an admin action.
+// audiences grow, move this to a real background job/queue, or switch to
+// Resend's native batch endpoint (resend.batch.send, up to 100 emails per
+// call) instead of calling it directly from an admin action.
 export async function sendMailBatch(
   items: SendMailParams[],
   opts: { delayMs?: number } = {},
 ): Promise<SendMailBatchResult> {
-  const delayMs = opts.delayMs ?? 1100;
+  const delayMs = opts.delayMs ?? 550; // ~2 req/sec, matches Resend's default rate limit
   let sent = 0;
   const failures: { to: string; error: unknown }[] = [];
 

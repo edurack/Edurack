@@ -1,3 +1,4 @@
+// src/lib/otp.ts
 // SERVER-ONLY.
 import crypto from "node:crypto";
 import { sendMail } from "@/lib/mailer";
@@ -25,9 +26,9 @@ export function hashToken(token: string): string {
   return crypto.createHmac("sha256", OTP_PEPPER!).update(token).digest("hex");
 }
 
-// Sends the OTP via AWS SES (nodemailer's SES transport, see src/lib/mailer.ts),
-// using the shared branded template (src/lib/email-templates.ts) so this
-// looks consistent with every other email the app sends.
+// Sends the OTP via Resend (see src/lib/mailer.ts), using the shared
+// branded template (src/lib/email-templates.ts) so this looks consistent
+// with every other email the app sends.
 export async function sendOtpEmail(params: {
   toEmail: string;
   code: string;
