@@ -231,6 +231,11 @@ function CourseHubPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponChecking, setCouponChecking] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  // NEW: coupon field starts collapsed behind a text link — most students
+  // don't have a code, and showing an always-open input plus the price row
+  // plus the bottom tab bar ate too much vertical space on short Android
+  // screens. See handleRemoveCoupon below, which also re-collapses this.
+  const [showCouponField, setShowCouponField] = useState(false);
 
   const TABS = tabsForKind(kind);
 
@@ -322,6 +327,7 @@ function CourseHubPage() {
     setAppliedCoupon(null);
     setCouponInput("");
     setCouponError(null);
+    setShowCouponField(false);
   }
 
   async function handlePurchase() {
@@ -475,9 +481,15 @@ function CourseHubPage() {
         </main>
       </div>
 
-      {/* ── Mobile bottom nav ───────────────────────────────────────────── */}
+      {/* ── Mobile bottom nav ───────────────────────────────────────────────
+          CHANGED: was `justify-around` with every tab forced to share equal
+          width — with 7 tabs (mentorship kind) on a ~360px phone that either
+          wrapped labels or shrank tap targets below a usable size. Now each
+          tab keeps its natural width (`shrink-0`) and the strip scrolls
+          horizontally instead, matching how most native Android app bars
+          handle more items than fit. */}
       <nav
-        className={`clay fixed inset-x-3 z-30 flex items-center justify-around gap-0.5 rounded-3xl p-1.5 transition-all duration-300 md:hidden ${
+        className={`clay fixed inset-x-3 z-30 flex items-center gap-1 overflow-x-auto rounded-3xl p-1.5 transition-all duration-300 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden ${
           showPurchaseBar ? "bottom-[8.5rem]" : "bottom-3"
         }`}
       >
@@ -488,7 +500,7 @@ function CourseHubPage() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-2 text-[9px] font-semibold transition-all duration-200 ${
+              className={`flex shrink-0 flex-col items-center gap-0.5 rounded-2xl px-4 py-2 text-[9px] font-semibold transition-all duration-200 ${
                 active ? "clay-btn text-white" : "text-foreground/60"
               }`}
             >
@@ -504,7 +516,12 @@ function CourseHubPage() {
         <div className="fixed inset-x-0 bottom-3 z-20 px-3">
           <div className="clay mx-auto max-w-xl p-4 sm:p-5">
             {/* Coupon apply row — mentorship batches only, promoters never
-                promote bundles (see promoter-portal.ts) */}
+                promote bundles (see promoter-portal.ts).
+                CHANGED: the input used to always render, which — stacked on
+                top of the price row and the bottom tab bar right above it —
+                consumed a large share of the viewport on short Android
+                screens. It now starts collapsed behind a plain text link,
+                since most students never enter a code. */}
             {kind === "mentorship" && (
               <div className="mb-3">
                 {appliedCoupon ? (
@@ -521,10 +538,11 @@ function CourseHubPage() {
                       <XCircle className="h-4 w-4" />
                     </button>
                   </div>
-                ) : (
+                ) : showCouponField ? (
                   <div>
                     <div className="flex items-center gap-2">
                       <input
+                        autoFocus
                         value={couponInput}
                         onChange={(e) => setCouponInput(e.target.value)}
                         onKeyDown={(e) => {
@@ -546,6 +564,14 @@ function CourseHubPage() {
                     </div>
                     {couponError && <p className="mt-1.5 text-xs font-medium text-rose-600">{couponError}</p>}
                   </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCouponField(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)]"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    Have a coupon code?
+                  </button>
                 )}
               </div>
             )}
@@ -600,8 +626,16 @@ function CourseHubPage() {
 // natively inside an iframe, so this points straight at the source (or the
 // base64 data URI for watermarked notes) with a clean header offering
 // "Open in new tab" and "Download" as explicit, honest actions rather than
-// silently proxying through a third party. ─────────────────────────────────
+// silently proxying through a third party.
+//
+// CHANGED: added a loading state with a fallback "open in new tab" hint —
+// some Android in-app WebViews (Instagram/Facebook browser, certain banking
+// apps) either fail to render a PDF inside an iframe or hang with no visible
+// feedback. Now the user sees a spinner and, if it doesn't resolve, an
+// explicit way out instead of staring at a blank white box. ─────────────────
 function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+  const [loaded, setLoaded] = useState(false);
+
   return (
     <div
       className="animate-in fade-in fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm duration-200 sm:p-4"
@@ -623,7 +657,7 @@ function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; on
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
               aria-label="Open in new tab"
             >
               <ExternalLink className="h-4 w-4" />
@@ -631,21 +665,35 @@ function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; on
             <a
               href={url}
               download={name}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
               aria-label="Download"
             >
               <Download className="h-4 w-4" />
             </a>
             <button
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5 hover:text-foreground"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
-        <iframe title={name} src={url} className="clay-inset h-full w-full flex-1 rounded-2xl bg-white" />
+        <div className="clay-inset relative h-full w-full flex-1 overflow-hidden rounded-2xl bg-white">
+          {!loaded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+              <Loader2 className="h-5 w-5 animate-spin text-foreground/30" />
+              <p className="text-xs text-foreground/40">
+                Loading…{" "}
+                <a href={url} target="_blank" rel="noreferrer" className="font-semibold text-[var(--sky-deep)] underline">
+                  open in a new tab
+                </a>{" "}
+                if it doesn't appear.
+              </p>
+            </div>
+          )}
+          <iframe title={name} src={url} onLoad={() => setLoaded(true)} className="h-full w-full" />
+        </div>
       </div>
     </div>
   );
@@ -1513,7 +1561,7 @@ function SessionKebabMenu({
     <div className="relative">
       <button
         onClick={handleOpen}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5"
+        className="flex h-10 w-10 items-center justify-center rounded-full text-foreground/50 transition hover:bg-foreground/5"
         aria-label="Review this session"
       >
         <MoreVertical className="h-4 w-4" />
@@ -1522,7 +1570,10 @@ function SessionKebabMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="clay animate-in fade-in zoom-in-95 absolute right-0 top-full z-20 mt-2 w-64 p-4 duration-150">
+          {/* CHANGED: width is now clamped to the viewport (`calc(100vw-2rem)`)
+              so the dropdown can't overflow the screen edge on narrow Android
+              phones when the trigger button sits mid-row. */}
+          <div className="clay animate-in fade-in zoom-in-95 absolute right-0 top-full z-20 mt-2 w-[min(16rem,calc(100vw-2rem))] p-4 duration-150">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/50">
               Rate this session
             </p>
@@ -1786,7 +1837,15 @@ function ChatTab({
   }
 
   return (
-    <div className="clay flex h-[28rem] flex-col overflow-hidden sm:h-[32rem]">
+    // CHANGED: was a fixed `h-[28rem]` — when the Android on-screen keyboard
+    // opens, the browser's visual viewport shrinks but a fixed-height flex
+    // column doesn't, so the message input could get pushed out of view.
+    // `dvh` (dynamic viewport height) tracks the actual visible area,
+    // shrinking the chat box along with the keyboard so the input row
+    // stays reachable. `min(28rem, 70dvh)` still caps the height on
+    // desktop/tablet where dvh support or large viewports would otherwise
+    // make it taller than intended.
+    <div className="clay flex h-[min(28rem,70dvh)] flex-col overflow-hidden sm:h-[32rem]">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-foreground/10 px-4 py-3.5 sm:px-5 sm:py-4">
         <Link
           to="/mentor-profile/$mentorId"
