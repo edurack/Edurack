@@ -176,13 +176,13 @@ export async function uploadMentorLecture(
     }
   }
 
-  const { publicUrl } = await completeMentorMultipartUpload({
+  await completeMentorMultipartUpload({
     data: { token: mentorToken, key: state.key, uploadId: state.uploadId, parts: state.completedParts },
   });
 
   clearResumeState(file);
   onProgress?.(100);
-  return publicUrl;
+  return state.key;
 }
 
 // Call this if a mentor cancels a lecture upload mid-flight, so S3 doesn't

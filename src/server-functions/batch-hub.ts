@@ -322,6 +322,7 @@ export const getLectureSessionForStudent = createServerFn({ method: "GET" })
         .findOne({ _id: new ObjectId(batch.assignedMentorId as string) });
       mentorName = (mentor?.name as string) ?? null;
     }
+    console.log("Signing key:", JSON.stringify(session.lectureUrl));
 
        return {
       session: {
@@ -331,10 +332,15 @@ export const getLectureSessionForStudent = createServerFn({ method: "GET" })
         mentorName,
         lectureTitle: (session.lectureTitle as string) ?? "Lecture",
         lectureUrl: await signLectureUrl(session.lectureUrl as string), // session.lectureUrl now stores the S3 KEY, not a full URL
+        
         scheduledAt: session.scheduledAt as string,
       },
+      
+      
     };
+    
    });
+   
 
 export const listLectureCommentsForStudent = createServerFn({ method: "GET" })
   .validator((data: { token: string; sessionId: string }) => data)

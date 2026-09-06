@@ -12,6 +12,7 @@ import {
   BadgeCheck,
   Users2,
   Clock,
+  PlayCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
@@ -131,56 +132,65 @@ function LecturePage() {
 
       <AppHeader user={user} />
 
-      <main className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-6">
+      <main className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <button
           onClick={() =>
             session
               ? navigate({ to: "/course/$kind/$id", params: { kind: "mentorship", id: session.batchId } })
               : navigate({ to: "/dashboard" })
           }
-          className="group mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/60 transition-colors hover:text-foreground"
+          className="group mb-5 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/60 transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
           Back to batch
         </button>
 
         {loadError ? (
-          <div className="clay animate-in fade-in p-8 text-center text-sm text-foreground/60 duration-300">
-            {loadError}
+          <div className="clay animate-in fade-in p-10 text-center duration-300">
+            <div className="clay-inset mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl">
+              <PlayCircle className="h-6 w-6 text-foreground/30" />
+            </div>
+            <p className="text-sm font-medium text-foreground/70">{loadError}</p>
           </div>
         ) : !session ? (
           <LecturePageSkeleton />
         ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-2 grid grid-cols-1 gap-4 duration-300 sm:gap-6 lg:grid-cols-3">
+          <div className="animate-in fade-in slide-in-from-bottom-2 grid grid-cols-1 gap-5 duration-300 sm:gap-6 lg:grid-cols-3">
             {/* ── Left: video, meta, notes, rating ─────────────────────── */}
-            <div className="space-y-4 sm:space-y-6 lg:col-span-2">
-              <div className="clay p-2 sm:p-3">
-                <VideoPlayer
-                  src={session.lectureUrl}
-                  initialTime={initialTime}
-                  onProgress={handleProgress}
-                  onEnded={() => setCompleted(true)}
-                />
+            <div className="space-y-5 sm:space-y-6 lg:col-span-2">
+              <div className="clay overflow-hidden p-2 sm:p-3">
+                <div className="overflow-hidden rounded-2xl">
+                  <VideoPlayer
+                    src={session.lectureUrl}
+                    initialTime={initialTime}
+                    onProgress={handleProgress}
+                    onEnded={() => setCompleted(true)}
+                  />
+                </div>
               </div>
 
-              <div className="clay p-4 sm:p-6">
+              <div className="clay p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h1 className="truncate font-display text-lg font-bold tracking-tight text-foreground sm:text-2xl">
+                    <h1 className="truncate font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
                       {session.lectureTitle}
                     </h1>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground/60 sm:text-sm">
-                      <span className="inline-flex items-center gap-1">
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-foreground/60 sm:text-sm">
+                      <span className="clay-chip inline-flex items-center gap-1.5 px-2.5 py-1">
                         <Users2 className="h-3.5 w-3.5 text-foreground/40" />
                         {session.batchName}
                       </span>
-                      {session.mentorName && <span className="text-foreground/30">·</span>}
-                      {session.mentorName && <span className="font-medium">{session.mentorName}</span>}
+                      {session.mentorName && (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground/70">
+                          <span className="h-1 w-1 rounded-full bg-foreground/30" />
+                          {session.mentorName}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span
-                    className={`clay-chip inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-all duration-300 ${
-                      completed ? "text-foreground opacity-100" : "pointer-events-none scale-95 opacity-0"
+                    className={`clay-chip inline-flex shrink-0 items-center gap-1.5 bg-[var(--mint-soft)]/50 px-3 py-1.5 text-xs font-semibold transition-all duration-300 ${
+                      completed ? "scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"
                     }`}
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-[var(--sky-deep)]" />
@@ -190,22 +200,24 @@ function LecturePage() {
               </div>
 
               {notes && notes.length > 0 && (
-                <div className="clay p-4 sm:p-6">
-                  <div className="mb-3 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-foreground/60" />
+                <div className="clay p-5 sm:p-6">
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="clay-inset flex h-7 w-7 items-center justify-center rounded-xl">
+                      <FileText className="h-3.5 w-3.5 text-foreground/60" />
+                    </div>
                     <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60 sm:text-sm">
                       Notes for this batch
                     </h2>
                   </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {notes.map((n) => (
                       <button
                         key={n.id}
                         onClick={() => setPdfModal({ url: n.fileUrl, name: n.fileName })}
-                        className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-transform hover:-translate-y-0.5 hover:bg-foreground/5"
+                        className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/5"
                       >
-                        <div className="clay flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
-                          <FileText className="h-4 w-4 text-foreground/50" />
+                        <div className="clay flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                          <FileText className="h-4 w-4 text-[var(--sky-deep)]" />
                         </div>
                         <span className="min-w-0 truncate text-sm font-medium text-foreground">{n.fileName}</span>
                       </button>
@@ -240,10 +252,10 @@ function LecturePage() {
 // doesn't visually "jump" once real content arrives. ───────────────────────
 function LecturePageSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
-      <div className="space-y-4 sm:space-y-6 lg:col-span-2">
+    <div className="grid grid-cols-1 gap-5 sm:gap-6 lg:grid-cols-3">
+      <div className="space-y-5 sm:space-y-6 lg:col-span-2">
         <div className="clay aspect-video w-full animate-pulse bg-foreground/5 p-2 sm:p-3" />
-        <div className="clay h-20 animate-pulse bg-foreground/5 p-4 sm:p-6" />
+        <div className="clay h-24 animate-pulse bg-foreground/5 p-5 sm:p-6" />
       </div>
       <div className="clay h-[28rem] animate-pulse bg-foreground/5 lg:col-span-1" />
     </div>
@@ -285,9 +297,11 @@ function RatingPanel({ sessionId, batchId }: { sessionId: string; batchId: strin
   }
 
   return (
-    <div className="clay p-4 sm:p-6">
-      <div className="mb-3 flex items-center gap-2">
-        <StarIcon className="h-4 w-4 text-foreground/60" />
+    <div className="clay p-5 sm:p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="clay-inset flex h-7 w-7 items-center justify-center rounded-xl">
+          <StarIcon className="h-3.5 w-3.5 text-foreground/60" />
+        </div>
         <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60 sm:text-sm">
           Rate this lecture
         </h2>
@@ -298,12 +312,12 @@ function RatingPanel({ sessionId, batchId }: { sessionId: string; batchId: strin
         onChange={(e) => setReviewText(e.target.value)}
         placeholder="Optional — what worked, what could be clearer…"
         rows={3}
-        className="clay-inset mt-3 w-full resize-none rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+        className="clay-inset mt-4 w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
       />
       <button
         onClick={handleSave}
         disabled={rating === 0 || saving}
-        className="clay-btn mt-3 flex w-full items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-transform hover:scale-[1.02] disabled:opacity-70 disabled:hover:scale-100 sm:w-auto"
+        className="clay-btn mt-4 flex w-full items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-transform hover:scale-[1.02] disabled:opacity-70 disabled:hover:scale-100 sm:w-auto"
       >
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? "Saved!" : "Save rating"}
       </button>
@@ -316,6 +330,15 @@ function RatingPanel({ sessionId, batchId }: { sessionId: string; batchId: strin
 // (see listLectureCommentsForStudent) and rendered with a distinct pinned
 // style: verified badge, tinted background, and the mentor's name links to
 // their full public profile page.
+//
+// SCROLL FIX: previously this auto-scrolled via bottomRef.scrollIntoView(),
+// which doesn't just scroll this inner box — it can scroll the *whole
+// page* to bring that ref into view, since the panel sits low in a
+// two-column layout. That's what was causing the page to jump to the
+// bottom on every load. Now we scroll the container's own scrollTop
+// directly (never touches page scroll), and skip the auto-scroll
+// entirely on the very first load — it only kicks in for genuinely new
+// comments after that.
 function DiscussionPanel({
   sessionId,
   comments,
@@ -329,10 +352,25 @@ function DiscussionPanel({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasLoadedOnce = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!comments) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (!hasLoadedOnce.current) {
+      // First load: snap to bottom instantly, and only within this box —
+      // never scroll the outer page.
+      hasLoadedOnce.current = true;
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+
+    // Subsequent updates (new comment arrives): scroll smoothly, still
+    // scoped to this container only.
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [comments]);
 
   async function handleSubmit(e: FormEvent) {
@@ -359,7 +397,9 @@ function DiscussionPanel({
     <div className="clay flex h-[26rem] flex-col overflow-hidden sm:h-[32rem]">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-foreground/10 px-4 py-3.5 sm:px-5 sm:py-4">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-foreground/60" />
+          <div className="clay-inset flex h-7 w-7 items-center justify-center rounded-xl">
+            <MessageSquare className="h-3.5 w-3.5 text-foreground/60" />
+          </div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60 sm:text-sm">
             Discussion
           </h2>
@@ -371,10 +411,9 @@ function DiscussionPanel({
         )}
       </div>
 
-      {/* This is the ONLY scrollable region — the outer container's height
-          is fixed, so the page itself never grows past the player + panels
-          on the left. */}
-      <div className="flex-1 space-y-2.5 overflow-y-auto px-4 py-4 sm:px-5">
+      {/* This is the ONLY scrollable region — its own ref drives scroll
+          position directly, so the outer page never gets pulled along. */}
+      <div ref={scrollContainerRef} className="flex-1 space-y-2.5 overflow-y-auto px-4 py-4 sm:px-5">
         {comments === null ? (
           <div className="space-y-2.5">
             {[0, 1, 2].map((i) => (
@@ -389,7 +428,9 @@ function DiscussionPanel({
           </div>
         ) : comments.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <MessageSquare className="h-7 w-7 text-foreground/20" strokeWidth={1.5} />
+            <div className="clay-inset mb-1 grid h-12 w-12 place-items-center rounded-2xl">
+              <MessageSquare className="h-5 w-5 text-foreground/20" strokeWidth={1.5} />
+            </div>
             <p className="text-xs text-foreground/50">No comments yet — ask a question or share a thought.</p>
           </div>
         ) : (
@@ -437,7 +478,7 @@ function DiscussionPanel({
                 style={{ animationDelay: `${Math.min(i, 5) * 40}ms` }}
                 className={`animate-in fade-in slide-in-from-bottom-1 clay-inset flex gap-2.5 px-3.5 py-2.5 duration-300 ${
                   c.hidden ? "opacity-50" : ""
-                }`}
+                } ${c.isOwn ? "bg-[var(--sky-soft)]/20" : ""}`}
               >
                 <div className="clay flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
                   <User2 className="h-3 w-3 text-foreground/40" />
@@ -460,7 +501,6 @@ function DiscussionPanel({
             ),
           )
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="shrink-0 border-t border-foreground/10 p-3">
