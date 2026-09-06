@@ -490,6 +490,7 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
               value={lectureUrl}
               onChange={setLectureUrl}
               storagePath={`lectures/${batchId}`}
+              mentorToken={mentorToken}
             />
             <ClayField label="Available from">
               <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={inputClass} />

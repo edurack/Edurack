@@ -344,11 +344,13 @@ export function LectureUploadField({
   value,
   onChange,
   storagePath,
+  mentorToken,
 }: {
   label: string;
   value: string;
   onChange: (url: string) => void;
   storagePath: string;
+  mentorToken: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -363,7 +365,7 @@ export function LectureUploadField({
     setUploading(true);
     setProgress(0);
     try {
-      const url = await uploadMentorLecture(file, storagePath, setProgress);
+      const url = await uploadMentorLecture(mentorToken, file, storagePath, setProgress);
       onChange(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed. Check your connection and try again.");

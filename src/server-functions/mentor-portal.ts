@@ -65,6 +65,92 @@ async function requireOwnsBatch(mentorId: string, batchId: string) {
   return batch;
 }
 
+// ─── S3 Direct Upload (presigned URL) ───────────────────────────────────────
+// Mentor's browser uploads the file bytes straight to S3 — this server
+// function only ever sees the filename/content-type and hands back a
+// short-lived signed URL, so lecture videos never pass through our server.
+// NOTE: currently unused — images/files stayed on Supabase and lectures use
+// the multipart flow below instead. Left in place in case a future upload
+// type wants a simple single-PUT path without needing multipart.
+export const requestMentorUploadUrl = createServerFn({ method: "POST" })
+  .validator(
+    (data: { token: string; storagePath: string; fileName: string; contentType: string }) => data,
+  )
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+
+    if (!data.fileName.trim() || !data.contentType.trim()) {
+      throw new Error("Missing file name or content type.");
+    }
+
+    // Namespace every key under the mentor's own id + a timestamp so two
+    // mentors (or two uploads of the same filename) can never collide or
+    // overwrite each other, regardless of what storagePath the client passes.
+    const safeFileName = data.fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const key = `${data.storagePath}/${mentorId}/${Date.now()}-${safeFileName}`;
+
+    const { createPresignedUploadUrl } = await import("@/lib/s3");
+    const { uploadUrl, publicUrl } = await createPresignedUploadUrl(key, data.contentType);
+
+    return { uploadUrl, publicUrl };
+  });
+
+// ─── S3 Multipart Upload (lecture videos) ──────────────────────────────────
+// Same auth model as requestMentorUploadUrl: every phase re-verifies the
+// mentor's token, so a stolen uploadId is useless without a valid session.
+export const initiateMentorMultipartUpload = createServerFn({ method: "POST" })
+  .validator((data: { token: string; storagePath: string; fileName: string; contentType: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    if (!data.fileName.trim() || !data.contentType.trim()) {
+      throw new Error("Missing file name or content type.");
+    }
+
+    const safeFileName = data.fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const key = `${data.storagePath}/${mentorId}/${Date.now()}-${safeFileName}`;
+
+    const { createMultipartUpload } = await import("@/lib/s3");
+    const { uploadId } = await createMultipartUpload(key, data.contentType);
+
+    return { uploadId, key };
+  });
+
+export const getMentorUploadPartUrls = createServerFn({ method: "POST" })
+  .validator((data: { token: string; key: string; uploadId: string; partNumbers: number[] }) => data)
+  .handler(async ({ data }) => {
+    await requireMentor(data.token);
+    if (data.partNumbers.length === 0) return { urls: [] };
+
+    const { presignUploadPart } = await import("@/lib/s3");
+    const urls = await Promise.all(
+      data.partNumbers.map(async (partNumber) => ({
+        partNumber,
+        url: await presignUploadPart(data.key, data.uploadId, partNumber),
+      })),
+    );
+    return { urls };
+  });
+
+export const completeMentorMultipartUpload = createServerFn({ method: "POST" })
+  .validator(
+    (data: { token: string; key: string; uploadId: string; parts: { partNumber: number; etag: string }[] }) => data,
+  )
+  .handler(async ({ data }) => {
+    await requireMentor(data.token);
+    const { completeMultipartUpload } = await import("@/lib/s3");
+    const publicUrl = await completeMultipartUpload(data.key, data.uploadId, data.parts);
+    return { publicUrl };
+  });
+
+export const abortMentorMultipartUpload = createServerFn({ method: "POST" })
+  .validator((data: { token: string; key: string; uploadId: string }) => data)
+  .handler(async ({ data }) => {
+    await requireMentor(data.token);
+    const { abortMultipartUpload } = await import("@/lib/s3");
+    await abortMultipartUpload(data.key, data.uploadId);
+    return { ok: true };
+  });
+
 // ─── Targeted Batch Announcement Engine ─────────────────────────────────────
 // EmailJS broadcasting has been removed entirely — announcements are now
 // in-app only. In exchange, every post resolves and stores the actual
@@ -367,7 +453,7 @@ export const createMentorshipSession = createServerFn({ method: "POST" })
     }
 
     // track === "AsyncLecture"
-    if (!data.session.lectureUrl?.trim()) throw new Error("Provide the Cloudflare Stream / Bunny.net lecture URL.");
+    if (!data.session.lectureUrl?.trim()) throw new Error("Upload the lecture video first.");
     if (!data.session.lectureTitle?.trim()) throw new Error("Give this lecture a title.");
 
     const result = await db.collection("mentorshipSessions").insertOne({

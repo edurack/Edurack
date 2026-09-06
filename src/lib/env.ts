@@ -8,7 +8,11 @@ const REQUIRED_SERVER_ENV = [
   "RESEND_API_KEY",
   "EMAIL_FROM",
   "MONGODB_URI",
-  "S3_LECTURES_BUCKET",
+  "AWS_REGION",
+  "AWS_S3_BUCKET",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_CLOUDFRONT_DOMAIN",
 ] as const;
 
 let validated = false;
