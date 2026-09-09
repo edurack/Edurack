@@ -432,17 +432,20 @@ export type MentorEarningsOverview = {
 // ─── Module 15: Mentor "Sell Tests" ─────────────────────────────────────────
 // Standalone tests, independent of both Test Series and Mentorship
 // Batches. Full lifecycle:
-//   draft -> awaiting_payment -> awaiting_ingestion -> awaiting_mentor_review
+//   draft -> awaiting_ingestion -> awaiting_mentor_review
 //   -> awaiting_price_approval -> live
-// 1) Mentor creates + submits + pays the locked ₹1/question ingestion fee.
+// 1) Mentor creates + submits the test — no fee, no payment step.
 // 2) Admin ingests the questions (Question Ingestion-style flow, scoped to
 //    this test) until every subject's count matches its weightage.
 // 3) Admin sends it to the mentor for a content review.
 // 4) Mentor reviews the actual questions and approves the content.
 // 5) Admin sets/approves the final student-facing price -> test goes live.
+//    Edurack takes a flat MENTOR_TEST_STANDALONE_COMMISSION_PERCENT (5%)
+//    on every purchase of a live standalone test — that's the only charge.
 // Once live it can ALSO be attached to any of the mentor's own mentorship
 // batches — free for that batch's purchasers — while staying independently
 // purchasable by anyone else.
+
 export type SellTestsAccessSource = "admin_granted" | "none";
 
 export type SellTestsAccessStatus = {
@@ -452,12 +455,9 @@ export type SellTestsAccessStatus = {
   requestedAt: string | null;
 };
 
-export const INGESTION_FEE_PER_QUESTION = 1; // ₹1/question, locked, mentor pays this to Edurack
-
 export type SoldTestStatus =
   | "draft"                    // being filled in, not yet submitted
-  | "awaiting_payment"         // submitted, ingestion fee not yet paid
-  | "awaiting_ingestion"       // fee paid, admin needs to add the questions
+  | "awaiting_ingestion"       // submitted, admin needs to add the questions
   | "awaiting_mentor_review"   // admin finished ingestion, sent to mentor to review
   | "awaiting_price_approval"  // mentor approved content, admin needs to set the final price
   | "live";                    // approved, purchasable by students
@@ -472,9 +472,6 @@ export type SoldTest = {
   weightage: SubjectWeightage[];
   instructions: string;
   referencePdfUrl: string | null;
-  ingestionFeeAmount: number;             // totalQuestions * INGESTION_FEE_PER_QUESTION, locked at submission
-  ingestionFeePaid: boolean;
-  ingestionFeeRazorpayPaymentId: string | null;
   proposedPrice: number;                  // mentor's ask
   approvedPrice: number | null;           // null until admin approves; may differ from proposedPrice
   status: SoldTestStatus;

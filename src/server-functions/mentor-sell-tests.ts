@@ -1,11 +1,11 @@
 // Mentor-initiated "Sell Tests" flow: request access, create a standalone
-// test, pay the locked ₹1/question ingestion fee to Edurack via Razorpay
-// (the MENTOR is the payer here — the reverse direction from every other
-// Razorpay flow in this app, where students pay for content), wait for
-// admin to ingest the questions and send them over for review, approve the
-// content, then wait for admin to set/approve the final price. Once live,
-// it's sold through the EXISTING student purchase flow (payments.ts,
-// itemType "mentorTest") exactly like a standalone Test Series test.
+// test, submit it for Edurack to ingest the questions (no fee — Edurack
+// adds them for free), wait for admin to send it over for review, approve
+// the content, then wait for admin to set/approve the final price. Once
+// live, it's sold through the EXISTING student purchase flow (payments.ts,
+// itemType "mentorTest") exactly like a standalone Test Series test, with
+// Edurack taking a flat MENTOR_TEST_STANDALONE_COMMISSION_PERCENT (5%) on
+// every purchase — the only charge anywhere in this flow.
 //
 // Session verification duplicated from mentor-test-series.ts /
 // mentor-earnings.ts rather than imported — matches this codebase's
@@ -13,7 +13,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getDb } from "@/lib/mongo";
-import { INGESTION_FEE_PER_QUESTION } from "@/lib/admin-types";
 import type { SubjectWeightage, SoldTestInput, SellTestsAccessStatus, SoldTestIngestionProgress } from "@/lib/admin-types";
 
 function getSessionSecret(): string {
@@ -135,8 +134,6 @@ export const upsertSoldTest = createServerFn({ method: "POST" })
     if (!referencePdfUrl) throw new Error("Upload the question paper PDF for Edurack to ingest from.");
     if (!proposedPrice || proposedPrice <= 0) throw new Error("Enter the price you'd like to sell this test for.");
 
-    const ingestionFeeAmount = totalQuestions * INGESTION_FEE_PER_QUESTION;
-
     if (data.id) {
       const existing = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
       if (!existing || existing.mentorId !== mentorId) throw new Error("Test not found.");
@@ -155,7 +152,6 @@ export const upsertSoldTest = createServerFn({ method: "POST" })
             instructions: data.test.instructions.trim(),
             referencePdfUrl,
             proposedPrice,
-            ingestionFeeAmount,
             updatedAt: new Date(),
           },
         },
@@ -173,9 +169,6 @@ export const upsertSoldTest = createServerFn({ method: "POST" })
       weightage,
       instructions: data.test.instructions.trim(),
       referencePdfUrl,
-      ingestionFeeAmount,
-      ingestionFeePaid: false,
-      ingestionFeeRazorpayPaymentId: null,
       proposedPrice,
       approvedPrice: null,
       status: "draft",
@@ -223,8 +216,6 @@ export const listMySoldTests = createServerFn({ method: "POST" })
         weightage: (t.weightage as SubjectWeightage[]) ?? [],
         instructions: (t.instructions as string) ?? "",
         referencePdfUrl: (t.referencePdfUrl as string | null) ?? null,
-        ingestionFeeAmount: t.ingestionFeeAmount as number,
-        ingestionFeePaid: Boolean(t.ingestionFeePaid),
         proposedPrice: t.proposedPrice as number,
         approvedPrice: (t.approvedPrice as number | null) ?? null,
         status: t.status as string,
@@ -237,9 +228,10 @@ export const listMySoldTests = createServerFn({ method: "POST" })
     };
   });
 
-// Locks editing — a mentor can't change subjects/questions after paying
-// the fee for a different count.
-export const submitSoldTestForPayment = createServerFn({ method: "POST" })
+// Locks editing and sends the test straight into Edurack's ingestion
+// queue — no fee, no payment step. Previously this moved the test to
+// "awaiting_payment"; that status no longer exists.
+export const submitSoldTestForIngestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
@@ -248,86 +240,9 @@ export const submitSoldTestForPayment = createServerFn({ method: "POST" })
     const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
     if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
     if (test.status !== "draft") throw new Error("This test has already been submitted.");
-    await db.collection("soldTests").updateOne({ _id: new ObjectId(data.id) }, { $set: { status: "awaiting_payment" } });
-    return { ok: true };
-  });
-
-// ─── Mentor pays the ingestion fee via Razorpay ────────────────────────────
-function getRazorpayCredentials() {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) throw new Error("Server misconfigured: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set");
-  return { keyId, keySecret };
-}
-
-export const createIngestionFeeOrder = createServerFn({ method: "POST" })
-  .validator((data: { token: string; id: string }) => data)
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
-    if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
-    if (test.status !== "awaiting_payment") throw new Error("This test isn't awaiting payment.");
-    if (test.ingestionFeePaid) throw new Error("The ingestion fee has already been paid for this test.");
-
-    const { keyId, keySecret } = getRazorpayCredentials();
-    const { default: Razorpay } = await import("razorpay");
-    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-
-    const amountPaise = Math.round((test.ingestionFeeAmount as number) * 100);
-    const order = await razorpay.orders.create({
-      amount: amountPaise,
-      currency: "INR",
-      receipt: `ing_${data.id.slice(-12)}_${Date.now()}`,
-      notes: { mentorId, soldTestId: data.id, kind: "ingestion_fee" },
-    });
-
-    return {
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      keyId,
-      testName: test.name as string,
-      feeAmount: test.ingestionFeeAmount as number,
-    };
-  });
-
-// After successful payment, the test moves to "awaiting_ingestion" — this
-// is where it becomes visible in the admin's Sell Tests → Ingestion queue,
-// NOT straight to price approval (that was the bug: there was no step in
-// between for admin to actually add the questions).
-export const verifyIngestionFeePayment = createServerFn({ method: "POST" })
-  .validator(
-    (data: { token: string; id: string; razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
-      data,
-  )
-  .handler(async ({ data }) => {
-    const mentorId = await requireMentor(data.token);
-    const { keySecret } = getRazorpayCredentials();
-
-    const expectedSignature = createHmac("sha256", keySecret)
-      .update(`${data.razorpayOrderId}|${data.razorpayPaymentId}`)
-      .digest("hex");
-    if (expectedSignature !== data.razorpaySignature) {
-      throw new Error("Payment verification failed — signature mismatch.");
-    }
-
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
-    if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
-
     await db.collection("soldTests").updateOne(
       { _id: new ObjectId(data.id) },
-      {
-        $set: {
-          ingestionFeePaid: true,
-          ingestionFeeRazorpayPaymentId: data.razorpayPaymentId,
-          status: "awaiting_ingestion",
-          updatedAt: new Date(),
-        },
-      },
+      { $set: { status: "awaiting_ingestion", updatedAt: new Date() } },
     );
     return { ok: true };
   });
@@ -405,7 +320,6 @@ export const attachSoldTestToBatch = createServerFn({ method: "POST" })
 
     const test = await db.collection("soldTests").findOne({ _id: new ObjectId(data.id) });
     if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
-    if (!test.ingestionFeePaid) throw new Error("Pay the ingestion fee before appending this test to a batch.");
     if (test.status !== "live") throw new Error("This test isn't live yet — it needs admin's approval first.");
 
     const attached = (test.attachedBatchIds as string[]) ?? [];

@@ -11,7 +11,6 @@ import {
   Send,
   Lock,
   CheckCircle2,
-  CreditCard,
   Link2,
   Clock3,
   Eye,
@@ -23,9 +22,7 @@ import {
   requestSellTestsAccess,
   upsertSoldTest,
   listMySoldTests,
-  submitSoldTestForPayment,
-  createIngestionFeeOrder,
-  verifyIngestionFeePayment,
+  submitSoldTestForIngestion,
   listSoldTestQuestionsForMentorReview,
   approveSoldTestContent,
   attachSoldTestToBatch,
@@ -43,31 +40,6 @@ import {
   FileUploadField,
   inputClass,
 } from "@/components/mentor-portal-ui";
-
-declare global {
-  interface Window {
-    Razorpay: new (options: Record<string, unknown>) => { open: () => void };
-  }
-}
-
-const RAZORPAY_SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-
-function loadRazorpayScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) return resolve();
-    const existing = document.querySelector(`script[src="${RAZORPAY_SCRIPT_SRC}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("Failed to load Razorpay checkout script")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = RAZORPAY_SCRIPT_SRC;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Razorpay checkout script"));
-    document.body.appendChild(script);
-  });
-}
 
 function parseSubjectTags(raw: string): string[] {
   const seen = new Set<string>();
@@ -91,11 +63,9 @@ type SoldTestRow = {
   weightage: SubjectWeightage[];
   instructions: string;
   referencePdfUrl: string | null;
-  ingestionFeeAmount: number;
-  ingestionFeePaid: boolean;
   proposedPrice: number;
   approvedPrice: number | null;
-  status: "draft" | "awaiting_payment" | "awaiting_ingestion" | "awaiting_mentor_review" | "awaiting_price_approval" | "live";
+  status: "draft" | "awaiting_ingestion" | "awaiting_mentor_review" | "awaiting_price_approval" | "live";
   sentToMentorAt: string | null;
   contentApprovedByMentor: boolean;
   mentorReviewedAt: string | null;
@@ -105,14 +75,13 @@ type SoldTestRow = {
 
 const STATUS_META: Record<SoldTestRow["status"], { label: string; tone: string }> = {
   draft: { label: "Draft", tone: "bg-foreground/5 text-foreground/60" },
-  awaiting_payment: { label: "Awaiting ingestion fee", tone: "bg-[var(--coral-soft)]/60 text-foreground" },
   awaiting_ingestion: { label: "Edurack is adding questions", tone: "bg-[var(--sky-soft)] text-foreground" },
   awaiting_mentor_review: { label: "Ready for your review", tone: "bg-[var(--lemon-soft)]/70 text-foreground" },
   awaiting_price_approval: { label: "Awaiting price approval", tone: "bg-[var(--sky-soft)] text-foreground" },
   live: { label: "Live for sale", tone: "bg-[var(--mint-soft)] text-foreground" },
 };
 
-export function MentorSellTestsModule({ mentorToken, mentorEmail }: { mentorToken: string; mentorEmail?: string | null }) {
+export function MentorSellTestsModule({ mentorToken }: { mentorToken: string; mentorEmail?: string | null }) {
   const [status, setStatus] = useState<SellTestsAccessStatus | null>(null);
   const [requesting, setRequesting] = useState(false);
 
@@ -140,7 +109,7 @@ export function MentorSellTestsModule({ mentorToken, mentorEmail }: { mentorToke
     <div>
       <ModuleHeader
         title="Sell Tests"
-        subtitle="Sell individual tests on their own — to anyone, whether or not they've purchased your batch or test series. Pay a one-time question-ingestion fee, review the content once Edurack adds it, and go live once admin approves the price."
+        subtitle="Sell individual tests on their own — to anyone, whether or not they've purchased your batch or test series. Submit your test for Edurack to add the questions, review the content once it's added, and go live once admin approves the price."
       />
 
       {status === null ? (
@@ -149,8 +118,8 @@ export function MentorSellTestsModule({ mentorToken, mentorEmail }: { mentorToke
         <Panel icon={Lock} title="Not enabled yet">
           <p className="mb-4 text-sm text-foreground/70">
             Sell Tests access lets you list individual tests for sale — students can buy just that one test without
-            purchasing your batch or a test series. You pay a locked ₹1-per-question ingestion fee once per test;
-            Edurack takes a flat 5% platform commission on every student purchase after that.
+            purchasing your batch or a test series. Edurack adds the questions for you at no extra cost — you're only
+            ever charged a flat 5% platform commission on each student purchase.
           </p>
           {status.requested ? (
             <p className="clay-inset inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-foreground/60">
@@ -169,13 +138,13 @@ export function MentorSellTestsModule({ mentorToken, mentorEmail }: { mentorToke
           )}
         </Panel>
       ) : (
-        <SoldTestsScreen mentorToken={mentorToken} mentorEmail={mentorEmail} />
+        <SoldTestsScreen mentorToken={mentorToken} />
       )}
     </div>
   );
 }
 
-function SoldTestsScreen({ mentorToken, mentorEmail }: { mentorToken: string; mentorEmail?: string | null }) {
+function SoldTestsScreen({ mentorToken }: { mentorToken: string }) {
   const [tests, setTests] = useState<SoldTestRow[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [reviewingTestId, setReviewingTestId] = useState<string | null>(null);
@@ -250,7 +219,6 @@ function SoldTestsScreen({ mentorToken, mentorEmail }: { mentorToken: string; me
                 key={t.id}
                 test={t}
                 mentorToken={mentorToken}
-                mentorEmail={mentorEmail}
                 onChanged={refresh}
                 onReview={() => setReviewingTestId(t.id)}
               />
@@ -265,75 +233,34 @@ function SoldTestsScreen({ mentorToken, mentorEmail }: { mentorToken: string; me
 function SoldTestListItem({
   test,
   mentorToken,
-  mentorEmail,
   onChanged,
   onReview,
 }: {
   test: SoldTestRow;
   mentorToken: string;
-  mentorEmail?: string | null;
   onChanged: () => void;
   onReview: () => void;
 }) {
-  const [paying, setPaying] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [showAttach, setShowAttach] = useState(false);
 
-const meta = STATUS_META[test.status] ?? {
-  label: "Unknown status",
-  tone: "bg-foreground/5 text-foreground/60",
-};  const percent = test.totalQuestions > 0 ? Math.min(100, Math.round((test.progress.totalAdded / test.totalQuestions) * 100)) : 0;
+  const meta = STATUS_META[test.status] ?? {
+    label: "Unknown status",
+    tone: "bg-foreground/5 text-foreground/60",
+  };
+  const percent = test.totalQuestions > 0 ? Math.min(100, Math.round((test.progress.totalAdded / test.totalQuestions) * 100)) : 0;
 
-  async function handleSubmitForPayment() {
-    setPayError(null);
+  async function handleSubmitForIngestion() {
+    setSubmitError(null);
+    setSubmitting(true);
     try {
-      await submitSoldTestForPayment({ data: { token: mentorToken, id: test.id } });
+      await submitSoldTestForIngestion({ data: { token: mentorToken, id: test.id } });
       onChanged();
     } catch (err) {
-      setPayError(err instanceof Error ? err.message : "Could not submit. Try again.");
-    }
-  }
-
-  async function handlePayIngestionFee() {
-    setPayError(null);
-    setPaying(true);
-    try {
-      const order = await createIngestionFeeOrder({ data: { token: mentorToken, id: test.id } });
-      await loadRazorpayScript();
-
-      const razorpay = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.orderId,
-        name: "Edurack",
-        description: `Question ingestion fee — ${order.testName}`,
-        prefill: { email: mentorEmail ?? undefined },
-        theme: { color: "#0284c7" },
-        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            await verifyIngestionFeePayment({
-              data: {
-                token: mentorToken,
-                id: test.id,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              },
-            });
-            onChanged();
-          } catch {
-            setPayError("Payment succeeded but verification failed. Contact support with your payment ID.");
-          } finally {
-            setPaying(false);
-          }
-        },
-        modal: { ondismiss: () => setPaying(false) },
-      });
-      razorpay.open();
-    } catch (err) {
-      setPayError(err instanceof Error ? err.message : "Could not start payment. Try again.");
-      setPaying(false);
+      setSubmitError(err instanceof Error ? err.message : "Could not submit. Try again.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -360,13 +287,10 @@ const meta = STATUS_META[test.status] ?? {
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-foreground/50">
             <span className="inline-flex items-center gap-1">
-              <IndianRupee className="h-3 w-3" /> Ingestion fee: ₹{test.ingestionFeeAmount}{" "}
-              {test.ingestionFeePaid ? "(paid)" : "(unpaid)"}
-            </span>
-            <span className="inline-flex items-center gap-1">
               <IndianRupee className="h-3 w-3" /> Price: ₹{test.approvedPrice ?? test.proposedPrice}
               {test.approvedPrice === null && " (proposed, awaiting admin)"}
             </span>
+            <span className="inline-flex items-center gap-1 text-foreground/40">5% platform commission on every purchase</span>
           </p>
         </div>
       </div>
@@ -385,25 +309,17 @@ const meta = STATUS_META[test.status] ?? {
         </div>
       </div>
 
-      {payError && <p className="mt-2 text-xs font-medium text-rose-600">{payError}</p>}
+      {submitError && <p className="mt-2 text-xs font-medium text-rose-600">{submitError}</p>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {test.status === "draft" && (
           <button
-            onClick={handleSubmitForPayment}
-            className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold"
-          >
-            <Send className="h-3.5 w-3.5" /> Submit &amp; continue to payment
-          </button>
-        )}
-        {test.status === "awaiting_payment" && (
-          <button
-            onClick={handlePayIngestionFee}
-            disabled={paying}
+            onClick={handleSubmitForIngestion}
+            disabled={submitting}
             className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-70"
           >
-            {paying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
-            Pay ₹{test.ingestionFeeAmount} ingestion fee
+            {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            Submit for ingestion
           </button>
         )}
         {test.status === "awaiting_ingestion" && (
@@ -504,7 +420,7 @@ function ContentReviewScreen({
         <EmptyState message="No questions found for this test." />
       ) : (
         <div className="space-y-4">
-          {questions.map((q, i) => (
+          {questions.map((q) => (
             <div key={q.id} className="clay p-4 sm:p-5">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="clay-chip rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-foreground/70">
@@ -715,7 +631,6 @@ function NewSoldTestForm({
   const [error, setError] = useState<string | null>(null);
 
   const parsedSubjects = parseSubjectTags(subjectTagsRaw);
-  const questionsNum = Number(totalQuestions) || 0;
 
   useEffect(() => {
     setWeightageMap((prev) => {
@@ -832,7 +747,7 @@ function NewSoldTestForm({
 
         <ClayField
           label="Price you'd like to sell this test for"
-          hint="Edurack will review and approve this before it goes live — they may adjust it."
+          hint="Edurack will review and approve this before it goes live — they may adjust it. Edurack takes a flat 5% commission on every purchase; there's no other fee."
         >
           <div className="relative">
             <IndianRupee className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
@@ -845,13 +760,6 @@ function NewSoldTestForm({
             />
           </div>
         </ClayField>
-
-        {questionsNum > 0 && (
-          <p className="clay-inset rounded-2xl px-4 py-2.5 text-xs text-foreground/60">
-            Ingestion fee for this test: <span className="font-semibold text-foreground">₹{questionsNum}</span> (₹1/question,
-            paid once, before Edurack begins adding your questions)
-          </p>
-        )}
 
         {error && <ErrorBanner message={error} />}
 

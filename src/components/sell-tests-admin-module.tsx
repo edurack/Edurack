@@ -99,7 +99,6 @@ type SoldTestForApproval = {
   proposedPrice: number;
   approvedPrice: number | null;
   status: string;
-  ingestionFeeAmount: number;
   contentApprovedByMentor: boolean;
   mentorReviewedAt: string | null;
   createdAt: string | null;
@@ -329,8 +328,8 @@ export function SellTestsAdminModule({ adminUser }: { adminUser: AdminUser }) {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">{t.name}</p>
                         <p className="text-xs text-foreground/50">
-                          {t.mentorName} · {t.totalQuestions} questions · Ingestion fee: ₹{t.ingestionFeeAmount}
-                          {t.referencePdfUrl && (
+                            {t.mentorName} · {t.totalQuestions} questions
+                            {t.referencePdfUrl && (
                             <>
                               {" · "}
                               <a href={t.referencePdfUrl} target="_blank" rel="noreferrer" className="text-[var(--sky-deep)] hover:underline">

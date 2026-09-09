@@ -1856,7 +1856,6 @@ export const listSoldTestsForApproval = createServerFn({ method: "GET" })
         proposedPrice: r.proposedPrice as number,
         approvedPrice: (r.approvedPrice as number | null) ?? null,
         status: r.status as string,
-        ingestionFeeAmount: r.ingestionFeeAmount as number,
         contentApprovedByMentor: Boolean(r.contentApprovedByMentor),
         mentorReviewedAt: r.mentorReviewedAt instanceof Date ? r.mentorReviewedAt.toISOString() : null,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,

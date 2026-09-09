@@ -18,6 +18,7 @@ import {
   ClipboardList,
   Lock,
   Loader2,
+  Receipt,
 } from "lucide-react";
 import {
   listMyAssignedBatches,
@@ -284,6 +285,8 @@ export function MentorOverviewModule({
 }
 
 // ─── Earnings section ───────────────────────────────────────────────────
+// ─── Earnings section — total earned, total payments received, platform
+// commission taken, and every purchase behind those numbers. ───────────
 function EarningsSection({ mentorToken }: { mentorToken: string }) {
   const [overview, setOverview] = useState<MentorEarningsOverview | null>(null);
 
@@ -295,21 +298,40 @@ function EarningsSection({ mentorToken }: { mentorToken: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mentorToken]);
 
+  const totalCommission = overview ? overview.purchases.reduce((sum, p) => sum + p.platformCommission, 0) : 0;
+
   return (
-    <Panel icon={IndianRupee} title="Earnings">
+    <Panel icon={IndianRupee} title="Earnings & Payments">
       {overview === null ? (
         <LoadingBlock compact />
       ) : overview.purchases.length === 0 ? (
         <EmptyState icon={IndianRupee} message="No purchases recorded against your batches yet." />
       ) : (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-3">
-            <StatChip icon={TrendingUp} label="Net earned (all-time)" value={`₹${overview.totalNetEarned.toLocaleString("en-IN")}`} tone="mint" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatChip
-              icon={IndianRupee}
-              label={`Gross · ${PLATFORM_COMMISSION_PERCENT}% platform fee`}
+              icon={TrendingUp}
+              label="Total earnings (net)"
+              value={`₹${overview.totalNetEarned.toLocaleString("en-IN")}`}
+              tone="mint"
+            />
+            <StatChip
+              icon={Receipt}
+              label="Total payments received"
               value={`₹${overview.totalGross.toLocaleString("en-IN")}`}
               tone="sky"
+            />
+            <StatChip
+              icon={IndianRupee}
+              label="Platform commission taken"
+              value={`₹${totalCommission.toLocaleString("en-IN")}`}
+              tone="coral"
+            />
+            <StatChip
+              icon={ClipboardList}
+              label="Total transactions"
+              value={overview.purchases.length}
+              tone="neutral"
             />
           </div>
 
@@ -341,16 +363,17 @@ function EarningsSection({ mentorToken }: { mentorToken: string }) {
 
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
-              Purchase records
+              Payment records
             </p>
             <div className="clay-inset max-h-72 overflow-y-auto rounded-2xl">
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 bg-[var(--sky-soft)]/40 text-[10px] font-semibold uppercase tracking-wide text-foreground/50">
                   <tr>
                     <th className="px-4 py-2.5">Student</th>
-                    <th className="px-4 py-2.5">Batch</th>
-                    <th className="px-4 py-2.5">Amount</th>
-                    <th className="px-4 py-2.5">Net earned</th>
+                    <th className="px-4 py-2.5">Batch / Test</th>
+                    <th className="px-4 py-2.5">Amount paid</th>
+                    <th className="px-4 py-2.5">Commission</th>
+                    <th className="px-4 py-2.5">You earned</th>
                     <th className="px-4 py-2.5">Date</th>
                   </tr>
                 </thead>
@@ -360,6 +383,7 @@ function EarningsSection({ mentorToken }: { mentorToken: string }) {
                       <td className="px-4 py-2.5 font-medium text-foreground">{p.studentName}</td>
                       <td className="px-4 py-2.5 text-foreground/70">{p.batchName}</td>
                       <td className="px-4 py-2.5 text-foreground/70">₹{p.amount.toLocaleString("en-IN")}</td>
+                      <td className="px-4 py-2.5 text-foreground/50">₹{p.platformCommission.toLocaleString("en-IN")}</td>
                       <td className="px-4 py-2.5 font-semibold text-[var(--sky-deep)]">₹{p.netEarned.toLocaleString("en-IN")}</td>
                       <td className="px-4 py-2.5 text-xs text-foreground/40">
                         {p.purchasedAt ? new Date(p.purchasedAt).toLocaleDateString() : "—"}
