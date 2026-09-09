@@ -1,10 +1,20 @@
 // A mentor's test series is NOT a separate product — it's tests appended
 // into ONE auto-created Bundle per (mentor, batch) pair, named
-// "{Mentor} {Batch} Test Series". Admin ingests questions into it via the
-// normal Test Core / Question Ingestion flow. Students access it two ways:
-// free tests unlock for anyone who purchased the batch; paid tests can be
-// bought standalone by anyone, batch purchase not required — mirrored in
-// the exam-engine access check (not shown here — see note at bottom).
+// "{Mentor} {Batch} Test Series". That bundle is marked kind:
+// "mentorBatchSeries" and is filtered out of every public/student-facing
+// bundle listing (see catalog.ts / batch-hub.ts) — it exists purely as an
+// internal container so admin can find and ingest into it, never as a
+// browsable or purchasable product in its own right.
+//
+// Every test here is free-with-batch, full stop — there is no per-test
+// "sell individually" option in Test Series (that's what Sell Tests is
+// for, a separate product). A test only becomes visible/attemptable to
+// students once it's fully ingested by Edurack AND its scheduled liveStart
+// has arrived — computed fresh on every read (see
+// listMentorBatchSeriesTestsForStudent in batch-hub.ts), never through a
+// manual "publish" step. The mentor's only obligation is submitting the
+// test — PDF included — at least 24 hours (ideally 24-48) before its
+// liveStart, so Edurack has time to add the questions.
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -15,6 +25,9 @@ import type {
   MentorTestStudentResult,
   MentorTestIngestionProgress,
 } from "@/lib/admin-types";
+
+const MIN_LEAD_TIME_HOURS = 24;
+const MIN_LEAD_TIME_MS = MIN_LEAD_TIME_HOURS * 60 * 60 * 1000;
 
 function getSessionSecret(): string {
   const secret = process.env.MENTOR_SESSION_SECRET;
@@ -84,7 +97,10 @@ async function getOrCreateBatchSeriesBundle(mentorId: string, batchId: string): 
     exam: batch.exam,
     domainSubject: null,
     features: [],
-    // Not sold as a whole — placeholders only, admin UI hides these for this kind.
+    // Never sold as a whole, never publicly listed — placeholders only.
+    // catalog.ts and batch-hub.ts's public read paths explicitly exclude
+    // kind: "mentorBatchSeries" from every student-facing listing/detail
+    // call, so this bundle is reachable only through admin tooling.
     sellingPrice: 0,
     crossedPrice: 0,
     uploadWindowStart: now.toISOString().slice(0, 10),
@@ -102,6 +118,7 @@ async function getOrCreateBatchSeriesBundle(mentorId: string, batchId: string): 
 }
 
 // ─── Append a test to this mentor's batch series ───────────────────────────
+// No `price` field anymore — every Test Series test is free-with-batch.
 type AppendTestInput = {
   batchId: string;
   name: string;
@@ -113,7 +130,6 @@ type AppendTestInput = {
   liveEnd: string;
   instructions: string;
   referencePdfUrl: string | null;
-  price: number | null; // null/0 = free
 };
 
 function validateWeightage(totalQuestions: number, subjects: string[], weightage: SubjectWeightage[]) {
@@ -127,6 +143,15 @@ function validateWeightage(totalQuestions: number, subjects: string[], weightage
   }
 }
 
+function validateLeadTime(liveStart: string) {
+  const leadMs = new Date(liveStart).getTime() - Date.now();
+  if (leadMs < MIN_LEAD_TIME_MS) {
+    throw new Error(
+      `Set the live start at least ${MIN_LEAD_TIME_HOURS} hours from now — ideally 24–48 hours — so Edurack has time to add the questions before this test needs to go live.`,
+    );
+  }
+}
+
 export const appendMentorTest = createServerFn({ method: "POST" })
   .validator((data: { token: string; test: AppendTestInput }) => data)
   .handler(async ({ data }) => {
@@ -134,15 +159,15 @@ export const appendMentorTest = createServerFn({ method: "POST" })
     await requireTestSeriesAccess(mentorId);
     await requireOwnsBatch(mentorId, data.test.batchId);
 
-    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd, price } = data.test;
+    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd } = data.test;
     if (!name.trim()) throw new Error("Give this test a name.");
     if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter a valid total question count.");
     if (!durationMinutes || durationMinutes <= 0) throw new Error("Enter a valid test duration.");
     validateWeightage(totalQuestions, subjects, weightage);
     if (!liveStart || !liveEnd) throw new Error("Set both the live start and end window.");
     if (new Date(liveEnd) <= new Date(liveStart)) throw new Error("Live end must be after live start.");
+    validateLeadTime(liveStart);
     if (!data.test.referencePdfUrl) throw new Error("Upload the question paper PDF for Edurack to ingest from.");
-    if (price != null && price < 0) throw new Error("Price can't be negative.");
 
     const bundleId = await getOrCreateBatchSeriesBundle(mentorId, data.test.batchId);
 
@@ -159,8 +184,8 @@ export const appendMentorTest = createServerFn({ method: "POST" })
       instructions: data.test.instructions.trim() || "Standard exam rules apply.",
       referencePdfUrl: data.test.referencePdfUrl,
       mentorId,
-      price: price && price > 0 ? price : null,
-      publishedToBatch: false, // never visible to students until mentor explicitly publishes
+      price: null, // Test Series tests are always free with the batch
+      publishedToBatch: true, // not hidden — visibility is otherwise fully automatic (see batch-hub.ts)
       createdAt: new Date(),
     });
     return { ok: true, id: String(result.insertedId), bundleId };
@@ -176,13 +201,13 @@ export const updateMentorTest = createServerFn({ method: "POST" })
     const existing = await db.collection("testCores").findOne({ _id: new ObjectId(data.id) });
     if (!existing || existing.mentorId !== mentorId) throw new Error("Test not found.");
 
-    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd, price } = data.test;
+    const { name, totalQuestions, durationMinutes, subjects, weightage, liveStart, liveEnd } = data.test;
     if (!name.trim()) throw new Error("Give this test a name.");
     if (!totalQuestions || totalQuestions <= 0) throw new Error("Enter a valid total question count.");
     if (!durationMinutes || durationMinutes <= 0) throw new Error("Enter a valid test duration.");
     validateWeightage(totalQuestions, subjects, weightage);
     if (new Date(liveEnd) <= new Date(liveStart)) throw new Error("Live end must be after live start.");
-    if (price != null && price < 0) throw new Error("Price can't be negative.");
+    validateLeadTime(liveStart);
 
     await db.collection("testCores").updateOne(
       { _id: new ObjectId(data.id) },
@@ -197,16 +222,21 @@ export const updateMentorTest = createServerFn({ method: "POST" })
           liveEnd,
           instructions: data.test.instructions.trim(),
           referencePdfUrl: data.test.referencePdfUrl,
-          price: price && price > 0 ? price : null,
+          price: null,
         },
       },
     );
     return { ok: true };
   });
 
-// ─── The publish gate — nothing is visible to students until this fires ───
-export const setTestPublishedToBatch = createServerFn({ method: "POST" })
-  .validator((data: { token: string; id: string; published: boolean }) => data)
+// ─── Mentor-controlled kill switch — hide a test from students even after
+// it would otherwise be ready. This is NOT a "publish" step (there is no
+// publish step anymore); going live is fully automatic based on ingestion
+// completeness + liveStart, computed in batch-hub.ts. This only ever moves
+// a test from "visible" to "hidden" or back — it can be toggled anytime,
+// no ingestion-completeness requirement.
+export const setMentorTestVisibility = createServerFn({ method: "POST" })
+  .validator((data: { token: string; id: string; hidden: boolean }) => data)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
     const { ObjectId } = await import("mongodb");
@@ -215,20 +245,16 @@ export const setTestPublishedToBatch = createServerFn({ method: "POST" })
     const test = await db.collection("testCores").findOne({ _id: new ObjectId(data.id) });
     if (!test || test.mentorId !== mentorId) throw new Error("Test not found.");
 
-    if (data.published) {
-      const added = await db.collection("questions").countDocuments({ testId: data.id });
-      if (added < (test.totalQuestions as number)) {
-        throw new Error(
-          `Edurack has only added ${added} of ${test.totalQuestions} questions so far — you can publish once ingestion is complete.`,
-        );
-      }
-    }
-
-    await db.collection("testCores").updateOne({ _id: new ObjectId(data.id) }, { $set: { publishedToBatch: data.published } });
+    await db.collection("testCores").updateOne(
+      { _id: new ObjectId(data.id) },
+      { $set: { publishedToBatch: !data.hidden } },
+    );
     return { ok: true };
   });
 
-// ─── List every test appended for one batch, with live ingestion progress ─
+// ─── List every test appended for one batch, with live ingestion progress
+// and a computed isReady flag — mentor sees the exact same "coming soon /
+// live" status students do, without needing to take any action to flip it. ─
 export const listMyBatchSeriesTests = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -252,6 +278,8 @@ export const listMyBatchSeriesTests = createServerFn({ method: "POST" })
       .find({ testId: { $in: testIds } }, { projection: { testId: 1, subject: 1 } })
       .toArray();
 
+    const now = Date.now();
+
     const progress: MentorTestIngestionProgress[] = tests.map((t) => {
       const testId = String(t._id);
       const weightage = (t.weightage as SubjectWeightage[]) ?? [];
@@ -272,21 +300,25 @@ export const listMyBatchSeriesTests = createServerFn({ method: "POST" })
     });
 
     return {
-      tests: tests.map((t, i) => ({
-        id: String(t._id),
-        name: t.name as string,
-        totalQuestions: t.totalQuestions as number,
-        durationMinutes: t.durationMinutes as number,
-        subjects: (t.subjects as string[]) ?? [],
-        weightage: (t.weightage as SubjectWeightage[]) ?? [],
-        liveStart: t.liveStart as string,
-        liveEnd: t.liveEnd as string,
-        instructions: (t.instructions as string) ?? "",
-        referencePdfUrl: (t.referencePdfUrl as string | null) ?? null,
-        price: (t.price as number | null) ?? null,
-        publishedToBatch: Boolean(t.publishedToBatch),
-        progress: progress[i],
-      })),
+      tests: tests.map((t, i) => {
+        const ingestionComplete = progress[i].totalAdded >= (t.totalQuestions as number);
+        const isReady = ingestionComplete && now >= new Date(t.liveStart as string).getTime();
+        return {
+          id: String(t._id),
+          name: t.name as string,
+          totalQuestions: t.totalQuestions as number,
+          durationMinutes: t.durationMinutes as number,
+          subjects: (t.subjects as string[]) ?? [],
+          weightage: (t.weightage as SubjectWeightage[]) ?? [],
+          liveStart: t.liveStart as string,
+          liveEnd: t.liveEnd as string,
+          instructions: (t.instructions as string) ?? "",
+          referencePdfUrl: (t.referencePdfUrl as string | null) ?? null,
+          hidden: t.publishedToBatch === false,
+          isReady,
+          progress: progress[i],
+        };
+      }),
     };
   });
 

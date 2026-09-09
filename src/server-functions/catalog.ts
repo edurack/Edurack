@@ -26,7 +26,10 @@ export const listPublicBundles = createServerFn({ method: "GET" })
     const db = await getDb();
     const profile = await db.collection("profiles").findOne({ uid: decoded.uid });
     const studentDomainSubjects = new Set((profile?.cuetDomainSubjects as string[]) ?? []);
-    const rows = await db.collection("bundles").find({}).sort({ createdAt: -1 }).toArray();
+    // Mentor batch-series bundles are internal containers, not sellable
+    // products — a mentor's own test-series tests live here, but this
+    // bundle itself must never appear in any student-facing browse list.
+    const rows = await db.collection("bundles").find({ kind: { $ne: "mentorBatchSeries" } }).sort({ createdAt: -1 }).toArray();
 
     return {
       bundles: rows
@@ -83,7 +86,7 @@ export const getPublicBundle = createServerFn({ method: "GET" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const r = await db.collection("bundles").findOne({ _id: new ObjectId(data.id) });
-    if (!r) return { bundle: null };
+    if (!r || r.kind === "mentorBatchSeries") return { bundle: null };
     return {
       bundle: {
         id: String(r._id),
@@ -147,7 +150,11 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
+    const { ObjectId } = await import("mongodb");
     const db = await getDb();
+    const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
+    if (!bundle || bundle.kind === "mentorBatchSeries") return { tests: [] };
+
     const rows = await db
       .collection("testCores")
       .find({ bundleId: data.bundleId })
@@ -158,19 +165,13 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         name: r.name as string,
         totalQuestions: r.totalQuestions as number,
-        // FIXED: this used to read `r.timeLimitMinutes`, a field that was
-        // never actually written anywhere — testCores stores the duration
-        // as `durationMinutes` (see admin.ts createTestCore/updateTestCore
-        // and admin-types.ts TestCore). That mismatch meant this always
-        // silently fell through to the `?? 180` fallback, regardless of
-        // what duration was set in Test Core. Reading the real field now.
         timeLimitMinutes: (r.durationMinutes as number) ?? 180,
         liveStart: r.liveStart as string,
         liveEnd: r.liveEnd as string,
       })),
     };
   });
-
+  
 export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {

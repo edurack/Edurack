@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Loader2,
   Plus,
@@ -13,17 +13,19 @@ import {
   Trophy,
   CalendarRange,
   ListChecks,
-  IndianRupee,
-  Gift,
   Send,
   Lock,
   CheckCircle2,
   RefreshCw,
+  Clock3,
+  EyeOff,
+  Eye,
+  Info,
 } from "lucide-react";
 import {
   appendMentorTest,
   updateMentorTest,
-  setTestPublishedToBatch,
+  setMentorTestVisibility,
   listMyBatchSeriesTests,
   getMentorTestResults,
 } from "@/server-functions/mentor-test-series";
@@ -73,8 +75,8 @@ type TestRow = {
   liveEnd: string;
   instructions: string;
   referencePdfUrl: string | null;
-  price: number | null;
-  publishedToBatch: boolean;
+  hidden: boolean;
+  isReady: boolean;
   progress: MentorTestIngestionProgress;
 };
 
@@ -108,7 +110,7 @@ export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string })
     <div>
       <ModuleHeader
         title="Test Series"
-        subtitle="Offer tests to your own batch's students — free with the batch, or sold individually. Edurack ingests the questions from your PDF; you decide when it goes live."
+        subtitle="Offer tests to your own batch's students, free with the batch. Edurack ingests the questions from your PDF, and the test goes live automatically at its scheduled time — no publishing step needed."
       />
 
       {status === null ? (
@@ -116,9 +118,9 @@ export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string })
       ) : !status.hasAccess ? (
         <Panel icon={Lock} title="Not enabled yet">
           <p className="mb-4 text-sm text-foreground/70">
-            Test series access lets you append tests to your mentorship batch — Edurack ingests the questions from a
-            PDF you provide, and you decide whether each test is free for your batch students or sold individually,
-            and when it goes live.
+            Test series access lets you append free tests to your mentorship batch — Edurack ingests the questions
+            from a PDF you provide, and each test automatically becomes available to your students the moment it's
+            fully ingested and its scheduled start time arrives.
           </p>
           {status.requested ? (
             <p className="clay-inset inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-foreground/60">
@@ -298,24 +300,29 @@ function TestListItem({
   onOpenResults: () => void;
   onChanged: () => void;
 }) {
-  const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
-  const ready = test.progress.totalAdded >= test.totalQuestions;
   const percent = test.totalQuestions > 0 ? Math.min(100, Math.round((test.progress.totalAdded / test.totalQuestions) * 100)) : 0;
 
-  async function togglePublish() {
-    setPublishError(null);
-    setPublishing(true);
+  async function toggleHidden() {
+    setToggleError(null);
+    setToggling(true);
     try {
-      await setTestPublishedToBatch({ data: { token: mentorToken, id: test.id, published: !test.publishedToBatch } });
+      await setMentorTestVisibility({ data: { token: mentorToken, id: test.id, hidden: !test.hidden } });
       onChanged();
     } catch (err) {
-      setPublishError(err instanceof Error ? err.message : "Could not update. Try again.");
+      setToggleError(err instanceof Error ? err.message : "Could not update. Try again.");
     } finally {
-      setPublishing(false);
+      setToggling(false);
     }
   }
+
+  const statusBadge = test.hidden
+    ? { label: "Hidden by you", tone: "bg-foreground/10 text-foreground/60" }
+    : test.isReady
+      ? { label: "Live to students", tone: "bg-[var(--mint-soft)] text-foreground" }
+      : { label: "Coming soon", tone: "bg-[var(--sky-soft)] text-foreground" };
 
   return (
     <li className="clay-inset rounded-2xl px-4 py-3.5">
@@ -323,21 +330,8 @@ function TestListItem({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-semibold text-foreground">{test.name}</p>
-            {test.price ? (
-              <span className="clay-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/70">
-                <IndianRupee className="h-2.5 w-2.5" /> {test.price}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                <Gift className="h-2.5 w-2.5" /> Free with batch
-              </span>
-            )}
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                test.publishedToBatch ? "bg-[var(--sky-soft)] text-foreground" : "bg-[var(--coral-soft)]/60 text-foreground"
-              }`}
-            >
-              {test.publishedToBatch ? "Live to students" : "Not sent to batch"}
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusBadge.tone}`}>
+              {statusBadge.label}
             </span>
           </div>
           <p className="mt-1 text-xs text-foreground/50">
@@ -373,7 +367,7 @@ function TestListItem({
         </div>
         <div className="clay-inset h-2 overflow-hidden rounded-full">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${ready ? "bg-[var(--mint-soft)]" : "bg-[var(--sky-deep)]"}`}
+            className={`h-full rounded-full transition-all duration-500 ${test.isReady ? "bg-[var(--mint-soft)]" : "bg-[var(--sky-deep)]"}`}
             style={{ width: `${percent}%` }}
           />
         </div>
@@ -393,23 +387,28 @@ function TestListItem({
         )}
       </div>
 
-      {publishError && <p className="mt-2 text-xs font-medium text-rose-600">{publishError}</p>}
+      {toggleError && <p className="mt-2 text-xs font-medium text-rose-600">{toggleError}</p>}
 
-      <div className="mt-3">
-        {!ready && !test.publishedToBatch ? (
-          <p className="text-[11px] text-foreground/40">Publish unlocks once Edurack finishes adding all questions.</p>
-        ) : (
-          <button
-            onClick={togglePublish}
-            disabled={publishing || (!ready && !test.publishedToBatch)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold disabled:opacity-50 ${
-              test.publishedToBatch ? "clay-btn-ghost text-foreground/70" : "clay-btn text-white"
-            }`}
-          >
-            {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            {test.publishedToBatch ? "Remove from batch" : "Send to batch"}
-          </button>
+      <div className="mt-3 flex items-center gap-2">
+        {!test.hidden && !test.isReady && (
+          <p className="inline-flex items-center gap-1.5 text-[11px] text-foreground/40">
+            <Clock3 className="h-3 w-3" /> Goes live automatically once ingestion finishes and the live window opens.
+          </p>
         )}
+        <button
+          onClick={toggleHidden}
+          disabled={toggling}
+          className="clay-btn-ghost ml-auto inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-foreground/70 disabled:opacity-50"
+        >
+          {toggling ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : test.hidden ? (
+            <Eye className="h-3.5 w-3.5" />
+          ) : (
+            <EyeOff className="h-3.5 w-3.5" />
+          )}
+          {test.hidden ? "Unhide" : "Hide from students"}
+        </button>
       </div>
     </li>
   );
@@ -508,8 +507,6 @@ function TestForm({
   const [instructions, setInstructions] = useState(existing?.instructions ?? "");
   const [referencePdfUrl, setReferencePdfUrl] = useState(existing?.referencePdfUrl ?? "");
   const [referencePdfName, setReferencePdfName] = useState("");
-  const [isPaid, setIsPaid] = useState(Boolean(existing?.price));
-  const [price, setPrice] = useState(existing?.price ? String(existing.price) : "");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -542,13 +539,10 @@ function TestForm({
     if (weightage.some((w) => w.questionCount <= 0)) return setError("Every subject needs a question count greater than 0.");
     if (!liveStart || !liveEnd) return setError("Set both the live start and end window.");
     if (new Date(liveEnd) <= new Date(liveStart)) return setError("Live end must be after live start.");
-    if (!referencePdfUrl) return setError("Upload the question paper PDF for Edurack to ingest from.");
-
-    let priceNum: number | null = null;
-    if (isPaid) {
-      priceNum = Number(price);
-      if (!priceNum || priceNum <= 0) return setError("Enter a valid price, or switch this test to free.");
+    if (new Date(liveStart).getTime() - Date.now() < 24 * 60 * 60 * 1000) {
+      return setError("Set the live start at least 24 hours from now — ideally 24–48 hours — so Edurack has time to add the questions.");
     }
+    if (!referencePdfUrl) return setError("Upload the question paper PDF for Edurack to ingest from.");
 
     setSaving(true);
     try {
@@ -562,7 +556,6 @@ function TestForm({
         liveEnd,
         instructions: instructions.trim(),
         referencePdfUrl,
-        price: priceNum,
       };
       if (existing) {
         await updateMentorTest({ data: { token: mentorToken, id: existing.id, test: payload } });
@@ -588,6 +581,15 @@ function TestForm({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="clay-inset flex items-start gap-2.5 rounded-2xl bg-[var(--sky-soft)]/40 px-4 py-3">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" />
+          <p className="text-xs text-foreground/70">
+            Submit this test at least <strong>24–48 hours</strong> before its live start. Edurack ingests the
+            questions from your PDF during that window — the test then goes live for your students automatically at
+            the scheduled time, with nothing further for you to do.
+          </p>
+        </div>
+
         <FileUploadField
           label="Question paper PDF — Edurack ingests the questions from this"
           value={referencePdfUrl}
@@ -627,7 +629,7 @@ function TestForm({
           totalQuestions={totalQuestions}
         />
 
-        <ClayField label="Live window">
+        <ClayField label="Live window" hint="Start must be at least 24 hours from now — ideally 24–48 hours, to give Edurack time to ingest.">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="relative">
               <CalendarRange className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
@@ -645,41 +647,6 @@ function TestForm({
             placeholder="e.g. Negative marking applies."
             className={inputClass + " resize-none"}
           />
-        </ClayField>
-
-        <ClayField label="Pricing" hint="Free tests unlock for anyone who's purchased your batch. Paid tests can be bought individually — even by students who haven't purchased the batch.">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setIsPaid(false)}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
-                !isPaid ? "clay-btn text-white" : "clay-chip text-foreground/70"
-              }`}
-            >
-              <Gift className="h-3.5 w-3.5" /> Free with batch
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPaid(true)}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all ${
-                isPaid ? "clay-btn text-white" : "clay-chip text-foreground/70"
-              }`}
-            >
-              <IndianRupee className="h-3.5 w-3.5" /> Sell individually
-            </button>
-          </div>
-          {isPaid && (
-            <div className="relative mt-2">
-              <IndianRupee className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/30" />
-              <input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                inputMode="numeric"
-                placeholder="Price for this test alone"
-                className={inputClass + " pl-10"}
-              />
-            </div>
-          )}
         </ClayField>
 
         {error && <ErrorBanner message={error} />}
@@ -732,7 +699,7 @@ function ResultsScreen({
         <>
           <Panel icon={BarChart3} title={`Subject-wise comparison — ${overview.testName}`}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {overview.subjectComparison.map((s) => (
+                  {overview.subjectComparison.map((s: { subject: string; averagePercent: number; }) => (
                 <StatChip
                   key={s.subject}
                   icon={BarChart3}
@@ -755,14 +722,14 @@ function ResultsScreen({
                   </tr>
                 </thead>
                 <tbody>
-                  {overview.studentResults.map((r) => (
+                  {overview.studentResults.map((r: { studentUid: Key | null | undefined; studentName: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; score: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; totalMarks: string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | ReactPortal | Promise<string | number | bigint | boolean | ReactPortal | ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | null | undefined> | null | undefined; subjectBreakdown: { subject: any; correct: any; incorrect: any; unanswered: any; }[]; }) => (
                     <tr key={r.studentUid} className="border-t border-foreground/5">
                       <td className="px-4 py-2.5 font-medium text-foreground">{r.studentName}</td>
                       <td className="px-4 py-2.5 font-semibold text-[var(--sky-deep)]">
                         {r.score}/{r.totalMarks}
                       </td>
                       <td className="px-4 py-2.5 text-xs text-foreground/60">
-                        {r.subjectBreakdown.map((s) => `${s.subject}: ${s.correct}/${s.correct + s.incorrect + s.unanswered}`).join(" · ")}
+                        {r.subjectBreakdown.map((s: { subject: any; correct: any; incorrect: any; unanswered: any; }) => `${s.subject}: ${s.correct}/${s.correct + s.incorrect + s.unanswered}`).join(" · ")}
                       </td>
                     </tr>
                   ))}

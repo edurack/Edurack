@@ -24,7 +24,7 @@ export const getPublicBundleDetail = createServerFn({ method: "GET" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const r = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
-    if (!r) return { bundle: null };
+    if (!r || r.kind === "mentorBatchSeries") return { bundle: null };
 
     return {
       bundle: {
@@ -86,7 +86,11 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
+    const { ObjectId } = await import("mongodb");
     const db = await getDb();
+    const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
+    if (!bundle || bundle.kind === "mentorBatchSeries") return { tests: [] };
+
     const rows = await db
       .collection("testCores")
       .find({ bundleId: data.bundleId })
@@ -98,15 +102,6 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
         id: String(r._id),
         name: r.name as string,
         totalQuestions: r.totalQuestions as number,
-        // FIXED: this was reading `r.timeLimitMinutes`, a field that was
-        // never actually written to testCores documents — the duration
-        // is stored as `durationMinutes` (see admin.ts
-        // createTestCore/updateTestCore and admin-types.ts TestCore).
-        // This is the same field-name mismatch already fixed in
-        // catalog.ts and test-engine.ts — this file has its own separate
-        // copy of listPublicTestsForBundle, which is the one
-        // course.$kind.$id.tsx actually imports and calls, so it needed
-        // the identical fix applied here too.
         timeLimitMinutes: (r.durationMinutes as number) ?? 180,
         subjects: (r.subjects as string[]) ?? [],
         liveStart: r.liveStart as string,
@@ -114,7 +109,7 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
       })),
     };
   });
-
+  
 // ─── Announcements for a bundle (student-facing) ──────────────────────────
 export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
   .validator((data: { token: string; bundleId: string }) => data)
@@ -641,6 +636,23 @@ export const getMyMentorForBatch = createServerFn({ method: "GET" })
 // purchase and does NOT require the batch to be purchased at all — see
 // payments.ts's lookupItemPriceAndTitle/resolveCommissionPercent for how
 // that purchase type is priced and split.
+// ─── Student-facing: a mentor's batch test series ───────────────────────────
+// Every test appended to the batch's internal series bundle is returned
+// here — including ones that aren't ready yet — so the client can render
+// a "Coming soon" card for anything not ready, rather than the test simply
+// not existing from the student's point of view.
+//
+// "Ready" (isReady) is computed fresh on every call from two facts, never
+// from a manual publish flag: (1) Edurack has finished adding every
+// question, and (2) the test's scheduled liveStart has actually arrived.
+// This is what makes a test go live automatically at its scheduled time
+// with no mentor or admin action required at that moment — the mentor's
+// only job is to submit the test (with a PDF and a liveStart at least 24h
+// out) well ahead of time so Edurack has room to ingest it.
+//
+// Test Series tests are always free-with-batch — there is no standalone
+// per-test purchase here (that's what Sell Tests is for) — so unlocking
+// only ever depends on the batch purchase, once the test is ready.
 export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GET" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -650,28 +662,35 @@ export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GE
     const bundle = await db.collection("bundles").findOne({ batchId: data.batchId, kind: "mentorBatchSeries" });
     if (!bundle) return { tests: [] };
 
+    // publishedToBatch now means "not hidden by the mentor" (defaults to
+    // true) rather than "manually published" — an explicit kill switch a
+    // mentor can flip if a test needs pulling, not a step required to go
+    // live in the first place.
     const tests = await db
       .collection("testCores")
-      .find({ bundleId: String(bundle._id), publishedToBatch: true })
+      .find({ bundleId: String(bundle._id), publishedToBatch: { $ne: false } })
       .sort({ liveStart: 1 })
       .toArray();
     if (tests.length === 0) return { tests: [] };
+
+    const testIds = tests.map((t) => String(t._id));
+    const questionCounts = await db
+      .collection("questions")
+      .aggregate([{ $match: { testId: { $in: testIds } } }, { $group: { _id: "$testId", count: { $sum: 1 } } }])
+      .toArray();
+    const addedByTestId = new Map(questionCounts.map((r) => [r._id as string, r.count as number]));
 
     const hasBatchPurchase = Boolean(
       await db.collection("purchases").findOne({ uid: decoded.uid, itemType: "mentorship", itemId: data.batchId }),
     );
 
-    const testIds = tests.map((t) => String(t._id));
-    const testPurchases = await db
-      .collection("purchases")
-      .find({ uid: decoded.uid, itemType: "mentorTest", itemId: { $in: testIds } })
-      .toArray();
-    const purchasedTestIds = new Set(testPurchases.map((p) => p.itemId as string));
+    const now = Date.now();
 
     return {
       tests: tests.map((t) => {
-        const price = (t.price as number | null) ?? null;
-        const unlocked = price ? purchasedTestIds.has(String(t._id)) : hasBatchPurchase;
+        const added = addedByTestId.get(String(t._id)) ?? 0;
+        const ingestionComplete = added >= (t.totalQuestions as number);
+        const isReady = ingestionComplete && now >= new Date(t.liveStart as string).getTime();
         return {
           id: String(t._id),
           name: t.name as string,
@@ -679,13 +698,13 @@ export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GE
           timeLimitMinutes: t.durationMinutes as number,
           liveStart: t.liveStart as string,
           liveEnd: t.liveEnd as string,
-          price,
-          unlocked,
+          isReady,
+          unlocked: isReady && hasBatchPurchase,
         };
       }),
     };
   });
-
+  
 export const listMyChatWithMentor = createServerFn({ method: "GET" })
   .validator((data: { token: string; batchId: string; mentorId: string }) => data)
   .handler(async ({ data }) => {

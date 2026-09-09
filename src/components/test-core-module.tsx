@@ -18,8 +18,7 @@ import {
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
-type BundleOption = { id: string; title: string };
-
+type BundleOption = { id: string; title: string; kind: string };
 type SubjectWeightageRow = { subject: string; questionCount: number };
 
 type TestCoreRow = {
@@ -163,13 +162,13 @@ export function TestCoreModule({ adminUser }: { adminUser: AdminUser }) {
   const [tests, setTests] = useState<TestCoreRow[] | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const token = await adminUser.getIdToken();
-      const { bundles: rows } = await listBundles({ data: { token } });
-      setBundles(rows.map((b) => ({ id: b.id, title: b.title })));
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminUser]);
+  (async () => {
+    const token = await adminUser.getIdToken();
+    const { bundles: rows } = await listBundles({ data: { token } });
+    setBundles(rows.map((b) => ({ id: b.id, title: b.title, kind: b.kind })));
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [adminUser]);
 
   async function refreshTests() {
     if (!bundleId) {
@@ -211,11 +210,22 @@ export function TestCoreModule({ adminUser }: { adminUser: AdminUser }) {
       </div>
 
       {bundleId && (
-        <>
-          <TestCoreCreationForm bundleId={bundleId} adminUser={adminUser} onCreated={refreshTests} />
-          <TestCoreList tests={tests} adminUser={adminUser} onSaved={refreshTests} />
-        </>
-      )}
+  <>
+    {bundles?.find((b) => b.id === bundleId)?.kind === "mentorBatchSeries" && (
+      <div className="clay-inset mb-6 flex items-start gap-2.5 rounded-2xl bg-[var(--sky-soft)]/40 px-4 py-3">
+        <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-foreground/50" />
+        <p className="text-xs text-foreground/70">
+          This is a mentor-submitted test series bundle — students never see it directly; only its individual tests
+          matter to them. Mentors are told to submit tests at least <strong>24–48 hours</strong> before the test's
+          scheduled live start. Once every question is ingested here, the test goes live for students automatically
+          at that scheduled time — no publish step needed on either side.
+        </p>
+      </div>
+    )}
+    <TestCoreCreationForm bundleId={bundleId} adminUser={adminUser} onCreated={refreshTests} />
+    <TestCoreList tests={tests} adminUser={adminUser} onSaved={refreshTests} />
+  </>
+)}
     </div>
   );
 }

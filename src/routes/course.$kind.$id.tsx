@@ -160,11 +160,12 @@ type BatchSeriesTestRow = {
   name: string;
   totalQuestions: number;
   timeLimitMinutes: number;
-  liveStart: string | null;   // null for Sold Tests — no scheduled window
+  liveStart: string | null;
   liveEnd: string | null;
-  price: number | null;       // null = free-with-batch (Test Series style)
+  price: number | null;
   unlocked: boolean;
-  includedWithBatch: boolean; // NEW — true when unlocked came from batch purchase, not an individual buy
+  includedWithBatch: boolean;
+  isReady: boolean; // false = still "Coming soon", regardless of price/purchase
 };
 
 type AnnouncementRow = {
@@ -699,7 +700,7 @@ function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; on
   );
 }
 
-function LockGate({ locked, children }: { locked: boolean; children: ReactNode }) {
+function LockGate({ locked, label = "Purchase to unlock", children }: { locked: boolean; label?: string; children: ReactNode }) {
   if (!locked) return <>{children}</>;
   return (
     <div className="relative">
@@ -707,7 +708,7 @@ function LockGate({ locked, children }: { locked: boolean; children: ReactNode }
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="clay-inset flex items-center gap-2 rounded-full bg-background/80 px-4 py-2 backdrop-blur-sm">
           <Lock className="h-3.5 w-3.5 text-foreground/50" />
-          <span className="text-xs font-semibold text-foreground/60">Purchase to unlock</span>
+          <span className="text-xs font-semibold text-foreground/60">{label}</span>
         </div>
       </div>
     </div>
@@ -1262,9 +1263,9 @@ function BatchSeriesTestsTab({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [tests, setTests] = useState<BatchSeriesTestRow[] | null>(null);
-const [attemptsByTest, setAttemptsByTest] = useState<
-  Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>
->({});
+  const [attemptsByTest, setAttemptsByTest] = useState<
+    Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>
+  >({});
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -1281,6 +1282,10 @@ const [attemptsByTest, setAttemptsByTest] = useState<
       listAttachedSoldTestsForStudent({ data: { token, batchId } }),
     ]);
 
+    // Test Series tests are always free-with-batch — there's no per-test
+    // pricing here anymore (that's what Sell Tests is for). "Coming soon"
+    // is driven entirely by isReady, which the server derives from
+    // ingestion completeness + whether the scheduled live time has passed.
     const mergedSeries: BatchSeriesTestRow[] = seriesTests.map((t) => ({
       id: t.id,
       name: t.name,
@@ -1288,11 +1293,15 @@ const [attemptsByTest, setAttemptsByTest] = useState<
       timeLimitMinutes: t.timeLimitMinutes,
       liveStart: t.liveStart,
       liveEnd: t.liveEnd,
-      price: t.price,
+      price: null,
       unlocked: t.unlocked,
-      includedWithBatch: t.price === null && t.unlocked, // free-with-batch tests are "included" once the batch is purchased
+      includedWithBatch: t.unlocked,
+      isReady: t.isReady,
     }));
 
+    // Sold Tests are already fully vetted (live + fully ingested) before
+    // they can ever be attached to a batch — see listAttachedSoldTestsForStudent
+    // — so they're always "ready".
     const mergedSold: BatchSeriesTestRow[] = soldTests.map((t) => ({
       id: t.id,
       name: t.name,
@@ -1302,7 +1311,8 @@ const [attemptsByTest, setAttemptsByTest] = useState<
       liveEnd: null,
       price: t.price,
       unlocked: t.unlocked,
-      includedWithBatch: isPurchased && t.unlocked, // unlocked via batch purchase, not an individual buy — Sold Tests always carry a real price, never null
+      includedWithBatch: isPurchased && t.unlocked,
+      isReady: true,
     }));
 
     setTests([...mergedSeries, ...mergedSold]);
@@ -1337,12 +1347,8 @@ const [attemptsByTest, setAttemptsByTest] = useState<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tests]);
 
-  // A per-test standalone purchase — same Razorpay flow as the main
-  // purchase bar, scoped to itemType "mentorTest" and this test's own id.
-  // Batch purchase is not required for this to work. Works identically
-  // whether the test came from Test Series or Sell Tests — both are
-  // "mentorTest" purchases on the backend (payments.ts checks testCores,
-  // then falls back to soldTests).
+  // Standalone purchase — Sold Tests only (Test Series tests have no price
+  // and are never individually purchasable, so this is never called for them).
   async function handleBuyTest(test: BatchSeriesTestRow) {
     setPurchaseError(null);
     setPurchasingId(test.id);
@@ -1415,26 +1421,27 @@ const [attemptsByTest, setAttemptsByTest] = useState<
       )}
 
       {tests.map((t) => {
-        const start = t.liveStart ? new Date(t.liveStart).getTime() : null;
-        const end = t.liveEnd ? new Date(t.liveEnd).getTime() : null;
-        const isLive = start !== null && end !== null && now >= start && now <= end;
-        const isUpcoming = start !== null && now < start;
-        const attempted = attemptsByTest[t.id];
-        // A Test Series free test (price: null) locks behind the batch
-        // purchase, same as the Sessions tab. A Sold Test always carries a
-        // real price, so it's never card-locked this way — it either shows
-        // "Included with batch" (unlocked via batch purchase) or a Buy
-        // button, but the card itself is never grayed out.
         const isFree = t.price === null;
         const lockedByBatch = isFree && !isPurchased;
+        const locked = !t.isReady || lockedByBatch;
+        const lockLabel = !t.isReady ? "Coming soon" : "Purchase to unlock";
+
+        const start = t.liveStart ? new Date(t.liveStart).getTime() : null;
+        const end = t.liveEnd ? new Date(t.liveEnd).getTime() : null;
+        const isLive = t.isReady && start !== null && end !== null && now >= start && now <= end;
+        const attempted = attemptsByTest[t.id];
 
         return (
-          <LockGate key={t.id} locked={lockedByBatch}>
+          <LockGate key={t.id} locked={locked} label={lockLabel}>
             <div className="clay flex flex-col gap-3 p-4 transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
                   <span className="truncate">{t.name}</span>
-                  {t.includedWithBatch ? (
+                  {!t.isReady ? (
+                    <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground/60">
+                      Coming soon
+                    </span>
+                  ) : t.includedWithBatch ? (
                     <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
                       Included with batch
                     </span>
@@ -1451,58 +1458,62 @@ const [attemptsByTest, setAttemptsByTest] = useState<
                 <p className="text-xs text-foreground/50">
                   {t.totalQuestions} questions · {t.timeLimitMinutes} min
                 </p>
-                <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                  {start === null ? (
-                    <span className="text-foreground/50">Available now</span>
-                  ) : isLive ? (
-                    <span className="inline-flex items-center gap-1.5 text-[var(--coral-soft)]">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
-                    </span>
-                  ) : isUpcoming ? (
-                    <span className="text-foreground/50">Starts {new Date(t.liveStart as string).toLocaleString()}</span>
-                  ) : (
-                    <span className="text-foreground/50">Held on: {new Date(t.liveStart as string).toLocaleString()}</span>
-                  )}
-                  {attempted && (
-                    <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                      Attempted {attempted.count}x · Best {attempted.bestScore}/{attempted.totalMarks}
-                    </span>
-                  )}
-                </p>
+                {t.isReady && (
+                  <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    {start === null ? (
+                      <span className="text-foreground/50">Available now</span>
+                    ) : isLive ? (
+                      <span className="inline-flex items-center gap-1.5 text-[var(--coral-soft)]">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
+                      </span>
+                    ) : (
+                      <span className="text-foreground/50">Held on: {new Date(t.liveStart as string).toLocaleString()}</span>
+                    )}
+                    {attempted && (
+                      <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                        Attempted {attempted.count}x · Best {attempted.bestScore}/{attempted.totalMarks}
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
 
-              {!t.unlocked ? (
-                <button
-                  onClick={() => handleBuyTest(t)}
-                  disabled={purchasingId === t.id}
-                  className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70"
-                >
-                  {purchasingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${t.price}`}
-                </button>
-              ) : attempted ? (
-                <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
-                  <button
-                    onClick={() => navigate({ to: "/test-analysis/$testId", params: { testId: t.id } })}
-                    className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                    Analysis
-                  </button>
+              {t.isReady && (
+                !t.unlocked ? (
+                  !isFree && (
+                    <button
+                      onClick={() => handleBuyTest(t)}
+                      disabled={purchasingId === t.id}
+                      className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70"
+                    >
+                      {purchasingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${t.price}`}
+                    </button>
+                  )
+                ) : attempted ? (
+                  <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
+                    <button
+                      onClick={() => navigate({ to: "/test-analysis/$testId", params: { testId: t.id } })}
+                      className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      Analysis
+                    </button>
+                    <button
+                      onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
+                      className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      Retake
+                    </button>
+                  </div>
+                ) : (
                   <button
                     onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
-                    className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline"
+                    className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
                   >
-                    Retake
+                    <PlayCircle className="h-4 w-4" />
+                    Start Test
                   </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
-                  className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
-                >
-                  <PlayCircle className="h-4 w-4" />
-                  Start Test
-                </button>
+                )
               )}
             </div>
           </LockGate>

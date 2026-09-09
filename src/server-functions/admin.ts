@@ -231,6 +231,7 @@ export const listBundles = createServerFn({ method: "GET" })
         updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : null,
         mentorId: (r.mentorId as string | null) ?? null,
         marketingPercent: (r.marketingPercent as number | null) ?? null,
+        kind: (r.kind as string) ?? "standard",
       })),
     };
   });
