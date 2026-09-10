@@ -1,8 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { IconSchool as GraduationCap, IconUser as User, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconAward as Award, IconBook2 as BookOpen, IconUsers as Users, IconTag as Tag, IconCurrencyRupee as IndianRupee, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconSparkles as Sparkles, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSend as Send, IconPlus as Plus, IconTrash as Trash2, IconCheck as Check, IconBookmark as BookMarked } from "@tabler/icons-react";
-import { Link2 } from "lucide-react"; // TODO: no Tabler mapping found yet
+import { IconSchool as GraduationCap, IconUser as User, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconAward as Award, IconBook2 as BookOpen, IconTag as Tag, IconCurrencyRupee as IndianRupee, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconSparkles as Sparkles, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSend as Send, IconPlus as Plus, IconTrash as Trash2, IconCheck as Check, IconClipboardCheck as ClipboardCheck, IconRocket as Rocket, IconVideo as Video, IconArrowRight as ArrowRight, IconLink as LinkIcon } from "@tabler/icons-react";
 import { EXAM_KEYS, EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { submitCreatorApplication } from "@/server-functions/mentor-applications";
 
@@ -57,6 +56,26 @@ const socialPlatforms: SocialPlatform[] = ["YouTube", "Instagram", "LinkedIn", "
 const examOptions: { key: ExamKey; label: string }[] = EXAM_KEYS.map((key) => ({ key, label: EXAM_LABELS[key] }));
 const MAX_SOCIAL_LINKS = 5;
 
+const onboardingSteps = [
+  {
+    icon: ClipboardCheck,
+    title: "Profile Review",
+    description: "Fill out the form below so our team can review and approve your profile.",
+  },
+  {
+    icon: Rocket,
+    title: "The Onboarding Form",
+    description:
+      "Within 24 hours of reviewing your profile, we'll share a second form — the step that directly launches your mentor profile on EDURACK, along with the specific batch you wish to teach.",
+  },
+  {
+    icon: Video,
+    title: "1-on-1 Google Meet",
+    description:
+      "Once your forms are in, our team will connect with you over Google Meet to clear any doubts, walk you through the platform, and fix or update any details before you go live.",
+  },
+];
+
 function platformIcon(platform: SocialPlatform) {
   switch (platform) {
     case "YouTube":
@@ -70,7 +89,7 @@ function platformIcon(platform: SocialPlatform) {
     case "Telegram":
       return Send;
     default:
-      return Link2;
+      return LinkIcon;
   }
 }
 
@@ -150,7 +169,7 @@ function JoinMentorPage() {
     if (!form.yearOfStudy.trim()) nextErrors.yearOfStudy = "Year of study is required.";
     if (!form.examRank.trim()) nextErrors.examRank = "Exam rank / AIR is required.";
     if (form.examsTaught.length === 0)
-      nextErrors.examsTaught = "Select at least one exam you'd like to mentor for." as unknown as undefined;
+      nextErrors.examsTaught = "Select at least one exam you'd like to mentor for.";
     if (!form.batchTitle.trim()) nextErrors.batchTitle = "Batch title is required.";
     if (!form.targetCategory) nextErrors.targetCategory = "Select a target category.";
     if (!form.pricingTier.trim()) nextErrors.pricingTier = "Pricing tier is required.";
@@ -218,18 +237,27 @@ function JoinMentorPage() {
         <BrandHeader />
 
         <div className="mt-8 text-center">
-          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-orange-700 sm:text-sm">
-            <Sparkles className="h-4 w-4" />
-            Creator Application
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="clay-chip inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
+              <Sparkles className="h-4 w-4" />
+              Creator Application
+            </div>
+            <div className="clay-chip inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-foreground sm:text-sm">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              EDURACK is Live
+            </div>
           </div>
-          <h1 className="fluid-h2 mt-4 font-display font-extrabold tracking-tight text-slate-900">
+          <h1 className="fluid-h2 mt-4 font-display font-extrabold tracking-tight text-foreground">
             Join EDURACK as a Mentor
           </h1>
-          <p className="fluid-body mx-auto mt-3 max-w-xl text-slate-600">
-            Tell us about your background and the batch you'd like to run — for NEET, JEE, CUET, or
-            IPMAT. Our team reviews every application before your mentor space goes live.
+          <p className="fluid-body mx-auto mt-3 max-w-xl text-muted-foreground">
+            EDURACK is live now, helping NEET, JEE, CUET, and IPMAT aspirants prep smarter. Tell us
+            about your background and the batch you'd like to run — our team reviews every
+            application before your mentor space goes live.
           </p>
         </div>
+
+        <OnboardingSteps />
 
         <form onSubmit={handleSubmit} noValidate className="clay mt-10 p-6 sm:p-10">
           <FormSection icon={User} title="Personal Details" subtitle="How students and our team can reach you.">
@@ -307,7 +335,7 @@ function JoinMentorPage() {
             </div>
 
             <div className="mt-4">
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm font-semibold text-foreground">
                 Which exam(s) would you like to mentor for?
               </label>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -320,8 +348,8 @@ function JoinMentorPage() {
                       onClick={() => toggleExam(exam.key)}
                       className={`flex items-center justify-center gap-1.5 rounded-2xl px-3 py-3 text-sm font-semibold transition-all duration-200 ${
                         active
-                          ? "clay-btn text-white"
-                          : "clay-inset text-slate-500 hover:text-slate-700"
+                          ? "clay-btn text-primary-foreground"
+                          : "clay-inset text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       {active && <Check className="h-3.5 w-3.5" />}
@@ -330,9 +358,9 @@ function JoinMentorPage() {
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-xs text-slate-500">Select all that apply.</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">Select all that apply.</p>
               {errors.examsTaught && (
-                <p className="mt-1.5 text-xs font-medium text-rose-600">{errors.examsTaught}</p>
+                <p className="mt-1.5 text-xs font-medium text-destructive">{errors.examsTaught}</p>
               )}
             </div>
           </FormSection>
@@ -340,7 +368,7 @@ function JoinMentorPage() {
           <Divider />
 
           <FormSection
-            icon={Users}
+            icon={Tag}
             title="Mentorship Intentions"
             subtitle="What your mentorship batch will look like on EDURACK."
           >
@@ -356,7 +384,7 @@ function JoinMentorPage() {
               />
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">Target Student Category</label>
+                <label className="mb-2 block text-sm font-semibold text-foreground">Target Student Category</label>
                 <div className="clay-inset flex gap-1 p-1">
                   {categories.map((cat) => (
                     <button
@@ -365,8 +393,8 @@ function JoinMentorPage() {
                       onClick={() => updateField("targetCategory", cat)}
                       className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                         form.targetCategory === cat
-                          ? "clay-btn text-white"
-                          : "text-slate-500 hover:text-slate-700"
+                          ? "clay-btn text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       {cat}
@@ -374,7 +402,7 @@ function JoinMentorPage() {
                   ))}
                 </div>
                 {errors.targetCategory && (
-                  <p className="mt-1.5 text-xs font-medium text-rose-600">{errors.targetCategory}</p>
+                  <p className="mt-1.5 text-xs font-medium text-destructive">{errors.targetCategory}</p>
                 )}
               </div>
 
@@ -392,7 +420,7 @@ function JoinMentorPage() {
           <Divider />
 
           <FormSection
-            icon={Link2}
+            icon={LinkIcon}
             title="Online Presence"
             subtitle="Where students can already find your content — optional, but it speeds up review."
           >
@@ -405,7 +433,7 @@ function JoinMentorPage() {
                       <select
                         value={link.platform}
                         onChange={(e) => updateSocialLink(index, { platform: e.target.value as SocialPlatform })}
-                        className="clay-inset w-full appearance-none rounded-2xl px-4 py-3 pr-9 text-sm text-slate-900 focus:outline-none"
+                        className="clay-inset w-full appearance-none rounded-2xl px-4 py-3 pr-9 text-sm text-foreground focus:outline-none"
                       >
                         {socialPlatforms.map((p) => (
                           <option key={p} value={p}>
@@ -417,7 +445,7 @@ function JoinMentorPage() {
 
                     <div className="flex-1">
                       <div className="clay-inset flex items-center gap-2.5 px-4 py-3">
-                        <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <input
                           type="text"
                           value={link.url}
@@ -433,21 +461,21 @@ function JoinMentorPage() {
                                     ? "t.me/yourchannel"
                                     : "https://…"
                           }
-                          className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                          className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                         />
                         {form.socialLinks.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeSocialLink(index)}
                             aria-label="Remove link"
-                            className="shrink-0 text-slate-300 transition-colors duration-200 hover:text-rose-500"
+                            className="shrink-0 text-muted-foreground/60 transition-colors duration-200 hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         )}
                       </div>
                       {socialErrors[index] && (
-                        <p className="mt-1.5 text-xs font-medium text-rose-600">{socialErrors[index]}</p>
+                        <p className="mt-1.5 text-xs font-medium text-destructive">{socialErrors[index]}</p>
                       )}
                     </div>
                   </div>
@@ -468,13 +496,15 @@ function JoinMentorPage() {
           </FormSection>
 
           {submitError && (
-            <p className="mt-6 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{submitError}</p>
+            <p className="mt-6 rounded-2xl bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+              {submitError}
+            </p>
           )}
 
-          <div className="mt-8 flex flex-col items-center gap-3 border-t border-slate-200/70 pt-6 sm:flex-row sm:justify-between">
-            <p className="text-xs text-slate-500 sm:max-w-xs">
+          <div className="mt-8 flex flex-col items-center gap-3 border-t border-border pt-6 sm:flex-row sm:justify-between">
+            <p className="text-xs text-muted-foreground sm:max-w-xs">
               By submitting, you agree to EDURACK's{" "}
-              <Link to="/legal/terms" className="font-semibold text-slate-700 hover:underline">
+              <Link to="/legal/terms" className="font-semibold text-foreground hover:underline">
                 mentor guidelines
               </Link>{" "}
               and revenue-share terms.
@@ -495,6 +525,8 @@ function JoinMentorPage() {
             </button>
           </div>
         </form>
+
+        <ContactCallout />
       </div>
     </div>
   );
@@ -512,8 +544,80 @@ function BrandHeader() {
         alt="EDURACK"
         className="h-10 w-auto shrink-0 object-contain sm:h-12"
       />
-      <span className="font-display text-xl font-bold tracking-tight text-slate-900">EDURACK</span>
+      <span className="font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
     </Link>
+  );
+}
+
+function OnboardingSteps() {
+  return (
+    <section className="clay mt-8 p-6 sm:p-10">
+      <div className="text-center">
+        <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-primary">
+          <Rocket className="h-3.5 w-3.5" />
+          How Onboarding Works
+        </div>
+        <h2 className="mt-3 font-display text-lg font-bold text-foreground sm:text-xl">
+          Three steps from application to going live
+        </h2>
+      </div>
+
+      <div className="mt-8 flex flex-col gap-6">
+        {onboardingSteps.map((step, i) => (
+          <div key={step.title} className="flex gap-4 sm:gap-5">
+            <div className="flex flex-col items-center">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent">
+                <step.icon className="h-5 w-5 text-accent-foreground" />
+              </div>
+              {i < onboardingSteps.length - 1 && (
+                <div className="mt-2 w-px flex-1 bg-border" aria-hidden="true" />
+              )}
+            </div>
+            <div className="clay-inset flex-1 p-5">
+              <h3 className="font-display text-sm font-bold text-foreground">
+                Step {i + 1}: {step.title}
+              </h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ContactCallout() {
+  const subject = encodeURIComponent("Mentor Application Query — EDURACK");
+  const body = encodeURIComponent(
+    "Hi EDURACK team,\n\nI'm interested in becoming a mentor. Here are my basic details:\n\nName:\nCity:\nExam(s) I'd like to mentor for:\n\nMy question:\n"
+  );
+  const mailtoHref = `mailto:contact@edurack.in?subject=${subject}&body=${body}`;
+
+  return (
+    <div className="clay mt-8 flex flex-col items-center gap-3 p-6 text-center sm:flex-row sm:justify-between sm:text-left">
+      <div className="flex items-center gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent">
+          <Mail className="h-5 w-5 text-accent-foreground" />
+        </div>
+        <div>
+          <h3 className="font-display text-sm font-bold text-foreground">Want to know more before applying?</h3>
+          <p className="text-sm text-muted-foreground">
+            Reach out directly at{" "}
+            <a href={mailtoHref} className="font-semibold text-foreground hover:underline">
+              contact@edurack.in
+            </a>{" "}
+            — we've pre-filled the message, just fill in your basic details and hit send.
+          </p>
+        </div>
+      </div>
+      <a
+        href={mailtoHref}
+        className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2.5 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+      >
+        Contact Us
+        <ArrowRight className="h-3.5 w-3.5" />
+      </a>
+    </div>
   );
 }
 
@@ -531,12 +635,12 @@ function FormSection({
   return (
     <section>
       <div className="flex items-center gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-100">
-          <Icon className="h-5 w-5 text-sky-600" />
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent">
+          <Icon className="h-5 w-5 text-accent-foreground" />
         </div>
         <div>
-          <h2 className="font-display text-base font-bold text-slate-900 sm:text-lg">{title}</h2>
-          <p className="text-xs text-slate-500 sm:text-sm">{subtitle}</p>
+          <h2 className="font-display text-base font-bold text-foreground sm:text-lg">{title}</h2>
+          <p className="text-xs text-muted-foreground sm:text-sm">{subtitle}</p>
         </div>
       </div>
       <div className="mt-5">{children}</div>
@@ -545,7 +649,7 @@ function FormSection({
 }
 
 function Divider() {
-  return <div className="my-8 h-px bg-slate-200/70" />;
+  return <div className="my-8 h-px bg-border" />;
 }
 
 function TextField({
@@ -569,18 +673,18 @@ function TextField({
 }) {
   return (
     <div className={fullWidth ? "sm:col-span-2" : undefined}>
-      <label className="mb-2 block text-sm font-semibold text-slate-700">{label}</label>
+      <label className="mb-2 block text-sm font-semibold text-foreground">{label}</label>
       <div className="clay-inset flex items-center gap-2.5 px-4 py-3">
-        <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
         <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+          className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
-      {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-medium text-destructive">{error}</p>}
     </div>
   );
 }
@@ -589,11 +693,11 @@ function SuccessState({ onReset }: { onReset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="clay mx-auto max-w-md p-10 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-teal-100">
-          <CheckCircle2 className="h-8 w-8 text-teal-600" />
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent">
+          <CheckCircle2 className="h-8 w-8 text-accent-foreground" />
         </div>
-        <h2 className="mt-5 font-display text-xl font-bold text-slate-900">Application Received</h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <h2 className="mt-5 font-display text-xl font-bold text-foreground">Application Received</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
           Thanks for applying to mentor on EDURACK. Our team will review your details and get back
           to you at the email you provided.
         </p>
