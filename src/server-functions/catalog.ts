@@ -399,3 +399,69 @@ export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
       })),
     };
   });
+
+  // ─── ADD THIS TO THE BOTTOM OF src/server-functions/catalog.ts ───────────
+// (keep all your existing imports/functions — this is a new addition, not
+// a replacement)
+
+// ─── Public: mentor directory for the landing page (fully public — no
+// auth token required) ────────────────────────────────────────────────────
+// Deliberately separate from listPublicMentors above (which requires a
+// signed-in token, since that one backs the in-app browse experience).
+// The landing page renders before anyone logs in, so this is intentionally
+// open — it only returns the minimum needed to render a mentor card, no
+// reviews or ratings, to keep the public surface area small.
+//
+// Only returns mentors an admin has actually set up as a real profile:
+// status isn't "terminated", and both name + profilePictureUrl are
+// present. This is what keeps placeholder, incomplete, or removed mentor
+// records off the public landing page even though their raw "mentors"
+// document technically exists.
+export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(async () => {
+  const db = await getDb();
+
+  const batches = await db
+    .collection("mentorshipBatches")
+    .find({ assignedMentorId: { $ne: null } })
+    .toArray();
+  const mentorIds = [...new Set(batches.map((b) => b.assignedMentorId as string))];
+  if (mentorIds.length === 0) return { mentors: [] };
+
+  const { ObjectId } = await import("mongodb");
+  const mentors = await db
+    .collection("mentors")
+    .find({
+      _id: { $in: mentorIds.map((id) => new ObjectId(id)) },
+      status: { $ne: "terminated" },
+      name: { $exists: true, $ne: "" },
+      profilePictureUrl: { $exists: true, $ne: null },
+    })
+    .toArray();
+
+  const batchesByMentor = new Map<string, { id: string; name: string; track: string; exam: string }[]>();
+  for (const b of batches) {
+    const mid = b.assignedMentorId as string;
+    const list = batchesByMentor.get(mid) ?? [];
+    list.push({
+      id: String(b._id),
+      name: b.name as string,
+      track: b.track as string,
+      exam: (b.exam as string) ?? "neet",
+    });
+    batchesByMentor.set(mid, list);
+  }
+
+  return {
+    mentors: mentors.map((m) => {
+      const mentorId = String(m._id);
+      return {
+        id: mentorId,
+        name: m.name as string,
+        profilePictureUrl: m.profilePictureUrl as string,
+        yearOfStudy: (m.yearOfStudy as string) ?? "",
+        aiimsIitRank: (m.aiimsIitRank as string) ?? "",
+        batches: batchesByMentor.get(mentorId) ?? [],
+      };
+    }),
+  };
+});

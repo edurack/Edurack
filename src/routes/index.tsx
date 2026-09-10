@@ -9,7 +9,6 @@ import {
   LineChart,
   ArrowRight,
   Sparkles,
-  Play,
   UserCheck,
   Cpu,
   TrendingUp,
@@ -22,12 +21,23 @@ import {
   Twitter,
   MessageSquare,
   AtSign, // Used for Threads
+  GraduationCap,
+  Award,
+  Layers3,
+  Loader2,
 } from "lucide-react";
 import { CbtSimulator } from "@/components/landing/CbtSimulator";
+import { listMentorsForLanding } from "@/server-functions/catalog";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
+
+// ---------------------------------------------
+// Launch date — single source of truth so the hero badge, About section,
+// and footer all agree with each other.
+// ---------------------------------------------
+const LAUNCH_DATE_LABEL = "Launched 10 September 2026";
 
 // ---------------------------------------------
 // Exam config
@@ -174,6 +184,7 @@ function Index() {
       "alternateName": "EDURACK.IN",
       "url": "https://www.edurack.in",
       "logo": "https://i.postimg.cc/4NvD69v0/image-removebg-preview.png",
+      "foundingDate": "2026-09-10",
       "founder": [
         {
           "@type": "Person",
@@ -191,7 +202,7 @@ function Index() {
           "jobTitle": "Co-Founder"
         }
       ],
-      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants.",
+      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants. Launched 10 September 2026.",
       "sameAs": [
         "https://www.edurack.in",
         "https://www.linkedin.com/company/edurack",
@@ -236,7 +247,7 @@ function Index() {
       <main>
         <Hero />
         <SimulatorSection />
-        <MentorVideoShowcase />
+        <MentorShowcase />
         <FeaturesGrid />
         <AboutSection />
         <SocialLinksSection />
@@ -376,7 +387,7 @@ function Hero() {
         <Reveal>
           <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 sm:text-sm">
             <Sparkles className="h-4 w-4 animate-pulse" />
-            Official Web Platform · edurack.in
+            {LAUNCH_DATE_LABEL} · edurack.in
           </div>
         </Reveal>
 
@@ -483,12 +494,36 @@ function SimulatorSection() {
   );
 }
 
-function MentorVideoShowcase() {
-  const sampleVideos = [
-    { name: "Rahul Jha", rank: "AIR 14 NEET · AIIMS Delhi", topic: "NEET CBT Strategy" },
-    { name: "Sneha Reddy", rank: "AIR 312 JEE Adv. · IIT Bombay", topic: "JEE Problem-Solving Speed" },
-    { name: "Aman Verma", rank: "99.8%ile CUET · DU (SRCC)", topic: "CUET Section Time Management" },
-  ];
+// ---------------------------------------------
+// Real mentor directory — replaces the old sample-video showcase.
+// Pulls from listMentorsForLanding (public, no auth), which only returns
+// mentors an admin has actually set up with a name + photo and who aren't
+// terminated. Each card shows the mentor's real name, credentials, and
+// every batch they're assigned to, linking through to their public
+// profile page.
+// ---------------------------------------------
+type LandingMentor = {
+  id: string;
+  name: string;
+  profilePictureUrl: string;
+  yearOfStudy: string;
+  aiimsIitRank: string;
+  batches: { id: string; name: string; track: string; exam: string }[];
+};
+
+function MentorShowcase() {
+  const [mentors, setMentors] = useState<LandingMentor[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { mentors: rows } = await listMentorsForLanding();
+        setMentors(rows as LandingMentor[]);
+      } catch {
+        setMentors([]);
+      }
+    })();
+  }, []);
 
   return (
     <section id="mentors" className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
@@ -501,45 +536,82 @@ function MentorVideoShowcase() {
             Direct Guidance From Top Rankers — Across Every Exam
           </h2>
           <p className="fluid-body mt-3 text-muted-foreground">
-            Hear straight from mentors who cracked NEET, JEE, CUET, and IPMAT — the competitive
-            pressure is different for each, and so is their advice. Watch their high-yield prep tips
-            below.
+            Meet the mentors already onboarded on EDURACK — real rankers running real batches for NEET,
+            JEE, CUET, and IPMAT aspirants.
           </p>
         </Reveal>
 
-        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {sampleVideos.map((v, i) => (
-            <Reveal key={v.name} delay={i * 90}>
-              <div className="clay flex h-full flex-col justify-between overflow-hidden p-4 transition-transform duration-300 hover:-translate-y-1">
-                <div className="group relative aspect-video w-full cursor-pointer rounded-2xl bg-slate-900 shadow-inner">
-                  <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                  <button
-                    className="absolute left-1/2 top-1/2 z-20 grid h-14 w-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow-md backdrop-blur-sm transition-transform duration-200 group-hover:scale-110"
-                    aria-label={`Play strategy video by ${v.name}`}
-                  >
-                    <Play className="ml-0.5 h-6 w-6 fill-sky-600 text-sky-600" />
-                  </button>
-                  <span className="absolute bottom-3 left-4 z-20 rounded-md bg-black/30 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-white backdrop-blur-sm">
-                    {v.topic}
-                  </span>
-                </div>
+        {mentors === null ? (
+          <div className="mt-12 flex justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
+          </div>
+        ) : mentors.length === 0 ? (
+          <Reveal delay={80} className="mt-12">
+            <div className="clay mx-auto max-w-lg p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                Mentors are being onboarded right now — check back shortly to meet the rankers running
+                batches on EDURACK.
+              </p>
+            </div>
+          </Reveal>
+        ) : (
+          <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {mentors.map((m, i) => (
+              <Reveal key={m.id} delay={i * 90}>
+                <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                        <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
+                        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                          {m.aiimsIitRank && (
+                            <span className="inline-flex items-center gap-1">
+                              <Award className="h-3 w-3" />
+                              {m.aiimsIitRank}
+                            </span>
+                          )}
+                          {m.yearOfStudy && (
+                            <span className="inline-flex items-center gap-1">
+                              <GraduationCap className="h-3 w-3" />
+                              {m.yearOfStudy}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <h3 className="truncate font-display font-bold text-foreground">{v.name}</h3>
-                    <p className="text-xs font-medium text-muted-foreground">{v.rank}</p>
+                    {m.batches.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <Layers3 className="h-3 w-3" />
+                          Batches
+                        </p>
+                        <ul className="space-y-1.5">
+                          {m.batches.map((b) => (
+                            <li key={b.id} className="clay-chip px-3 py-1.5 text-xs font-semibold text-foreground/80">
+                              {b.name} · {b.exam.toUpperCase()} · {b.track}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
+
                   <Link
-                    to="/auth"
-                    className="clay-btn-ghost shrink-0 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
+                    to="/mentor-profile/$mentorId"
+                    params={{ mentorId: m.id }}
+                    className="clay-btn-ghost mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
                   >
-                    View Space
+                    View Full Profile <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
+              </Reveal>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -643,7 +715,7 @@ function AboutSection() {
             About Edurack (edurack.in)
           </h2>
           <p className="fluid-body mt-3 text-muted-foreground">
-            Delivering precision test simulation and elite student mentorship.
+            {LAUNCH_DATE_LABEL} — delivering precision test simulation and elite student mentorship.
           </p>
         </Reveal>
 
@@ -834,7 +906,7 @@ function Footer() {
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
-              Official web platform (edurack.in) founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee for NEET, JEE, CUET & IPMAT preparation.
+              Official web platform (edurack.in) founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee for NEET, JEE, CUET & IPMAT preparation. {LAUNCH_DATE_LABEL}.
             </p>
           </div>
           {footerColumns.map((col) => (
@@ -843,7 +915,7 @@ function Footer() {
         </div>
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
           <span>© {new Date().getFullYear()} EDURACK (edurack.in). All rights reserved.</span>
-          <span>Built for India's toughest entrance exams.</span>
+          <span>{LAUNCH_DATE_LABEL} · Built for India's toughest entrance exams.</span>
         </div>
       </div>
     </footer>
