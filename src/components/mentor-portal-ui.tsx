@@ -10,7 +10,8 @@
 // inventing new ones — nothing here requires a global CSS change.
 import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Loader2, Inbox, AlertCircle, CheckCircle2, Upload, X, Camera, FileText, Video } from "lucide-react";
+import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video } from "@tabler/icons-react";
+import { Inbox, Camera } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { uploadMentorImage, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
 
 // ─── Shared input styling ──────────────────────────────────────────────

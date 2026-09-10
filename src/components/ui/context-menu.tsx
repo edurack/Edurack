@@ -1,6 +1,7 @@
 import * as React from "react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
-import { Check, ChevronRight, Circle } from "lucide-react";
+import { IconCheck as Check, IconChevronRight as ChevronRight } from "@tabler/icons-react";
+import { Circle } from "lucide-react"; // TODO: no Tabler mapping found yet
 
 import { cn } from "@/lib/utils";
 

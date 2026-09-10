@@ -1,18 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  User,
-  GraduationCap,
-  Lock,
-  Trophy,
-  Building2,
-  BookMarked,
-  Video,
-  ExternalLink,
-  Check,
-  Megaphone,
-  TrendingUp,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUser as User, IconSchool as GraduationCap, IconLock as Lock, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconVideo as Video, IconExternalLink as ExternalLink, IconCheck as Check, IconSpeakerphone as Megaphone, IconTrendingUp as TrendingUp } from "@tabler/icons-react";
 import type { MentorProfileExtended, YearOfStudy } from "@/lib/admin-types";
 import { getMentorProfile, updateMyMentorProfile } from "@/server-functions/mentor-auth";
 import { getMyIntroVideoStatus, setIntroVideoUploadedStatus } from "@/server-functions/mentor-profile-extras";

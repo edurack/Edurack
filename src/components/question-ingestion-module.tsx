@@ -1,15 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  ListChecks,
-  FileQuestion,
-  CheckCircle2,
-  Circle,
-  BookOpen,
-  Calendar,
-  Hash,
-  AlertCircle,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconBook2 as BookOpen, IconCalendar as Calendar, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
+import { ListChecks, FileQuestion, Circle, Hash } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   createQuestion,
   listBundles,

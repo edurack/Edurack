@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
-import { ArrowLeft } from "lucide-react";
+import { IconArrowLeft as ArrowLeft } from "@tabler/icons-react";
 
 // Shared with the main site header/footer — keep in sync if the asset moves.
 const LOGO_SRC = "/assets/branding/edurack-logo.png";

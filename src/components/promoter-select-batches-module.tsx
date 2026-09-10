@@ -1,18 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  Users2,
-  ImageIcon,
-  Inbox,
-  AlertCircle,
-  RefreshCw,
-  Tag,
-  CheckCircle2,
-  Clock,
-  ListChecks,
-  ArrowLeft,
-  SlidersHorizontal,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconPhoto as ImageIcon, IconAlertCircle as AlertCircle, IconTag as Tag, IconCircleCheck as CheckCircle2, IconClock as Clock, IconArrowLeft as ArrowLeft } from "@tabler/icons-react";
+import { Inbox, RefreshCw, ListChecks, SlidersHorizontal } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { listPromotableBatches, requestCoupon, listMyCouponRequests } from "@/server-functions/promoter-portal";
 import type { PromotableBatchView, PromoterCouponRequest } from "@/lib/promoter-types";
 

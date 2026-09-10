@@ -1,28 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  Users2,
-  Layers3,
-  Pencil,
-  X,
-  Plus,
-  ShieldCheck,
-  Trophy,
-  Building2,
-  BookMarked,
-  ArrowLeft,
-  Mail,
-  UploadCloud,
-  FileText,
-  ImageIcon,
-  CheckCircle2,
-  XCircle,
-  KeyRound,
-  Ban,
-  BadgeCheck,
-  ExternalLink,
-  ArrowUpRight,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconStack2 as Layers3, IconPencil as Pencil, IconX as X, IconPlus as Plus, IconShieldCheck as ShieldCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconArrowLeft as ArrowLeft, IconMail as Mail, IconCloudUpload as UploadCloud, IconFileText as FileText, IconPhoto as ImageIcon, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconKey as KeyRound, IconBan as Ban, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconArrowUpRight as ArrowUpRight } from "@tabler/icons-react";
 import type { ExamKey, Mentor, MentorshipBatch, Track } from "@/lib/admin-types";
 import {
   listMentors,

@@ -1,21 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Palette } from "lucide-react";
+import { Palette } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  Smartphone,
-  ShieldAlert,
-  Pencil,
-  Check,
-  X,
-  GraduationCap,
-  Target,
-  Receipt,
-  BarChart3,
-  BookOpen,
-  Users2,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconPencil as Pencil, IconCheck as Check, IconX as X, IconSchool as GraduationCap, IconReceipt as Receipt, IconBook2 as BookOpen, IconUsersGroup as Users2 } from "@tabler/icons-react";
+import { Smartphone, ShieldAlert, Target, BarChart3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getDeviceId } from "@/lib/device";
 import { listSessions, forgetDevice, revokeAllSessions } from "@/server-functions/sessions";

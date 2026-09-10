@@ -1,20 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  Library,
-  Eye,
-  CheckCircle2,
-  MessageSquare,
-  Star,
-  ChevronDown,
-  EyeOff,
-  Send,
-  Loader2,
-  PlayCircle,
-  Users2,
-  BellRing,
-  X,
-  Check,
-} from "lucide-react";
+import { IconEye as Eye, IconCircleCheck as CheckCircle2, IconMessageCircle as MessageSquare, IconStar as Star, IconChevronDown as ChevronDown, IconSend as Send, IconLoader2 as Loader2, IconPlayerPlayFilled as PlayCircle, IconUsersGroup as Users2, IconX as X, IconCheck as Check } from "@tabler/icons-react";
+import { Library, EyeOff, BellRing } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   listMyLectureLibrary,
   listLectureComments,

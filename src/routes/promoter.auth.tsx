@@ -4,16 +4,8 @@
 // and their own server functions (promoter-auth.ts).
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Lock,
-  Megaphone,
-  User,
-} from "lucide-react";
+import { IconArrowRight as ArrowRight, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconLock as Lock, IconSpeakerphone as Megaphone, IconUser as User } from "@tabler/icons-react";
+import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   promoterLogin,
   promoterSignUp,

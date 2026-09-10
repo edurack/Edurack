@@ -1,17 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  Package,
-  Plus,
-  X,
-  FileText,
-  CalendarClock,
-  CalendarX2,
-  Pencil,
-  Megaphone,
-  Search,
-  Upload,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconPlus as Plus, IconX as X, IconFileText as FileText, IconCalendarClock as CalendarClock, IconPencil as Pencil, IconSpeakerphone as Megaphone, IconSearch as Search, IconUpload as Upload } from "@tabler/icons-react";
+import { Package, CalendarX2 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   createBundle,
   listBundles,

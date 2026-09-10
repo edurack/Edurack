@@ -1,14 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  ClipboardList,
-  Tag,
-  Scale,
-  CalendarRange,
-  FileText,
-  Pencil,
-  Timer,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconClipboardList as ClipboardList, IconTag as Tag, IconFileText as FileText, IconPencil as Pencil } from "@tabler/icons-react";
+import { Scale, CalendarRange, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   listBundles,
   createTestCore,

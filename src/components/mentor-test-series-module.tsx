@@ -1,27 +1,6 @@
 import { JSXElementConstructor, Key, ReactElement, ReactNode, ReactPortal, useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  Plus,
-  X,
-  Pencil,
-  Tag,
-  Scale,
-  Timer,
-  FileText,
-  ArrowLeft,
-  BarChart3,
-  Trophy,
-  CalendarRange,
-  ListChecks,
-  Send,
-  Lock,
-  CheckCircle2,
-  RefreshCw,
-  Clock3,
-  EyeOff,
-  Eye,
-  Info,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconPlus as Plus, IconX as X, IconPencil as Pencil, IconTag as Tag, IconFileText as FileText, IconArrowLeft as ArrowLeft, IconTrophy as Trophy, IconSend as Send, IconLock as Lock, IconCircleCheck as CheckCircle2, IconEye as Eye, IconInfoCircle as Info } from "@tabler/icons-react";
+import { Scale, Timer, BarChart3, CalendarRange, ListChecks, RefreshCw, Clock3, EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   appendMentorTest,
   updateMentorTest,

@@ -1,16 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Inbox,
-  RefreshCw,
-  Hash,
-  FileQuestion,
-  Circle,
-  Send,
-  ArrowLeft,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconAlertCircle as AlertCircle, IconSend as Send, IconArrowLeft as ArrowLeft } from "@tabler/icons-react";
+import { Inbox, RefreshCw, Hash, FileQuestion, Circle } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   listSellTestsAccessRequests,
   setSellTestsAccess,

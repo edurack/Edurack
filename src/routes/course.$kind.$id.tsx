@@ -1,41 +1,8 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { listAttachedSoldTestsForStudent } from "@/server-functions/batch-hub";
-import {
-  Loader2,
-  LayoutDashboard,
-  ClipboardList,
-  FolderOpen,
-  Megaphone,
-  LifeBuoy,
-  Lock,
-  Unlock,
-  PlayCircle,
-  FileText,
-  ChevronDown,
-  PhoneCall,
-  X,
-  Users2,
-  BookOpen,
-  BarChart3,
-  Trophy,
-  Building2,
-  BookMarked,
-  Video,
-  CalendarClock,
-  Link2,
-  Radio,
-  MoreVertical,
-  CheckCircle2,
-  MessageSquare,
-  Send,
-  BadgeCheck,
-  ExternalLink,
-  Download,
-  ChevronRight,
-  Tag,
-  XCircle,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconLayoutDashboard as LayoutDashboard, IconClipboardList as ClipboardList, IconSpeakerphone as Megaphone, IconLifebuoy as LifeBuoy, IconLock as Lock, IconPlayerPlayFilled as PlayCircle, IconFileText as FileText, IconChevronDown as ChevronDown, IconX as X, IconUsersGroup as Users2, IconBook2 as BookOpen, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconVideo as Video, IconCalendarClock as CalendarClock, IconDotsVertical as MoreVertical, IconCircleCheck as CheckCircle2, IconMessageCircle as MessageSquare, IconSend as Send, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconDownload as Download, IconChevronRight as ChevronRight, IconTag as Tag, IconCircleX as XCircle } from "@tabler/icons-react";
+import { FolderOpen, Unlock, PhoneCall, BarChart3, Link2, Radio } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { ClayStarRating } from "@/components/clay-star-rating";

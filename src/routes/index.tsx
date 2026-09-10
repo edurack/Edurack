@@ -1,31 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  Menu,
-  X,
-  MonitorPlay,
-  LayoutDashboard,
-  CalendarCheck,
-  LineChart,
-  ArrowRight,
-  Sparkles,
-  UserCheck,
-  Cpu,
-  TrendingUp,
-  ShieldCheck,
-  Users,
-  Globe,
-  Linkedin,
-  Youtube,
-  Instagram,
-  Twitter,
-  MessageSquare,
-  AtSign, // Used for Threads
-  GraduationCap,
-  Award,
-  Layers3,
-  Loader2,
-} from "lucide-react";
+import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconCpu as Cpu, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3, IconLoader2 as Loader2 } from "@tabler/icons-react";
+import { // Used for Threads
+  GraduationCap } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { CbtSimulator } from "@/components/landing/CbtSimulator";
 import { listMentorsForLanding } from "@/server-functions/catalog";
 

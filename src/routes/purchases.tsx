@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, BookOpen, Users2, Tag, ArrowRight, CalendarDays, PackageOpen } from "lucide-react";
+import { IconLoader2 as Loader2, IconBook2 as BookOpen, IconUsersGroup as Users2, IconTag as Tag, IconArrowRight as ArrowRight, IconCalendarEvent as CalendarDays } from "@tabler/icons-react";
+import { PackageOpen } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getMyPurchases } from "@/server-functions/student-data";
 import { AppHeader } from "@/components/app-header";

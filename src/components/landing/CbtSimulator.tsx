@@ -1,4 +1,4 @@
-import { Clock, User } from "lucide-react";
+import { IconClock as Clock, IconUser as User } from "@tabler/icons-react";
 
 const subjects = [
   { name: "Physics", active: false },

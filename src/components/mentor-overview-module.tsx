@@ -3,23 +3,7 @@
 // / listChatThreads / listMyMentorTickets / getMentorProfileCompleteness,
 // plus (new) the earnings overview and test-series access status.
 import { useEffect, useState } from "react";
-import {
-  CalendarClock,
-  MessageSquare,
-  LifeBuoy,
-  Layers3,
-  ArrowRight,
-  Sparkles,
-  Video,
-  Users2,
-  PlayCircle,
-  IndianRupee,
-  TrendingUp,
-  ClipboardList,
-  Lock,
-  Loader2,
-  Receipt,
-} from "lucide-react";
+import { IconCalendarClock as CalendarClock, IconMessageCircle as MessageSquare, IconLifebuoy as LifeBuoy, IconStack2 as Layers3, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconVideo as Video, IconUsersGroup as Users2, IconPlayerPlayFilled as PlayCircle, IconCurrencyRupee as IndianRupee, IconTrendingUp as TrendingUp, IconClipboardList as ClipboardList, IconLock as Lock, IconLoader2 as Loader2, IconReceipt as Receipt } from "@tabler/icons-react";
 import {
   listMyAssignedBatches,
   listMentorshipSessions,

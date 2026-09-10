@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, Megaphone, Mail, MailCheck, MailWarning, Users2, Plus, X } from "lucide-react";
+import { IconLoader2 as Loader2, IconSpeakerphone as Megaphone, IconMail as Mail, IconUsersGroup as Users2, IconPlus as Plus, IconX as X } from "@tabler/icons-react";
+import { MailCheck, MailWarning } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { MentorAnnouncement } from "@/lib/admin-types";
 import { postMentorAnnouncement, listMentorAnnouncements, listMyAssignedBatches } from "@/server-functions/mentor-portal";
 import {

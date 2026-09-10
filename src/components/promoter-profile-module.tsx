@@ -2,25 +2,8 @@
 // and the dedicated PROMOTER_UPLOADS_BUCKET (see @/lib/supabase) — its
 // own bucket, not shared with mentor uploads.
 import { useEffect, useRef, useState } from "react";
-import {
-  Loader2,
-  User,
-  Mail,
-  Link2,
-  Wallet,
-  Plus,
-  X,
-  Upload,
-  ImageIcon,
-  AlertCircle,
-  RefreshCw,
-  CalendarDays,
-  Layers3,
-  IndianRupee,
-  Send,
-  CheckCircle2,
-  Clock,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUser as User, IconMail as Mail, IconPlus as Plus, IconX as X, IconUpload as Upload, IconPhoto as ImageIcon, IconAlertCircle as AlertCircle, IconCalendarEvent as CalendarDays, IconStack2 as Layers3, IconCurrencyRupee as IndianRupee, IconSend as Send, IconCircleCheck as CheckCircle2, IconClock as Clock } from "@tabler/icons-react";
+import { Link2, Wallet, RefreshCw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { uploadToSupabase, PROMOTER_UPLOADS_BUCKET, MAX_PROMOTER_IMAGE_BYTES } from "@/lib/supabase";
 import { getMyPromoterProfile, updateMyPromoterProfile } from "@/server-functions/promoter-auth";
 import { getMyProfileStats, requestPromoterPayout, getMyPayoutStatus } from "@/server-functions/promoter-portal";

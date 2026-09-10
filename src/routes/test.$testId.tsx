@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Clock, User, Grid3x3, X } from "lucide-react";
+import { IconLoader2 as Loader2, IconClock as Clock, IconUser as User, IconX as X } from "@tabler/icons-react";
+import { Grid3x3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { getTestForTaking, submitTestAttempt } from "@/server-functions/test-engine";

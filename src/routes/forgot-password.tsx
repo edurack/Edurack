@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, Lock, Mail } from "lucide-react";
+import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCircleCheck as CheckCircle2, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconLock as Lock, IconMail as Mail } from "@tabler/icons-react";
+import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   requestPasswordResetOtp,
   verifyPasswordResetOtp,

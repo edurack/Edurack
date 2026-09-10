@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Layers3, IndianRupee, Ticket, Inbox, AlertCircle, RefreshCw } from "lucide-react";
+import { IconStack2 as Layers3, IconCurrencyRupee as IndianRupee, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
+import { Ticket, Inbox, RefreshCw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { getMyOverviewStats } from "@/server-functions/promoter-portal";
 import type { PromoterOverviewStats } from "@/lib/promoter-types";
 

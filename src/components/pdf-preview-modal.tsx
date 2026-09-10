@@ -1,4 +1,4 @@
-import { FileText, ExternalLink, Download, X } from "lucide-react";
+import { IconFileText as FileText, IconExternalLink as ExternalLink, IconDownload as Download, IconX as X } from "@tabler/icons-react";
 
 export function PdfPreviewModal({
   url,

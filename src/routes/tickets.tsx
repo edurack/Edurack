@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, LifeBuoy, Search, Star, MessageSquareText, Inbox, AlertCircle, RefreshCw } from "lucide-react";
+import { IconLoader2 as Loader2, IconLifebuoy as LifeBuoy, IconSearch as Search, IconStar as Star, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
+import { MessageSquareText, Inbox, RefreshCw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { listMyAllTickets, rateTicketResponse } from "@/server-functions/student-data";
 import { AppHeader } from "@/components/app-header";

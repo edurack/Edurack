@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 
 export const Route = createFileRoute("/legal/refund")({
@@ -12,7 +12,7 @@ function RefundPage() {
       icon={RotateCcw}
       eyebrow="Legal"
       title="Refund Policy"
-      lastUpdated="July 18, 2026"
+      lastUpdated="September 10, 2026"
     >
       <LegalSection title="1. Custom-Priced Mentorship Programs">
         <p>
@@ -39,7 +39,18 @@ function RefundPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="3. CBT Mock Test Engine Accessibility">
+      <LegalSection title="3. Credential Misrepresentation">
+        <p>
+          Every mentor on EDURACK warrants that the exam ranks, institutional
+          affiliations, and other credentials advertised on their profile are
+          authentic and verifiable. If EDURACK determines that a mentor
+          misrepresented their credentials, all students enrolled in the affected
+          batch are entitled to a full refund, regardless of how much content has
+          already been accessed.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="4. CBT Mock Test Engine Accessibility">
         <p>
           The CBT mock test simulator is offered as part of a student's platform
           access and is not sold as a separate line item. If a technical issue on
@@ -54,16 +65,16 @@ function RefundPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="4. Non-Refundable Situations">
+      <LegalSection title="5. Non-Refundable Situations">
         <p>
           Requests made after a mentorship batch has concluded, after the majority
           of a bundle's content has been downloaded or viewed, or based on a change
-          of mind unrelated to a platform or delivery issue, are generally not
-          eligible for a refund.
+          of mind unrelated to a platform, delivery, or credential issue, are
+          generally not eligible for a refund.
         </p>
       </LegalSection>
 
-      <LegalSection title="5. How to Request a Refund">
+      <LegalSection title="6. How to Request a Refund">
         <p>
           Reach out to our team with your order details and the reason for your
           request. Approved refunds are credited back to your original payment

@@ -1,19 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  UserPlus,
-  Users2,
-  Copy,
-  CheckCircle2,
-  Clock,
-  ThumbsUp,
-  ThumbsDown,
-  Ticket,
-  Wallet,
-  KeyRound,
-  Ban,
-  RotateCcw,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconCopy as Copy, IconCircleCheck as CheckCircle2, IconClock as Clock, IconKey as KeyRound, IconBan as Ban } from "@tabler/icons-react";
+import { UserPlus, ThumbsUp, ThumbsDown, Ticket, Wallet, RotateCcw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   createPromoterInvite,
   listPromoters,

@@ -1,4 +1,4 @@
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useTheme } from "@/lib/theme-provider";
 
 const options = [

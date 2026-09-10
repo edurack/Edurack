@@ -1,4 +1,4 @@
-import { GripVertical } from "lucide-react";
+import { GripVertical } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";

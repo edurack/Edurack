@@ -1,20 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  MessageSquare,
-  Send,
-  Lock,
-  Unlock,
-  FileUp,
-  ShieldCheck,
-  FileText,
-  Clock,
-  Plus,
-  X,
-  ArrowLeft,
-  PlayCircle,
-  Layers3,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconMessageCircle as MessageSquare, IconSend as Send, IconLock as Lock, IconShieldCheck as ShieldCheck, IconFileText as FileText, IconClock as Clock, IconPlus as Plus, IconX as X, IconArrowLeft as ArrowLeft, IconPlayerPlayFilled as PlayCircle, IconStack2 as Layers3 } from "@tabler/icons-react";
+import { Unlock, FileUp } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   listMyAssignedBatches,
   listChatThreads,

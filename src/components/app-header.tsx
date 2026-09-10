@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { HelpCircle, ShoppingBag, UserRound, ChevronDown, LogOut, Home, LifeBuoy } from "lucide-react";
+import { IconHelpCircle as HelpCircle, IconShoppingBag as ShoppingBag, IconChevronDown as ChevronDown, IconLogout as LogOut, IconHome as Home, IconLifebuoy as LifeBuoy } from "@tabler/icons-react";
+import { UserRound } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User } from "firebase/auth";
 import { signOutUser } from "@/lib/firebase";
 

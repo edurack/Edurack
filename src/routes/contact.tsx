@@ -2,16 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { requestStudentCallback } from "@/server-functions/callback-requests";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import {
-  User,
-  Phone,
-  School,
-  MessageCircleQuestion,
-  PhoneCall,
-  Loader2,
-  CheckCircle2,
-  Clock3,
-} from "lucide-react";
+import { IconUser as User, IconPhone as Phone, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2 } from "@tabler/icons-react";
+import { School, MessageCircleQuestion, PhoneCall, Clock3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 
 export const Route = createFileRoute("/contact")({
   component: ContactPage,

@@ -1,31 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import type { FormEvent } from "react";
-import {
-  GraduationCap,
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Award,
-  BookOpen,
-  Users,
-  Tag,
-  IndianRupee,
-  Loader2,
-  CheckCircle2,
-  Sparkles,
-  Link2,
-  Youtube,
-  Instagram,
-  Linkedin,
-  Twitter,
-  Send,
-  Plus,
-  Trash2,
-  Check,
-  BookMarked,
-} from "lucide-react";
+import { IconSchool as GraduationCap, IconUser as User, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconAward as Award, IconBook2 as BookOpen, IconUsers as Users, IconTag as Tag, IconCurrencyRupee as IndianRupee, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconSparkles as Sparkles, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSend as Send, IconPlus as Plus, IconTrash as Trash2, IconCheck as Check, IconBookmark as BookMarked } from "@tabler/icons-react";
+import { Link2 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { EXAM_KEYS, EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { submitCreatorApplication } from "@/server-functions/mentor-applications";
 

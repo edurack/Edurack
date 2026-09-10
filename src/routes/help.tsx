@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, ChevronDown, LifeBuoy, Clock } from "lucide-react";
+import { IconLoader2 as Loader2, IconChevronDown as ChevronDown, IconLifebuoy as LifeBuoy, IconClock as Clock } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { submitPlatformTicket, listMyPlatformTickets } from "@/server-functions/student-data";
 import { AppHeader } from "@/components/app-header";

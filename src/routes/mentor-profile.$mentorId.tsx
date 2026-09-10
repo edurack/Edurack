@@ -1,20 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  ArrowLeft,
-  BadgeCheck,
-  Trophy,
-  Building2,
-  BookMarked,
-  Star,
-  Layers3,
-  UserX,
-  ChevronRight,
-  Tag,
-  ClipboardList,
-  Timer,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList } from "@tabler/icons-react";
+import { UserX, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { VideoPlayer } from "@/components/clay-video-player";

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, LifeBuoy, Send, Clock, CheckCircle2, MessageCircle, Plus, X } from "lucide-react";
+import { IconLoader2 as Loader2, IconLifebuoy as LifeBuoy, IconSend as Send, IconClock as Clock, IconCircleCheck as CheckCircle2, IconPlus as Plus, IconX as X } from "@tabler/icons-react";
+import { MessageCircle } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { TicketCategory, MentorSupportTicket } from "@/lib/admin-types";
 import { submitMentorTicket, listMyMentorTickets } from "@/server-functions/mentor-portal";
 import { ModuleHeader, ClayField, Panel, LoadingBlock, EmptyState, ErrorBanner, SuccessBanner, inputClass, textareaClass } from "@/components/mentor-portal-ui";

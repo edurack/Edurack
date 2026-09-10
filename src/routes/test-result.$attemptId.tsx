@@ -1,16 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  Trophy,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  MinusCircle,
-  Medal,
-  ArrowLeft,
-  AlertCircle,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconTrophy as Trophy, IconClock as Clock, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconArrowLeft as ArrowLeft, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
+import { MinusCircle, Medal } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getTestAttempt, getLeaderboard } from "@/server-functions/test-results";
 import { SmartContent } from "@/lib/smart-content";

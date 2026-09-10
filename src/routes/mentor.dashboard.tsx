@@ -1,19 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  GraduationCap,
-  LayoutDashboard,
-  User,
-  Megaphone,
-  CalendarClock,
-  MessageSquare,
-  LifeBuoy,
-  Library,
-  ClipboardList,
-  LogOut,
-  Tag,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconSchool as GraduationCap, IconLayoutDashboard as LayoutDashboard, IconUser as User, IconSpeakerphone as Megaphone, IconCalendarClock as CalendarClock, IconMessageCircle as MessageSquare, IconLifebuoy as LifeBuoy, IconClipboardList as ClipboardList, IconLogout as LogOut, IconTag as Tag } from "@tabler/icons-react";
+import { Library } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { getMentorSession } from "@/server-functions/mentor-auth";
 import { MentorOverviewModule } from "@/components/mentor-overview-module";
 import { MentorProfileModule } from "@/components/mentor-profile-module";

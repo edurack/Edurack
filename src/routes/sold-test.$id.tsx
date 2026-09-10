@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, Timer, Users2, BadgeCheck, ClipboardList, PlayCircle, BarChart3, Tag, FileText } from "lucide-react";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconRosetteDiscountCheck as BadgeCheck, IconClipboardList as ClipboardList, IconPlayerPlayFilled as PlayCircle, IconTag as Tag, IconFileText as FileText } from "@tabler/icons-react";
+import { Timer, BarChart3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { getPublicSoldTestDetail, hasPurchased } from "@/server-functions/batch-hub";

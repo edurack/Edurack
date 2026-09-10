@@ -1,23 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  Mail,
-  Lock,
-  User,
-  Phone,
-  MapPin,
-  GraduationCap,
-  Target,
-  Sparkles,
-  ShieldCheck,
-} from "lucide-react";
+import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconLock as Lock, IconUser as User, IconPhone as Phone, IconMapPin as MapPin, IconSchool as GraduationCap, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
+import { EyeOff, Target } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User as FirebaseUser } from "firebase/auth";
 import { auth, firebaseSignIn, firebaseSignUp, googleAuth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, ShieldCheck, Mail, Lock, KeyRound, Eye, EyeOff, User } from "lucide-react";
+import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconMail as Mail, IconLock as Lock, IconKey as KeyRound, IconEye as Eye, IconUser as User } from "@tabler/icons-react";
+import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   adminAuthClient,
   adminFirebaseSignIn,

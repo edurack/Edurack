@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ChevronRight, Package, ClipboardList, Trash2, Pencil, Check, X, Search } from "lucide-react";
+import { IconLoader2 as Loader2, IconChevronRight as ChevronRight, IconClipboardList as ClipboardList, IconTrash as Trash2, IconPencil as Pencil, IconCheck as Check, IconX as X, IconSearch as Search } from "@tabler/icons-react";
+import { Package } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { TestSeriesBundle, TestCore, Question } from "@/lib/admin-types";
 import {
   listBundles,

@@ -1,19 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  ArrowLeft,
-  MessageSquare,
-  Send,
-  User2,
-  FileText,
-  Star as StarIcon,
-  CheckCircle2,
-  BadgeCheck,
-  Users2,
-  Clock,
-  PlayCircle,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconMessageCircle as MessageSquare, IconSend as Send, IconFileText as FileText, IconStar as StarIcon, IconCircleCheck as CheckCircle2, IconRosetteDiscountCheck as BadgeCheck, IconUsersGroup as Users2, IconClock as Clock, IconPlayerPlayFilled as PlayCircle } from "@tabler/icons-react";
+import { User2 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { VideoPlayer } from "@/components/clay-video-player";

@@ -6,12 +6,7 @@
 // hand-pasted.
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Loader2, ArrowRight, ArrowLeft, Check, Sparkles, User, GraduationCap, Award,
-  FileText, Clock, ShoppingBag, Video, Tag, ImageIcon, IndianRupee,
-  CalendarDays, Users2, Megaphone, BookMarked, MapPin, Rocket, CheckCircle2,
-  AlertCircle, Upload, X, Eye, ShieldCheck, TrendingUp, Pencil,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconArrowRight as ArrowRight, IconArrowLeft as ArrowLeft, IconCheck as Check, IconSparkles as Sparkles, IconUser as User, IconSchool as GraduationCap, IconAward as Award, IconFileText as FileText, IconClock as Clock, IconShoppingBag as ShoppingBag, IconVideo as Video, IconTag as Tag, IconPhoto as ImageIcon, IconCurrencyRupee as IndianRupee, IconCalendarEvent as CalendarDays, IconUsersGroup as Users2, IconSpeakerphone as Megaphone, IconBookmark as BookMarked, IconMapPin as MapPin, IconRocket as Rocket, IconCircleCheck as CheckCircle2, IconAlertCircle as AlertCircle, IconUpload as Upload, IconX as X, IconEye as Eye, IconShieldCheck as ShieldCheck, IconTrendingUp as TrendingUp, IconPencil as Pencil } from "@tabler/icons-react";
 import { supabase, MENTOR_UPLOADS_BUCKET } from "@/lib/supabase";
 import {
   getApprovedApplicationSummary,

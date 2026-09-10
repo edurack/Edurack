@@ -1,18 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Clock,
-  Grid3x3,
-  X,
-  Trophy,
-  CheckCircle2,
-  XCircle,
-  MinusCircle,
-  LogIn,
-  Compass,
-  GraduationCap,
-  Sparkles,
-} from "lucide-react";
+import { IconClock as Clock, IconX as X, IconTrophy as Trophy, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconLogin as LogIn, IconSchool as GraduationCap, IconSparkles as Sparkles } from "@tabler/icons-react";
+import { Grid3x3, MinusCircle, Compass } from "lucide-react"; // TODO: no Tabler mapping found yet
 
 export const Route = createFileRoute("/simulator/live")({
   component: SimulatorLivePage,

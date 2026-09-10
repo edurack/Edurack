@@ -1,15 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Minimize,
-  Gauge,
-  RotateCcw,
-  RotateCw,
-} from "lucide-react";
+import { IconPlayerPlay as Play } from "@tabler/icons-react";
+import { Pause, Volume2, VolumeX, Maximize, Minimize, Gauge, RotateCcw, RotateCw } from "lucide-react"; // TODO: no Tabler mapping found yet
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const PROGRESS_REPORT_INTERVAL_MS = 5000;

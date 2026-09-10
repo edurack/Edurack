@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2, TrendingUp, TrendingDown, AlertTriangle, ChevronRight, ArrowLeft, Trophy, Target, Repeat } from "lucide-react";
+import { IconLoader2 as Loader2, IconTrendingUp as TrendingUp, IconChevronRight as ChevronRight, IconArrowLeft as ArrowLeft, IconTrophy as Trophy } from "@tabler/icons-react";
+import { TrendingDown, AlertTriangle, Target, Repeat } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 import { useAuth } from "@/lib/auth-context";
 import { getTestAnalysis } from "@/server-functions/test-results";

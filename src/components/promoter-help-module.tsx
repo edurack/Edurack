@@ -1,15 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  LifeBuoy,
-  Send,
-  Inbox,
-  AlertCircle,
-  RefreshCw,
-  Clock,
-  CheckCircle2,
-  MessageSquareText,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconLifebuoy as LifeBuoy, IconSend as Send, IconAlertCircle as AlertCircle, IconClock as Clock, IconCircleCheck as CheckCircle2 } from "@tabler/icons-react";
+import { Inbox, RefreshCw, MessageSquareText } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { submitPromoterTicket, listMyPromoterTickets } from "@/server-functions/promoter-portal";
 import type { PromoterSupportTicket, PromoterTicketCategory } from "@/lib/promoter-types";
 

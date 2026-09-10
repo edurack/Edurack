@@ -4,17 +4,8 @@
 // system's independence from admin/mentor identity.
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import {
-  Loader2,
-  Megaphone,
-  LayoutDashboard,
-  Layers3,
-  UserCircle2,
-  LifeBuoy,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconSpeakerphone as Megaphone, IconLayoutDashboard as LayoutDashboard, IconStack2 as Layers3, IconLifebuoy as LifeBuoy, IconLogout as LogOut, IconMenu2 as Menu, IconX as X } from "@tabler/icons-react";
+import { UserCircle2 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { getPromoterSession } from "@/server-functions/promoter-auth";
 import { PromoterOverviewModule } from "@/components/promoter-overview-module";
 import { PromoterSelectBatchesModule } from "@/components/promoter-select-batches-module";

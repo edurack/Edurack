@@ -1,22 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Loader2,
-  Search,
-  BookOpen,
-  Users2,
-  Calendar,
-  ArrowRight,
-  ChevronRight,
-  GraduationCap,
-  Star,
-  BadgeCheck,
-  Target,
-  Layers,
-  Tag,
-  ClipboardList,
-  Timer,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconCalendar as Calendar, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList } from "@tabler/icons-react";
+import { Target, Layers, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";

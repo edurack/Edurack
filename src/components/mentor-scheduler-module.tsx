@@ -1,20 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Loader2,
-  Users2,
-  Video,
-  PlayCircle,
-  CalendarClock,
-  MessageSquare,
-  Eye,
-  EyeOff,
-  CheckCircle2,
-  XCircle,
-  Link2,
-  Plus,
-  X,
-  Send,
-} from "lucide-react";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconVideo as Video, IconPlayerPlayFilled as PlayCircle, IconCalendarClock as CalendarClock, IconMessageCircle as MessageSquare, IconEye as Eye, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconPlus as Plus, IconX as X, IconSend as Send } from "@tabler/icons-react";
+import { EyeOff, Link2 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { MentorshipSession, LectureComment } from "@/lib/admin-types";
 import {
   listMyAssignedBatches,

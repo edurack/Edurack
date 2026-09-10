@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { IconStar as Star } from "@tabler/icons-react";
 
 export function ClayStarRating({
   value,
