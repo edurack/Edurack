@@ -1,10 +1,46 @@
 import { createFileRoute, Link, Await } from "@tanstack/react-router";
-import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconTarget as Target, IconActivity as Activity, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3 } from "@tabler/icons-react";
-import { // Used for Threads
-  GraduationCap } from "lucide-react"; // TODO: no Tabler mapping found yet
-import { CbtSimulator } from "@/components/landing/CbtSimulator";
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  IconMenu2 as Menu,
+  IconX as X,
+  IconDeviceDesktopAnalytics as MonitorPlay,
+  IconLayoutDashboard as LayoutDashboard,
+  IconCalendarCheck as CalendarCheck,
+  IconChartLine as LineChart,
+  IconArrowRight as ArrowRight,
+  IconSparkles as Sparkles,
+  IconUserCheck as UserCheck,
+  IconTarget as Target,
+  IconActivity as Activity,
+  IconTrendingUp as TrendingUp,
+  IconShieldCheck as ShieldCheck,
+  IconUsers as Users,
+  IconWorld as Globe,
+  IconBrandLinkedin as Linkedin,
+  IconBrandYoutube as Youtube,
+  IconBrandInstagram as Instagram,
+  IconBrandX as Twitter,
+  IconMessageCircle as MessageSquare,
+  IconAt as AtSign,
+  IconAward as Award,
+  IconStack2 as Layers3,
+  IconSchool as GraduationCap, // FIX: replaced the separate `lucide-react` import.
+  // Pulling in an entire second icon library for one icon was adding a whole
+  // extra module (and its own tree-shaking boundary) to the bundle for a
+  // single glyph. Tabler ships an equivalent "school" icon, so we use that
+  // instead and drop the lucide-react dependency from this file entirely.
+} from "@tabler/icons-react";
 import { listMentorsForLanding } from "@/server-functions/catalog";
+
+// FIX: CbtSimulator is a heavy, below-the-fold interactive component
+// (exam-navigation UI, question palette, timers, etc). It was being bundled
+// into the initial JS payload even though nothing above the fold needs it.
+// Lazy-loading it moves its code (and whatever libraries it pulls in) out of
+// the critical bundle, which is what Lighthouse's "Reduce unused JavaScript"
+// audit was flagging on /assets/index-*.js.
+const CbtSimulator = lazy(() =>
+  import("@/components/landing/CbtSimulator").then((m) => ({ default: m.CbtSimulator })),
+);
 
 // ---------------------------------------------
 // Mentor data is deferred/streamed rather than awaited in the loader.
@@ -282,7 +318,22 @@ function Header() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    // FIX (forced reflow audit): reading window.scrollY itself is cheap, but
+    // calling setScrolled() on *every* scroll event forces a React re-render
+    // (and therefore a style recalculation) tied 1:1 to scroll position.
+    // Coalescing updates into a single requestAnimationFrame per frame avoids
+    // scheduling more layout/style work than the browser can keep up with,
+    // which is the usual cause of "forced reflow" / long scroll-handler
+    // warnings from an otherwise-innocent scroll listener like this one.
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 8);
+        ticking = false;
+      });
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -299,8 +350,8 @@ function Header() {
           <img
             src="/edurack-logo.webp"
             alt="EDURACK"
-            width={140}
-            height={140}
+            width={160}
+            height={160}
             className="h-10 w-auto shrink-0 object-contain sm:h-12"
           />
           <span className="truncate font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
@@ -466,6 +517,17 @@ function Hero() {
   );
 }
 
+// FIX: lightweight, non-spinner fallback for the lazy-loaded simulator so
+// the section still reserves its box (no layout shift) while the chunk
+// downloads. Kept intentionally simple/static — no animation, no JS.
+function CbtSimulatorFallback() {
+  return (
+    <div className="clay mx-auto flex h-[420px] max-w-4xl items-center justify-center p-8 text-center">
+      <p className="text-sm text-muted-foreground">Loading the CBT simulator…</p>
+    </div>
+  );
+}
+
 function SimulatorSection() {
   return (
     <section id="simulator" className="px-4 py-16 sm:px-6 lg:py-24">
@@ -482,7 +544,12 @@ function SimulatorSection() {
         </p>
       </Reveal>
       <Reveal delay={120} className="mt-10">
-        <CbtSimulator />
+        {/* FIX: was a static top-level import; now code-split via React.lazy
+            above so its JS only downloads once this section is about to be
+            shown, instead of shipping in the initial bundle. */}
+        <Suspense fallback={<CbtSimulatorFallback />}>
+          <CbtSimulator />
+        </Suspense>
       </Reveal>
 
       <Reveal delay={180} className="mx-auto mt-10 max-w-2xl text-center">
@@ -693,6 +760,30 @@ function MentorsFallback() {
   );
 }
 
+// FIX (image sizing): added explicit width/height on the mentor avatar.
+// Two things this fixes at once:
+//   1. Layout shift — the browser now reserves the 56x56 box before the
+//      image downloads, instead of the surrounding card jumping once it loads.
+//   2. It documents the *intended* render size, so if profilePictureUrl is a
+//      raw Supabase Storage URL, it's obvious downstream that a 56px box
+//      never needs the full-resolution upload — see the note further down
+//      about requesting a resized/transformed URL from Supabase instead.
+function MentorAvatar({ src, name }: { src: string; name: string }) {
+  return (
+    <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
+      <img
+        src={src}
+        alt={name}
+        width={56}
+        height={56}
+        loading="lazy"
+        decoding="async"
+        className="h-full w-full object-cover"
+      />
+    </div>
+  );
+}
+
 function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
   if (mentors.length === 0) {
     return (
@@ -715,9 +806,7 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
             <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
               <div>
                 <div className="flex items-center gap-3">
-                  <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
-                    <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
-                  </div>
+                  <MentorAvatar src={m.profilePictureUrl} name={m.name} />
                   <div className="min-w-0">
                     <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
                     <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
@@ -1065,8 +1154,8 @@ function Footer() {
               <img
                 src="/edurack-logo.webp"
                 alt="EDURACK"
-                width={140}
-                height={140}
+                width={160}
+                height={160}
                 className="h-10 w-auto shrink-0 object-contain sm:h-12"
               />
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>

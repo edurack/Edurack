@@ -17,6 +17,8 @@
     "@aws-sdk/cloudfront-signer": "^3.1116.0",
     "@aws-sdk/s3-request-presigner": "^3.1127.0",
     "@emailjs/browser": "^4.4.1",
+    "@fontsource/bricolage-grotesque": "^5.3.0",
+    "@fontsource/plus-jakarta-sans": "^5.3.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

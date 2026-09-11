@@ -12,6 +12,26 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+// FIX (render-blocking request, ~670ms + a full DNS/connect/download hop to
+// fonts.googleapis.com / fonts.gstatic.com): fonts are now self-hosted via
+// Fontsource instead of the Google Fonts CDN. This removes two entire
+// cross-origin round trips from the critical path shown in the network
+// dependency tree — the browser now only has to fetch your own origin.
+//
+// Requires (run these once):
+//   npm install @fontsource/bricolage-grotesque @fontsource/plus-jakarta-sans
+//
+// These imports only pull in the specific weights you were requesting from
+// Google Fonts (Bricolage Grotesque: 500/600/700/800, Plus Jakarta Sans:
+// 400/500/600/700), so you're not shipping unused weights.
+import "@fontsource/bricolage-grotesque/500.css";
+import "@fontsource/bricolage-grotesque/600.css";
+import "@fontsource/bricolage-grotesque/700.css";
+import "@fontsource/bricolage-grotesque/800.css";
+import "@fontsource/plus-jakarta-sans/400.css";
+import "@fontsource/plus-jakarta-sans/500.css";
+import "@fontsource/plus-jakarta-sans/600.css";
+import "@fontsource/plus-jakarta-sans/700.css";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "../lib/auth-context";
 
@@ -88,12 +108,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
+    // FIX: dropped the fonts.googleapis.com stylesheet link and the two
+    // preconnect hints that went with it — they're no longer needed now
+    // that fonts are self-hosted and pulled in via the imports above,
+    // which get bundled with the rest of your CSS instead of requiring
+    // separate cross-origin requests.
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" },
     ],
   }),
   shellComponent: RootShell,

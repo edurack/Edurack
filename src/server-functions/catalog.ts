@@ -19,6 +19,32 @@ function shouldShowBundleForAStudent(bundleExam: string, bundleDomainSubject: st
   return studentDomainSubjects.size === 0 || studentDomainSubjects.has(bundleDomainSubject);
 }
 
+// FIX (Lighthouse "Improve image delivery" — ~412 KiB flagged): mentor
+// profile photos are uploaded at full camera resolution to Supabase
+// Storage, but every place we render them shows a small avatar (56px on
+// the landing page). Rather than re-encoding on upload, we rewrite the
+// public storage URL to go through Supabase's built-in image-transform
+// endpoint, which resizes/re-compresses on the fly and is cached at the
+// edge. `/storage/v1/object/public/...` becomes
+// `/storage/v1/render/image/public/...?width=&height=&quality=&resize=cover`.
+//
+// Only rewrites genuine Supabase public-storage URLs — anything else
+// (empty string, a non-Supabase URL, an already-transformed URL) is
+// returned untouched, so this is safe to apply even if profilePictureUrl
+// turns out to be something unexpected.
+function toResizedSupabaseImageUrl(url: string | null | undefined, size: number, quality = 70): string | null {
+  if (!url) return null;
+  const marker = "/storage/v1/object/public/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) return url; // not a Supabase public storage URL — leave as-is
+
+  const base = url.slice(0, idx);
+  const path = url.slice(idx + marker.length);
+  // Request at 2x the display size for retina screens.
+  const targetSize = size * 2;
+  return `${base}/storage/v1/render/image/public/${path}?width=${targetSize}&height=${targetSize}&resize=cover&quality=${quality}`;
+}
+
 export const listPublicBundles = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -310,6 +336,11 @@ export const listPublicMentors = createServerFn({ method: "GET" })
         return {
           id: mentorId,
           name: m.name as string,
+          // NOTE: left untouched here deliberately — this directory backs the
+          // logged-in in-app browse UI, which may render these photos larger
+          // than the landing page's 56px avatar. If that screen also shows
+          // small thumbnails, apply toResizedSupabaseImageUrl(..., size) here
+          // the same way it's applied below in listMentorsForLanding.
           profilePictureUrl: (m.profilePictureUrl as string | null) ?? null,
           yearOfStudy: (m.yearOfStudy as string) ?? "",
           aboutText: (m.aboutText as string) ?? "",
@@ -461,7 +492,13 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
       return {
         id: mentorId,
         name: m.name as string,
-        profilePictureUrl: m.profilePictureUrl as string,
+        // FIX (Improve image delivery, ~412 KiB): landing page renders this
+        // at 56x56 (see MentorAvatar in index.tsx). Requesting a
+        // Supabase-transformed 112x112 (2x for retina) image instead of the
+        // raw upload cuts a ~260 KiB photo down to a few KB, with no
+        // re-encoding pipeline needed on your end — Supabase does it at
+        // request time and caches the result at the edge.
+        profilePictureUrl: toResizedSupabaseImageUrl(m.profilePictureUrl as string, 56) as string,
         yearOfStudy: (m.yearOfStudy as string) ?? "",
         aiimsIitRank: (m.aiimsIitRank as string) ?? "",
         batches: batchesByMentor.get(mentorId) ?? [],
