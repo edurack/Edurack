@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
@@ -50,6 +51,11 @@ const PurchasesRoute = PurchasesRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinMentorRoute = JoinMentorRouteImport.update({
@@ -182,6 +188,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/tickets': typeof TicketsRoute
@@ -211,6 +218,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/tickets': typeof TicketsRoute
@@ -241,6 +249,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/tickets': typeof TicketsRoute
@@ -272,6 +281,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/help'
     | '/join-mentor'
+    | '/login'
     | '/profile'
     | '/purchases'
     | '/tickets'
@@ -301,6 +311,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/help'
     | '/join-mentor'
+    | '/login'
     | '/profile'
     | '/purchases'
     | '/tickets'
@@ -330,6 +341,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/help'
     | '/join-mentor'
+    | '/login'
     | '/profile'
     | '/purchases'
     | '/tickets'
@@ -360,6 +372,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   HelpRoute: typeof HelpRoute
   JoinMentorRoute: typeof JoinMentorRoute
+  LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
   TicketsRoute: typeof TicketsRoute
@@ -403,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-mentor': {
@@ -584,6 +604,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   HelpRoute: HelpRoute,
   JoinMentorRoute: JoinMentorRoute,
+  LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
   TicketsRoute: TicketsRoute,
