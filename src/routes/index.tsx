@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createFileRoute, Link, Await } from "@tanstack/react-router";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconTarget as Target, IconActivity as Activity, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3 } from "@tabler/icons-react";
 import { // Used for Threads
   GraduationCap } from "lucide-react"; // TODO: no Tabler mapping found yet
@@ -7,16 +7,24 @@ import { CbtSimulator } from "@/components/landing/CbtSimulator";
 import { listMentorsForLanding } from "@/server-functions/catalog";
 
 // ---------------------------------------------
-// Mentor data now loads via the route `loader` below instead of a
-// client-side useEffect fetch. Loaders run on the server before the page
-// is sent, so real mentor names/credentials/batches are already present
-// in the initial HTML — no loading spinner, and crawlers see the actual
-// content instead of an empty client-rendered shell.
+// Mentor data is deferred/streamed rather than awaited in the loader.
+// Awaiting the DB call here would block the ENTIRE page — including the
+// hero, which has nothing to do with mentors — until the mentor query
+// resolves (this is what caused the FCP/Speed Index regression after the
+// first loader-based fix). Instead we hand back the raw promise; the page
+// shell streams to the browser immediately, and MentorShowcase below
+// resolves the promise itself via <Await>, with a real static fallback
+// (not a spinner) shown until it settles. This keeps FCP/LCP fast AND
+// keeps mentor content out of a client-only useEffect, so it's still
+// present in the streamed HTML rather than hidden behind a client fetch.
 // ---------------------------------------------
 export const Route = createFileRoute("/")({
-  loader: async () => {
-    const { mentors } = await listMentorsForLanding();
-    return { mentors: mentors as LandingMentor[] };
+  loader: () => {
+    return {
+      mentorsPromise: listMentorsForLanding().then(
+        (res) => res.mentors as LandingMentor[],
+      ),
+    };
   },
   component: Index,
 });
@@ -625,12 +633,12 @@ function ScoreStorySection() {
 }
 
 // ---------------------------------------------
-// Real mentor directory. Data now comes from the route `loader` (server-
-// side, present in initial HTML) instead of a client-side useEffect fetch —
-// see the loader on Route above. This component just renders what it's
-// given via Route.useLoaderData(); there's no client fetch, no null/loading
-// state, and no spinner, so mentor names/credentials/batches are part of
-// the page's first paint and are crawlable.
+// Real mentor directory. The list itself is deferred/streamed (see the
+// loader on Route above) — <Suspense>/<Await> below resolve the promise
+// as it settles, without ever blocking the hero/hero-adjacent sections
+// that stream ahead of it. The <Suspense fallback> is real static markup
+// (not a spinner), so even a crawler snapshot taken before the DB query
+// resolves still sees meaningful page content in this section.
 // ---------------------------------------------
 type LandingMentor = {
   id: string;
@@ -642,7 +650,7 @@ type LandingMentor = {
 };
 
 function MentorShowcase() {
-  const { mentors } = Route.useLoaderData();
+  const { mentorsPromise } = Route.useLoaderData();
 
   return (
     <section id="mentors" className="px-4 py-16 sm:px-6 lg:py-24">
@@ -657,97 +665,125 @@ function MentorShowcase() {
           </p>
         </Reveal>
 
-        {mentors.length === 0 ? (
-          <Reveal delay={80} className="mt-12">
-            <div className="clay mx-auto max-w-lg p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                Mentors are being onboarded right now — check back shortly to meet the rankers running
-                batches on EDURACK.
-              </p>
-            </div>
-          </Reveal>
-        ) : (
-          <>
-            <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {mentors.map((m, i) => (
-                <Reveal key={m.id} delay={i * 90}>
-                  <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
-                          <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
-                        </div>
-                        <div className="min-w-0">
-                          <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
-                          <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                            {m.aiimsIitRank && (
-                              <span className="inline-flex items-center gap-1">
-                                <Award className="h-3 w-3" />
-                                {m.aiimsIitRank}
-                              </span>
-                            )}
-                            {m.yearOfStudy && (
-                              <span className="inline-flex items-center gap-1">
-                                <GraduationCap className="h-3 w-3" />
-                                {m.yearOfStudy}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-
-                      {m.batches.length > 0 && (
-                        <div className="mt-4">
-                          <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            <Layers3 className="h-3 w-3" />
-                            Batches
-                          </p>
-                          <ul className="space-y-1.5">
-                            {m.batches.map((b) => (
-                              <li key={b.id} className="clay-chip px-3 py-1.5 text-xs font-semibold text-foreground/80">
-                                {b.name} · {b.exam.toUpperCase()} · {b.track}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    <Link
-                      to="/mentor-profile/$mentorId"
-                      params={{ mentorId: m.id }}
-                      className="clay-btn-ghost mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
-                    >
-                      View Full Profile <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-
-            <Reveal delay={mentors.length * 90 + 60} className="mt-12">
-              <div className="clay mx-auto flex max-w-2xl flex-col items-center gap-4 p-8 text-center sm:flex-row sm:justify-between sm:text-left">
-                <div>
-                  <h3 className="font-display text-lg font-bold text-foreground">
-                    Not sure which mentor is right for you?
-                  </h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Take a free mock and let your performance guide your next step.
-                  </p>
-                </div>
-                <Link
-                  to="/simulator/live"
-                  className="clay-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5"
-                >
-                  Take Free Mock
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </Reveal>
-          </>
-        )}
+        <Suspense fallback={<MentorsFallback />}>
+          <Await promise={mentorsPromise}>
+            {(mentors) => <MentorsResolved mentors={mentors} />}
+          </Await>
+        </Suspense>
       </div>
     </section>
+  );
+}
+
+// Static fallback shown while the mentor query is still in flight. Real,
+// meaningful copy — not a spinner — so this section is never an empty
+// shell in the initial/streamed HTML.
+function MentorsFallback() {
+  return (
+    <Reveal delay={80} className="mt-12">
+      <div className="clay mx-auto max-w-lg p-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Mentors who have cleared NEET, JEE, CUET and IPMAT are running live batches on
+          EDURACK — loading the current roster now.
+        </p>
+      </div>
+    </Reveal>
+  );
+}
+
+function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
+  if (mentors.length === 0) {
+    return (
+      <Reveal delay={80} className="mt-12">
+        <div className="clay mx-auto max-w-lg p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            Mentors are being onboarded right now — check back shortly to meet the rankers running
+            batches on EDURACK.
+          </p>
+        </div>
+      </Reveal>
+    );
+  }
+
+  return (
+    <>
+      <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {mentors.map((m, i) => (
+          <Reveal key={m.id} delay={i * 90}>
+            <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                    <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
+                    <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                      {m.aiimsIitRank && (
+                        <span className="inline-flex items-center gap-1">
+                          <Award className="h-3 w-3" />
+                          {m.aiimsIitRank}
+                        </span>
+                      )}
+                      {m.yearOfStudy && (
+                        <span className="inline-flex items-center gap-1">
+                          <GraduationCap className="h-3 w-3" />
+                          {m.yearOfStudy}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {m.batches.length > 0 && (
+                  <div className="mt-4">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <Layers3 className="h-3 w-3" />
+                      Batches
+                    </p>
+                    <ul className="space-y-1.5">
+                      {m.batches.map((b) => (
+                        <li key={b.id} className="clay-chip px-3 py-1.5 text-xs font-semibold text-foreground/80">
+                          {b.name} · {b.exam.toUpperCase()} · {b.track}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <Link
+                to="/mentor-profile/$mentorId"
+                params={{ mentorId: m.id }}
+                className="clay-btn-ghost mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
+              >
+                View Full Profile <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </Reveal>
+        ))}
+      </div>
+
+      <Reveal delay={mentors.length * 90 + 60} className="mt-12">
+        <div className="clay mx-auto flex max-w-2xl flex-col items-center gap-4 p-8 text-center sm:flex-row sm:justify-between sm:text-left">
+          <div>
+            <h3 className="font-display text-lg font-bold text-foreground">
+              Not sure which mentor is right for you?
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Take a free mock and let your performance guide your next step.
+            </p>
+          </div>
+          <Link
+            to="/simulator/live"
+            className="clay-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5"
+          >
+            Take Free Mock
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </Reveal>
+    </>
   );
 }
 
