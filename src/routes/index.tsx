@@ -712,7 +712,10 @@ function ScoreStorySection() {
 type LandingMentor = {
   id: string;
   name: string;
-  profilePictureUrl: string;
+  // FIX: this can legitimately be null in the DB (see the mentor doc with
+  // profilePictureUrl: null) — was previously typed as `string`, which hid
+  // the missing-avatar case from the type checker entirely.
+  profilePictureUrl: string | null;
   yearOfStudy: string;
   aiimsIitRank: string;
   batches: { id: string; name: string; track: string; exam: string }[];
@@ -760,15 +763,55 @@ function MentorsFallback() {
   );
 }
 
-// FIX (image sizing): added explicit width/height on the mentor avatar.
-// Two things this fixes at once:
-//   1. Layout shift — the browser now reserves the 56x56 box before the
-//      image downloads, instead of the surrounding card jumping once it loads.
-//   2. It documents the *intended* render size, so if profilePictureUrl is a
-//      raw Supabase Storage URL, it's obvious downstream that a 56px box
-//      never needs the full-resolution upload — see the note further down
-//      about requesting a resized/transformed URL from Supabase instead.
-function MentorAvatar({ src, name }: { src: string; name: string }) {
+// ---------------------------------------------
+// FIX: initials-avatar fallback for mentors without a profilePictureUrl.
+// Previously MentorAvatar always rendered <img src={src}>, so a null/empty
+// profilePictureUrl (very common — see the sample mentor doc) produced a
+// broken image icon instead of a graceful fallback. This was likely what
+// looked like the mentor's "name and profile not showing" — the broken
+// <img> next to the text was the actual visual problem, not missing text.
+// ---------------------------------------------
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Deterministic color pick so the same mentor always gets the same
+// avatar background instead of a different random one on every render.
+const AVATAR_COLORS = [
+  "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+  "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+  "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+  "bg-pink-500/15 text-pink-700 dark:text-pink-300",
+];
+
+function getAvatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+// FIX (image sizing, kept from before): explicit width/height on the real
+// <img> path still reserves the 56x56 box before the image downloads, so
+// there's no layout shift once a real profilePictureUrl does load.
+function MentorAvatar({ src, name }: { src: string | null; name: string }) {
+  if (!src) {
+    return (
+      <div
+        className={`clay-sm grid h-14 w-14 shrink-0 place-items-center rounded-full font-display text-sm font-bold ${getAvatarColor(
+          name,
+        )}`}
+        role="img"
+        aria-label={name}
+      >
+        {getInitials(name)}
+      </div>
+    );
+  }
+
   return (
     <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
       <img

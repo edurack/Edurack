@@ -448,10 +448,14 @@ export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
 // reviews or ratings, to keep the public surface area small.
 //
 // Only returns mentors an admin has actually set up as a real profile:
-// status isn't "terminated", and both name + profilePictureUrl are
-// present. This is what keeps placeholder, incomplete, or removed mentor
-// records off the public landing page even though their raw "mentors"
-// document technically exists.
+// status isn't "terminated", and name is present. A missing
+// profilePictureUrl is intentionally NOT a reason to hide a mentor here —
+// it's a very common, legitimate state (see the "Abhishek Kumar Kasera"
+// mentor doc, profilePictureUrl: null), and the frontend already renders
+// an initials-avatar fallback for it (see MentorAvatar in index.tsx).
+// Previously this query required profilePictureUrl to exist and be
+// non-null, which silently dropped every mentor without a photo off the
+// public landing page entirely — that's been removed.
 export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(async () => {
   const db = await getDb();
 
@@ -469,7 +473,6 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
       _id: { $in: mentorIds.map((id) => new ObjectId(id)) },
       status: { $ne: "terminated" },
       name: { $exists: true, $ne: "" },
-      profilePictureUrl: { $exists: true, $ne: null },
     })
     .toArray();
 
@@ -498,7 +501,13 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
         // raw upload cuts a ~260 KiB photo down to a few KB, with no
         // re-encoding pipeline needed on your end — Supabase does it at
         // request time and caches the result at the edge.
-        profilePictureUrl: toResizedSupabaseImageUrl(m.profilePictureUrl as string, 56) as string,
+        //
+        // FIX (this pass): the cast used to be `as string`, which silently
+        // lied to TypeScript — a mentor can genuinely have no photo now
+        // that the query above no longer filters those out. This is
+        // correctly `string | null`, and toResizedSupabaseImageUrl already
+        // returns null safely for a null/empty input.
+        profilePictureUrl: toResizedSupabaseImageUrl((m.profilePictureUrl as string | null) ?? null, 56),
         yearOfStudy: (m.yearOfStudy as string) ?? "",
         aiimsIitRank: (m.aiimsIitRank as string) ?? "",
         batches: batchesByMentor.get(mentorId) ?? [],
