@@ -4,8 +4,6 @@ import { auth } from "./firebase";
 
 type AuthContextValue = {
   user: User | null;
-  // true until Firebase has checked local persistence for an existing
-  // session — use this to avoid a flash of the sign-in form before we know.
   loading: boolean;
 };
 
@@ -16,11 +14,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
+    let unsubscribe: (() => void) | undefined;
+
+    // Defer Firebase's auth-state check (and the iframe request it kicks
+    // off) until the browser is idle, so it doesn't compete with
+    // render-critical resources (hero image, fonts, CSS) on first load.
+    // Falls back to a short timeout on browsers without
+    // requestIdleCallback (Safari).
+    const schedule =
+      window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 200));
+    const cancel =
+      window.cancelIdleCallback ?? ((id: number) => window.clearTimeout(id));
+
+    const handle = schedule(() => {
+      unsubscribe = onAuthStateChanged(auth, (u) => {
+        setUser(u);
+        setLoading(false);
+      });
     });
-    return unsubscribe;
+
+    return () => {
+      cancel(handle as number);
+      unsubscribe?.();
+    };
   }, []);
 
   return <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>;
