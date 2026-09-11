@@ -1,12 +1,23 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconTarget as Target, IconActivity as Activity, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3, IconLoader2 as Loader2 } from "@tabler/icons-react";
+import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconTarget as Target, IconActivity as Activity, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3 } from "@tabler/icons-react";
 import { // Used for Threads
   GraduationCap } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { CbtSimulator } from "@/components/landing/CbtSimulator";
 import { listMentorsForLanding } from "@/server-functions/catalog";
 
+// ---------------------------------------------
+// Mentor data now loads via the route `loader` below instead of a
+// client-side useEffect fetch. Loaders run on the server before the page
+// is sent, so real mentor names/credentials/batches are already present
+// in the initial HTML — no loading spinner, and crawlers see the actual
+// content instead of an empty client-rendered shell.
+// ---------------------------------------------
 export const Route = createFileRoute("/")({
+  loader: async () => {
+    const { mentors } = await listMentorsForLanding();
+    return { mentors: mentors as LandingMentor[] };
+  },
   component: Index,
 });
 
@@ -166,17 +177,20 @@ function Index() {
         {
           "@type": "Person",
           "name": "Vishal Sharma",
-          "jobTitle": "Co-Founder"
+          "jobTitle": "Co-Founder",
+          "sameAs": ["https://www.linkedin.com/in/vishal-sharma-a59bb2370/"]
         },
          {
           "@type": "Person",
           "name": "Tarun Yadav",
-          "jobTitle": "Co-Founder"
+          "jobTitle": "Co-Founder",
+          "sameAs": ["https://www.linkedin.com/in/tarun-yadav-37094337b/"]
         },
         {
           "@type": "Person",
           "name": "Archita Priyadarshinee",
-          "jobTitle": "Co-Founder"
+          "jobTitle": "Co-Founder",
+          "sameAs": ["https://www.linkedin.com/in/archita-priyadarshinee-behuria-a01323335/"]
         }
       ],
       "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants. Launched 10 September 2026.",
@@ -611,12 +625,12 @@ function ScoreStorySection() {
 }
 
 // ---------------------------------------------
-// Real mentor directory — replaces the old sample-video showcase.
-// Pulls from listMentorsForLanding (public, no auth), which only returns
-// mentors an admin has actually set up with a name + photo and who aren't
-// terminated. Each card shows the mentor's real name, credentials, and
-// every batch they're assigned to, linking through to their public
-// profile page.
+// Real mentor directory. Data now comes from the route `loader` (server-
+// side, present in initial HTML) instead of a client-side useEffect fetch —
+// see the loader on Route above. This component just renders what it's
+// given via Route.useLoaderData(); there's no client fetch, no null/loading
+// state, and no spinner, so mentor names/credentials/batches are part of
+// the page's first paint and are crawlable.
 // ---------------------------------------------
 type LandingMentor = {
   id: string;
@@ -628,18 +642,7 @@ type LandingMentor = {
 };
 
 function MentorShowcase() {
-  const [mentors, setMentors] = useState<LandingMentor[] | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { mentors: rows } = await listMentorsForLanding();
-        setMentors(rows as LandingMentor[]);
-      } catch {
-        setMentors([]);
-      }
-    })();
-  }, []);
+  const { mentors } = Route.useLoaderData();
 
   return (
     <section id="mentors" className="px-4 py-16 sm:px-6 lg:py-24">
@@ -654,11 +657,7 @@ function MentorShowcase() {
           </p>
         </Reveal>
 
-        {mentors === null ? (
-          <div className="mt-12 flex justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-          </div>
-        ) : mentors.length === 0 ? (
+        {mentors.length === 0 ? (
           <Reveal delay={80} className="mt-12">
             <div className="clay mx-auto max-w-lg p-8 text-center">
               <p className="text-sm text-muted-foreground">
@@ -833,7 +832,7 @@ function FeaturesGrid() {
 }
 
 // ---------------------------------------------
-// "Why EduRack" — brand story section. Sits later in the page now that the
+// "Why Edurack" — brand story section. Sits later in the page now that the
 // funnel (mock -> analytics -> mentors) has already made the case; the
 // corporate identity details (founders, domain, entity type) live in the
 // footer instead, where they belong for SEO without slowing the pitch.
@@ -940,7 +939,7 @@ function MarketplaceBanner() {
             </h2>
             <p className="mt-4 text-base leading-relaxed text-slate-300">
               Turn your experience into structured mentorship. Create your own batch, choose your
-              pricing and guide students through EduRack.
+              pricing and guide students through Edurack.
             </p>
 
             <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -953,7 +952,7 @@ function MarketplaceBanner() {
                 </ul>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">EduRack handles</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">Edurack handles</p>
                 <ul className="mt-2 space-y-1 text-sm text-slate-300">
                   <li>Platform.</li>
                   <li>Student enrollment.</li>
