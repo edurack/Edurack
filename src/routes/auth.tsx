@@ -189,7 +189,7 @@ function AuthPage() {
               ships with your own cache headers instead of postimg.cc's.
             */}
             <img
-              src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
+              src="https://www.edurack.in/edurack-logo.webp"
               alt="Edurack"
               width={62}
               height={70}

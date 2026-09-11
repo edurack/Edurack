@@ -53,7 +53,7 @@ function LoginLandingPage() {
         <div className="mb-6 flex flex-col items-center gap-3">
           <div className="clay flex h-12 w-auto items-center justify-center p-2 sm:h-14">
             <img
-              src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
+              src="https://www.edurack.in/edurack-logo.webp"
               alt="Edurack"
               width={62}
               height={70}

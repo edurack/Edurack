@@ -179,7 +179,7 @@ function Index() {
       "name": "Edurack Web",
       "alternateName": "EDURACK.IN",
       "url": "https://www.edurack.in",
-      "logo": "https://i.postimg.cc/4NvD69v0/image-removebg-preview.png",
+      "logo": "https://www.edurack.in/edurack-logo.webp",
       "foundingDate": "2026-09-10",
       "founder": [
         {
@@ -297,8 +297,10 @@ function Header() {
       >
         <Link to="/" className="flex min-w-0 items-center gap-3">
           <img
-            src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
+            src="/edurack-logo.webp"
             alt="EDURACK"
+            width={140}
+            height={140}
             className="h-10 w-auto shrink-0 object-contain sm:h-12"
           />
           <span className="truncate font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
@@ -1061,8 +1063,10 @@ function Footer() {
           <div>
             <Link to="/" className="flex items-center gap-2">
               <img
-                src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
+                src="/edurack-logo.webp"
                 alt="EDURACK"
+                width={140}
+                height={140}
                 className="h-10 w-auto shrink-0 object-contain sm:h-12"
               />
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>

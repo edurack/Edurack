@@ -37,7 +37,7 @@ export function AppHeader({ user, displayName }: { user: User | null; displayNam
         <div className="flex min-w-0 items-center gap-4 sm:gap-6">
           <div className="flex shrink-0 items-center gap-3 font-bold text-foreground">
             <img
-              src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png" 
+              src="https://www.edurack.in/edurack-logo.webp" 
               alt="Edurack Logo"
               className="h-10 w-auto object-contain sm:h-12"
               onError={(e) => {
