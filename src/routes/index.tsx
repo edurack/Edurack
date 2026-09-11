@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconCpu as Cpu, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3, IconLoader2 as Loader2 } from "@tabler/icons-react";
+import { IconMenu2 as Menu, IconX as X, IconDeviceDesktopAnalytics as MonitorPlay, IconLayoutDashboard as LayoutDashboard, IconCalendarCheck as CalendarCheck, IconChartLine as LineChart, IconArrowRight as ArrowRight, IconSparkles as Sparkles, IconUserCheck as UserCheck, IconTarget as Target, IconActivity as Activity, IconTrendingUp as TrendingUp, IconShieldCheck as ShieldCheck, IconUsers as Users, IconWorld as Globe, IconBrandLinkedin as Linkedin, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandX as Twitter, IconMessageCircle as MessageSquare, IconAt as AtSign, IconAward as Award, IconStack2 as Layers3, IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { // Used for Threads
   GraduationCap } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { CbtSimulator } from "@/components/landing/CbtSimulator";
@@ -11,8 +11,8 @@ export const Route = createFileRoute("/")({
 });
 
 // ---------------------------------------------
-// Launch date — single source of truth so the hero badge, About section,
-// and footer all agree with each other.
+// Launch date — single source of truth so the hero badge, footer, and
+// structured data all agree with each other.
 // ---------------------------------------------
 const LAUNCH_DATE_LABEL = "Launched 10 September 2026";
 
@@ -90,7 +90,7 @@ const navLinks: NavLink[] = [
   { label: "CBT Simulator", type: "anchor", href: "#simulator" },
   { label: "Mentors", type: "anchor", href: "#mentors" },
   { label: "Features", type: "anchor", href: "#features" },
-  { label: "About", type: "anchor", href: "#about" },
+  { label: "Why Edurack", type: "anchor", href: "#about" },
   { label: "Connect", type: "anchor", href: "#connect" },
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
   { label: "Contact", type: "route", to: "/contact" },
@@ -224,11 +224,12 @@ function Index() {
       <main>
         <Hero />
         <SimulatorSection />
+        <ScoreStorySection />
         <MentorShowcase />
         <FeaturesGrid />
-        <AboutSection />
-        <SocialLinksSection />
+        <WhyEdurackSection />
         <MarketplaceBanner />
+        <SocialLinksSection />
       </main>
       <Footer />
     </div>
@@ -387,23 +388,16 @@ function Hero() {
         </Reveal>
 
         <Reveal delay={140}>
-          <h1 className="fluid-h1 mt-6 font-display font-extrabold tracking-tight text-foreground">
-            Prepare for{" "}
-            <span className="relative inline-block">
-              <span className="relative z-10 bg-gradient-to-br from-sky-600 to-teal-500 bg-clip-text text-transparent">
-                {exams.find((e) => e.key === activeExam)?.full}
-              </span>
-            </span>{" "}
-            like it's already exam day.
+          <h1 className="fluid-h1 mt-6 text-balance font-display font-extrabold tracking-tight text-foreground">
+            Take the Test. Know Your Weaknesses. Find the Right Mentor.
           </h1>
         </Reveal>
 
         <Reveal delay={220}>
           <p className="fluid-body mx-auto mt-6 max-w-2xl text-muted-foreground">
-            Don't let an unfamiliar screen cost you marks. EDURACK (edurack.in) gives NEET, JEE, CUET, and IPMAT
-            aspirants a <b className="text-foreground">pixel-exact CBT simulator</b> for each exam's
-            real interface, paired with mentorship spaces run directly by top rankers and IIM/IIT/AIIMS
-            students.
+            EduRack helps NEET, JEE, CUET and IPMAT aspirants practice with realistic mock tests,
+            understand their performance, and connect with mentors who have already walked the path
+            they're preparing for.
           </p>
         </Reveal>
 
@@ -413,14 +407,14 @@ function Hero() {
               to="/simulator/live"
               className="clay-btn group inline-flex items-center gap-2 px-7 py-4 text-base font-bold transition-transform duration-200 hover:-translate-y-0.5 sm:text-lg"
             >
-              Start Free CBT Mock Test
+              Take a Free Mock
               <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>
             <a
-              href="#simulator"
+              href="#mentors"
               className="clay-btn-ghost px-6 py-4 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 sm:text-base"
             >
-              Explore Simulator
+              Find a Mentor
             </a>
           </div>
         </Reveal>
@@ -459,14 +453,159 @@ function SimulatorSection() {
           Train your muscle memory for exam-day screens.
         </h2>
         <p className="fluid-body mx-auto mt-3 max-w-2xl text-muted-foreground">
-          Matching question palettes, navigation flags, and section indicators for each exam's actual
-          testing interface — NEET's upcoming CBT shift, JEE and CUET's existing NTA screens, and
-          IPMAT's format. Walk in already familiar with the layout, whichever exam you're sitting.
+          Practice in an exam-like environment with question navigation, section controls, flags and
+          palettes designed around the real testing experience.
         </p>
       </Reveal>
       <Reveal delay={120} className="mt-10">
         <CbtSimulator />
       </Reveal>
+
+      <Reveal delay={180} className="mx-auto mt-10 max-w-2xl text-center">
+        <p className="fluid-body font-display text-lg font-bold text-foreground">
+          Your mock doesn't end when you submit.
+        </p>
+        <p className="mt-2 text-muted-foreground">
+          Your result helps you understand where you're losing marks, what needs improvement, and what
+          to focus on next.
+        </p>
+        <Link
+          to="/simulator/live"
+          className="clay-btn mt-6 inline-flex items-center gap-2 px-6 py-3 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5"
+        >
+          Take a Free Mock
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </Reveal>
+
+      <Reveal delay={220} className="mx-auto mt-12 max-w-2xl">
+        <p className="text-center text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Example performance report
+        </p>
+        <div className="clay mt-4 p-6 sm:p-8">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <div className="font-display text-3xl font-extrabold text-foreground sm:text-4xl">
+                400 <span className="text-lg font-semibold text-muted-foreground">/ 720</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Your score on this mock</p>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-2">
+            {[
+              { subject: "Physics", status: "Needs Attention", tone: "bg-red-500/15 text-red-600 dark:text-red-400" },
+              { subject: "Chemistry", status: "Strong", tone: "bg-teal-500/15 text-teal-600 dark:text-teal-400" },
+              { subject: "Biology", status: "Moderate", tone: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+            ].map((row) => (
+              <div
+                key={row.subject}
+                className="clay-sm flex items-center justify-between px-4 py-3 text-sm"
+              >
+                <span className="font-semibold text-foreground">{row.subject}</span>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${row.tone}`}>{row.status}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Recommended focus
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-foreground/80">
+              <li>Physics → Mechanics</li>
+              <li>Biology → Plant Physiology</li>
+            </ul>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+            <p className="text-sm font-semibold text-foreground">Need help improving?</p>
+            <a
+              href="#mentors"
+              className="clay-btn-ghost inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
+            >
+              Explore mentors who can help <ArrowRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+// ---------------------------------------------
+// New: bridges the simulator into the mentor marketplace by walking the
+// student through the Measure -> Diagnose -> Improve funnel that the rest
+// of the product is built around.
+// ---------------------------------------------
+const scoreStorySteps = [
+  {
+    n: "01",
+    icon: Target,
+    title: "Measure",
+    desc: "Take a realistic mock and see where you stand.",
+    color: "text-sky-600 dark:text-sky-400",
+    bg: "bg-sky-500/15",
+  },
+  {
+    n: "02",
+    icon: Activity,
+    title: "Diagnose",
+    desc: "Understand your score, accuracy and subject-wise weaknesses.",
+    color: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-500/15",
+  },
+  {
+    n: "03",
+    icon: TrendingUp,
+    title: "Improve",
+    desc: "Get relevant guidance and mentorship based on what you need to work on.",
+    color: "text-teal-600 dark:text-teal-400",
+    bg: "bg-teal-500/15",
+  },
+];
+
+function ScoreStorySection() {
+  return (
+    <section className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
+      <div className="mx-auto max-w-5xl">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <h2 className="fluid-h2 font-display font-extrabold text-foreground">
+            Your Score Tells a Story. We Help You Read It.
+          </h2>
+        </Reveal>
+
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-3">
+          {scoreStorySteps.map((step, i) => (
+            <Reveal key={step.title} delay={i * 100}>
+              <div className="clay h-full p-6">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${step.bg}`}
+                  >
+                    <step.icon className={`h-6 w-6 ${step.color}`} />
+                  </div>
+                  <span className="font-display text-2xl font-extrabold text-foreground/20">
+                    {step.n}
+                  </span>
+                </div>
+                <h3 className="mt-5 font-display text-lg font-bold text-foreground">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{step.desc}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        <Reveal delay={220} className="mt-10 text-center">
+          <Link
+            to="/simulator/live"
+            className="clay-btn inline-flex items-center gap-2 px-6 py-3 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5"
+          >
+            Take your first free mock
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Reveal>
+      </div>
     </section>
   );
 }
@@ -503,18 +642,15 @@ function MentorShowcase() {
   }, []);
 
   return (
-    <section id="mentors" className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
+    <section id="mentors" className="px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-3xl text-center">
-          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300">
-            LEARN FROM THE BEST
-          </div>
-          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
-            Direct Guidance From Top Rankers — Across Every Exam
+          <h2 className="fluid-h2 font-display font-extrabold text-foreground">
+            Don't Just Follow Advice. Learn From Someone Who Has Done It.
           </h2>
           <p className="fluid-body mt-3 text-muted-foreground">
-            Meet the mentors already onboarded on EDURACK — real rankers running real batches for NEET,
-            JEE, CUET, and IPMAT aspirants.
+            Explore mentors who have already cleared the exams you're preparing for and choose
+            mentorship based on your goals, needs and budget.
           </p>
         </Reveal>
 
@@ -532,62 +668,84 @@ function MentorShowcase() {
             </div>
           </Reveal>
         ) : (
-          <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {mentors.map((m, i) => (
-              <Reveal key={m.id} delay={i * 90}>
-                <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
-                        <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
+          <>
+            <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {mentors.map((m, i) => (
+                <Reveal key={m.id} delay={i * 90}>
+                  <div className="clay flex h-full flex-col justify-between p-5 transition-transform duration-300 hover:-translate-y-1">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <div className="clay-sm h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                          <img src={m.profilePictureUrl} alt={m.name} className="h-full w-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
+                          <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                            {m.aiimsIitRank && (
+                              <span className="inline-flex items-center gap-1">
+                                <Award className="h-3 w-3" />
+                                {m.aiimsIitRank}
+                              </span>
+                            )}
+                            {m.yearOfStudy && (
+                              <span className="inline-flex items-center gap-1">
+                                <GraduationCap className="h-3 w-3" />
+                                {m.yearOfStudy}
+                              </span>
+                            )}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate font-display font-bold text-foreground">{m.name}</h3>
-                        <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                          {m.aiimsIitRank && (
-                            <span className="inline-flex items-center gap-1">
-                              <Award className="h-3 w-3" />
-                              {m.aiimsIitRank}
-                            </span>
-                          )}
-                          {m.yearOfStudy && (
-                            <span className="inline-flex items-center gap-1">
-                              <GraduationCap className="h-3 w-3" />
-                              {m.yearOfStudy}
-                            </span>
-                          )}
-                        </p>
-                      </div>
+
+                      {m.batches.length > 0 && (
+                        <div className="mt-4">
+                          <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Layers3 className="h-3 w-3" />
+                            Batches
+                          </p>
+                          <ul className="space-y-1.5">
+                            {m.batches.map((b) => (
+                              <li key={b.id} className="clay-chip px-3 py-1.5 text-xs font-semibold text-foreground/80">
+                                {b.name} · {b.exam.toUpperCase()} · {b.track}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
 
-                    {m.batches.length > 0 && (
-                      <div className="mt-4">
-                        <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          <Layers3 className="h-3 w-3" />
-                          Batches
-                        </p>
-                        <ul className="space-y-1.5">
-                          {m.batches.map((b) => (
-                            <li key={b.id} className="clay-chip px-3 py-1.5 text-xs font-semibold text-foreground/80">
-                              {b.name} · {b.exam.toUpperCase()} · {b.track}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    <Link
+                      to="/mentor-profile/$mentorId"
+                      params={{ mentorId: m.id }}
+                      className="clay-btn-ghost mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
+                    >
+                      View Full Profile <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
                   </div>
+                </Reveal>
+              ))}
+            </div>
 
-                  <Link
-                    to="/mentor-profile/$mentorId"
-                    params={{ mentorId: m.id }}
-                    className="clay-btn-ghost mt-4 inline-flex shrink-0 items-center justify-center gap-1.5 px-4 py-2 text-xs font-bold transition-transform duration-200 hover:-translate-y-0.5"
-                  >
-                    View Full Profile <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
+            <Reveal delay={mentors.length * 90 + 60} className="mt-12">
+              <div className="clay mx-auto flex max-w-2xl flex-col items-center gap-4 p-8 text-center sm:flex-row sm:justify-between sm:text-left">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-foreground">
+                    Not sure which mentor is right for you?
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Take a free mock and let your performance guide your next step.
+                  </p>
                 </div>
-              </Reveal>
-            ))}
-          </div>
+                <Link
+                  to="/simulator/live"
+                  className="clay-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-sm font-bold transition-transform duration-200 hover:-translate-y-0.5"
+                >
+                  Take Free Mock
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </Reveal>
+          </>
         )}
       </div>
     </section>
@@ -597,29 +755,29 @@ function MentorShowcase() {
 const features = [
   {
     icon: MonitorPlay,
-    title: "1:1 Exam-Specific CBT Engines",
-    desc: "Every shortcut, color state, and layout mirrors each exam's real testing interface — NEET, JEE, CUET, and IPMAT alike.",
+    title: "Realistic Exam Practice",
+    desc: "Experience an exam-like environment before the actual exam.",
     color: "text-sky-600 dark:text-sky-400",
     bg: "bg-sky-500/15",
   },
   {
     icon: LayoutDashboard,
-    title: "Syllabus-Driven Trackers",
-    desc: "Tailored structures per exam and class level — Class 11, 12, and Droppers — to pace out high-weightage topics.",
+    title: "Performance Tracking",
+    desc: "Track your preparation across tests and topics.",
     color: "text-teal-600 dark:text-teal-400",
     bg: "bg-teal-500/15",
   },
   {
     icon: CalendarCheck,
-    title: "Direct Mentor Marketplace",
-    desc: "Browse premium batches listed by rankers across all four exams, each at their own customized rates.",
+    title: "Mentor Marketplace",
+    desc: "Find mentors who can help you work on the areas that matter.",
     color: "text-orange-600 dark:text-orange-400",
     bg: "bg-orange-500/15",
   },
   {
     icon: LineChart,
-    title: "Screen Analytics",
-    desc: "Tracks speed per question, subject-wise accuracy, and projected percentile — normalized for each exam's own scoring pattern.",
+    title: "Performance Analytics",
+    desc: "Understand your accuracy, speed, subject-wise performance and areas that need more attention.",
     color: "text-purple-600 dark:text-purple-400",
     bg: "bg-purple-500/15",
   },
@@ -627,14 +785,11 @@ const features = [
 
 function FeaturesGrid() {
   return (
-    <section id="features" className="px-4 py-16 sm:px-6 lg:py-24">
+    <section id="features" className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300">
-            THE EDURACK ADVANTAGE
-          </div>
-          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
-            Built for serious aspirants, whichever exam you're tackling.
+          <h2 className="fluid-h2 font-display font-extrabold text-foreground">
+            Everything You Need to Know Where You Stand.
           </h2>
         </Reveal>
 
@@ -678,57 +833,38 @@ function FeaturesGrid() {
 }
 
 // ---------------------------------------------
-// Dedicated Brand & Co-Founders Section (SEO Entity Separation)
+// "Why EduRack" — brand story section. Sits later in the page now that the
+// funnel (mock -> analytics -> mentors) has already made the case; the
+// corporate identity details (founders, domain, entity type) live in the
+// footer instead, where they belong for SEO without slowing the pitch.
 // ---------------------------------------------
-function AboutSection() {
+const whyEdurackFlow = ["Practice", "Analyze", "Get Guided", "Improve"];
+
+function WhyEdurackSection() {
   return (
-    <section id="about" className="bg-secondary/30 px-4 py-16 sm:px-6 lg:py-24">
-      <div className="mx-auto max-w-6xl">
-        <Reveal className="mx-auto max-w-3xl text-center">
-          <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
-            OFFICIAL PLATFORM IDENTITY
-          </div>
-          <h2 className="fluid-h2 mt-4 font-display font-extrabold text-foreground">
-            About Edurack (edurack.in)
-          </h2>
-          <p className="fluid-body mt-3 text-muted-foreground">
-            {LAUNCH_DATE_LABEL} — delivering precision test simulation and elite student mentorship.
+    <section id="about" className="px-4 py-16 sm:px-6 lg:py-24">
+      <div className="mx-auto max-w-4xl text-center">
+        <Reveal>
+          <h2 className="fluid-h2 font-display font-extrabold text-foreground">Why EduRack?</h2>
+          <p className="fluid-body mx-auto mt-4 max-w-2xl text-muted-foreground">
+            Preparing for competitive exams isn't just about taking more tests or watching more
+            lectures. You need to know where you stand, what you need to improve, and who can help you
+            get there.
           </p>
         </Reveal>
 
-        <Reveal delay={100} className="mt-12">
-          <div className="clay p-8 md:p-12">
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
-              <div className="flex flex-col items-start gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-sky-500/15 text-sky-600">
-                  <Globe className="h-6 w-6" />
+        <Reveal delay={100} className="mt-10">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {whyEdurackFlow.map((step, i) => (
+              <div key={step} className="flex items-center gap-3">
+                <div className="clay-chip px-4 py-2 text-sm font-semibold text-foreground/80">
+                  {step}
                 </div>
-                <h3 className="font-display text-lg font-bold text-foreground">Independent Web Platform</h3>
-                <p className="text-sm text-muted-foreground">
-                  <strong>edurack.in</strong> is an independent web platform dedicated exclusively to providing pixel-exact Computer Based Test (CBT) simulators and structured mentorship spaces.
-                </p>
+                {i < whyEdurackFlow.length - 1 && (
+                  <ArrowRight className="h-4 w-4 shrink-0 text-foreground/30" />
+                )}
               </div>
-
-              <div className="flex flex-col items-start gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-teal-500/15 text-teal-600">
-                  <Users className="h-6 w-6" />
-                </div>
-                <h3 className="font-display text-lg font-bold text-foreground">Co-Founding Team</h3>
-                <p className="text-sm text-muted-foreground">
-                  Founded and operated by <strong>Vishal Sharma</strong>, <strong>Tarun Yadav</strong>, and <strong>Archita Priyadarshinee</strong> to revolutionize competitive examination preparation across India.
-                </p>
-              </div>
-
-              <div className="flex flex-col items-start gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-purple-500/15 text-purple-600">
-                  <ShieldCheck className="h-6 w-6" />
-                </div>
-                <h3 className="font-display text-lg font-bold text-foreground">Official Domain</h3>
-                <p className="text-sm text-muted-foreground">
-                  All official CBT test series, mentorship listings, and analytics are hosted exclusively on <strong>www.edurack.in</strong>.
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </Reveal>
       </div>
@@ -741,7 +877,7 @@ function AboutSection() {
 // ---------------------------------------------
 function SocialLinksSection() {
   return (
-    <section id="connect" className="px-4 py-16 sm:px-6 lg:py-24">
+    <section id="connect" className="bg-secondary/40 px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-3xl text-center">
           <div className="clay-chip inline-flex px-4 py-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300">
@@ -788,7 +924,7 @@ function SocialLinksSection() {
 
 function MarketplaceBanner() {
   return (
-    <section id="marketplace" className="px-4 pb-20 sm:px-6 lg:pb-28">
+    <section id="marketplace" className="px-4 py-16 sm:px-6 lg:py-24">
       <Reveal className="mx-auto max-w-6xl">
         <div className="clay relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white md:p-14">
           <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-teal-500/10 blur-3xl" />
@@ -797,33 +933,47 @@ function MarketplaceBanner() {
           <div className="relative z-10 max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-wide text-teal-300 backdrop-blur-sm">
               <UserCheck className="h-3.5 w-3.5" />
-              Cracked NEET, JEE, CUET, or IPMAT? Turn that into a business.
+              Founding Mentor Community
             </div>
             <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-              Monetize your expertise. Run your own mentorship store on EDURACK.
+              You Cleared the Exam. Now Help Someone Else Clear It.
             </h2>
             <p className="mt-4 text-base leading-relaxed text-slate-300">
-              Stop dealing with unorganized tracking spreadsheets, structural setup barriers, or manual
-              group entry confirmations. Set your fixed price tiers, deliver premium guidance
-              schedules for your exam, and let our automated payment configuration process your
-              withdrawals seamlessly.
+              Turn your experience into structured mentorship. Create your own batch, choose your
+              pricing and guide students through EduRack.
             </p>
 
-            <div className="mt-8 flex flex-wrap items-center gap-4">
+            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">You decide</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                  <li>Your batch.</li>
+                  <li>Your price.</li>
+                  <li>Your teaching style.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">EduRack handles</p>
+                <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                  <li>Platform.</li>
+                  <li>Student enrollment.</li>
+                  <li>Payments.</li>
+                  <li>Batch infrastructure.</li>
+                  <li>Discovery and promotion.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-8 flex flex-col items-start gap-3">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold tracking-wide text-teal-300">
+                Founding 25
+              </span>
               <Link
                 to="/join-mentor"
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-sky-500 to-teal-400 px-6 py-3 text-sm font-bold text-slate-950 shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:opacity-95"
               >
-                Create Mentor Space <Cpu className="h-4 w-4" />
+                Become a Founding Mentor <ArrowRight className="h-4 w-4" />
               </Link>
-              <a
-                href="https://linkedin.com"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold transition-colors duration-200 hover:bg-white/10"
-              >
-                Follow Corporate Updates <TrendingUp className="h-4 w-4" />
-              </a>
             </div>
           </div>
         </div>
@@ -883,7 +1033,13 @@ function Footer() {
               <span className="font-display text-lg font-bold text-foreground">EDURACK</span>
             </Link>
             <p className="mt-3 text-sm text-muted-foreground">
-              Official web platform (edurack.in) founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee for NEET, JEE, CUET & IPMAT preparation. {LAUNCH_DATE_LABEL}.
+              <strong className="text-foreground">edurack.in</strong> is an independent web platform
+              dedicated to pixel-exact CBT simulators and structured mentorship for NEET, JEE, CUET &amp;
+              IPMAT aspirants.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee. {LAUNCH_DATE_LABEL}. All
+              official listings and analytics are hosted exclusively on <strong className="text-foreground">www.edurack.in</strong>.
             </p>
           </div>
           {footerColumns.map((col) => (

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { listAttachedSoldTestsForStudent } from "@/server-functions/batch-hub";
-import { IconLoader2 as Loader2, IconLayoutDashboard as LayoutDashboard, IconClipboardList as ClipboardList, IconSpeakerphone as Megaphone, IconLifebuoy as LifeBuoy, IconLock as Lock, IconPlayerPlayFilled as PlayCircle, IconFileText as FileText, IconChevronDown as ChevronDown, IconX as X, IconUsersGroup as Users2, IconBook2 as BookOpen, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconVideo as Video, IconCalendarClock as CalendarClock, IconDotsVertical as MoreVertical, IconCircleCheck as CheckCircle2, IconMessageCircle as MessageSquare, IconSend as Send, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconDownload as Download, IconChevronRight as ChevronRight, IconTag as Tag, IconCircleX as XCircle } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconLayoutDashboard as LayoutDashboard, IconClipboardList as ClipboardList, IconSpeakerphone as Megaphone, IconLifebuoy as LifeBuoy, IconLock as Lock, IconPlayerPlayFilled as PlayCircle, IconFileText as FileText, IconChevronDown as ChevronDown, IconX as X, IconUsersGroup as Users2, IconBook2 as BookOpen, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconVideo as Video, IconCalendarClock as CalendarClock, IconDotsVertical as MoreVertical, IconCircleCheck as CheckCircle2, IconMessageCircle as MessageSquare, IconSend as Send, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconDownload as Download, IconChevronRight as ChevronRight, IconTag as Tag, IconCircleX as XCircle, IconLogin as LogIn } from "@tabler/icons-react";
 import { FolderOpen, Unlock, PhoneCall, BarChart3, Link2, Radio } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
@@ -37,6 +37,10 @@ declare global {
   }
 }
 
+// A signed-in Firebase user, structurally — every sub-tab below only ever
+// needs getIdToken() (plus email, in a couple of purchase flows), so this
+// is what they accept instead of the full Firebase User type.
+type AuthedUser = { getIdToken: () => Promise<string>; email?: string | null };
 
 const RAZORPAY_SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 
@@ -167,7 +171,7 @@ function tabsForKind(kind: Kind): { key: TabKey; label: string; icon: typeof Lay
     base.push({ key: "seriesTests", label: "Test Series", icon: ClipboardList }); // NEW
   }
   base.push(
-    { key: "assets", label: "Assets", icon: FolderOpen },
+    { key: "assets", label: "Assets", icon: FolderOpen as any },
     { key: "announcements", label: "Updates", icon: Megaphone },
   );
   if (kind === "mentorship") {
@@ -175,6 +179,26 @@ function tabsForKind(kind: Kind): { key: TabKey; label: string; icon: typeof Lay
   }
   base.push({ key: "help", label: "Help", icon: LifeBuoy });
   return base;
+}
+
+// Small reusable "you need to log in for this" card, used by every tab
+// below that needs a real signed-in student (sessions, test series,
+// assets/notes, chat) rather than just public browsing data.
+function LoginRequiredCard({ label }: { label: string }) {
+  return (
+    <div className="clay flex flex-col items-center gap-3 p-8 text-center">
+      <div className="clay-inset grid h-11 w-11 place-items-center rounded-2xl">
+        <LogIn className="h-5 w-5 text-foreground/40" />
+      </div>
+      <p className="text-sm text-foreground/60">{label}</p>
+      <Link
+        to="/auth"
+        className="clay-btn inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-semibold"
+      >
+        Log in
+      </Link>
+    </div>
+  );
 }
 
 function CourseHubPage() {
@@ -189,7 +213,8 @@ function CourseHubPage() {
   const [tests, setTests] = useState<TestRow[] | null>(null);
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
   const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(null);
-  const [isPurchased, setIsPurchased] = useState<boolean | null>(null);
+  const [isPurchased, setIsPurchased] = useState(false);
+  const [publicContentLoaded, setPublicContentLoaded] = useState(false);
   const [pdfModal, setPdfModal] = useState<{ url: string; name: string } | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -207,49 +232,101 @@ function CourseHubPage() {
 
   const TABS = tabsForKind(kind);
 
+  // ---------------------------------------------------------------------
+  // This page is public — browsing a batch/bundle's overview, tests list,
+  // and announcements should work for anyone, logged in or not, exactly
+  // like /mentor-profile/$mentorId. There is intentionally NO effect here
+  // that redirects an anonymous visitor to /auth: login is only required
+  // at the moment someone tries to do something that actually needs it
+  // (purchase, apply a coupon, request a callback, chat, submit a ticket —
+  // see the individual handlers and tabs below, which navigate to /auth
+  // themselves on click when there's no user). A previous version of this
+  // page force-redirected on mount whenever `!user`, which not only blocked
+  // anonymous browsing entirely but also caused a back-button loop: landing
+  // back on this page re-ran the same redirect effect and pushed another
+  // /auth entry onto history every time.
+  // ---------------------------------------------------------------------
+  // PERF: this content is public (see comment above), so it must not wait
+  // on Firebase Auth to resolve before fetching. `useAuth()`'s `loading`
+  // flag depends on an auth-state round trip (an iframe check against the
+  // custom `authDomain`, since local storage can't be read cross-origin)
+  // that regularly takes 1-2s on its own. Gating this fetch behind it
+  // means every anonymous — and most signed-in — visitors stare at a bare
+  // spinner for that entire round trip before anything renders, and then
+  // the full page pops in at once (this was the single largest contributor
+  // to both slow LCP and high CLS on this route). Anonymous requests pass
+  // an empty token, which these "public" endpoints already support.
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
-    if (!user) return;
     (async () => {
-      const token = await user.getIdToken();
-      const purchase = await hasPurchased({ data: { token, itemType: kind, itemId: id } });
-      setIsPurchased(purchase.isPurchased);
+      try {
+        if (kind === "bundle") {
+          const [{ bundle: b }, { tests: t }, { announcements: a }] = await Promise.all([
+            getPublicBundleDetail({ data: { token: "", bundleId: id } }),
+            listPublicTestsForBundle({ data: { token: "", bundleId: id } }),
+            listPublicBundleAnnouncements({ data: { token: "", bundleId: id } }),
+          ]);
+          setBundle(b as BundleDetail | null);
+          setTests(t as TestRow[]);
+          setAnnouncements(a as AnnouncementRow[]);
+        } else {
+          const { batch } = await getPublicMentorshipDetail({ data: { token: "", batchId: id } });
+          const batchDetail = batch as MentorshipDetail | null;
+          setMentorship(batchDetail);
+          setTests([]);
 
-      if (kind === "bundle") {
-        const [{ bundle: b }, { tests: t }, { announcements: a }] = await Promise.all([
-          getPublicBundleDetail({ data: { token, bundleId: id } }),
-          listPublicTestsForBundle({ data: { token, bundleId: id } }),
-          listPublicBundleAnnouncements({ data: { token, bundleId: id } }),
-        ]);
-        setBundle(b as BundleDetail | null);
-        setTests(t as TestRow[]);
-        setAnnouncements(a as AnnouncementRow[]);
-      } else {
-        const { batch } = await getPublicMentorshipDetail({ data: { token, batchId: id } });
-        const batchDetail = batch as MentorshipDetail | null;
-        setMentorship(batchDetail);
-        setTests([]);
+          const { announcements: a } = await listPublicMentorshipAnnouncements({
+            data: { token: "", batchId: id },
+          });
+          setAnnouncements(a as AnnouncementRow[]);
 
-        const [{ sessions: s }, { announcements: a }] = await Promise.all([
-          listMentorshipSessionsForStudent({ data: { token, batchId: id } }),
-          listPublicMentorshipAnnouncements({ data: { token, batchId: id } }),
-        ]);
-        setSessions(s as SessionRow[]);
-        setAnnouncements(a as AnnouncementRow[]);
-
-        if (batchDetail?.mentorId) {
-          const { mentor } = await getPublicMentorProfile({ data: { token, mentorId: batchDetail.mentorId } });
-          setMentorProfile(mentor as MentorProfile | null);
+          if (batchDetail?.mentorId) {
+            const { mentor } = await getPublicMentorProfile({ data: { token: "", mentorId: batchDetail.mentorId } });
+            setMentorProfile(mentor as MentorProfile | null);
+          }
         }
+      } finally {
+        // Set regardless of a null (not-found) result, so a genuinely
+        // missing bundle/batch falls through to render instead of spinning
+        // forever — matches the original gate's behavior for that case.
+        setPublicContentLoaded(true);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, kind, id]);
+  }, [kind, id]);
 
-  if (loading || !user || isPurchased === null) {
+  // Auth-gated data (purchase status, the student's own session list) loads
+  // in a separate effect once Firebase Auth resolves, so it never blocks
+  // the public content above — it just fills in a couple of numbers/tabs a
+  // moment later. Both default to "anonymous" values (not purchased, no
+  // sessions) until this resolves, which is already the correct state for
+  // the ~half of visitors who never sign in.
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      const token = user ? await user.getIdToken() : "";
+
+      if (user) {
+        const purchase = await hasPurchased({ data: { token, itemType: kind, itemId: id } });
+        setIsPurchased(purchase.isPurchased);
+      } else {
+        setIsPurchased(false);
+      }
+
+      if (kind === "mentorship") {
+        // Announcements are public; the session list is not — it filters
+        // OneOnOne sessions by uid, so it genuinely needs a real signed-in
+        // student. Anonymous visitors just see an empty Sessions tab (with
+        // a "log in" prompt) until they log in.
+        const { sessions: s } = user
+          ? await listMentorshipSessionsForStudent({ data: { token, batchId: id } })
+          : { sessions: [] as SessionRow[] };
+        setSessions(s as SessionRow[]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, kind, id]);
+
+  if (!publicContentLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
@@ -270,7 +347,11 @@ function CourseHubPage() {
   const displayPrice = appliedCoupon ? appliedCoupon.discountedPrice : safeSellingPrice;
 
   async function handleApplyCoupon() {
-    if (!user || !couponInput.trim() || sellingPrice === undefined) return;
+    if (!user) {
+      navigate({ to: "/auth" });
+      return;
+    }
+    if (!couponInput.trim() || sellingPrice === undefined) return;
     setCouponError(null);
     setCouponChecking(true);
     try {
@@ -299,7 +380,13 @@ function CourseHubPage() {
   }
 
   async function handlePurchase() {
-    if (!user) return;
+    if (!user) {
+      // Explicit, user-initiated redirect — not a mount-time effect — so
+      // this can never turn into a back-button loop the way the old
+      // always-redirect-on-mount effect did.
+      navigate({ to: "/auth" });
+      return;
+    }
     setPurchaseError(null);
     setPurchasing(true);
     try {
@@ -417,6 +504,7 @@ function CourseHubPage() {
                 isPurchased={isPurchased}
                 user={user}
                 itemId={id}
+                navigate={navigate}
               />
             )}
             {activeTab === "tests" && kind === "bundle" && (
@@ -566,14 +654,16 @@ function CourseHubPage() {
                     <span className="text-xs font-semibold text-[var(--sky-deep)]">{discountPercent}% OFF</span>
                   ) : null}
                 </div>
-                <p className="truncate text-xs text-foreground/50">Purchase to unlock everything</p>
+                <p className="truncate text-xs text-foreground/50">
+                  {user ? "Purchase to unlock everything" : "Log in to purchase and unlock everything"}
+                </p>
               </div>
               <button
                 onClick={handlePurchase}
                 disabled={purchasing}
                 className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
               >
-                {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Purchase"}
+                {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : user ? "Purchase" : "Log in to purchase"}
               </button>
             </div>
           </div>
@@ -774,14 +864,16 @@ function OverviewTab({
   isPurchased,
   user,
   itemId,
+  navigate,
 }: {
   kind: Kind;
   bundle: BundleDetail | null;
   mentorship: MentorshipDetail | null;
   mentorProfile: MentorProfile | null;
   isPurchased: boolean;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
   itemId: string;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   const [showCallbackForm, setShowCallbackForm] = useState(false);
   const [name, setName] = useState("");
@@ -805,6 +897,10 @@ function OverviewTab({
 
   async function handleCallbackSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!user) {
+      navigate({ to: "/auth" });
+      return;
+    }
     if (!name.trim() || !phone.trim()) return;
     setSending(true);
     try {
@@ -883,6 +979,14 @@ function OverviewTab({
       <div className="clay p-4 text-center sm:p-6">
         {sent ? (
           <p className="text-sm font-semibold text-foreground">Thanks — we'll call you back shortly.</p>
+        ) : !user ? (
+          <button
+            onClick={() => navigate({ to: "/auth" })}
+            className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-transform hover:scale-105"
+          >
+            <PhoneCall className="h-4 w-4" />
+            Log in to request a Call Back
+          </button>
         ) : showCallbackForm ? (
           <form onSubmit={handleCallbackSubmit} className="animate-in fade-in slide-in-from-top-2 space-y-3 text-left duration-200">
             <input
@@ -935,7 +1039,7 @@ function TestsTab({
   tests: TestRow[] | null;
   isPurchased: boolean;
   navigate: ReturnType<typeof useNavigate>;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
 }) {
   const [attemptsByTest, setAttemptsByTest] = useState<Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>>({});
 
@@ -946,7 +1050,9 @@ function TestsTab({
   }, []);
 
   useEffect(() => {
-    if (!tests || tests.length === 0 || !isPurchased) return;
+    // Guarded by isPurchased (always false for anonymous visitors), so
+    // user.getIdToken() below is never reached with a null user.
+    if (!tests || tests.length === 0 || !isPurchased || !user) return;
     let cancelled = false;
     (async () => {
       const token = await user.getIdToken();
@@ -965,7 +1071,7 @@ function TestsTab({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tests, isPurchased]);
+  }, [tests, isPurchased, user]);
 
   if (tests === null) {
     return (
@@ -1033,12 +1139,18 @@ function TestsTab({
                 </div>
               ) : (
                 <button
-                  disabled={!isPurchased}
-                  onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
+                  onClick={() => {
+                    if (!user) {
+                      navigate({ to: "/auth" });
+                      return;
+                    }
+                    navigate({ to: "/test/$testId", params: { testId: t.id } });
+                  }}
+                  disabled={!user && isPurchased}
                   className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                 >
                   <PlayCircle className="h-4 w-4" />
-                  Start Test
+                  {isPurchased ? "Start Test" : "Start Test"}
                 </button>
               )}
             </div>
@@ -1060,18 +1172,23 @@ function SessionsTab({
   sessions: SessionRow[] | null;
   isPurchased: boolean;
   batchId: string;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
 }) {
   const navigate = useNavigate();
   const [statuses, setStatuses] = useState<Record<string, SessionStatus> | null>(null);
 
   async function refreshStatuses() {
+    if (!user) return;
     const token = await user.getIdToken();
     const { statuses: rows } = await listMySessionStatuses({ data: { token, batchId } });
     setStatuses(Object.fromEntries(rows.map((r) => [r.sessionId, r])));
   }
 
   useEffect(() => {
+    // sessions is only ever non-empty here when `user` is truthy — see the
+    // page-level effect, which skips fetching sessions entirely for
+    // anonymous visitors — but the `user` guard inside refreshStatuses
+    // above is kept as a second line of defense either way.
     if (sessions && sessions.length > 0) refreshStatuses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions, batchId]);
@@ -1085,6 +1202,9 @@ function SessionsTab({
   }
 
   if (sessions.length === 0) {
+    if (!user) {
+      return <LoginRequiredCard label="Log in to see this batch's live sessions and recorded lectures." />;
+    }
     return (
       <div className="clay p-8 text-center text-sm text-foreground/60">
         No live sessions scheduled by your mentor yet — check back soon.
@@ -1202,13 +1322,15 @@ function SessionsTab({
                     </a>
                   ))}
 
-                <SessionKebabMenu
-                  sessionId={s.id}
-                  batchId={batchId}
-                  user={user}
-                  initialRating={status?.myRating ?? 0}
-                  onSaved={refreshStatuses}
-                />
+                {user && (
+                  <SessionKebabMenu
+                    sessionId={s.id}
+                    batchId={batchId}
+                    user={user}
+                    initialRating={status?.myRating ?? 0}
+                    onSaved={refreshStatuses}
+                  />
+                )}
               </div>
             </div>
           </LockGate>
@@ -1226,7 +1348,7 @@ function BatchSeriesTestsTab({
 }: {
   batchId: string;
   isPurchased: boolean;
-  user: { getIdToken: () => Promise<string>; email?: string | null };
+  user: AuthedUser | null;
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [tests, setTests] = useState<BatchSeriesTestRow[] | null>(null);
@@ -1243,6 +1365,7 @@ function BatchSeriesTestsTab({
   }, []);
 
   async function refresh() {
+    if (!user) return;
     const token = await user.getIdToken();
     const [{ tests: seriesTests }, { tests: soldTests }] = await Promise.all([
       listMentorBatchSeriesTestsForStudent({ data: { token, batchId } }),
@@ -1286,12 +1409,17 @@ function BatchSeriesTestsTab({
   }
 
   useEffect(() => {
+    // listMentorBatchSeriesTestsForStudent / listAttachedSoldTestsForStudent
+    // both compute per-student unlock status, so they genuinely require a
+    // signed-in user — `tests` simply stays null (→ login prompt below)
+    // for anonymous visitors instead of calling refresh() at all.
+    if (!user) return;
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId]);
+  }, [batchId, user]);
 
   useEffect(() => {
-    if (!tests) return;
+    if (!tests || !user) return;
     const unlocked = tests.filter((t) => t.unlocked);
     if (unlocked.length === 0) return;
     let cancelled = false;
@@ -1312,11 +1440,15 @@ function BatchSeriesTestsTab({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tests]);
+  }, [tests, user]);
 
   // Standalone purchase — Sold Tests only (Test Series tests have no price
   // and are never individually purchasable, so this is never called for them).
   async function handleBuyTest(test: BatchSeriesTestRow) {
+    if (!user) {
+      navigate({ to: "/auth" });
+      return;
+    }
     setPurchaseError(null);
     setPurchasingId(test.id);
     try {
@@ -1361,6 +1493,10 @@ function BatchSeriesTestsTab({
       setPurchaseError("Could not start checkout. Please try again.");
       setPurchasingId(null);
     }
+  }
+
+  if (!user) {
+    return <LoginRequiredCard label="Log in to see this batch's test series." />;
   }
 
   if (tests === null) {
@@ -1499,7 +1635,7 @@ function SessionKebabMenu({
 }: {
   sessionId: string;
   batchId: string;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser;
   initialRating: number;
   onSaved: () => void;
 }) {
@@ -1589,22 +1725,27 @@ function AssetsTab({
   bundle: BundleDetail | null;
   batchId: string;
   isPurchased: boolean;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
   onOpenPdf: (url: string, name: string) => void;
 }) {
   const [notes, setNotes] = useState<NoteRow[] | null>(null);
 
   useEffect(() => {
-    if (kind !== "mentorship") return;
+    // listMentorNotesForStudent checks this specific student's purchase —
+    // genuinely requires a signed-in user.
+    if (kind !== "mentorship" || !user) return;
     (async () => {
       const token = await user.getIdToken();
       const { notes: rows } = await listMentorNotesForStudent({ data: { token, batchId } });
       setNotes(rows);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, batchId]);
+  }, [kind, batchId, user]);
 
   if (kind === "mentorship") {
+    if (!user) {
+      return <LoginRequiredCard label="Log in to see this batch's notes and assets." />;
+    }
     if (notes === null) {
       return (
         <div className="flex justify-center py-10">
@@ -1731,8 +1872,9 @@ function ChatTab({
 }: {
   batchId: string;
   isPurchased: boolean;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
 }) {
+  const navigate = useNavigate();
   const [mentorId, setMentorId] = useState<string | null>(null);
   const [mentorName, setMentorName] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
@@ -1743,7 +1885,7 @@ function ChatTab({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isPurchased) return;
+    if (!isPurchased || !user) return;
     (async () => {
       const token = await user.getIdToken();
       const { mentorId: mid, mentorName: mname } = await getMyMentorForBatch({ data: { token, batchId } });
@@ -1751,9 +1893,10 @@ function ChatTab({
       setMentorName(mname);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchId, isPurchased]);
+  }, [batchId, isPurchased, user]);
 
   async function refreshAll(mid: string) {
+    if (!user) return;
     const token = await user.getIdToken();
     const [{ messages: rows }, lock] = await Promise.all([
       listMyChatWithMentor({ data: { token, batchId, mentorId: mid } }),
@@ -1775,6 +1918,10 @@ function ChatTab({
   async function handleSend(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!user) {
+      navigate({ to: "/auth" });
+      return;
+    }
     if (!draft.trim() || !mentorId) return;
 
     setSending(true);
@@ -1788,6 +1935,10 @@ function ChatTab({
     } finally {
       setSending(false);
     }
+  }
+
+  if (!user) {
+    return <LoginRequiredCard label="Log in to chat with your mentor." />;
   }
 
   if (!isPurchased) {
@@ -1913,7 +2064,7 @@ function HelpTab({
   itemId,
 }: {
   isPurchased: boolean;
-  user: { getIdToken: () => Promise<string> };
+  user: AuthedUser | null;
   kind: Kind;
   itemId: string;
 }) {
@@ -1924,6 +2075,11 @@ function HelpTab({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    // Defense in depth: the submit button is disabled unless isPurchased
+    // (which is always false without a user), but an Enter-key implicit
+    // submit in some browsers can bypass a disabled button, so also guard
+    // here before ever touching user.getIdToken().
+    if (!isPurchased || !user) return;
     if (!subject.trim() || !message.trim()) return;
     setSending(true);
     try {
@@ -1935,6 +2091,10 @@ function HelpTab({
     } finally {
       setSending(false);
     }
+  }
+
+  if (!user) {
+    return <LoginRequiredCard label="Log in to raise a support ticket for this batch." />;
   }
 
   return (

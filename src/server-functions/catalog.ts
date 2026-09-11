@@ -367,10 +367,14 @@ export const listPublicSoldTests = createServerFn({ method: "GET" })
   });
 
   // ─── Public: one mentor's live standalone Sold Tests, for their profile page ─
+// Genuinely public, matching getPublicMentorFullProfile in batch-hub.ts —
+// this backs the anonymous-visitor-facing /mentor-profile/$mentorId page,
+// so it must not require a signed-in token. It never reads anything
+// purchase- or identity-specific (no decoded.uid used anywhere below), so
+// there was nothing here that actually needed auth in the first place.
 export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
-  .validator((data: { token: string; mentorId: string }) => data)
+  .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const db = await getDb();
 
     const tests = await db

@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
-import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps } from "@tabler/icons-react";
 import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
@@ -73,10 +73,10 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
   {
     label: "Content",
     items: [
-      { key: "bundles", label: "Create Bundle", icon: Package },
-      { key: "bundleManage", label: "Manage Bundles", icon: Boxes },
-      { key: "testCore", label: "Test Core", icon: ClipboardList },
-      { key: "questions", label: "Questions", icon: ListChecks },
+      { key: "bundles", label: "Create Bundle", icon: Package  as any },
+      { key: "bundleManage", label: "Manage Bundles", icon: Boxes  as any },
+      { key: "testCore", label: "Test Core", icon: ClipboardList  as any },
+      { key: "questions", label: "Questions", icon: ListChecks  as any },
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
 
@@ -683,7 +683,7 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
           />
         </button>
         <MetricCard
-          icon={ClipboardCheck}
+          icon={ClipboardCheck  as any}
           accent="coral"
           label="Mock Tests Taken"
           loading={loading}
@@ -1178,7 +1178,7 @@ function StudentProfileDrawer({
             </DrawerSection>
 
             {/* Performance */}
-            <DrawerSection icon={ClipboardCheck} title="Batch performance">
+            <DrawerSection icon={ClipboardCheck as React.ForwardRefExoticComponent<IconProps & React.RefAttributes<SVGSVGElement>>} title="Batch performance">
               {data.batchPerformance.length === 0 ? (
                 <p className="text-sm text-foreground/60">No test attempts yet.</p>
               ) : (
@@ -1210,7 +1210,7 @@ function StudentProfileDrawer({
             </DrawerSection>
 
             {/* Devices — terminate a session directly */}
-            <DrawerSection icon={Smartphone} title={`Devices (${data.devices.length})`}>
+            <DrawerSection icon={Smartphone as any} title={`Devices (${data.devices.length})`}>
               {terminateError && (
                 <p className="mb-2 text-xs font-medium text-rose-600">{terminateError}</p>
               )}
@@ -1856,7 +1856,7 @@ function OnboardingDetailsDrawer({
             </DrawerSection>
 
             {/* Everything else */}
-            <DrawerSection icon={ListChecks} title="Onboarding answers">
+            <DrawerSection icon={ListChecks  as any} title="Onboarding answers">
               <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
                 <li>
                   Sell test series too: <strong className="text-foreground">{details.wantsToSellTestSeries ? "Yes" : "No"}</strong>
@@ -2070,8 +2070,8 @@ function OnboardingDetailsDrawer({
                         <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
                           Track
                         </p>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {(["11th", "12th", "Dropper"] as Track[]).map((t) => (
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {(["11th", "12th", "Dropper", "All"] as Track[]).map((t) => (
                             <button
                               key={t}
                               type="button"
@@ -3209,7 +3209,7 @@ function PromoterTicketsPanel({ adminUser }: { adminUser: { getIdToken: () => Pr
     return tickets.filter(
       (t) => t.promoterName.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.category.toLowerCase().includes(q),
     );
-  }, [tickets, query]);
+  }, [tickets, q]);
 
   const openCount = tickets?.filter((t) => t.status !== "resolved").length ?? 0;
 

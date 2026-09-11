@@ -1,6 +1,15 @@
 // Server functions backing the student-facing Unified Batch/Course Hub.
-// These require a valid signed-in Firebase token (any student), not admin —
-// mirroring the pattern in catalog.ts.
+// Two tiers here, same pattern as catalog.ts:
+//   - Genuinely public (browsing): getPublicBundleDetail,
+//     getPublicMentorshipDetail, listPublicTestsForBundle,
+//     listPublicBundleAnnouncements, getPublicMentorProfile,
+//     getPublicMentorFullProfile — none of these read anything
+//     purchase- or identity-specific, so they must not require a
+//     signed-in token. A logged-out visitor browsing /course/$kind/$id
+//     needs these to resolve.
+//   - Requires a signed-in student: everything that reads or writes
+//     something tied to a specific uid (purchases, chat, notes,
+//     progress, reviews, comments).
 // swap this import
 import { signLectureUrl } from "@/lib/video-signer";
 import { createServerFn } from "@tanstack/react-start";
@@ -17,10 +26,11 @@ function discountPercent(selling: number, crossed: number): number {
 }
 
 // ─── Bundle detail (Test Series) ─────────────────────────────────────────
+// Public — browsing a bundle's overview must work for anonymous visitors;
+// only purchasing and taking tests requires login.
 export const getPublicBundleDetail = createServerFn({ method: "GET" })
-  .validator((data: { token: string; bundleId: string }) => data)
+  .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const r = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
@@ -46,10 +56,10 @@ export const getPublicBundleDetail = createServerFn({ method: "GET" })
   });
 
 // ─── Mentorship batch detail ──────────────────────────────────────────────
+// Public — same reasoning as getPublicBundleDetail above.
 export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
-  .validator((data: { token: string; batchId: string }) => data)
+  .validator((data: { token?: string; batchId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const r = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(data.batchId) });
@@ -76,16 +86,18 @@ export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
         crossedPrice: r.crossedPrice as number,
         discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
         thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
+        mentorId: (r.assignedMentorId as string | null) ?? null,
         mentor,
       },
     };
   });
 
 // ─── Tests inside a bundle (student-facing) ───────────────────────────────
+// Public — listing test names/timings is not sensitive; taking a test is
+// separately gated by purchase at /test/$testId.
 export const listPublicTestsForBundle = createServerFn({ method: "GET" })
-  .validator((data: { token: string; bundleId: string }) => data)
+  .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
@@ -111,10 +123,12 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
   });
   
 // ─── Announcements for a bundle (student-facing) ──────────────────────────
+// Public — the Announcements tab is already visually locked behind
+// purchase in the UI (LockGate); the announcement text itself isn't
+// sensitive, and this must not throw for anonymous browsing.
 export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
-  .validator((data: { token: string; bundleId: string }) => data)
+  .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const db = await getDb();
     const rows = await db
       .collection("bundleAnnouncements")
@@ -206,10 +220,13 @@ export const submitSupportTicket = createServerFn({ method: "POST" })
 // (rank/college/course) — read-only here exactly as they are in the mentor
 // portal, since students should see the same verified credentials a mentor
 // cannot self-edit.
+//
+// Public — same reasoning as getPublicMentorFullProfile below: nothing
+// here is purchase- or identity-specific, so an anonymous visitor viewing
+// a batch overview must be able to see the assigned mentor's bio too.
 export const getPublicMentorProfile = createServerFn({ method: "GET" })
-  .validator((data: { token: string; mentorId: string }) => data)
+  .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const m = await db.collection("mentors").findOne({ _id: new ObjectId(data.mentorId) });
@@ -236,6 +253,11 @@ export const getPublicMentorProfile = createServerFn({ method: "GET" })
 // visible to every student in the batch, while OneOnOne sessions are only
 // visible if this specific student is the one booked into them — a student
 // should never see another student's 1:1 slot.
+//
+// NOT made public on purpose: this is the one function on this page that
+// genuinely needs to know *which* signed-in student is asking, in order to
+// filter OneOnOne sessions correctly. Anonymous visitors simply don't get
+// a session list — the frontend skips calling this until login.
 export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
@@ -271,10 +293,11 @@ export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" }
 // mentor-portal.ts) rather than bundleAnnouncements — these are two
 // separate collections because mentorship announcements carry a title and
 // email-trigger metadata that bundle announcements don't.
+//
+// Public — same reasoning as listPublicBundleAnnouncements above.
 export const listPublicMentorshipAnnouncements = createServerFn({ method: "GET" })
-  .validator((data: { token: string; batchId: string }) => data)
+  .validator((data: { token?: string; batchId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const db = await getDb();
     const rows = await db
       .collection("mentorshipBatchAnnouncements")
@@ -550,9 +573,8 @@ export const listMentorNotesForStudent = createServerFn({ method: "GET" })
 
 
 export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
-  .validator((data: { token: string; mentorId: string }) => data)
+  .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 

@@ -17,7 +17,11 @@ import {
 } from "@/lib/supabase";
 
 type AdminUser = { getIdToken: () => Promise<string> };
-type TrackOption = "11th" | "12th" | "Dropper";
+// NOTE: "All" means "open to every class/track" (11th, 12th, and Dropper
+// alike) — it's a real, selectable audience option, not a fallback for
+// missing data. Kept as a local type (rather than importing Track from
+// admin-types) to match how this file already worked — just extended here.
+type TrackOption = "11th" | "12th" | "Dropper" | "All";
 type ExamOption = "neet" | "jee" | "cuet" | "ipmat";
 
 const EXAM_LABELS: Record<ExamOption, string> = {
@@ -308,6 +312,8 @@ function BundleFieldsForm(s: BundleFieldsState) {
     s.setFeatures(next);
   }
 
+  const isFree = s.sellingPrice.trim() !== "" && Number(s.sellingPrice) === 0;
+
   return (
     <div className="space-y-6">
       <div className="clay p-5 sm:p-6">
@@ -338,8 +344,8 @@ function BundleFieldsForm(s: BundleFieldsState) {
           </ClayField>
 
           <ClayField label="Target audience">
-            <div className="grid grid-cols-3 gap-2">
-              {(["11th", "12th", "Dropper"] as const).map((t) => (
+            <div className="grid grid-cols-4 gap-2">
+              {(["11th", "12th", "Dropper", "All"] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -348,10 +354,15 @@ function BundleFieldsForm(s: BundleFieldsState) {
                     s.track === t ? "clay-btn text-white" : "clay-btn-ghost text-foreground/70"
                   }`}
                 >
-                  {t}
+                  {t === "All" ? "All" : t}
                 </button>
               ))}
             </div>
+            {s.track === "All" && (
+              <p className="mt-1.5 text-[11px] text-foreground/50">
+                Visible to every student regardless of class/category.
+              </p>
+            )}
           </ClayField>
 
           <ClayField label="Exam">
@@ -421,25 +432,31 @@ function BundleFieldsForm(s: BundleFieldsState) {
           <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">Pricing</h2>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <ClayField label="Selling price (₹)">
+          <ClayField label="Selling price (₹) — enter 0 for a free bundle">
             <input
               value={s.sellingPrice}
               onChange={(e) => s.setSellingPrice(e.target.value)}
               inputMode="numeric"
-              placeholder="4999"
+              placeholder="4999 (or 0 for free)"
               className={inputClass}
             />
           </ClayField>
-          <ClayField label="Dummy crossed price (₹)">
+          <ClayField label={isFree ? "Dummy crossed price (₹) — optional for free bundles" : "Dummy crossed price (₹)"}>
             <input
               value={s.crossedPrice}
               onChange={(e) => s.setCrossedPrice(e.target.value)}
               inputMode="numeric"
-              placeholder="7999"
+              placeholder={isFree ? "Optional" : "7999"}
               className={inputClass}
             />
           </ClayField>
         </div>
+        {isFree && (
+          <p className="mt-3 rounded-2xl bg-[var(--mint-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">
+            This bundle will be marked FREE for students. Checkout still runs through the normal purchase flow —
+            confirm with engineering that ₹0 orders are handled there before publishing.
+          </p>
+        )}
       </div>
 
       <div className="clay p-5 sm:p-6">
@@ -515,6 +532,10 @@ function BundleFieldsForm(s: BundleFieldsState) {
   );
 }
 
+// Selling price of 0 is now a valid, explicit "free bundle" state. Crossed
+// price is only required (and only needs to exceed selling price) once the
+// bundle is actually paid — a free bundle doesn't need a fake reference
+// price to look legitimate.
 function validateBundleFields(s: {
   title: string;
   exam: ExamOption;
@@ -531,10 +552,14 @@ function validateBundleFields(s: {
   const cleanFeatures = s.features.map((f) => f.trim()).filter(Boolean);
   if (cleanFeatures.length < 2) return "Add at least 2 marketing feature pointers.";
 
+  if (s.sellingPrice.trim() === "") return "Enter a selling price (0 for a free bundle).";
   const selling = Number(s.sellingPrice);
-  const crossed = Number(s.crossedPrice);
-  if (!selling || selling <= 0) return "Enter a valid selling price.";
-  if (!crossed || crossed <= selling) return "Crossed price must be higher than the selling price.";
+  if (Number.isNaN(selling) || selling < 0) return "Enter a valid selling price (0 for free).";
+
+  if (selling > 0) {
+    const crossed = Number(s.crossedPrice);
+    if (!crossed || crossed <= selling) return "Crossed price must be higher than the selling price.";
+  }
 
   if (!s.uploadWindowStart || !s.uploadWindowEnd) return "Set both ends of the Upload Duration Window.";
   if (new Date(s.uploadWindowEnd) <= new Date(s.uploadWindowStart)) {
@@ -614,7 +639,7 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
             domainSubject: exam === "cuet" ? domainSubject.trim() : null,
             features: features.map((f) => f.trim()).filter(Boolean),
             sellingPrice: Number(sellingPrice),
-            crossedPrice: Number(crossedPrice),
+            crossedPrice: Number(crossedPrice) || 0,
             uploadWindowStart,
             uploadWindowEnd,
             expiryDate,
@@ -697,6 +722,7 @@ export function BundleCreationModule({ adminUser }: { adminUser: AdminUser }) {
 export function BundleManagementModule({ adminUser }: { adminUser: AdminUser }) {
   const [bundles, setBundles] = useState<BundleRow[] | null>(null);
   const [query, setQuery] = useState("");
+  const [priceFilter, setPriceFilter] = useState<"all" | "free" | "paid">("all");
 
   async function refresh() {
     const token = await adminUser.getIdToken();
@@ -710,6 +736,8 @@ export function BundleManagementModule({ adminUser }: { adminUser: AdminUser }) 
   }, [adminUser]);
 
   const filtered = (bundles ?? []).filter((b) => {
+    if (priceFilter === "free" && b.sellingPrice !== 0) return false;
+    if (priceFilter === "paid" && b.sellingPrice === 0) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -720,6 +748,8 @@ export function BundleManagementModule({ adminUser }: { adminUser: AdminUser }) 
     );
   });
 
+  const freeCount = (bundles ?? []).filter((b) => b.sellingPrice === 0).length;
+
   return (
     <div>
       <ModuleHeader
@@ -728,7 +758,7 @@ export function BundleManagementModule({ adminUser }: { adminUser: AdminUser }) 
       />
 
       <div className="clay mb-4 p-4">
-        <div className="relative">
+        <div className="relative mb-3">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/30" />
           <input
             value={query}
@@ -736,6 +766,20 @@ export function BundleManagementModule({ adminUser }: { adminUser: AdminUser }) 
             placeholder="Search bundles by title, track, exam, or domain subject…"
             className={inputClass + " pl-10"}
           />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(["all", "free", "paid"] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setPriceFilter(f)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
+                priceFilter === f ? "clay-btn text-white" : "clay-chip text-foreground/70 hover:bg-foreground/5"
+              }`}
+            >
+              {f === "all" ? "All" : f === "free" ? `Free${bundles ? ` (${freeCount})` : ""}` : "Paid"}
+            </button>
+          ))}
         </div>
         {bundles && (
           <p className="mt-2 text-xs text-foreground/50">
@@ -845,7 +889,7 @@ function BundleCard({
             domainSubject: exam === "cuet" ? domainSubject.trim() : null,
             features: features.map((f) => f.trim()).filter(Boolean),
             sellingPrice: Number(sellingPrice),
-            crossedPrice: Number(crossedPrice),
+            crossedPrice: Number(crossedPrice) || 0,
             uploadWindowStart,
             uploadWindowEnd,
             expiryDate,
@@ -863,6 +907,8 @@ function BundleCard({
       setSaving(false);
     }
   }
+
+  const isFree = bundle.sellingPrice === 0;
 
 return (
     <div className="clay p-5 sm:p-6">
@@ -883,11 +929,22 @@ return (
                   Mentor-submitted
                 </span>
               )}
+              {isFree && (
+                <span className="clay-chip shrink-0 rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                  Free
+                </span>
+              )}
             </div>
             <p className="text-xs text-foreground/50">
-              {EXAM_LABELS[bundle.exam as ExamOption] ?? bundle.exam} · {bundle.track} · ₹{bundle.sellingPrice}{" "}
-              <span className="line-through opacity-60">₹{bundle.crossedPrice}</span> · expires{" "}
-              {new Date(bundle.expiryDate).toLocaleDateString()}
+              {EXAM_LABELS[bundle.exam as ExamOption] ?? bundle.exam} · {bundle.track} ·{" "}
+              {isFree ? (
+                <span className="font-semibold text-[var(--sky-deep)]">FREE</span>
+              ) : (
+                <>
+                  ₹{bundle.sellingPrice} <span className="line-through opacity-60">₹{bundle.crossedPrice}</span>
+                </>
+              )}{" "}
+              · expires {new Date(bundle.expiryDate).toLocaleDateString()}
             </p>
           </div>
         </div>

@@ -2,7 +2,7 @@
 // MongoDB document shapes we'll actually persist, so every module (built now
 // or later) stays consistent with the same schema.
 
-export type Track = "11th" | "12th" | "Dropper";
+export type Track = "11th" | "12th" | "Dropper" | "All";
 
 // Matches the ExamKey used in dashboard.tsx and mentor-applications.ts —
 // keep this the single source of truth going forward.

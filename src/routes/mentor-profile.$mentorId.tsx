@@ -53,6 +53,21 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// This page is public — a mentor's profile and their batch list should be
+// browsable by anyone, logged in or not, so it's shareable and indexable.
+// We no longer redirect anonymous visitors to /auth. Login is only required
+// further down the funnel, when a visitor opens a specific batch or test to
+// purchase it (/course/$kind/$id and /sold-test/$id already gate on auth
+// themselves) — this page just doesn't force that gate prematurely.
+//
+// IMPORTANT: `user` is genuinely `null` for anonymous visitors on this page
+// by design. Don't force it non-null with `user!` when passing it down —
+// AppHeader is built to render its own login/signup CTAs for a null user,
+// and asserting it non-null just hides a real null from the type system
+// without changing the runtime value, so anything downstream that expects
+// a real user object still blows up for anonymous visitors.
+// ---------------------------------------------------------------------------
 function MentorProfilePage() {
   const { mentorId } = Route.useParams();
   const { user, loading } = useAuth();
@@ -62,35 +77,40 @@ function MentorProfilePage() {
   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [notFound, setNotFound] = useState(false);
 
+  // ---------------------------------------------------------------------
+  // PERF: fetch immediately, don't wait on `loading` (Firebase Auth
+  // resolving). This page is public and both endpoints already treat an
+  // empty token as "anonymous visitor" and return the same public data
+  // either way, so there is nothing to gain by waiting for auth here —
+  // only ~1-2s of extra blank-spinner time, which was previously the
+  // single biggest contributor to this route's load time and CLS.
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
-  }, [loading, user, navigate]);
-
-  useEffect(() => {
-    if (!user) return;
     (async () => {
-      const token = await user.getIdToken();
-      const [{ mentor: m, batches: b }, { tests: st }] = await Promise.all([
-        getPublicMentorFullProfile({ data: { token, mentorId } }),
-        listPublicSoldTestsForMentor({ data: { token, mentorId } }),
-      ]);
-      if (!m) {
-        setNotFound(true);
-        return;
+      try {
+        const token = user ? await user.getIdToken() : "";
+        const [{ mentor: m, batches: b }, { tests: st }] = await Promise.all([
+          getPublicMentorFullProfile({ data: { token, mentorId } }),
+          listPublicSoldTestsForMentor({ data: { token, mentorId } }),
+        ]);
+        if (!m) {
+          setNotFound(true);
+          return;
+        }
+        setMentor(m);
+        setBatches(b);
+        setSoldTests(st as SoldTestEntry[]);
+      } catch {
+        // If listPublicSoldTestsForMentor still requires auth on the
+        // backend, don't let that break the whole page for guests —
+        // just show no individual tests rather than erroring out.
+        setSoldTests([]);
       }
-      setMentor(m);
-      setBatches(b);
-      setSoldTests(st as SoldTestEntry[]);
     })();
-  }, [user, mentorId]);
-
-  if (loading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-      </div>
-    );
-  }
+    // Deliberately re-runs once `user`/`loading` resolve too, so a visitor
+    // who was mid-auth-check on first load still gets a fresh fetch with a
+    // real token if one becomes available (no-op today since the response
+    // doesn't vary by auth, but keeps this correct if that ever changes).
+  }, [user, loading, mentorId]);
 
   const credentialItems = mentor
     ? [
@@ -107,11 +127,14 @@ function MentorProfilePage() {
         <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-60 blur-3xl" />
       </div>
 
+      {/* AppHeader renders its own login/signup CTAs when user is null, and
+          the normal account menu when signed in — pass the real value,
+          don't assert it non-null. */}
       <AppHeader user={user} />
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <button
-          onClick={() => navigate({ to: "/dashboard" })}
+          onClick={() => navigate({ to: user ? "/dashboard" : "/" })}
           className="mb-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-foreground/60 transition-colors duration-200 hover:bg-foreground/5 hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -128,10 +151,10 @@ function MentorProfilePage() {
               This mentor profile may have been removed or the link is incorrect.
             </p>
             <button
-              onClick={() => navigate({ to: "/dashboard" })}
+              onClick={() => navigate({ to: user ? "/dashboard" : "/" })}
               className="clay-btn mt-6 rounded-full px-6 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
             >
-              Go to dashboard
+              {user ? "Go to dashboard" : "Back to home"}
             </button>
           </div>
         ) : !mentor ? (
@@ -210,6 +233,15 @@ function MentorProfilePage() {
                     })}
                   </div>
                 )}
+
+                {!user && (
+                  <p className="mt-5 text-xs text-foreground/50">
+                    <Link to="/auth" className="font-semibold text-[var(--sky-deep)] hover:underline">
+                      Log in or sign up
+                    </Link>{" "}
+                    to purchase a batch or test below.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -261,8 +293,7 @@ function MentorProfilePage() {
               )}
             </div>
 
-            {/* ── Individual Tests — standalone Sold Tests by this mentor,
-                genuinely missing before this fix. ────────────────────── */}
+            {/* ── Individual Tests — standalone Sold Tests by this mentor. ── */}
             <div className="clay p-5 sm:p-6">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
