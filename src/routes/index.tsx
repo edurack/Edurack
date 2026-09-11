@@ -395,7 +395,7 @@ function Hero() {
 
         <Reveal delay={220}>
           <p className="fluid-body mx-auto mt-6 max-w-2xl text-muted-foreground">
-            EduRack helps NEET, JEE, CUET and IPMAT aspirants practice with realistic mock tests,
+            Edurack helps NEET, JEE, CUET and IPMAT aspirants practice with realistic mock tests,
             understand their performance, and connect with mentors who have already walked the path
             they're preparing for.
           </p>
@@ -845,7 +845,7 @@ function WhyEdurackSection() {
     <section id="about" className="px-4 py-16 sm:px-6 lg:py-24">
       <div className="mx-auto max-w-4xl text-center">
         <Reveal>
-          <h2 className="fluid-h2 font-display font-extrabold text-foreground">Why EduRack?</h2>
+          <h2 className="fluid-h2 font-display font-extrabold text-foreground">Why Edurack?</h2>
           <p className="fluid-body mx-auto mt-4 max-w-2xl text-muted-foreground">
             Preparing for competitive exams isn't just about taking more tests or watching more
             lectures. You need to know where you stand, what you need to improve, and who can help you
