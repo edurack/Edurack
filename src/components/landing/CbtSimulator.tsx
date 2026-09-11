@@ -42,7 +42,7 @@ export function CbtSimulator() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <img 
-              src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png" 
+              src="https://www.edurack.in/edurack-logo.webp" 
               alt="Logo" 
               className="h-10 w-auto object-contain sm:h-12" 
               onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none'}} 
