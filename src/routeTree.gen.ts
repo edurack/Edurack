@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TicketsRouteImport } from './routes/tickets'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as LoginRouteImport } from './routes/login'
@@ -41,6 +42,11 @@ import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 const TicketsRoute = TicketsRouteImport.update({
   id: '/tickets',
   path: '/tickets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PurchasesRoute = PurchasesRouteImport.update({
@@ -191,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
@@ -221,6 +228,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
@@ -252,6 +260,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
@@ -284,6 +293,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/profile'
     | '/purchases'
+    | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
@@ -314,6 +324,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/profile'
     | '/purchases'
+    | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
@@ -344,6 +355,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/profile'
     | '/purchases'
+    | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
@@ -375,6 +387,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
@@ -402,6 +415,13 @@ declare module '@tanstack/react-router' {
       path: '/tickets'
       fullPath: '/tickets'
       preLoaderRoute: typeof TicketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/purchases': {
@@ -607,6 +627,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
