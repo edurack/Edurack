@@ -1,11 +1,11 @@
-import { useNavigate, useLocation } from "@tanstack/react-router";
+import { Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { IconHelpCircle as HelpCircle, IconShoppingBag as ShoppingBag, IconChevronDown as ChevronDown, IconLogout as LogOut, IconHome as Home, IconLifebuoy as LifeBuoy } from "@tabler/icons-react";
 import { UserRound } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User } from "firebase/auth";
 import { signOutUser } from "@/lib/firebase";
 
-export function AppHeader({ user, displayName }: { user: User; displayName?: string }) {
+export function AppHeader({ user, displayName }: { user: User | null; displayName?: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,8 +47,8 @@ export function AppHeader({ user, displayName }: { user: User; displayName?: str
             <span className="text-xl tracking-tight">EDURACK</span>
           </div>
 
-          {/* Home button: Displays side-by-side with appropriate flex spacing */}
-          {isNotDashboard && (
+          {/* Home button: only meaningful for a signed-in user with a dashboard to go to. */}
+          {user && isNotDashboard && (
             <button
               type="button"
               onClick={() => navigate({ to: "/dashboard" })}
@@ -60,98 +60,115 @@ export function AppHeader({ user, displayName }: { user: User; displayName?: str
           )}
         </div>
 
-        {/* Right: Actions & Profile Menu */}
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/purchases" })}
-            aria-label="My purchases"
-            className="clay-btn-ghost flex h-10 w-10 items-center justify-center rounded-full text-foreground/70 transition hover:text-foreground"
-          >
-            <ShoppingBag className="h-4 w-4" />
-          </button>
-
-          <div className="relative" ref={menuRef}>
+        {/* Right: Actions & Profile Menu (signed in) or Login/Sign Up (anonymous) */}
+        {!user ? (
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link
+              to="/auth"
+              className="clay-btn-ghost px-4 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 sm:px-5"
+            >
+              Login
+            </Link>
+            <Link
+              to="/auth"
+              className="clay-btn px-4 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 sm:px-5"
+            >
+              Sign Up
+            </Link>
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
-              onClick={() => setMenuOpen((o) => !o)}
-              className="clay flex h-10 items-center gap-1.5 rounded-full pl-1 pr-2.5 text-foreground/80"
+              onClick={() => navigate({ to: "/purchases" })}
+              aria-label="My purchases"
+              className="clay-btn-ghost flex h-10 w-10 items-center justify-center rounded-full text-foreground/70 transition hover:text-foreground"
             >
-              <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--sky-soft)]">
-                {user.photoURL ? (
-                  <img src={user.photoURL} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <UserRound className="h-4 w-4" />
-                )}
-              </span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+              <ShoppingBag className="h-4 w-4" />
             </button>
 
-            {menuOpen && (
-              <div className="clay absolute right-0 top-[calc(100%+0.5rem)] w-56 p-2">
-                <div className="px-3 py-2">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    {displayName || user.displayName || "Student"}
-                  </p>
-                  <p className="truncate text-xs text-foreground/50">{user.email}</p>
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((o) => !o)}
+                className="clay flex h-10 items-center gap-1.5 rounded-full pl-1 pr-2.5 text-foreground/80"
+              >
+                <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--sky-soft)]">
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <UserRound className="h-4 w-4" />
+                  )}
+                </span>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {menuOpen && (
+                <div className="clay absolute right-0 top-[calc(100%+0.5rem)] w-56 p-2">
+                  <div className="px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {displayName || user.displayName || "Student"}
+                    </p>
+                    <p className="truncate text-xs text-foreground/50">{user.email}</p>
+                  </div>
+                  <div className="my-1 h-px bg-foreground/10" />
+
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate({ to: "/profile" });
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
+                  >
+                    <UserRound className="h-4 w-4" />
+                    View profile
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate({ to: "/purchases" });
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
+                  >
+                    <ShoppingBag className="h-4 w-4" />
+                    My purchases
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate({ to: "/tickets" });
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
+                  >
+                    <LifeBuoy className="h-4 w-4" />
+                    My tickets
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate({ to: "/help" });
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                    Help
+                  </button>
+                  
+                  <button
+                    onClick={handleSignOut}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign out
+                  </button>
                 </div>
-                <div className="my-1 h-px bg-foreground/10" />
-
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ to: "/profile" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
-                >
-                  <UserRound className="h-4 w-4" />
-                  View profile
-                </button>
-                
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ to: "/purchases" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
-                >
-                  <ShoppingBag className="h-4 w-4" />
-                  My purchases
-                </button>
-
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ to: "/tickets" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
-                >
-                  <LifeBuoy className="h-4 w-4" />
-                  My tickets
-                </button>
-
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate({ to: "/help" });
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                  Help
-                </button>
-                
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-foreground/80 transition hover:bg-foreground/5"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
         
       </div>
     </header>
