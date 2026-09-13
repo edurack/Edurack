@@ -456,24 +456,42 @@ export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
 // Previously this query required profilePictureUrl to exist and be
 // non-null, which silently dropped every mentor without a photo off the
 // public landing page entirely — that's been removed.
+let mentorsForLandingCache: { data: LandingMentorResult[]; expiresAt: number } | null = null;
+const MENTORS_CACHE_TTL_MS = 60_000; // 1 minute — bump this if mentor/batch changes are rare
+
+type LandingMentorResult = {
+  id: string;
+  name: string;
+  profilePictureUrl: string | null;
+  yearOfStudy: string;
+  aiimsIitRank: string;
+  batches: { id: string; name: string; track: string; exam: string }[];
+};
+
 export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(async () => {
+  if (mentorsForLandingCache && mentorsForLandingCache.expiresAt > Date.now()) {
+    return { mentors: mentorsForLandingCache.data };
+  }
+
   const db = await getDb();
+
+  // Fetch all eligible mentors first — batches are enrichment, not a gate.
+  const mentors = await db
+    .collection("mentors")
+    .find({
+      status: { $ne: "terminated" },
+      name: { $exists: true, $ne: "" },
+    })
+    .toArray();
+
+  if (mentors.length === 0) {
+    mentorsForLandingCache = { data: [], expiresAt: Date.now() + MENTORS_CACHE_TTL_MS };
+    return { mentors: [] };
+  }
 
   const batches = await db
     .collection("mentorshipBatches")
     .find({ assignedMentorId: { $ne: null } })
-    .toArray();
-  const mentorIds = [...new Set(batches.map((b) => b.assignedMentorId as string))];
-  if (mentorIds.length === 0) return { mentors: [] };
-
-  const { ObjectId } = await import("mongodb");
-  const mentors = await db
-    .collection("mentors")
-    .find({
-      _id: { $in: mentorIds.map((id) => new ObjectId(id)) },
-      status: { $ne: "terminated" },
-      name: { $exists: true, $ne: "" },
-    })
     .toArray();
 
   const batchesByMentor = new Map<string, { id: string; name: string; track: string; exam: string }[]>();
@@ -489,29 +507,18 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
     batchesByMentor.set(mid, list);
   }
 
-  return {
-    mentors: mentors.map((m) => {
-      const mentorId = String(m._id);
-      return {
-        id: mentorId,
-        name: m.name as string,
-        // FIX (Improve image delivery, ~412 KiB): landing page renders this
-        // at 56x56 (see MentorAvatar in index.tsx). Requesting a
-        // Supabase-transformed 112x112 (2x for retina) image instead of the
-        // raw upload cuts a ~260 KiB photo down to a few KB, with no
-        // re-encoding pipeline needed on your end — Supabase does it at
-        // request time and caches the result at the edge.
-        //
-        // FIX (this pass): the cast used to be `as string`, which silently
-        // lied to TypeScript — a mentor can genuinely have no photo now
-        // that the query above no longer filters those out. This is
-        // correctly `string | null`, and toResizedSupabaseImageUrl already
-        // returns null safely for a null/empty input.
-        profilePictureUrl: toResizedSupabaseImageUrl((m.profilePictureUrl as string | null) ?? null, 56),
-        yearOfStudy: (m.yearOfStudy as string) ?? "",
-        aiimsIitRank: (m.aiimsIitRank as string) ?? "",
-        batches: batchesByMentor.get(mentorId) ?? [],
-      };
-    }),
-  };
+  const result: LandingMentorResult[] = mentors.map((m) => {
+    const mentorId = String(m._id);
+    return {
+      id: mentorId,
+      name: m.name as string,
+      profilePictureUrl: toResizedSupabaseImageUrl((m.profilePictureUrl as string | null) ?? null, 56),
+      yearOfStudy: (m.yearOfStudy as string) ?? "",
+      aiimsIitRank: (m.aiimsIitRank as string) ?? "",
+      batches: batchesByMentor.get(mentorId) ?? [],
+    };
+  });
+
+  mentorsForLandingCache = { data: result, expiresAt: Date.now() + MENTORS_CACHE_TTL_MS };
+  return { mentors: result };
 });

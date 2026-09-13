@@ -16,6 +16,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 
+import { createTtlCache } from "@/lib/simple-cache";
+
+const bundleDetailCache = createTtlCache<any>(60_000); // 60s — price/features rarely change
+const mentorshipDetailCache = createTtlCache<any>(60_000);
+const mentorFullProfileCache = createTtlCache<any>(30_000); // 30s — ratings can update more often
+const soldTestDetailCache = createTtlCache<any>(60_000);
+
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
 }
@@ -31,12 +38,19 @@ function discountPercent(selling: number, crossed: number): number {
 export const getPublicBundleDetail = createServerFn({ method: "GET" })
   .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
+    const cached = bundleDetailCache.get(data.bundleId);
+    if (cached) return cached;
+
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const r = await db.collection("bundles").findOne({ _id: new ObjectId(data.bundleId) });
-    if (!r || r.kind === "mentorBatchSeries") return { bundle: null };
+    if (!r || r.kind === "mentorBatchSeries") {
+      const result = { bundle: null };
+      bundleDetailCache.set(data.bundleId, result);
+      return result;
+    }
 
-    return {
+    const result = {
       bundle: {
         id: String(r._id),
         title: r.title as string,
@@ -53,44 +67,13 @@ export const getPublicBundleDetail = createServerFn({ method: "GET" })
         plannerUrls: (r.plannerUrls as string[]) ?? [],
       },
     };
+    bundleDetailCache.set(data.bundleId, result);
+    return result;
   });
 
 // ─── Mentorship batch detail ──────────────────────────────────────────────
 // Public — same reasoning as getPublicBundleDetail above.
-export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
-  .validator((data: { token?: string; batchId: string }) => data)
-  .handler(async ({ data }) => {
-    const { ObjectId } = await import("mongodb");
-    const db = await getDb();
-    const r = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(data.batchId) });
-    if (!r) return { batch: null };
 
-    let mentor = null;
-    if (r.assignedMentorId) {
-      const m = await db.collection("mentors").findOne({ _id: new ObjectId(r.assignedMentorId as string) });
-      if (m) {
-        mentor = {
-          name: m.name as string,
-          profilePictureUrl: (m.profilePictureUrl as string | null) ?? null,
-        };
-      }
-    }
-
-    return {
-      batch: {
-        id: String(r._id),
-        name: r.name as string,
-        track: r.track as string,
-        highlights: (r.highlights as string[]) ?? [],
-        sellingPrice: r.sellingPrice as number,
-        crossedPrice: r.crossedPrice as number,
-        discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
-        thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
-        mentorId: (r.assignedMentorId as string | null) ?? null,
-        mentor,
-      },
-    };
-  });
 
 // ─── Tests inside a bundle (student-facing) ───────────────────────────────
 // Public — listing test names/timings is not sensitive; taking a test is
@@ -106,7 +89,7 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
     const rows = await db
       .collection("testCores")
       .find({ bundleId: data.bundleId })
-      .sort({ createdAt: -1 })
+      .sort({ liveStart: 1 })
       .toArray();
 
     return {
@@ -115,13 +98,11 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
         name: r.name as string,
         totalQuestions: r.totalQuestions as number,
         timeLimitMinutes: (r.durationMinutes as number) ?? 180,
-        subjects: (r.subjects as string[]) ?? [],
         liveStart: r.liveStart as string,
         liveEnd: r.liveEnd as string,
       })),
     };
   });
-  
 // ─── Announcements for a bundle (student-facing) ──────────────────────────
 // Public — the Announcements tab is already visually locked behind
 // purchase in the UI (LockGate); the announcement text itself isn't
@@ -220,7 +201,51 @@ export const submitSupportTicket = createServerFn({ method: "POST" })
 // (rank/college/course) — read-only here exactly as they are in the mentor
 // portal, since students should see the same verified credentials a mentor
 // cannot self-edit.
-//
+
+export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
+  .validator((data: { token?: string; batchId: string }) => data)
+  .handler(async ({ data }) => {
+    const cached = mentorshipDetailCache.get(data.batchId);
+    if (cached) return cached;
+
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const r = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(data.batchId) });
+    if (!r) {
+      const result = { batch: null };
+      mentorshipDetailCache.set(data.batchId, result);
+      return result;
+    }
+
+    let mentor = null;
+    if (r.assignedMentorId) {
+      const m = await db.collection("mentors").findOne({ _id: new ObjectId(r.assignedMentorId as string) });
+      if (m) {
+        mentor = {
+          name: m.name as string,
+          profilePictureUrl: (m.profilePictureUrl as string | null) ?? null,
+        };
+      }
+    }
+
+    const result = {
+      batch: {
+        id: String(r._id),
+        name: r.name as string,
+        track: r.track as string,
+        highlights: (r.highlights as string[]) ?? [],
+        sellingPrice: r.sellingPrice as number,
+        crossedPrice: r.crossedPrice as number,
+        discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
+        thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
+        mentorId: (r.assignedMentorId as string | null) ?? null,
+        mentor,
+      },
+    };
+    mentorshipDetailCache.set(data.batchId, result);
+    return result;
+  });
+
 // Public — same reasoning as getPublicMentorFullProfile below: nothing
 // here is purchase- or identity-specific, so an anonymous visitor viewing
 // a batch overview must be able to see the assigned mentor's bio too.
@@ -575,16 +600,20 @@ export const listMentorNotesForStudent = createServerFn({ method: "GET" })
 export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
   .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
+    const cached = mentorFullProfileCache.get(data.mentorId);
+    if (cached) return cached;
+
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
     const m = await db.collection("mentors").findOne({ _id: new ObjectId(data.mentorId) });
-    if (!m) return { mentor: null, batches: [] };
+    if (!m) {
+      const result = { mentor: null, batches: [] };
+      mentorFullProfileCache.set(data.mentorId, result);
+      return result;
+    }
 
     const batches = await db.collection("mentorshipBatches").find({ assignedMentorId: data.mentorId }).toArray();
-
-    // Aggregate rating across every session this mentor has run, so the
-    // profile page can show one overall score rather than nothing.
     const sessions = await db.collection("mentorshipSessions").find({ mentorId: data.mentorId }).toArray();
     const sessionIds = sessions.map((s) => String(s._id));
     const reviews =
@@ -593,7 +622,7 @@ export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
         : [];
     const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + (r.rating as number), 0) / reviews.length : null;
 
-    return {
+    const result = {
       mentor: {
         id: String(m._id),
         name: m.name as string,
@@ -614,8 +643,9 @@ export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
         thumbnailUrl: (b.thumbnailUrl as string | null) ?? null,
       })),
     };
+    mentorFullProfileCache.set(data.mentorId, result);
+    return result;
   });
-
 
 function isCurrentlyLockedForStudent(lockedFrom: string, lockedUntil: string): boolean {
   if (!lockedFrom || !lockedUntil) return false;
@@ -851,18 +881,29 @@ export const listAttachedSoldTestsForStudent = createServerFn({ method: "GET" })
 export const getPublicSoldTestDetail = createServerFn({ method: "GET" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
+    // Auth check always runs fresh — never skip this for a cache hit.
     await requireSignedIn(data.token);
+
+    const cached = soldTestDetailCache.get(data.testId);
+    if (cached) return cached;
+
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
     const t = await db.collection("soldTests").findOne({ _id: new ObjectId(data.testId) });
-    if (!t || t.status !== "live" || !t.approvedPrice) return { test: null };
+    if (!t || t.status !== "live" || !t.approvedPrice) {
+      const result = { test: null };
+      soldTestDetailCache.set(data.testId, result);
+      return result;
+    }
 
     const addedCount = await db.collection("questions").countDocuments({ testId: data.testId });
-    if (addedCount < (t.totalQuestions as number)) return { test: null };
+    if (addedCount < (t.totalQuestions as number)) {
+      return { test: null }; // not cached — still filling in, check again next time
+    }
 
     const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(t.mentorId as string) });
-    return {
+    const result = {
       test: {
         id: String(t._id),
         name: t.name as string,
@@ -874,4 +915,6 @@ export const getPublicSoldTestDetail = createServerFn({ method: "GET" })
         price: t.approvedPrice as number,
       },
     };
+    soldTestDetailCache.set(data.testId, result);
+    return result;
   });

@@ -1139,6 +1139,7 @@ function MarketplaceBanner() {
               </span>
               <Link
                 to="/join-mentor"
+                preload="viewport"
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-sky-500 to-teal-400 px-6 py-3 text-sm font-bold text-slate-950 shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:opacity-95"
               >
                 Become a Founding Mentor <ArrowRight className="h-4 w-4" />
