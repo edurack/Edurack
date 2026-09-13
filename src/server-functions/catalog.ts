@@ -465,6 +465,7 @@ type LandingMentorResult = {
   profilePictureUrl: string | null;
   yearOfStudy: string;
   aiimsIitRank: string;
+  expertAt: string; // NEW — Expertise Showcase, admin-set via updateMentorLockedInfo
   batches: { id: string; name: string; track: string; exam: string }[];
 };
 
@@ -507,7 +508,7 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
     batchesByMentor.set(mid, list);
   }
 
-  const result: LandingMentorResult[] = mentors.map((m) => {
+    const result: LandingMentorResult[] = mentors.map((m) => {
     const mentorId = String(m._id);
     return {
       id: mentorId,
@@ -515,10 +516,11 @@ export const listMentorsForLanding = createServerFn({ method: "GET" }).handler(a
       profilePictureUrl: toResizedSupabaseImageUrl((m.profilePictureUrl as string | null) ?? null, 56),
       yearOfStudy: (m.yearOfStudy as string) ?? "",
       aiimsIitRank: (m.aiimsIitRank as string) ?? "",
+      expertAt: (m.expertAt as string) ?? "", // NEW
       batches: batchesByMentor.get(mentorId) ?? [],
     };
   });
-
+  
   mentorsForLandingCache = { data: result, expiresAt: Date.now() + MENTORS_CACHE_TTL_MS };
   return { mentors: result };
 });

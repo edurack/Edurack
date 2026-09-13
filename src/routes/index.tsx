@@ -718,6 +718,10 @@ type LandingMentor = {
   profilePictureUrl: string | null;
   yearOfStudy: string;
   aiimsIitRank: string;
+  // Expertise Showcase — admin-set (see updateMentorLockedInfo in
+  // mentor-auth.ts). Only expertAt is shown on this card; whyExpertAt and
+  // the score live on the full mentor profile page, one click away.
+  expertAt: string;
   batches: { id: string; name: string; track: string; exam: string }[];
 };
 
@@ -868,6 +872,16 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
                     </p>
                   </div>
                 </div>
+
+                {/* Expertise Showcase — subject chip, admin-set. Sits above
+                    the batches list so a visitor scanning cards sees what
+                    each mentor specializes in before the batch names. */}
+                {m.expertAt?.trim() && (
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--sky-deep)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                    <Award className="h-3 w-3" />
+                    Expert in {m.expertAt}
+                  </div>
+                )}
 
                 {m.batches.length > 0 && (
                   <div className="mt-4">

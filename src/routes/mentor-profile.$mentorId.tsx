@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
 import { UserX, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
@@ -22,6 +22,11 @@ type Mentor = {
   aiimsIitRank: string;
   enrolledCollege: string;
   pursuedCourse: string;
+  // Expertise Showcase — admin-set, read-only here.
+  expertAt: string;
+  whyExpertAt: string;
+  scoreType: string;
+  scoreValue: string;
   avgRating: number | null;
   reviewCount: number;
 };
@@ -51,6 +56,18 @@ function StarRating({ rating }: { rating: number }) {
       ))}
     </div>
   );
+}
+
+// Turns a stored score type + value into a short display label, e.g.
+// "99.8 Percentile", "AIR 342", "178/180 Score". Falls back to just the
+// raw value if no type is set (shouldn't happen once admin fills it in,
+// but keeps this resilient to older/partial data).
+function formatScore(scoreType: string, scoreValue: string): string | null {
+  if (!scoreValue.trim()) return null;
+  if (scoreType === "percentile") return `${scoreValue} Percentile`;
+  if (scoreType === "rank") return `Rank: ${scoreValue}`;
+  if (scoreType === "score") return `Score: ${scoreValue}`;
+  return scoreValue;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +136,8 @@ function MentorProfilePage() {
         { icon: BookMarked, label: "Course", value: mentor.pursuedCourse },
       ].filter((i) => i.value?.trim())
     : [];
+
+  const expertiseScoreLabel = mentor ? formatScore(mentor.scoreType, mentor.scoreValue) : null;
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -202,6 +221,16 @@ function MentorProfilePage() {
                 </div>
                 {mentor.yearOfStudy && <p className="text-sm text-foreground/50">{mentor.yearOfStudy}</p>}
 
+                {/* Expertise Showcase — subject badge, right under the name/year,
+                    so it reads as an identity tag ("Expert in Organic Chemistry")
+                    before the visitor scrolls into the longer About text. */}
+                {mentor.expertAt.trim() && (
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--sky-deep)] px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white">
+                    <Award className="h-3.5 w-3.5" />
+                    Expert in {mentor.expertAt}
+                  </div>
+                )}
+
                 {mentor.aboutText && (
                   <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-foreground/70">
                     {mentor.aboutText}
@@ -231,6 +260,28 @@ function MentorProfilePage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Expertise Showcase — the full "why" + score, as its own
+                    callout beneath the credentials grid. Only renders when
+                    admin has actually filled in "why expert at" — a bare
+                    subject badge above is fine standing alone, but this
+                    fuller block needs the explanation to be worth a whole
+                    section. */}
+                {mentor.whyExpertAt.trim() && (
+                  <div className="clay-inset mt-3 rounded-2xl px-4 py-4">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-foreground/40">
+                      <Target className="h-3 w-3" />
+                      Why {mentor.name.split(" ")[0]} is the expert here
+                    </div>
+                    <p className="text-sm leading-relaxed text-foreground/70">{mentor.whyExpertAt}</p>
+                    {expertiseScoreLabel && (
+                      <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--mint-soft)] px-3 py-1 text-xs font-bold text-foreground">
+                        <Trophy className="h-3 w-3" />
+                        {expertiseScoreLabel}
+                      </span>
+                    )}
                   </div>
                 )}
 

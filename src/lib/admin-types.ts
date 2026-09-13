@@ -141,6 +141,18 @@ export type YearOfStudy =
   | "Internship"
   | "Post-Graduation";
 
+// Admin-set "Expertise Showcase" — the subject a mentor is positioned as an
+// expert in, why, and a score to back it up. Shown on the mentor's public
+// profile and mentor listing cards. Locked to the mentor (admin-only writes),
+// same as aiimsIitRank/enrolledCollege/pursuedCourse below.
+export type MentorScoreType = "percentile" | "rank" | "score";
+export const MENTOR_SCORE_TYPES: MentorScoreType[] = ["percentile", "rank", "score"];
+export const MENTOR_SCORE_TYPE_LABELS: Record<MentorScoreType, string> = {
+  percentile: "Percentile",
+  rank: "Rank",
+  score: "Score",
+};
+
 // NOTE: introVideoUrl is retired from being mentor-uploaded. It's replaced
 // by the Drive-link workflow below (MentorIntroVideoStatus). Kept here as
 // nullable/optional so any old data or admin tooling that still reads it
@@ -154,6 +166,12 @@ export type MentorProfileExtended = Mentor & {
   aiimsIitRank: string;
   enrolledCollege: string;
   pursuedCourse: string;
+
+  // Expertise Showcase — admin-set, read-only to the mentor.
+  expertAt: string;
+  whyExpertAt: string;
+  scoreType: MentorScoreType | "";
+  scoreValue: string;
 };
 
 // Fields the mentor is permitted to submit via the self-service profile form.
@@ -171,6 +189,13 @@ export type MentorLockedInfoInput = {
   aiimsIitRank: string;
   enrolledCollege: string;
   pursuedCourse: string;
+
+  // Expertise Showcase — same Super-Admin-only write path as the fields
+  // above (see updateMentorLockedInfo in mentor-auth.ts).
+  expertAt: string;
+  whyExpertAt: string;
+  scoreType: MentorScoreType | "";
+  scoreValue: string;
 };
 
 // ─── Module 6c: Self-Introduction Video — Google Drive workflow ────────────

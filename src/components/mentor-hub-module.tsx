@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconStack2 as Layers3, IconPencil as Pencil, IconX as X, IconPlus as Plus, IconShieldCheck as ShieldCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconArrowLeft as ArrowLeft, IconMail as Mail, IconCloudUpload as UploadCloud, IconFileText as FileText, IconPhoto as ImageIcon, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconKey as KeyRound, IconBan as Ban, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconArrowUpRight as ArrowUpRight } from "@tabler/icons-react";
-import type { ExamKey, Mentor, MentorshipBatch, Track } from "@/lib/admin-types";
+import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconStack2 as Layers3, IconPencil as Pencil, IconX as X, IconPlus as Plus, IconShieldCheck as ShieldCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconArrowLeft as ArrowLeft, IconMail as Mail, IconCloudUpload as UploadCloud, IconFileText as FileText, IconPhoto as ImageIcon, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconKey as KeyRound, IconBan as Ban, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconArrowUpRight as ArrowUpRight, IconAward as Award } from "@tabler/icons-react";
+import type { ExamKey, Mentor, MentorshipBatch, MentorScoreType, Track } from "@/lib/admin-types";
+import { MENTOR_SCORE_TYPES, MENTOR_SCORE_TYPE_LABELS } from "@/lib/admin-types";
 import {
   listMentors,
   updateMentorProfile,
@@ -157,7 +158,8 @@ function MentorList({ mentors, onOpen }: { mentors: Mentor[] | null; onOpen: (id
 }
 
 // ─── Full profile drawer: everything filled in by the mentor so far, plus
-// Terminate / Reset password / Ask for verification at the bottom. ────────
+// the Expertise Showcase editor, and Terminate / Reset password / Ask for
+// verification at the bottom. ──────────────────────────────────────────────
 type MentorFullDetail = {
   id: string;
   username: string;
@@ -172,6 +174,13 @@ type MentorFullDetail = {
   aiimsIitRank: string;
   enrolledCollege: string;
   pursuedCourse: string;
+  // Expertise Showcase — admin-set, surfaced on the mentor's public profile.
+  // NOTE: getAdminMentorFullDetail (server-functions/admin.ts) needs to
+  // return these four fields too — see the note below this file.
+  expertAt: string;
+  whyExpertAt: string;
+  scoreType: MentorScoreType | "";
+  scoreValue: string;
   createdAt: string | null;
   introVideo: { driveUploadLink: string | null; uploaded: boolean; markedUploadedAt: string | null } | null;
   onboarding: {
@@ -250,12 +259,25 @@ function MentorDetailDrawer({
   const [verifyInput, setVerifyInput] = useState("");
   const [verifyResult, setVerifyResult] = useState<"match" | "mismatch" | null>(null);
 
+  // ── Expertise Showcase editor state ──────────────────────────────────
+  const [expertAt, setExpertAt] = useState("");
+  const [whyExpertAt, setWhyExpertAt] = useState("");
+  const [scoreType, setScoreType] = useState<MentorScoreType | "">("");
+  const [scoreValue, setScoreValue] = useState("");
+  const [savingExpertise, setSavingExpertise] = useState(false);
+  const [expertiseMessage, setExpertiseMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
   async function load() {
     setStatus("loading");
     try {
       const token = await adminUser.getIdToken();
       const { detail } = await getAdminMentorFullDetail({ data: { token, mentorId } });
-      setData(detail as MentorFullDetail);
+      const d = detail as MentorFullDetail;
+      setData(d);
+      setExpertAt(d.expertAt ?? "");
+      setWhyExpertAt(d.whyExpertAt ?? "");
+      setScoreType((d.scoreType as MentorScoreType) || "");
+      setScoreValue(d.scoreValue ?? "");
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -311,6 +333,41 @@ function MentorDetailDrawer({
   function handleVerify() {
     if (!data) return;
     setVerifyResult(verifyInput.trim() === data.secretCode ? "match" : "mismatch");
+  }
+
+  // Saves the Expertise Showcase via the same updateMentorLockedInfo path
+  // used for AIIMS/IIT Rank etc. — carries the existing aiimsIitRank /
+  // enrolledCollege / pursuedCourse through unchanged so this save doesn't
+  // blank those out (the backend $sets all seven fields together).
+  async function handleSaveExpertise() {
+    if (!data) return;
+    setSavingExpertise(true);
+    setExpertiseMessage(null);
+    try {
+      const token = await adminUser.getIdToken();
+      await updateMentorLockedInfo({
+        data: {
+          token,
+          mentorId,
+          lockedInfo: {
+            aiimsIitRank: data.aiimsIitRank,
+            enrolledCollege: data.enrolledCollege,
+            pursuedCourse: data.pursuedCourse,
+            expertAt,
+            whyExpertAt,
+            scoreType,
+            scoreValue,
+          },
+        },
+      });
+      setData((prev) => (prev ? { ...prev, expertAt, whyExpertAt, scoreType, scoreValue } : prev));
+      onChanged();
+      setExpertiseMessage({ kind: "ok", text: "Expertise showcase updated." });
+    } catch (err) {
+      setExpertiseMessage({ kind: "error", text: err instanceof Error ? err.message : "Could not save. Try again." });
+    } finally {
+      setSavingExpertise(false);
+    }
   }
 
   return (
@@ -393,6 +450,86 @@ function MentorDetailDrawer({
                   Pursued course: <strong className="text-foreground">{data.pursuedCourse || "—"}</strong>
                 </li>
               </ul>
+            </DetailSection>
+
+            {/* ── Expertise Showcase — editable, admin-only ─────────────── */}
+            <DetailSection icon={Award} title="Expertise showcase (shown on public profile)">
+              <div className="clay-inset space-y-3 rounded-2xl p-4">
+                <ClayField label="Expert at (subject)">
+                  <input
+                    value={expertAt}
+                    onChange={(e) => setExpertAt(e.target.value)}
+                    placeholder="e.g. Organic Chemistry"
+                    className={inputClass}
+                  />
+                </ClayField>
+
+                <ClayField label="Why expert at this">
+                  <textarea
+                    value={whyExpertAt}
+                    onChange={(e) => setWhyExpertAt(e.target.value)}
+                    placeholder="e.g. Scored 178/180 in Chemistry in NEET 2023 and has mentored 40+ droppers on the subject"
+                    rows={3}
+                    className={inputClass}
+                  />
+                </ClayField>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <ClayField label="Score type">
+                    <select
+                      value={scoreType}
+                      onChange={(e) => setScoreType(e.target.value as MentorScoreType | "")}
+                      className={inputClass + " appearance-none"}
+                    >
+                      <option value="">Select type</option>
+                      {MENTOR_SCORE_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {MENTOR_SCORE_TYPE_LABELS[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </ClayField>
+
+                  <ClayField
+                    label={
+                      scoreType === "rank"
+                        ? "Rank (e.g. AIR 342)"
+                        : scoreType === "percentile"
+                          ? "Percentile (e.g. 99.8)"
+                          : "Score (e.g. 178/180)"
+                    }
+                  >
+                    <input
+                      value={scoreValue}
+                      onChange={(e) => setScoreValue(e.target.value)}
+                      placeholder={
+                        scoreType === "rank" ? "AIR 342" : scoreType === "percentile" ? "99.8" : "178/180"
+                      }
+                      className={inputClass}
+                    />
+                  </ClayField>
+                </div>
+
+                {expertiseMessage && (
+                  <p
+                    className={`rounded-2xl px-4 py-2 text-xs font-medium ${
+                      expertiseMessage.kind === "ok"
+                        ? "bg-[var(--mint-soft)]/60 text-foreground"
+                        : "bg-[var(--coral-soft)]/50 text-foreground"
+                    }`}
+                  >
+                    {expertiseMessage.text}
+                  </p>
+                )}
+
+                <button
+                  onClick={handleSaveExpertise}
+                  disabled={savingExpertise}
+                  className="clay-btn flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-70"
+                >
+                  {savingExpertise ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save expertise showcase"}
+                </button>
+              </div>
             </DetailSection>
 
             {data.introVideo && (

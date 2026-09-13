@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconLoader2 as Loader2, IconClock as Clock, IconUser as User, IconX as X } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconClock as Clock, IconUser as User, IconX as X, IconShieldCheck as ShieldCheck, IconAlertTriangle as AlertTriangle } from "@tabler/icons-react";
 import { Grid3x3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
@@ -13,6 +13,13 @@ export const Route = createFileRoute("/test/$testId")({
 
 type OptionKey = "A" | "B" | "C" | "D";
 type QuestionStatus = "not-visited" | "not-answered" | "answered" | "marked" | "answered-marked";
+// "loading": auth/profile/test data still being fetched
+// "ready": data loaded, showing the pre-test proctoring gate — timer hasn't
+//   started yet, waiting on the user's "Start Test" click (needed for the
+//   Fullscreen API, which requires a fresh user gesture)
+// "active": test in progress, timer running, fullscreen + tab/copy
+//   monitoring live
+type Phase = "loading" | "ready" | "active";
 
 type Question = {
   id: string;
@@ -30,6 +37,45 @@ type TestMeta = {
   timeLimitMinutes: number;
 };
 
+// Auto-submit thresholds. Violation N+1 triggers the auto-submit (so
+// TAB_SWITCH_LIMIT=5 means the 6th switch/exit ends the test).
+const TAB_SWITCH_LIMIT = 5;
+const COPY_LIMIT = 10;
+
+// Per-subject accent so the test doesn't read as one flat color — falls
+// back to the existing sky accent for any subject name not in this map
+// (e.g. CUET domain subjects, which are admin-defined free text).
+const SUBJECT_ACCENTS: Record<string, { bg: string; text: string; ring: string }> = {
+  Physics: { bg: "bg-indigo-500", text: "text-indigo-600", ring: "ring-indigo-400" },
+  Chemistry: { bg: "bg-emerald-500", text: "text-emerald-600", ring: "ring-emerald-400" },
+  Biology: { bg: "bg-rose-500", text: "text-rose-600", ring: "ring-rose-400" },
+  Mathematics: { bg: "bg-amber-500", text: "text-amber-600", ring: "ring-amber-400" },
+};
+function subjectAccent(subject: string) {
+  return (
+    SUBJECT_ACCENTS[subject] ?? {
+      bg: "bg-[var(--sky-deep)]",
+      text: "text-[var(--sky-deep)]",
+      ring: "ring-[var(--sky-deep)]",
+    }
+  );
+}
+
+function requestFullscreenSafe(): Promise<void> {
+  const el = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void>;
+  };
+  const request = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+  return request ? request() : Promise.reject(new Error("Fullscreen not supported"));
+}
+
+function exitFullscreenSafe() {
+  const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> };
+  const isFullscreen = document.fullscreenElement ?? (doc as any).webkitFullscreenElement;
+  if (!isFullscreen) return;
+  (document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(doc))?.().catch(() => {});
+}
+
 function TestEnginePage() {
   const { testId } = Route.useParams();
   const { user, loading } = useAuth();
@@ -41,6 +87,7 @@ function TestEnginePage() {
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [phase, setPhase] = useState<Phase>("loading");
   const [activeSubject, setActiveSubject] = useState<string>("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, OptionKey | undefined>>({});
@@ -48,6 +95,18 @@ function TestEnginePage() {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // ── Proctoring state ──────────────────────────────────────────────────
+  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  const [copyCount, setCopyCount] = useState(0);
+  const [warning, setWarning] = useState<{
+    message: string;
+    tone: "warn" | "danger";
+    action?: { label: string; onClick: () => void };
+  } | null>(null);
+  const [autoSubmitReason, setAutoSubmitReason] = useState<string | null>(null);
+  const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const startTimeRef = useRef<number>(Date.now());
   const submittedRef = useRef(false);
 
@@ -76,7 +135,8 @@ function TestEnginePage() {
           initialStatuses[q.id] = i === 0 ? "not-answered" : "not-visited";
         });
         setStatuses(initialStatuses);
-        startTimeRef.current = Date.now();
+        // Timer/fullscreen deliberately NOT started here — see startTest().
+        setPhase("ready");
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : "Could not load this test.");
       }
@@ -90,6 +150,9 @@ function TestEnginePage() {
   );
   const currentQuestion = subjectQuestions[currentIndex];
 
+  const isFirstQuestionOverall =
+    Boolean(test) && activeSubject === test!.subjects[0] && currentIndex === 0;
+
   // Whether the current question is the very last one across every
   // subject — i.e. there's genuinely nowhere further to advance to.
   const isLastQuestionOverall =
@@ -101,6 +164,7 @@ function TestEnginePage() {
     if (!user || !questions || submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
+    exitFullscreenSafe();
     try {
       const token = await user.getIdToken();
       const timeTakenMinutes = Math.round((Date.now() - startTimeRef.current) / 60000);
@@ -116,9 +180,10 @@ function TestEnginePage() {
     }
   }
 
-  // Countdown timer — auto-submits at zero.
+  // Countdown timer — only runs once the test is actually active, and
+  // auto-submits at zero.
   useEffect(() => {
-    if (secondsLeft === null || submittedRef.current) return;
+    if (phase !== "active" || secondsLeft === null || submittedRef.current) return;
     if (secondsLeft <= 0) {
       handleSubmit();
       return;
@@ -126,7 +191,113 @@ function TestEnginePage() {
     const id = setTimeout(() => setSecondsLeft((s) => (s === null ? null : s - 1)), 1000);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secondsLeft]);
+  }, [secondsLeft, phase]);
+
+  // ── Proctoring: tab switches, fullscreen exits, copy attempts ────────
+  // Client-side only — this raises the bar and leaves an audit trail, it
+  // is not a hard guarantee against a determined cheater (devtools, a
+  // second device, etc. are still possible). Treat it as deterrence, not
+  // lockdown security.
+  function showWarning(
+    message: string,
+    tone: "warn" | "danger",
+    action?: { label: string; onClick: () => void },
+  ) {
+    setWarning({ message, tone, action });
+    if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    warningTimeoutRef.current = setTimeout(() => setWarning(null), 6000);
+  }
+
+  function triggerAutoSubmit(reason: string) {
+    if (submittedRef.current || autoSubmitReason) return;
+    setAutoSubmitReason(reason);
+    setTimeout(() => handleSubmit(), 1500);
+  }
+
+  function reenterFullscreen() {
+    requestFullscreenSafe().catch(() => {});
+  }
+
+  function registerViolation(kind: "tab" | "copy" | "fullscreen") {
+    if (submittedRef.current) return;
+
+    if (kind === "copy") {
+      setCopyCount((prev) => {
+        const next = prev + 1;
+        if (next > COPY_LIMIT) {
+          triggerAutoSubmit(`Copying was flagged ${next} times, past the ${COPY_LIMIT}-time limit.`);
+        } else {
+          showWarning(`Copy detected (${next}/${COPY_LIMIT}). Repeated copying will auto-submit your test.`, "warn");
+        }
+        return next;
+      });
+      return;
+    }
+
+    setTabSwitchCount((prev) => {
+      const next = prev + 1;
+      if (next > TAB_SWITCH_LIMIT) {
+        triggerAutoSubmit(
+          kind === "fullscreen"
+            ? `You exited fullscreen ${next} times, past the ${TAB_SWITCH_LIMIT}-time limit.`
+            : `You switched tabs/windows ${next} times, past the ${TAB_SWITCH_LIMIT}-time limit.`,
+        );
+      } else {
+        showWarning(
+          kind === "fullscreen"
+            ? `Fullscreen exited (${next}/${TAB_SWITCH_LIMIT}). Repeated exits will auto-submit your test.`
+            : `Tab switch detected (${next}/${TAB_SWITCH_LIMIT}). Repeated switching will auto-submit your test.`,
+          "warn",
+          kind === "fullscreen" ? { label: "Re-enter Fullscreen", onClick: reenterFullscreen } : undefined,
+        );
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (phase !== "active") return;
+
+    function handleVisibility() {
+      if (document.hidden) registerViolation("tab");
+    }
+    function handleCopy() {
+      registerViolation("copy");
+    }
+    function handleFullscreenChange() {
+      const isFullscreen = document.fullscreenElement ?? (document as any).webkitFullscreenElement;
+      if (!isFullscreen) registerViolation("fullscreen");
+    }
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("copy", handleCopy);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("copy", handleCopy);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  useEffect(() => {
+    return () => {
+      if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    };
+  }, []);
+
+  function startTest() {
+    startTimeRef.current = Date.now();
+    requestFullscreenSafe()
+      .catch(() => {
+        // Fullscreen isn't supported/allowed on this device/browser — still
+        // start the test rather than blocking the candidate entirely.
+        // Tab-switch and copy detection work regardless of fullscreen.
+      })
+      .finally(() => setPhase("active"));
+  }
 
   function markVisited(id: string) {
     setStatuses((prev) => (prev[id] === "not-visited" ? { ...prev, [id]: "not-answered" } : prev));
@@ -160,6 +331,29 @@ function TestEnginePage() {
     const subjectIndex = test.subjects.indexOf(activeSubject);
     const nextSubject = test.subjects[subjectIndex + 1];
     if (nextSubject) selectSubject(nextSubject);
+  }
+
+  // Mirrors advance() in reverse: steps back within the current subject,
+  // or — if already on the first question of the current subject — rolls
+  // back into the LAST question of the previous subject. Only a no-op when
+  // there's truly nowhere further back (first question of the first
+  // subject), matching isFirstQuestionOverall above.
+  function goBack() {
+    if (currentIndex > 0) {
+      goTo(currentIndex - 1);
+      return;
+    }
+    if (!test || !questions) return;
+    const subjectIndex = test.subjects.indexOf(activeSubject);
+    const prevSubject = test.subjects[subjectIndex - 1];
+    if (!prevSubject) return;
+    const prevQuestions = questions.filter((q) => q.subject === prevSubject);
+    const lastIndex = Math.max(0, prevQuestions.length - 1);
+    setActiveSubject(prevSubject);
+    setCurrentIndex(lastIndex);
+    const last = prevQuestions[lastIndex];
+    if (last) markVisited(last.id);
+    setPaletteOpen(false);
   }
 
   function selectOption(option: OptionKey) {
@@ -208,8 +402,47 @@ function TestEnginePage() {
 
   if (!test || !questions) return null;
 
+  // ── Pre-test proctoring gate ──────────────────────────────────────────
+  if (phase === "ready") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+        <div className="clay w-full max-w-lg p-6 text-center sm:p-8">
+          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-violet-600">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            AI-Monitored Test
+          </div>
+          <h1 className="font-display mt-4 text-xl font-bold text-foreground sm:text-2xl">{test.name}</h1>
+          <p className="mt-2 text-sm text-foreground/60">
+            {test.totalQuestions} questions · {test.timeLimitMinutes} minutes · {test.subjects.join(" · ")}
+          </p>
+
+          <div className="clay-inset mt-6 rounded-2xl p-4 text-left text-xs text-foreground/70">
+            <p className="mb-2 font-bold uppercase tracking-wide text-foreground/50">Before you begin</p>
+            <ul className="list-disc space-y-1.5 pl-4">
+              <li>This test runs in fullscreen and is monitored for tab switches and copying.</li>
+              <li>
+                Switching tabs or exiting fullscreen more than {TAB_SWITCH_LIMIT} times will auto-submit your test.
+              </li>
+              <li>Copying text more than {COPY_LIMIT} times will auto-submit your test.</li>
+              <li>Once submitted — manually or automatically — this attempt can't be resumed.</li>
+            </ul>
+          </div>
+
+          <button
+            onClick={startTest}
+            className="clay-btn mt-6 w-full rounded-full px-6 py-3 text-sm font-bold uppercase tracking-wide"
+          >
+            Start Test in Fullscreen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const minutes = Math.floor((secondsLeft ?? 0) / 60);
   const seconds = (secondsLeft ?? 0) % 60;
+  const timePercent = test.timeLimitMinutes > 0 ? ((secondsLeft ?? 0) / (test.timeLimitMinutes * 60)) * 100 : 100;
+  const timerTone = timePercent > 50 ? "bg-emerald-500" : timePercent > 20 ? "bg-amber-500" : "bg-rose-600 animate-pulse";
 
   const counts = {
     notVisited: Object.values(statuses).filter((s) => s === "not-visited").length,
@@ -217,6 +450,8 @@ function TestEnginePage() {
     answered: Object.values(statuses).filter((s) => s === "answered").length,
     marked: Object.values(statuses).filter((s) => s === "marked" || s === "answered-marked").length,
   };
+
+  const currentAccent = subjectAccent(activeSubject);
 
   const PalettePanel = (
     <div>
@@ -247,7 +482,7 @@ function TestEnginePage() {
               key={q.id}
               onClick={() => goTo(i)}
               className={`h-9 w-9 rounded-xl text-xs font-bold transition-all ${statusClass} ${
-                isCurrent ? "ring-2 ring-[var(--sky-deep)] ring-offset-2 ring-offset-background" : ""
+                isCurrent ? `ring-2 ${currentAccent.ring} ring-offset-2 ring-offset-background` : ""
               }`}
             >
               {String(q.questionNo).padStart(2, "0")}
@@ -260,50 +495,103 @@ function TestEnginePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar */}
-      <header className="clay mx-3 mt-3 flex flex-col gap-3 p-4 sm:mx-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-display text-lg font-bold tracking-tight text-foreground">
-            Edurack <span className="text-foreground/40">| CBT Portal</span>
-          </p>
-          <p className="text-xs text-foreground/50">Excellence in Assessment</p>
-        </div>
-        <div className="clay-inset flex items-center gap-4 rounded-2xl px-4 py-2.5">
-          <User className="h-4 w-4 text-foreground/40" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">{candidateName}</p>
-            <p className="text-foreground/50">
-              {test.name}
-              {attemptNumber && attemptNumber > 1 && (
-                <span className="ml-1.5 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                  Attempt {attemptNumber}
-                </span>
+      {/* Violation toast */}
+      {warning && (
+        <div
+          className={`fixed left-1/2 top-4 z-50 w-[92%] max-w-md -translate-x-1/2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-lg ${
+            warning.tone === "danger" ? "bg-rose-600" : "bg-amber-500"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex-1">
+              <p>{warning.message}</p>
+              {warning.action && (
+                <button
+                  onClick={warning.action.onClick}
+                  className="mt-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wide hover:bg-white/30"
+                >
+                  {warning.action.label}
+                </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-submit overlay */}
+      {autoSubmitReason && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
+          <div className="clay max-w-sm p-6 text-center">
+            <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-rose-500" />
+            <p className="font-display text-base font-bold text-foreground">Test auto-submitted</p>
+            <p className="mt-2 text-sm text-foreground/60">{autoSubmitReason}</p>
+            <p className="mt-3 text-xs text-foreground/40">Submitting your answers…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Top bar */}
+      <header className="mx-auto max-w-6xl px-3 pt-3 sm:px-4">
+        <div className="clay flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-bold tracking-tight text-foreground">
+              Edurack <span className="text-foreground/40">| CBT Portal</span>
             </p>
+            <p className="text-xs text-foreground/50">Excellence in Assessment</p>
           </div>
-          <div className="flex items-center gap-1.5 rounded-full bg-[var(--sky-soft)] px-3 py-1.5 text-sm font-bold text-foreground">
-            <Clock className="h-3.5 w-3.5" />
-            {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+          <div className="clay-inset flex flex-wrap items-center gap-3 rounded-2xl px-4 py-2.5 sm:flex-nowrap">
+            <User className="h-4 w-4 shrink-0 text-foreground/40" />
+            <div className="min-w-0 text-xs">
+              <p className="truncate font-semibold text-foreground">{candidateName}</p>
+              <p className="truncate text-foreground/50">
+                {test.name}
+                {attemptNumber && attemptNumber > 1 && (
+                  <span className="ml-1.5 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                    Attempt {attemptNumber}
+                  </span>
+                )}
+              </p>
+            </div>
+            <div
+              className={`ml-auto flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold text-white transition-colors ${timerTone}`}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+            </div>
           </div>
+        </div>
+
+        {/* Proctoring status — always visible while the test is active */}
+        <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-foreground/50 sm:justify-start">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+          AI-monitored session · tab/fullscreen {tabSwitchCount}/{TAB_SWITCH_LIMIT} · copies {copyCount}/{COPY_LIMIT}
         </div>
       </header>
 
-      {/* Subject tabs */}
-      <div className="mx-3 mt-3 flex flex-wrap gap-2 sm:mx-4">
-        {test.subjects.map((s) => (
-          <button
-            key={s}
-            onClick={() => selectSubject(s)}
-            className={`rounded-2xl px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all ${
-              activeSubject === s ? "clay-btn text-white" : "clay-chip text-foreground/70"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      {/* Subject tabs — horizontally scrollable on small screens instead of
+          wrapping, so the row stays compact on narrow phones. */}
+      <div className="mx-auto max-w-6xl px-3 sm:px-4">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden">
+          {test.subjects.map((s) => {
+            const accent = subjectAccent(s);
+            const isActive = activeSubject === s;
+            return (
+              <button
+                key={s}
+                onClick={() => selectSubject(s)}
+                className={`shrink-0 rounded-2xl px-4 py-2 text-sm font-bold uppercase tracking-wide transition-all ${
+                  isActive ? `${accent.bg} text-white shadow-md` : "clay-chip text-foreground/70"
+                }`}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mx-3 mt-3 grid grid-cols-1 gap-4 pb-6 sm:mx-4 lg:grid-cols-[1fr_320px]">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 px-3 pb-6 pt-3 sm:px-4 lg:grid-cols-[1fr_320px]">
         {/* Question panel */}
         <div className="clay p-5 sm:p-6">
           {currentQuestion ? (
@@ -312,7 +600,9 @@ function TestEnginePage() {
                 <h2 className="font-display text-base font-bold text-foreground">
                   Question {currentQuestion.questionNo}:
                 </h2>
-                <span className="text-xs font-semibold uppercase tracking-wide text-foreground/40">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${currentAccent.text}`}
+                >
                   {currentQuestion.subject}
                 </span>
               </div>
@@ -324,7 +614,7 @@ function TestEnginePage() {
                   <label
                     key={opt}
                     className={`clay-inset flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition ${
-                      answers[currentQuestion.id] === opt ? "ring-2 ring-[var(--sky-deep)]" : ""
+                      answers[currentQuestion.id] === opt ? `ring-2 ${currentAccent.ring}` : ""
                     }`}
                   >
                     <input
@@ -340,7 +630,9 @@ function TestEnginePage() {
                 ))}
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-2">
+              {/* Primary actions — 2-up grid on mobile so nothing overflows
+                  or wraps awkwardly on narrow phones; single row from sm up. */}
+              <div className="mt-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 <button
                   onClick={saveAndNext}
                   className="clay-btn rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wide"
@@ -356,17 +648,19 @@ function TestEnginePage() {
                 </button>
                 <button
                   onClick={clearResponse}
-                  className="clay-btn-ghost rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wide"
+                  className="clay-btn-ghost col-span-2 rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wide sm:col-span-1"
                 >
                   Clear Response
                 </button>
               </div>
 
-              <div className="mt-4 flex items-center justify-between">
-                <div className="flex gap-2">
+              {/* Navigation — stacks Submit onto its own full-width row on
+                  small screens instead of squeezing it into the same line. */}
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap gap-2">
                   <button
-                    disabled={currentIndex === 0}
-                    onClick={() => goTo(currentIndex - 1)}
+                    disabled={isFirstQuestionOverall}
+                    onClick={goBack}
                     className="clay-btn-ghost rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
                   >
                     &lt;&lt; Back
@@ -389,9 +683,9 @@ function TestEnginePage() {
                 <button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="clay-btn rounded-full px-6 py-2.5 text-sm font-bold disabled:opacity-70"
+                  className="clay-btn w-full rounded-full px-6 py-2.5 text-sm font-bold disabled:opacity-70 sm:w-auto"
                 >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit"}
+                  {submitting ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Submit"}
                 </button>
               </div>
             </>

@@ -197,10 +197,10 @@ export const submitSupportTicket = createServerFn({ method: "POST" })
   // ─── Student-facing: Extended mentor profile for mentorship batches ────────
 // Extends what getPublicMentorshipDetail already returns (name +
 // profilePictureUrl) with the full public-facing profile a student should
-// see: bio, year of study, intro video, and the locked verification fields
-// (rank/college/course) — read-only here exactly as they are in the mentor
-// portal, since students should see the same verified credentials a mentor
-// cannot self-edit.
+// see: bio, year of study, intro video, the locked verification fields
+// (rank/college/course), and the Expertise Showcase (subject/why/score) —
+// read-only here exactly as they are in the mentor portal, since students
+// should see the same admin-verified info a mentor cannot self-edit.
 
 export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
   .validator((data: { token?: string; batchId: string }) => data)
@@ -268,6 +268,12 @@ export const getPublicMentorProfile = createServerFn({ method: "GET" })
         aiimsIitRank: (m.aiimsIitRank as string) ?? "",
         enrolledCollege: (m.enrolledCollege as string) ?? "",
         pursuedCourse: (m.pursuedCourse as string) ?? "",
+        // Expertise Showcase — admin-set via updateMentorLockedInfo
+        // (mentor-auth.ts), same read-only pattern as the three fields above.
+        expertAt: (m.expertAt as string) ?? "",
+        whyExpertAt: (m.whyExpertAt as string) ?? "",
+        scoreType: (m.scoreType as string | null) ?? "",
+        scoreValue: (m.scoreValue as string) ?? "",
       },
     };
   });
@@ -633,6 +639,14 @@ export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
         aiimsIitRank: (m.aiimsIitRank as string) ?? "",
         enrolledCollege: (m.enrolledCollege as string) ?? "",
         pursuedCourse: (m.pursuedCourse as string) ?? "",
+        // Expertise Showcase — admin-set via updateMentorLockedInfo
+        // (mentor-auth.ts). scoreType reads back as "" when unset (it's
+        // stored as null in Mongo), matching how the other locked fields
+        // fall back to "" above.
+        expertAt: (m.expertAt as string) ?? "",
+        whyExpertAt: (m.whyExpertAt as string) ?? "",
+        scoreType: (m.scoreType as string | null) ?? "",
+        scoreValue: (m.scoreValue as string) ?? "",
         avgRating: avgRating !== null ? Math.round(avgRating * 10) / 10 : null,
         reviewCount: reviews.length,
       },

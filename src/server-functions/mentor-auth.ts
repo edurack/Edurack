@@ -7,8 +7,9 @@
 //
 // 2. Super Admin — the existing Firebase Auth + `admin: true` custom claim
 //    used everywhere in admin.ts. updateMentorLockedInfo below reuses that
-//    exact same check, because writing AIIMS/IIT Rank, Enrolled College, or
-//    Pursued Course is strictly a Super Admin action, never a mentor one.
+//    exact same check, because writing AIIMS/IIT Rank, Enrolled College,
+//    Pursued Course, and the Expertise Showcase fields is strictly a Super
+//    Admin action, never a mentor one.
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
@@ -17,6 +18,7 @@ import type {
   MentorProfileExtended,
   MentorProfileUpdateInput,
   MentorLockedInfoInput,
+  MentorScoreType,
   YearOfStudy,
 } from "@/lib/admin-types";
 
@@ -166,6 +168,11 @@ export const getMentorSession = createServerFn({ method: "POST" })
 // than throwing, so older mentor documents render cleanly as "Not set yet"
 // in the LockedInfoPanel instead of crashing the page.
 //
+// expertAt / whyExpertAt / scoreType / scoreValue (the "Expertise Showcase")
+// follow the exact same locked pattern as aiimsIitRank/enrolledCollege/
+// pursuedCourse below — set only via updateMentorLockedInfo, defaulted to
+// empty here for mentors that don't have one set yet.
+//
 // introVideoUrl is still read here (legacy field, kept for backward compat
 // on old documents) but is no longer written by updateMyMentorProfile below
 // — the self-intro video is now the Drive-link workflow in
@@ -192,6 +199,10 @@ export const getMentorProfile = createServerFn({ method: "POST" })
       aiimsIitRank: (m.aiimsIitRank as string) ?? "",
       enrolledCollege: (m.enrolledCollege as string) ?? "",
       pursuedCourse: (m.pursuedCourse as string) ?? "",
+      expertAt: (m.expertAt as string) ?? "",
+      whyExpertAt: (m.whyExpertAt as string) ?? "",
+      scoreType: ((m.scoreType as MentorScoreType) ?? "") as MentorScoreType | "",
+      scoreValue: (m.scoreValue as string) ?? "",
     };
 
     return { profile };
@@ -199,12 +210,14 @@ export const getMentorProfile = createServerFn({ method: "POST" })
 
 // Mentor-facing self-service update. The validator's input type is
 // MentorProfileUpdateInput, which structurally excludes aiimsIitRank,
-// enrolledCollege, pursuedCourse, AND (as of the Drive-link intro video
-// workflow) introVideoUrl — none of those are read from `data.profile`
-// here, so even a hand-crafted request body can't smuggle a locked-field
-// or retired-field change through this endpoint. Locked-field writes only
-// ever happen via updateMentorLockedInfo below, gated by requireSuperAdmin;
-// intro video status only ever changes via mentor-profile-extras.ts.
+// enrolledCollege, pursuedCourse, the Expertise Showcase fields (expertAt,
+// whyExpertAt, scoreType, scoreValue), AND (as of the Drive-link intro
+// video workflow) introVideoUrl — none of those are read from
+// `data.profile` here, so even a hand-crafted request body can't smuggle a
+// locked-field or retired-field change through this endpoint. Locked-field
+// writes only ever happen via updateMentorLockedInfo below, gated by
+// requireSuperAdmin; intro video status only ever changes via
+// mentor-profile-extras.ts.
 export const updateMyMentorProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string; profile: MentorProfileUpdateInput }) => data)
   .handler(async ({ data }) => {
@@ -236,6 +249,12 @@ export const updateMyMentorProfile = createServerFn({ method: "POST" })
   });
 
 
+// Super-Admin-only. Writes the locked profile fields, now including the
+// Expertise Showcase (expertAt / whyExpertAt / scoreType / scoreValue) —
+// the subject a mentor is shown as an expert in on their public profile,
+// why, and the score/rank/percentile backing it up. scoreType is stored as
+// null rather than "" when left blank, matching how an unset locked field
+// reads elsewhere in this file.
 export const updateMentorLockedInfo = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentorId: string; lockedInfo: MentorLockedInfoInput }) => data)
   .handler(async ({ data }) => {
@@ -243,7 +262,8 @@ export const updateMentorLockedInfo = createServerFn({ method: "POST" })
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
-    const { aiimsIitRank, enrolledCollege, pursuedCourse } = data.lockedInfo;
+    const { aiimsIitRank, enrolledCollege, pursuedCourse, expertAt, whyExpertAt, scoreType, scoreValue } =
+      data.lockedInfo;
 
     const result = await db.collection("mentors").updateOne(
       { _id: new ObjectId(data.mentorId) },
@@ -252,6 +272,10 @@ export const updateMentorLockedInfo = createServerFn({ method: "POST" })
           aiimsIitRank: aiimsIitRank.trim(),
           enrolledCollege: enrolledCollege.trim(),
           pursuedCourse: pursuedCourse.trim(),
+          expertAt: expertAt.trim(),
+          whyExpertAt: whyExpertAt.trim(),
+          scoreType: scoreType || null,
+          scoreValue: scoreValue.trim(),
           lockedInfoUpdatedAt: new Date(),
         },
       },

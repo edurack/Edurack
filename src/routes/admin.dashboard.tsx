@@ -1609,6 +1609,23 @@ function OnboardingDetailsDrawer({
   const [publishingBatch, setPublishingBatch] = useState(false);
   const [publishBatchError, setPublishBatchError] = useState<string | null>(null);
 
+  // ─── Locked-info form state ─────────────────────────────────────────────
+  // Prefilled from onboarding where available (rank/college); the rest —
+  // pursuedCourse and the Expertise Showcase — aren't collected anywhere
+  // during onboarding, so they always start blank for the admin to fill in
+  // here before creating the mentor login. Sent via updateMentorLockedInfo
+  // inside handleCreateProfile below, which is where the earlier
+  // "Cannot read properties of undefined (reading 'trim')" crash came from
+  // — that function calls .trim() on every field, so all seven must always
+  // be real strings (never undefined) by the time it's called.
+  const [lockedRank, setLockedRank] = useState("");
+  const [lockedCollege, setLockedCollege] = useState("");
+  const [lockedCourse, setLockedCourse] = useState("");
+  const [lockedExpertAt, setLockedExpertAt] = useState("");
+  const [lockedWhyExpertAt, setLockedWhyExpertAt] = useState("");
+  const [lockedScoreType, setLockedScoreType] = useState<"" | "rank" | "percentile" | "score">("");
+  const [lockedScoreValue, setLockedScoreValue] = useState("");
+
  async function load() {
   setStatus("loading");
   setErrorMessage(null);
@@ -1616,11 +1633,13 @@ function OnboardingDetailsDrawer({
     const token = await adminUser.getIdToken();
     const result = await getMentorOnboardingDetails({ data: { token, applicationId } });
     setDetails(result.details);
-    if (!result.details) {
-      setStatus("none");
-      return;
-    }
-    setStatus("ready");
+      if (!result.details) {
+        setStatus("none");
+        return;
+      }
+      setLockedRank(result.details.rank || "");
+      setLockedCollege(result.details.college || "");
+      setStatus("ready");
   } catch (err) {
       // Log the full error to the browser console for debugging, and keep
       // a short version on screen so it's visible without opening dev
@@ -1699,9 +1718,13 @@ function OnboardingDetailsDrawer({
           token,
           mentorId,
           lockedInfo: {
-            aiimsIitRank: details.rank || "Not specified",
-            enrolledCollege: details.college || "Not specified",
-            pursuedCourse: "Not specified",
+            aiimsIitRank: lockedRank.trim() || "Not specified",
+            enrolledCollege: lockedCollege.trim() || "Not specified",
+            pursuedCourse: lockedCourse.trim() || "Not specified",
+            expertAt: lockedExpertAt.trim(),
+            whyExpertAt: lockedWhyExpertAt.trim(),
+            scoreType: lockedScoreType || null,
+            scoreValue: lockedScoreValue.trim(),
           },
         },
       });
@@ -1949,6 +1972,93 @@ function OnboardingDetailsDrawer({
                 </p>
               )}
             </div>
+
+            {/* Locked profile info — collected here since none of it comes
+                from onboarding except rank/college. Shown only until the
+                profile is created; updateMentorLockedInfo isn't called
+                again from this drawer once that's done. */}
+            {!details.profileCreated && (
+              <div className="clay-inset rounded-2xl p-4">
+                <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Locked profile info (shown on their public mentor page)
+                </p>
+                <div className="space-y-2.5">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                      AIIMS/IIT Rank
+                    </p>
+                    <input
+                      value={lockedRank}
+                      onChange={(e) => setLockedRank(e.target.value)}
+                      placeholder="e.g. AIR 342"
+                      className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                      Enrolled College
+                    </p>
+                    <input
+                      value={lockedCollege}
+                      onChange={(e) => setLockedCollege(e.target.value)}
+                      placeholder="e.g. AIIMS Delhi"
+                      className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                      Pursued Course
+                    </p>
+                    <input
+                      value={lockedCourse}
+                      onChange={(e) => setLockedCourse(e.target.value)}
+                      placeholder="e.g. MBBS"
+                      className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="border-t border-foreground/10 pt-2.5">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                      Expertise Showcase (optional)
+                    </p>
+                    <div className="space-y-2.5">
+                      <input
+                        value={lockedExpertAt}
+                        onChange={(e) => setLockedExpertAt(e.target.value)}
+                        placeholder="Expert at (e.g. Organic Chemistry)"
+                        className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                      />
+                      <textarea
+                        value={lockedWhyExpertAt}
+                        onChange={(e) => setLockedWhyExpertAt(e.target.value)}
+                        placeholder="Why they're an expert…"
+                        rows={2}
+                        className="clay-inset w-full rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <select
+                          value={lockedScoreType}
+                          onChange={(e) => setLockedScoreType(e.target.value as typeof lockedScoreType)}
+                          className="clay-inset rounded-2xl px-3.5 py-2 text-xs text-foreground focus:outline-none"
+                        >
+                          <option value="">No score type</option>
+                          <option value="rank">Rank</option>
+                          <option value="percentile">Percentile</option>
+                          <option value="score">Score</option>
+                        </select>
+                        <input
+                          value={lockedScoreValue}
+                          onChange={(e) => setLockedScoreValue(e.target.value)}
+                          placeholder="Value (e.g. 99.8)"
+                          className="clay-inset flex-1 rounded-2xl px-3.5 py-2 text-xs text-foreground placeholder:text-foreground/40 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Create profile — the actual "add this mentor to the portal"
                 action, gated on a meeting request existing (signing itself
@@ -3209,7 +3319,7 @@ function PromoterTicketsPanel({ adminUser }: { adminUser: { getIdToken: () => Pr
     return tickets.filter(
       (t) => t.promoterName.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q) || t.category.toLowerCase().includes(q),
     );
-  }, [tickets, q]);
+  }, [tickets, query]);
 
   const openCount = tickets?.filter((t) => t.status !== "resolved").length ?? 0;
 

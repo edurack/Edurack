@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { IconLoader2 as Loader2, IconTrendingUp as TrendingUp, IconChevronRight as ChevronRight, IconArrowLeft as ArrowLeft, IconTrophy as Trophy } from "@tabler/icons-react";
 import { TrendingDown, AlertTriangle, Target, Repeat } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getTestAnalysis } from "@/server-functions/test-results";
 import { SmartContent } from "@/lib/smart-content";
 import { AppHeader } from "@/components/app-header";
+import { SubjectBreakdownAccordion, MentorRecommendations } from "@/components/subject-performance";
 
 export const Route = createFileRoute("/test-analysis/$testId")({
   component: TestAnalysisPage,
@@ -171,6 +172,18 @@ function TestAnalysisContent({
   const trend =
     attempts.length > 1 ? latestAttempt.score - attempts[attempts.length - 2].score : 0;
 
+  // Shared shape for both the accordion and the mentor recommendation
+  // lookup — accuracyPercent here is already the "how well did they do"
+  // number (aggregated across every attempt of this test), unlike the
+  // single-attempt result page which derives percent from marks.
+  const subjectPerformance = subjectAccuracy.map((s) => ({
+    subject: s.subject,
+    correct: s.correct,
+    incorrect: s.incorrect,
+    unanswered: s.unanswered,
+    percent: s.accuracyPercent,
+  }));
+
   return (
     <>
       <div className="mb-6">
@@ -276,30 +289,14 @@ function TestAnalysisContent({
         </ul>
       </div>
 
+      {/* Subject-wise accuracy across all attempts — expandable per subject,
+          now with an estimated percentile alongside raw accuracy. */}
       <div className="clay mb-6 p-5 sm:p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">
           Subject-wise accuracy (across all attempts)
         </p>
-        <div className="space-y-3">
-          {subjectAccuracy.map((s) => (
-            <div key={s.subject}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-semibold text-foreground">{s.subject}</span>
-                <span className="text-foreground/60">
-                  {s.accuracyPercent}% · {s.correct}✓ {s.incorrect}✗ {s.unanswered}–
-                </span>
-              </div>
-              <div className="clay-inset h-2.5 overflow-hidden rounded-full">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    s.accuracyPercent < 50 ? "bg-[var(--coral-soft)]" : "bg-[var(--sky-deep)]"
-                  }`}
-                  style={{ width: `${s.accuracyPercent}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <SubjectBreakdownAccordion subjects={subjectPerformance} />
+
         {weakestSubject && weakestSubject.accuracyPercent < 60 && (
           <div className="clay-inset mt-4 flex items-start gap-2 rounded-2xl bg-[var(--coral-soft)]/30 px-4 py-3 text-xs text-foreground/70">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -310,6 +307,11 @@ function TestAnalysisContent({
           </div>
         )}
       </div>
+
+      {/* Mentor recommendation — surfaced for weak subject(s), matched
+          against each mentor's Expertise Showcase and only shown when the
+          mentor's own score genuinely beats the student's. */}
+      <MentorRecommendations subjects={subjectPerformance.map((s) => ({ subject: s.subject, percent: s.percent }))} />
 
       {recurringMistakes.length > 0 && (
         <div className="clay p-5 sm:p-6">
@@ -355,7 +357,13 @@ function StatCard({
   sub,
   tone = "neutral",
 }: {
-  icon: typeof Trophy;
+  // Accepts an icon component from either @tabler/icons-react or
+  // lucide-react — both accept className as an optional prop, which is all
+  // this component actually uses. Fixes the type mismatch that showed up
+  // whenever a Lucide icon (used when no Tabler equivalent exists, e.g.
+  // TrendingDown/Target/Repeat above) was passed where a single Tabler
+  // icon's type was expected.
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   label: string;
   value: string;
   sub: string;

@@ -598,6 +598,14 @@ export const createMentor = createServerFn({ method: "POST" })
       aiimsIitRank: "",
       enrolledCollege: "",
       pursuedCourse: "",
+      // Expertise Showcase — same Super Admin-only path as the three fields
+      // above (see updateMentorLockedInfo in mentor-auth.ts). Seeded empty
+      // so getMentorProfile / getAdminMentorFullDetail never hit an
+      // undefined field on a freshly created mentor.
+      expertAt: "",
+      whyExpertAt: "",
+      scoreType: null,
+      scoreValue: "",
       createdAt: new Date(),
     });
     return { ok: true, id: String(result.insertedId) };
@@ -1573,9 +1581,10 @@ export const setMentorAccountStatus = createServerFn({ method: "POST" })
 
 // ─── Full mentor detail for the directory's expanded profile view — merges
 // the base mentor document, their onboarding submission (if they came
-// through the approved-application flow), intro video status, and every
-// batch assigned to them (manually created or published from onboarding —
-// both live in the same mentorshipBatches collection). ───────────────────
+// through the approved-application flow), intro video status, the
+// Expertise Showcase, and every batch assigned to them (manually created or
+// published from onboarding — both live in the same mentorshipBatches
+// collection). ────────────────────────────────────────────────────────────
 export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
   .validator((data: { token: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
@@ -1619,6 +1628,13 @@ export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
         aiimsIitRank: (mentor.aiimsIitRank as string) ?? "",
         enrolledCollege: (mentor.enrolledCollege as string) ?? "",
         pursuedCourse: (mentor.pursuedCourse as string) ?? "",
+        // Expertise Showcase — admin-set via updateMentorLockedInfo
+        // (mentor-auth.ts). scoreType is stored as null when unset, so
+        // this reads back as "" for the drawer's <select> to fall back to.
+        expertAt: (mentor.expertAt as string) ?? "",
+        whyExpertAt: (mentor.whyExpertAt as string) ?? "",
+        scoreType: (mentor.scoreType as string | null) ?? "",
+        scoreValue: (mentor.scoreValue as string) ?? "",
         createdAt: mentor.createdAt instanceof Date ? mentor.createdAt.toISOString() : null,
         introVideo: introVideo
           ? {

@@ -1,21 +1,34 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { IconClock as Clock, IconX as X, IconTrophy as Trophy, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconLogin as LogIn, IconSchool as GraduationCap, IconSparkles as Sparkles } from "@tabler/icons-react";
 import { Grid3x3, MinusCircle, Compass } from "lucide-react"; // TODO: no Tabler mapping found yet
+import { submitSimulatorLiveAttempt } from "@/server-functions/landing-demo";
+import { SubjectBreakdownAccordion, MentorRecommendations } from "@/components/subject-performance";
 
 export const Route = createFileRoute("/simulator/live")({
   component: SimulatorLivePage,
 });
 
 // ---------------------------------------------
-// Demo test config — no backend, no auth required.
+// Demo test config — no backend auth required, but attempts are now
+// recorded (anonymously) via submitSimulatorLiveAttempt.
 // ---------------------------------------------
 const TOTAL_TIME_SECONDS = 20 * 60; // 20 minutes
-const SUBJECTS = ["Physics", "Chemistry", "Biology"] as const;
 
+type Track = "PCB" | "PCM";
+type Subject = "Physics" | "Chemistry" | "Biology" | "Mathematics";
 type OptionKey = "A" | "B" | "C" | "D";
-type Subject = (typeof SUBJECTS)[number];
 type QuestionStatus = "not-visited" | "not-answered" | "answered" | "marked" | "answered-marked";
+
+const TRACK_SUBJECTS: Record<Track, Subject[]> = {
+  PCB: ["Physics", "Chemistry", "Biology"],
+  PCM: ["Physics", "Chemistry", "Mathematics"],
+};
+
+const TRACK_TITLE: Record<Track, string> = {
+  PCB: "NEET Track",
+  PCM: "JEE Track",
+};
 
 type DemoQuestion = {
   id: string;
@@ -26,43 +39,57 @@ type DemoQuestion = {
   correct: OptionKey;
 };
 
-// 10 easy, dummy questions per subject (30 total).
+// 10 real NEET/JEE-difficulty questions per subject (40 total). Physics
+// and Chemistry are shared between both tracks; Biology backs PCB,
+// Mathematics backs PCM.
 const demoQuestions: DemoQuestion[] = [
-  // ---------------- Physics ----------------
-  { id: "p1", subject: "Physics", questionNo: 1, body: "What is the SI unit of force?", options: { A: "Newton", B: "Joule", C: "Watt", D: "Pascal" }, correct: "A" },
-  { id: "p2", subject: "Physics", questionNo: 2, body: "Speed is defined as distance divided by:", options: { A: "Time", B: "Mass", C: "Force", D: "Area" }, correct: "A" },
-  { id: "p3", subject: "Physics", questionNo: 3, body: "The SI unit of electric current is:", options: { A: "Ampere", B: "Volt", C: "Ohm", D: "Watt" }, correct: "A" },
-  { id: "p4", subject: "Physics", questionNo: 4, body: "Acceleration due to gravity on Earth is approximately:", options: { A: "9.8 m/s²", B: "3.8 m/s²", C: "15 m/s²", D: "1 m/s²" }, correct: "A" },
-  { id: "p5", subject: "Physics", questionNo: 5, body: "\"Every action has an equal and opposite reaction\" is:", options: { A: "Newton's Third Law", B: "Newton's First Law", C: "Ohm's Law", D: "Boyle's Law" }, correct: "A" },
-  { id: "p6", subject: "Physics", questionNo: 6, body: "The SI unit of power is:", options: { A: "Watt", B: "Joule", C: "Newton", D: "Pascal" }, correct: "A" },
-  { id: "p7", subject: "Physics", questionNo: 7, body: "Light travels fastest through:", options: { A: "Vacuum", B: "Water", C: "Glass", D: "Air" }, correct: "A" },
-  { id: "p8", subject: "Physics", questionNo: 8, body: "The SI unit of energy is:", options: { A: "Joule", B: "Newton", C: "Watt", D: "Volt" }, correct: "A" },
-  { id: "p9", subject: "Physics", questionNo: 9, body: "Sound cannot travel through:", options: { A: "Vacuum", B: "Air", C: "Water", D: "Solid" }, correct: "A" },
-  { id: "p10", subject: "Physics", questionNo: 10, body: "The center of an atom is called the:", options: { A: "Nucleus", B: "Electron", C: "Proton", D: "Neutron" }, correct: "A" },
+  // ---------------- Physics (shared) ----------------
+  { id: "p1", subject: "Physics", questionNo: 1, body: "A ball is dropped from height h. The time taken to reach the ground is proportional to:", options: { A: "h", B: "√h", C: "h²", D: "1/h" }, correct: "B" },
+  { id: "p2", subject: "Physics", questionNo: 2, body: "The dimensional formula of pressure is:", options: { A: "[MLT⁻²]", B: "[ML⁻¹T⁻²]", C: "[ML²T⁻²]", D: "[ML⁻²T⁻¹]" }, correct: "B" },
+  { id: "p3", subject: "Physics", questionNo: 3, body: "In simple harmonic motion, the acceleration is maximum at the:", options: { A: "Mean position", B: "Extreme position", C: "Midway point", D: "It's constant everywhere" }, correct: "B" },
+  { id: "p4", subject: "Physics", questionNo: 4, body: "A moving body collides elastically with an identical body at rest. After the collision, the first body's velocity becomes:", options: { A: "Same as before", B: "Double", C: "Zero", D: "Half" }, correct: "C" },
+  { id: "p5", subject: "Physics", questionNo: 5, body: "The work done in moving a charge along an equipotential surface is:", options: { A: "Maximum", B: "Negative", C: "Zero", D: "Infinite" }, correct: "C" },
+  { id: "p6", subject: "Physics", questionNo: 6, body: "Two capacitors of capacitance C each are connected in series. The equivalent capacitance is:", options: { A: "2C", B: "C", C: "C/2", D: "4C" }, correct: "C" },
+  { id: "p7", subject: "Physics", questionNo: 7, body: "The escape velocity from Earth's surface is approximately:", options: { A: "7.9 km/s", B: "3.6 km/s", C: "25 km/s", D: "11.2 km/s" }, correct: "D" },
+  { id: "p8", subject: "Physics", questionNo: 8, body: "According to Bohr's model, the radius of the nth orbit of a hydrogen atom is proportional to:", options: { A: "n", B: "1/n", C: "n²", D: "1/n²" }, correct: "C" },
+  { id: "p9", subject: "Physics", questionNo: 9, body: "The bending of light around obstacles is called:", options: { A: "Refraction", B: "Dispersion", C: "Polarization", D: "Diffraction" }, correct: "D" },
+  { id: "p10", subject: "Physics", questionNo: 10, body: "A transformer works on the principle of:", options: { A: "Self-induction", B: "Mutual induction", C: "Static electricity", D: "Thermionic emission" }, correct: "B" },
 
-  // ---------------- Chemistry ----------------
-  { id: "c1", subject: "Chemistry", questionNo: 1, body: "The chemical symbol for Gold is:", options: { A: "Au", B: "Ag", C: "Fe", D: "Pb" }, correct: "A" },
-  { id: "c2", subject: "Chemistry", questionNo: 2, body: "The chemical formula of water is:", options: { A: "H2O", B: "CO2", C: "NaCl", D: "O2" }, correct: "A" },
-  { id: "c3", subject: "Chemistry", questionNo: 3, body: "Plants absorb which gas for photosynthesis?", options: { A: "Carbon dioxide", B: "Oxygen", C: "Nitrogen", D: "Hydrogen" }, correct: "A" },
-  { id: "c4", subject: "Chemistry", questionNo: 4, body: "Atomic number represents the number of:", options: { A: "Protons", B: "Neutrons", C: "Atomic mass units", D: "Isotopes" }, correct: "A" },
-  { id: "c5", subject: "Chemistry", questionNo: 5, body: "The pH of pure water is:", options: { A: "7", B: "0", C: "14", D: "1" }, correct: "A" },
-  { id: "c6", subject: "Chemistry", questionNo: 6, body: "Common salt is chemically known as:", options: { A: "Sodium chloride", B: "Sodium carbonate", C: "Calcium chloride", D: "Potassium chloride" }, correct: "A" },
-  { id: "c7", subject: "Chemistry", questionNo: 7, body: "Which element has the symbol 'O'?", options: { A: "Oxygen", B: "Osmium", C: "Gold", D: "Iron" }, correct: "A" },
-  { id: "c8", subject: "Chemistry", questionNo: 8, body: "Rust forms when iron reacts with:", options: { A: "Oxygen and moisture", B: "Nitrogen", C: "Hydrogen", D: "Carbon dioxide" }, correct: "A" },
-  { id: "c9", subject: "Chemistry", questionNo: 9, body: "The most abundant gas in Earth's atmosphere is:", options: { A: "Nitrogen", B: "Oxygen", C: "Carbon dioxide", D: "Hydrogen" }, correct: "A" },
-  { id: "c10", subject: "Chemistry", questionNo: 10, body: "Which of these is an alkali metal?", options: { A: "Sodium", B: "Iron", C: "Copper", D: "Zinc" }, correct: "A" },
+  // ---------------- Chemistry (shared) ----------------
+  { id: "c1", subject: "Chemistry", questionNo: 1, body: "The IUPAC name of CH₃-CHO is:", options: { A: "Ethanol", B: "Methanal", C: "Ethanal", D: "Propanal" }, correct: "C" },
+  { id: "c2", subject: "Chemistry", questionNo: 2, body: "Which of the following is a Lewis acid?", options: { A: "NH₃", B: "BF₃", C: "H₂O", D: "OH⁻" }, correct: "B" },
+  { id: "c3", subject: "Chemistry", questionNo: 3, body: "The number of moles in 44 g of CO₂ (molar mass 44 g/mol) is:", options: { A: "0.5 mol", B: "2 mol", C: "4 mol", D: "1 mol" }, correct: "D" },
+  { id: "c4", subject: "Chemistry", questionNo: 4, body: "Which of the following is an example of a redox reaction?", options: { A: "NaOH + HCl → NaCl + H₂O", B: "Zn + CuSO₄ → ZnSO₄ + Cu", C: "AgNO₃ + NaCl → AgCl + NaNO₃", D: "None of these" }, correct: "B" },
+  { id: "c5", subject: "Chemistry", questionNo: 5, body: "The oxidation state of Mn in KMnO₄ is:", options: { A: "+2", B: "+4", C: "+6", D: "+7" }, correct: "D" },
+  { id: "c6", subject: "Chemistry", questionNo: 6, body: "Which of the following is an aromatic compound?", options: { A: "Cyclohexane", B: "Hexane", C: "Benzene", D: "Cyclopropane" }, correct: "C" },
+  { id: "c7", subject: "Chemistry", questionNo: 7, body: "The van't Hoff factor for a compound that dissociates completely into 3 ions is:", options: { A: "1", B: "2", C: "3", D: "0" }, correct: "C" },
+  { id: "c8", subject: "Chemistry", questionNo: 8, body: "Which quantum number determines the shape of an orbital?", options: { A: "Principal (n)", B: "Azimuthal (l)", C: "Magnetic (m)", D: "Spin (s)" }, correct: "B" },
+  { id: "c9", subject: "Chemistry", questionNo: 9, body: "The functional group –COOH is called:", options: { A: "Aldehyde", B: "Ketone", C: "Ester", D: "Carboxylic acid" }, correct: "D" },
+  { id: "c10", subject: "Chemistry", questionNo: 10, body: "Which gas is primarily responsible for the greenhouse effect?", options: { A: "Nitrogen", B: "Argon", C: "Carbon dioxide", D: "Helium" }, correct: "C" },
 
-  // ---------------- Biology ----------------
-  { id: "b1", subject: "Biology", questionNo: 1, body: "The powerhouse of the cell is the:", options: { A: "Mitochondria", B: "Nucleus", C: "Ribosome", D: "Golgi body" }, correct: "A" },
-  { id: "b2", subject: "Biology", questionNo: 2, body: "Humans have how many chromosomes?", options: { A: "46", B: "44", C: "48", D: "23" }, correct: "A" },
-  { id: "b3", subject: "Biology", questionNo: 3, body: "Which organ pumps blood in the human body?", options: { A: "Heart", B: "Liver", C: "Kidney", D: "Lungs" }, correct: "A" },
-  { id: "b4", subject: "Biology", questionNo: 4, body: "Photosynthesis occurs mainly in the:", options: { A: "Leaves", B: "Roots", C: "Stem", D: "Flowers" }, correct: "A" },
-  { id: "b5", subject: "Biology", questionNo: 5, body: "DNA stands for:", options: { A: "Deoxyribonucleic acid", B: "Ribonucleic acid", C: "Deoxyribose acid", D: "Dinucleic acid" }, correct: "A" },
-  { id: "b6", subject: "Biology", questionNo: 6, body: "Which blood cells fight infection?", options: { A: "White blood cells", B: "Red blood cells", C: "Platelets", D: "Plasma" }, correct: "A" },
-  { id: "b7", subject: "Biology", questionNo: 7, body: "The basic unit of life is the:", options: { A: "Cell", B: "Tissue", C: "Organ", D: "Organism" }, correct: "A" },
-  { id: "b8", subject: "Biology", questionNo: 8, body: "Which organ filters blood in humans?", options: { A: "Kidney", B: "Liver", C: "Heart", D: "Lungs" }, correct: "A" },
-  { id: "b9", subject: "Biology", questionNo: 9, body: "Plants prepare their food through:", options: { A: "Photosynthesis", B: "Respiration", C: "Digestion", D: "Excretion" }, correct: "A" },
-  { id: "b10", subject: "Biology", questionNo: 10, body: "The study of living organisms is called:", options: { A: "Biology", B: "Geology", C: "Physics", D: "Chemistry" }, correct: "A" },
+  // ---------------- Biology (PCB track) ----------------
+  { id: "b1", subject: "Biology", questionNo: 1, body: "The site of protein synthesis in a cell is the:", options: { A: "Mitochondria", B: "Golgi body", C: "Ribosome", D: "Lysosome" }, correct: "C" },
+  { id: "b2", subject: "Biology", questionNo: 2, body: "The functional unit of the kidney is the:", options: { A: "Neuron", B: "Nephridium", C: "Alveolus", D: "Nephron" }, correct: "D" },
+  { id: "b3", subject: "Biology", questionNo: 3, body: "Which hormone regulates blood sugar level?", options: { A: "Thyroxine", B: "Insulin", C: "Adrenaline", D: "Estrogen" }, correct: "B" },
+  { id: "b4", subject: "Biology", questionNo: 4, body: "Meiosis results in the formation of:", options: { A: "Diploid somatic cells", B: "Triploid cells", C: "Haploid gametes", D: "Tetraploid cells" }, correct: "C" },
+  { id: "b5", subject: "Biology", questionNo: 5, body: "The pigment primarily responsible for photosynthesis is:", options: { A: "Hemoglobin", B: "Melanin", C: "Carotene", D: "Chlorophyll" }, correct: "D" },
+  { id: "b6", subject: "Biology", questionNo: 6, body: "Which of the following is a vector-borne disease?", options: { A: "Diabetes", B: "Malaria", C: "Asthma", D: "Anemia" }, correct: "B" },
+  { id: "b7", subject: "Biology", questionNo: 7, body: "Exchange of gases in the lungs occurs in the:", options: { A: "Bronchi", B: "Trachea", C: "Alveoli", D: "Larynx" }, correct: "C" },
+  { id: "b8", subject: "Biology", questionNo: 8, body: "DNA replication is best described as:", options: { A: "Conservative", B: "Dispersive", C: "Random", D: "Semi-conservative" }, correct: "D" },
+  { id: "b9", subject: "Biology", questionNo: 9, body: "Which of these is NOT a nitrogenous base found in DNA?", options: { A: "Adenine", B: "Guanine", C: "Uracil", D: "Cytosine" }, correct: "C" },
+  { id: "b10", subject: "Biology", questionNo: 10, body: "The process by which plants lose water vapor is called:", options: { A: "Respiration", B: "Photosynthesis", C: "Transpiration", D: "Excretion" }, correct: "C" },
+
+  // ---------------- Mathematics (PCM track) ----------------
+  { id: "m1", subject: "Mathematics", questionNo: 1, body: "If f(x) = x² − 4x + 3, the roots of f(x) = 0 are:", options: { A: "1, 3", B: "−1, −3", C: "1, −3", D: "−1, 3" }, correct: "A" },
+  { id: "m2", subject: "Mathematics", questionNo: 2, body: "The derivative of sin(2x) with respect to x is:", options: { A: "cos(2x)", B: "2cos(2x)", C: "−2cos(2x)", D: "2sin(2x)" }, correct: "B" },
+  { id: "m3", subject: "Mathematics", questionNo: 3, body: "The value of log₁₀(100) is:", options: { A: "1", B: "10", C: "2", D: "100" }, correct: "C" },
+  { id: "m4", subject: "Mathematics", questionNo: 4, body: "If a fair die is rolled once, the probability of getting an even number is:", options: { A: "1/6", B: "1/3", C: "1/2", D: "2/3" }, correct: "C" },
+  { id: "m5", subject: "Mathematics", questionNo: 5, body: "The sum of the first 10 natural numbers is:", options: { A: "45", B: "50", C: "55", D: "60" }, correct: "C" },
+  { id: "m6", subject: "Mathematics", questionNo: 6, body: "The number of ways to arrange all the letters of the word \"MATH\" is:", options: { A: "12", B: "16", C: "20", D: "24" }, correct: "D" },
+  { id: "m7", subject: "Mathematics", questionNo: 7, body: "If the slope of a line is 0, the line is:", options: { A: "Vertical", B: "Horizontal", C: "Diagonal", D: "Undefined" }, correct: "B" },
+  { id: "m8", subject: "Mathematics", questionNo: 8, body: "The value of ∫₀² x dx is:", options: { A: "1", B: "2", C: "4", D: "8" }, correct: "B" },
+  { id: "m9", subject: "Mathematics", questionNo: 9, body: "The determinant of the 3×3 identity matrix is:", options: { A: "0", B: "1", C: "3", D: "9" }, correct: "B" },
+  { id: "m10", subject: "Mathematics", questionNo: 10, body: "If sin θ = 1/2, then θ (for 0° ≤ θ ≤ 90°) is:", options: { A: "30°", B: "45°", C: "60°", D: "90°" }, correct: "A" },
 ];
 
 type SubjectResult = { subject: Subject; correct: number; incorrect: number; unanswered: number; marks: number };
@@ -77,36 +104,52 @@ type DemoResult = {
 };
 
 function SimulatorLivePage() {
-  const [phase, setPhase] = useState<"test" | "result">("test");
+  const [phase, setPhase] = useState<"select" | "test" | "result">("select");
+  const [track, setTrack] = useState<Track | null>(null);
 
-  const [activeSubject, setActiveSubject] = useState<Subject>(SUBJECTS[0]);
+  const [activeSubject, setActiveSubject] = useState<Subject>("Physics");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, OptionKey | undefined>>({});
-  const [statuses, setStatuses] = useState<Record<string, QuestionStatus>>(() => {
-    const initial: Record<string, QuestionStatus> = {};
-    demoQuestions.forEach((q, i) => {
-      initial[q.id] = i === 0 ? "not-answered" : "not-visited";
-    });
-    return initial;
-  });
+  const [statuses, setStatuses] = useState<Record<string, QuestionStatus>>({});
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_TIME_SECONDS);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [result, setResult] = useState<DemoResult | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const startTimeRef = useRef<number>(Date.now());
   const submittedRef = useRef(false);
 
-  const subjectQuestions = demoQuestions.filter((q) => q.subject === activeSubject);
+  const SUBJECTS = track ? TRACK_SUBJECTS[track] : [];
+  const trackQuestions = demoQuestions.filter((q) => SUBJECTS.includes(q.subject));
+  const subjectQuestions = trackQuestions.filter((q) => q.subject === activeSubject);
   const currentQuestion = subjectQuestions[currentIndex];
 
-  // Whether the current question is the very last one across every
-  // subject — i.e. there's genuinely nowhere further to advance to.
   const isLastQuestionOverall =
     activeSubject === SUBJECTS[SUBJECTS.length - 1] && currentIndex === subjectQuestions.length - 1;
 
+  function startTrack(t: Track) {
+    const subjects = TRACK_SUBJECTS[t];
+    const questions = demoQuestions.filter((q) => subjects.includes(q.subject));
+    const initialStatuses: Record<string, QuestionStatus> = {};
+    questions.forEach((q, i) => {
+      initialStatuses[q.id] = i === 0 ? "not-answered" : "not-visited";
+    });
+
+    setTrack(t);
+    setActiveSubject(subjects[0]);
+    setCurrentIndex(0);
+    setAnswers({});
+    setStatuses(initialStatuses);
+    setSecondsLeft(TOTAL_TIME_SECONDS);
+    setResult(null);
+    submittedRef.current = false;
+    startTimeRef.current = Date.now();
+    setPhase("test");
+  }
+
   function computeResult(): DemoResult {
     const subjectBreakdown: SubjectResult[] = SUBJECTS.map((subject) => {
-      const qs = demoQuestions.filter((q) => q.subject === subject);
+      const qs = trackQuestions.filter((q) => q.subject === subject);
       let correct = 0;
       let incorrect = 0;
       let unanswered = 0;
@@ -124,17 +167,27 @@ function SimulatorLivePage() {
     const incorrectCount = subjectBreakdown.reduce((s, b) => s + b.incorrect, 0);
     const unansweredCount = subjectBreakdown.reduce((s, b) => s + b.unanswered, 0);
     const score = subjectBreakdown.reduce((s, b) => s + b.marks, 0);
-    const totalMarks = demoQuestions.length * 4;
+    const totalMarks = trackQuestions.length * 4;
     const timeTakenMinutes = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 60000));
 
     return { score, totalMarks, correctCount, incorrectCount, unansweredCount, timeTakenMinutes, subjectBreakdown };
   }
 
-  function handleSubmit() {
-    if (submittedRef.current) return;
+  async function handleSubmit() {
+    if (submittedRef.current || !track) return;
     submittedRef.current = true;
-    setResult(computeResult());
+    const r = computeResult();
+    setResult(r);
     setPhase("result");
+
+    setSaving(true);
+    try {
+      await submitSimulatorLiveAttempt({ data: { track, ...r } });
+    } catch {
+      // Non-blocking — the student still sees their result either way.
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Countdown timer — auto-submits at zero.
@@ -156,7 +209,7 @@ function SimulatorLivePage() {
   function selectSubject(subject: Subject) {
     setActiveSubject(subject);
     setCurrentIndex(0);
-    const first = demoQuestions.find((q) => q.subject === subject);
+    const first = trackQuestions.find((q) => q.subject === subject);
     if (first) markVisited(first.id);
   }
 
@@ -167,11 +220,6 @@ function SimulatorLivePage() {
     setPaletteOpen(false);
   }
 
-  // Moves to the next question within the current subject, or — if
-  // already on the last question of the current subject — rolls over
-  // into the first question of the next subject in SUBJECTS. Only a
-  // no-op when there's truly nothing left (last question of the last
-  // subject), matching isLastQuestionOverall above.
   function advance() {
     if (currentIndex < subjectQuestions.length - 1) {
       goTo(currentIndex + 1);
@@ -207,8 +255,45 @@ function SimulatorLivePage() {
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: "not-answered" }));
   }
 
+  // ── Screen 1: track selection ────────────────────────────────────────
+  if (phase === "select" || !track) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+        <div className="clay w-full max-w-lg p-6 text-center sm:p-10">
+          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-sky-700">
+            <Sparkles className="h-3.5 w-3.5" />
+            Free CBT Demo
+          </div>
+          <h1 className="font-display mt-4 text-xl font-bold text-foreground sm:text-2xl">
+            Which track are you preparing for?
+          </h1>
+          <p className="mt-2 text-sm text-foreground/60">
+            20 minutes · 30 questions · Physics &amp; Chemistry are common to both.
+          </p>
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => startTrack("PCB")}
+              className="clay-btn flex flex-col items-center gap-1 rounded-2xl px-4 py-6 text-center"
+            >
+              <span className="text-base font-bold">NEET Track</span>
+              <span className="text-xs font-normal opacity-80">Physics · Chemistry · Biology</span>
+            </button>
+            <button
+              onClick={() => startTrack("PCM")}
+              className="clay-btn flex flex-col items-center gap-1 rounded-2xl px-4 py-6 text-center"
+              style={{ background: "var(--sky-soft)", color: "inherit" }}
+            >
+              <span className="text-base font-bold">JEE Track</span>
+              <span className="text-xs font-normal opacity-80">Physics · Chemistry · Mathematics</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (phase === "result" && result) {
-    return <DemoResultView result={result} />;
+    return <DemoResultView result={result} track={track} saving={saving} />;
   }
 
   const minutes = Math.floor(secondsLeft / 60);
@@ -266,7 +351,7 @@ function SimulatorLivePage() {
       <header className="clay mx-3 mt-3 flex flex-col gap-3 p-4 sm:mx-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-display text-lg font-bold tracking-tight text-foreground">
-            Edurack <span className="text-foreground/40">| Free CBT Demo</span>
+            Edurack <span className="text-foreground/40">| {TRACK_TITLE[track]} Demo</span>
           </p>
           <p className="text-xs text-foreground/50">No login needed — 20 min · 30 questions</p>
         </div>
@@ -412,7 +497,7 @@ function SimulatorLivePage() {
   );
 }
 
-function DemoResultView({ result }: { result: DemoResult }) {
+function DemoResultView({ result, track, saving }: { result: DemoResult; track: Track; saving: boolean }) {
   const percentage = result.totalMarks > 0 ? Math.round((result.score / result.totalMarks) * 100) : 0;
 
   return (
@@ -426,12 +511,13 @@ function DemoResultView({ result }: { result: DemoResult }) {
         {/* Score card */}
         <div className="clay mb-6 p-6 text-center sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">
-            Free CBT Demo Mock Test
+            Free CBT Demo Mock Test · {TRACK_TITLE[track]}
           </p>
           <p className="font-display mt-2 text-5xl font-bold text-foreground">
             {result.score} <span className="text-xl text-foreground/40">/ {result.totalMarks}</span>
           </p>
           <p className="mt-1 text-sm font-semibold text-[var(--sky-deep)]">{percentage}%</p>
+          {saving && <p className="mt-1 text-xs text-foreground/40">Saving your result…</p>}
 
           <div className="mt-6 grid grid-cols-4 gap-3 text-sm">
             <StatBox icon={CheckCircle2} color="text-[var(--mint-soft)]" value={result.correctCount} label="Correct" />
@@ -441,32 +527,39 @@ function DemoResultView({ result }: { result: DemoResult }) {
           </div>
         </div>
 
-        {/* Subject breakdown */}
+        {/* Subject breakdown — expandable accordion per subject with
+            accuracy, correct/incorrect/unattempted, and an estimated
+            percentile. Shared with the real test-result/test-analysis
+            pages via components/subject-performance.tsx. */}
         <div className="clay mb-6 p-5 sm:p-6">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">Subject-wise breakdown</p>
-          <div className="space-y-3">
-            {result.subjectBreakdown.map((s) => {
-              const subjectTotal = (s.correct + s.incorrect + s.unanswered) * 4;
-              const subjectPct = subjectTotal > 0 ? Math.max(0, Math.round((s.marks / subjectTotal) * 100)) : 0;
-              return (
-                <div key={s.subject}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="font-semibold text-foreground">{s.subject}</span>
-                    <span className="text-foreground/60">
-                      {s.marks} marks · {s.correct}✓ {s.incorrect}✗ {s.unanswered}–
-                    </span>
-                  </div>
-                  <div className="clay-inset h-2.5 overflow-hidden rounded-full">
-                    <div
-                      className="h-full rounded-full bg-[var(--sky-deep)] transition-all"
-                      style={{ width: `${subjectPct}%` }}
-                    />
-                  </div>
-                </div>
-              );
+          <SubjectBreakdownAccordion
+            subjects={result.subjectBreakdown.map((s) => {
+              const totalMarks = (s.correct + s.incorrect + s.unanswered) * 4;
+              const percent = totalMarks > 0 ? Math.max(0, Math.round((s.marks / totalMarks) * 100)) : 0;
+              return {
+                subject: s.subject,
+                correct: s.correct,
+                incorrect: s.incorrect,
+                unanswered: s.unanswered,
+                percent,
+                marksLabel: `${s.marks} / ${totalMarks} marks`,
+              };
             })}
-          </div>
+          />
         </div>
+
+        {/* Mentor recommendation — surfaced for the student's weakest
+            subject(s), matched against each mentor's Expertise Showcase and
+            only shown when the mentor's own score genuinely beats the
+            student's. */}
+        <MentorRecommendations
+          subjects={result.subjectBreakdown.map((s) => {
+            const totalMarks = (s.correct + s.incorrect + s.unanswered) * 4;
+            const percent = totalMarks > 0 ? Math.max(0, Math.round((s.marks / totalMarks) * 100)) : 0;
+            return { subject: s.subject as string, percent };
+          })}
+        />
 
         {/* CTA: keep the momentum going */}
         <div className="clay mb-6 overflow-hidden p-6 sm:p-8">
@@ -476,7 +569,7 @@ function DemoResultView({ result }: { result: DemoResult }) {
               That was just a taste
             </div>
             <h3 className="font-display mt-3 text-xl font-bold text-foreground sm:text-2xl">
-              Ready for the full NEET 2027 CBT experience?
+              Ready for the full {track === "PCB" ? "NEET" : "JEE"} 2027 CBT experience?
             </h3>
             <p className="mx-auto mt-2 max-w-lg text-sm text-foreground/60">
               Create a free account to unlock full-length mock tests, live leaderboards, detailed
@@ -527,7 +620,13 @@ function StatBox({
   value,
   label,
 }: {
-  icon: typeof CheckCircle2;
+  // Accepts an icon component from either @tabler/icons-react or
+  // lucide-react — both accept className as an optional prop, which is all
+  // this component actually uses. Fixes the type mismatch that showed up
+  // whenever a Lucide icon (used when no Tabler equivalent exists, e.g.
+  // MinusCircle above) was passed where a single Tabler icon's type was
+  // expected, and removes the need for the old "as any" cast.
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   color: string;
   value: number;
   label: string;

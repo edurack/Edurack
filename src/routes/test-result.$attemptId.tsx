@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { IconLoader2 as Loader2, IconTrophy as Trophy, IconClock as Clock, IconCircleCheck as CheckCircle2, IconCircleX as XCircle, IconArrowLeft as ArrowLeft, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
 import { MinusCircle, Medal } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getTestAttempt, getLeaderboard } from "@/server-functions/test-results";
 import { SmartContent } from "@/lib/smart-content";
 import { AppHeader } from "@/components/app-header";
+import { SubjectBreakdownAccordion, MentorRecommendations } from "@/components/subject-performance";
 
 export const Route = createFileRoute("/test-result/$attemptId")({
   component: TestResultPage,
@@ -177,6 +178,22 @@ function TestResultContent({
         ? "text-[var(--coral-soft)]"
         : "text-foreground";
 
+  // Shared shape for both the accordion (needs correct/incorrect/unanswered
+  // + a marks label) and the mentor recommendation lookup (needs just
+  // subject + percent) — computed once here so the two stay in sync.
+  const subjectPerformance = attempt.subjectBreakdown.map((s) => {
+    const subjectTotal = (s.correct + s.incorrect + s.unanswered) * 4;
+    const percent = subjectTotal > 0 ? Math.max(0, Math.round((s.marks / subjectTotal) * 100)) : 0;
+    return {
+      subject: s.subject,
+      correct: s.correct,
+      incorrect: s.incorrect,
+      unanswered: s.unanswered,
+      percent,
+      marksLabel: `${s.marks} / ${subjectTotal} marks`,
+    };
+  });
+
   return (
     <>
       {/* Hero score card */}
@@ -202,34 +219,17 @@ function TestResultContent({
         </div>
       </div>
 
-      {/* Subject-wise breakdown */}
+      {/* Subject-wise breakdown — expandable per subject, with accuracy and
+          an estimated percentile alongside the marks. */}
       <div className="clay mb-6 p-5 sm:p-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">Subject-wise breakdown</p>
-        <div className="space-y-3">
-          {attempt.subjectBreakdown.map((s) => {
-            const subjectTotal = (s.correct + s.incorrect + s.unanswered) * 4;
-            const subjectPct = subjectTotal > 0 ? Math.max(0, Math.round((s.marks / subjectTotal) * 100)) : 0;
-            return (
-              <div key={s.subject}>
-                <div className="mb-1 flex items-center justify-between text-sm">
-                  <span className="font-semibold text-foreground">{s.subject}</span>
-                  <span className="text-foreground/60">
-                    {s.marks} marks · {s.correct}✓ {s.incorrect}✗ {s.unanswered}–
-                  </span>
-                </div>
-                <div className="clay-inset h-2.5 overflow-hidden rounded-full">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      subjectPct < 40 ? "bg-[var(--coral-soft)]" : "bg-[var(--sky-deep)]"
-                    }`}
-                    style={{ width: `${subjectPct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <SubjectBreakdownAccordion subjects={subjectPerformance} />
       </div>
+
+      {/* Mentor recommendation — surfaced for weak subject(s), matched
+          against each mentor's Expertise Showcase and only shown when the
+          mentor's own score genuinely beats the student's. */}
+      <MentorRecommendations subjects={subjectPerformance.map((s) => ({ subject: s.subject, percent: s.percent }))} />
 
       {/* Leaderboard */}
       {leaderboard && (
@@ -380,7 +380,13 @@ function StatBox({
   value,
   label,
 }: {
-  icon: typeof CheckCircle2;
+  // Accepts an icon component from either @tabler/icons-react or
+  // lucide-react — both accept className as an optional prop, which is all
+  // this component actually uses. Fixes the type mismatch that showed up
+  // whenever a Lucide icon (used when no Tabler equivalent exists, e.g.
+  // MinusCircle above) was passed where a single Tabler icon's type was
+  // expected.
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   color: string;
   value: number;
   label: string;
