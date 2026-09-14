@@ -24,6 +24,7 @@ import {
   IconAt as AtSign,
   IconAward as Award,
   IconStack2 as Layers3,
+  IconChevronDown as ChevronDown,
   IconSchool as GraduationCap, // FIX: replaced the separate `lucide-react` import.
   // Pulling in an entire second icon library for one icon was adding a whole
   // extra module (and its own tree-shaking boundary) to the bundle for a
@@ -72,6 +73,18 @@ export const Route = createFileRoute("/")({
 const LAUNCH_DATE_LABEL = "Launched 10 September 2026";
 
 // ---------------------------------------------
+// Shared CTA styling — a stronger gradient pill used for the header's
+// primary Sign Up action and the hero's primary CTA, so the single most
+// important action on the page reads as clearly more important than the
+// generic `clay-btn` used everywhere else (tab pills, ghost links, etc).
+// Reuses the same sky→teal gradient already established in the mentor
+// marketplace banner further down the page, rather than introducing a
+// new color.
+// ---------------------------------------------
+const PRIMARY_CTA =
+  "bg-gradient-to-br from-sky-500 to-teal-400 text-slate-950 shadow-md shadow-sky-500/20 hover:shadow-lg hover:shadow-sky-500/30 hover:-translate-y-0.5";
+
+// ---------------------------------------------
 // Exam config
 // ---------------------------------------------
 type ExamKey = "neet" | "jee" | "cuet" | "ipmat";
@@ -81,6 +94,15 @@ const exams: { key: ExamKey; label: string; full: string }[] = [
   { key: "jee", label: "JEE", full: "JEE Main & Advanced" },
   { key: "cuet", label: "CUET", full: "CUET (UG)" },
   { key: "ipmat", label: "IPMAT", full: "IPMAT (IIM)" },
+];
+
+// Honest trust signals for the hero — real product facts, not invented
+// numbers. Reuses ShieldCheck / Users / Globe, which were imported but
+// previously unused anywhere in this file.
+const heroTrustPoints = [
+  { icon: ShieldCheck, text: "Exam-accurate CBT interface" },
+  { icon: Users, text: "Mentors who've actually cleared these exams" },
+  { icon: Globe, text: "Built for NEET · JEE · CUET · IPMAT" },
 ];
 
 // ---------------------------------------------
@@ -278,6 +300,23 @@ function Index() {
 
   return (
     <div className="min-h-screen scroll-smooth">
+      {/* Hero-only keyframes (slow float + shifting gradient text). Scoped
+          via a plain <style> tag rather than a global stylesheet edit,
+          since this file can't touch globals.css directly. prefers-reduced-motion
+          is respected by disabling the animations outright. */}
+      <style>{`
+        @keyframes edu-float-a { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(12px, -18px); } }
+        @keyframes edu-float-b { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-14px, 14px); } }
+        @keyframes edu-float-c { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 50% { transform: translate(8px, -10px) rotate(6deg); } }
+        @keyframes edu-gradient-x { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+        .edu-anim-float-a { animation: edu-float-a 7s ease-in-out infinite; }
+        .edu-anim-float-b { animation: edu-float-b 8.5s ease-in-out infinite; }
+        .edu-anim-float-c { animation: edu-float-c 6s ease-in-out infinite; }
+        .edu-anim-gradient { background-size: 200% auto; animation: edu-gradient-x 6s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .edu-anim-float-a, .edu-anim-float-b, .edu-anim-float-c, .edu-anim-gradient { animation: none; }
+        }
+      `}</style>
       <Header />
       <main>
         <Hero />
@@ -362,18 +401,19 @@ function Header() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-3 md:flex">
           <Link
             to="/auth"
-            className="clay-btn-ghost px-5 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+            className="rounded-full px-4 py-2 text-sm font-semibold text-foreground/70 underline decoration-transparent decoration-2 underline-offset-4 transition-all duration-200 hover:text-foreground hover:decoration-current"
           >
             Login
           </Link>
           <Link
             to="/auth"
-            className="clay-btn px-5 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+            className={`group inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-bold transition-all duration-200 ${PRIMARY_CTA}`}
           >
-            Sign Up
+            Sign Up Free
+            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
           </Link>
         </div>
 
@@ -419,9 +459,9 @@ function Header() {
               <Link
                 to="/auth"
                 onClick={() => setOpen(false)}
-                className="clay-btn px-4 py-2.5 text-center text-sm font-semibold"
+                className={`rounded-full px-4 py-2.5 text-center text-sm font-bold ${PRIMARY_CTA}`}
               >
-                Sign Up
+                Sign Up Free
               </Link>
             </div>
           </nav>
@@ -435,7 +475,34 @@ function Hero() {
   const [activeExam, setActiveExam] = useState<ExamKey>("neet");
 
   return (
-    <section className="px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:pt-28">
+    <section className="relative overflow-hidden px-4 pb-16 pt-12 sm:px-6 sm:pt-20 lg:pt-28">
+      {/* Animated background — same sky/teal palette used elsewhere on the
+          page, just given slow independent drift so the hero feels alive
+          rather than static. Purely decorative: aria-hidden, and disabled
+          under prefers-reduced-motion via the .edu-anim-* classes above. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="edu-anim-float-a absolute -top-24 left-[8%] h-72 w-72 rounded-full bg-sky-400/20 blur-3xl" />
+        <div className="edu-anim-float-b absolute top-1/4 right-[6%] h-80 w-80 rounded-full bg-teal-400/20 blur-3xl" />
+        <div className="edu-anim-float-a absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-orange-300/10 blur-3xl" />
+
+        {/* Small floating trust glyphs — desktop only, purely decorative */}
+        <div className="edu-anim-float-c absolute left-[12%] top-[22%] hidden lg:block">
+          <div className="clay-sm flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 dark:bg-white/5">
+            <GraduationCap className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+          </div>
+        </div>
+        <div className="edu-anim-float-b absolute right-[14%] top-[16%] hidden lg:block">
+          <div className="clay-sm flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 dark:bg-white/5">
+            <Target className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+          </div>
+        </div>
+        <div className="edu-anim-float-c absolute bottom-[18%] right-[10%] hidden lg:block">
+          <div className="clay-sm flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 dark:bg-white/5">
+            <ShieldCheck className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+          </div>
+        </div>
+      </div>
+
       <div className="mx-auto max-w-5xl text-center">
         <Reveal>
           <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 sm:text-sm">
@@ -452,8 +519,8 @@ function Hero() {
                 onClick={() => setActiveExam(e.key)}
                 className={`rounded-full px-4 py-2 text-sm font-bold transition-all duration-200 ${
                   activeExam === e.key
-                    ? "clay-btn text-white"
-                    : "clay-chip text-foreground/60 hover:text-foreground"
+                    ? "clay-btn scale-105 text-white"
+                    : "clay-chip text-foreground/60 hover:scale-105 hover:text-foreground"
                 }`}
               >
                 {e.label}
@@ -464,7 +531,10 @@ function Hero() {
 
         <Reveal delay={140}>
           <h1 className="fluid-h1 mt-6 text-balance font-display font-extrabold tracking-tight text-foreground">
-            Take the Test. Know Your Weaknesses. Find the Right Mentor.
+            Take the Test. Know Your Weaknesses.{" "}
+            <span className="edu-anim-gradient bg-gradient-to-r from-sky-500 via-teal-400 to-sky-500 bg-clip-text text-transparent">
+              Find the Right Mentor.
+            </span>
           </h1>
         </Reveal>
 
@@ -480,7 +550,7 @@ function Hero() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/simulator/live"
-              className="clay-btn group inline-flex items-center gap-2 px-7 py-4 text-base font-bold transition-transform duration-200 hover:-translate-y-0.5 sm:text-lg"
+              className={`group inline-flex items-center gap-2 rounded-full px-7 py-4 text-base font-bold transition-all duration-200 sm:text-lg ${PRIMARY_CTA}`}
             >
               Take a Free Mock
               <ArrowRight className="h-5 w-5 transition-transform duration-200 group-hover:translate-x-1" />
@@ -491,6 +561,18 @@ function Hero() {
             >
               Find a Mentor
             </a>
+          </div>
+        </Reveal>
+
+        {/* Honest trust row — real product facts, not invented numbers. */}
+        <Reveal delay={340}>
+          <div className="mx-auto mt-7 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {heroTrustPoints.map((t) => (
+              <span key={t.text} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground sm:text-sm">
+                <t.icon className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+                {t.text}
+              </span>
+            ))}
           </div>
         </Reveal>
 
@@ -511,6 +593,13 @@ function Hero() {
               </div>
             ))}
           </div>
+        </Reveal>
+
+        <Reveal delay={440} className="mt-12 hidden sm:block">
+          <a href="#simulator" aria-label="Scroll to explore" className="inline-flex flex-col items-center gap-1 text-muted-foreground/60 transition-colors hover:text-muted-foreground">
+            <span className="text-[10px] font-semibold uppercase tracking-widest">Explore</span>
+            <ChevronDown className="h-4 w-4 animate-bounce" />
+          </a>
         </Reveal>
       </div>
     </section>
@@ -1004,7 +1093,7 @@ function FeaturesGrid() {
             </div>
             <Link
               to="/simulator/live"
-              className="clay-btn inline-flex items-center gap-2 justify-self-start px-7 py-4 text-base font-bold transition-transform duration-200 hover:-translate-y-0.5 md:justify-self-end"
+              className={`inline-flex items-center gap-2 justify-self-start rounded-full px-7 py-4 text-base font-bold transition-all duration-200 md:justify-self-end ${PRIMARY_CTA}`}
             >
               Try Free Mock Test <ArrowRight className="h-5 w-5" />
             </Link>

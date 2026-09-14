@@ -67,6 +67,26 @@ export const Route = createFileRoute("/course/$kind/$id")({
 
 type Kind = "bundle" | "mentorship";
 type TabKey = "overview" | "tests" | "seriesTests" | "assets" | "announcements" | "chat" | "help";
+
+// ─── Shared color system, matching the dashboard ────────────────────────
+// Bundles (Test Series) are teal, Mentorships are pink — same mapping used
+// on the dashboard cards, so clicking into a card carries its color with
+// it. Mentor-specific elements use purple, echoing the dashboard's Mentors
+// tab. Fallback hex is baked into every value so nothing goes invisible if
+// these CSS variables aren't defined yet in globals.css.
+const TEAL = { soft: "var(--teal-soft, #E1F5EE)", deep: "var(--teal-deep, #0F6E56)" };
+const PINK = { soft: "var(--pink-soft, #FCE7F3)", deep: "var(--pink-deep, #BE185D)" };
+const PURPLE = { soft: "var(--purple-soft, #EDE9FE)", deep: "var(--purple-deep, #6D28D9)" };
+const AMBER = { soft: "var(--amber-soft, #FEF3C7)", deep: "var(--amber-deep, #B45309)" };
+const CORAL = { soft: "var(--coral-soft, #FDE2DA)", deep: "var(--coral-deep, #B3441F)" };
+const LEMON = { soft: "var(--lemon-soft, #FBF3C7)", deep: "var(--lemon-deep, #8A6D0B)" };
+const DESTRUCTIVE = "var(--destructive, #DC2626)";
+
+const KIND_ACCENT: Record<Kind, { soft: string; deep: string }> = {
+  bundle: TEAL,
+  mentorship: PINK,
+};
+
 type BundleDetail = {
   id: string;
   title: string;
@@ -205,6 +225,7 @@ function CourseHubPage() {
   const { kind, id } = Route.useParams() as { kind: Kind; id: string };
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const accent = KIND_ACCENT[kind];
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [bundle, setBundle] = useState<BundleDetail | null>(null);
@@ -465,8 +486,9 @@ function CourseHubPage() {
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
                 className={`flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  active ? "clay-btn text-white" : "text-foreground/70 hover:translate-x-0.5 hover:bg-foreground/5"
+                  active ? "text-white" : "text-foreground/70 hover:translate-x-0.5 hover:bg-foreground/5"
                 }`}
+                style={active ? { background: accent.deep } : undefined}
               >
                 <Icon className="h-4 w-4" />
                 {t.label}
@@ -477,15 +499,21 @@ function CourseHubPage() {
 
         <main className="min-w-0 flex-1">
           <div className="clay mb-5 flex items-center gap-4 p-4 sm:mb-6 sm:p-6">
-            <div className="clay-inset flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[var(--sky-soft)] sm:h-14 sm:w-14">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl sm:h-14 sm:w-14"
+              style={{ background: accent.soft }}
+            >
               {kind === "bundle" ? (
-                <BookOpen className="h-5 w-5 text-foreground/40 sm:h-6 sm:w-6" />
+                <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: accent.deep }} />
               ) : (
-                <Users2 className="h-5 w-5 text-foreground/40 sm:h-6 sm:w-6" />
+                <Users2 className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: accent.deep }} />
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/50 sm:text-xs">
+              <p
+                className="text-[10px] font-bold uppercase tracking-wide sm:text-xs"
+                style={{ color: accent.deep }}
+              >
                 {kind === "bundle" ? "Test Series" : "Mentorship"}
               </p>
               <h1 className="truncate font-display text-lg font-bold tracking-tight text-foreground sm:text-2xl">
@@ -505,16 +533,17 @@ function CourseHubPage() {
                 user={user}
                 itemId={id}
                 navigate={navigate}
+                accent={accent}
               />
             )}
             {activeTab === "tests" && kind === "bundle" && (
-              <TestsTab tests={tests} isPurchased={isPurchased} navigate={navigate} user={user} />
+              <TestsTab tests={tests} isPurchased={isPurchased} navigate={navigate} user={user} accent={accent} />
             )}
            {activeTab === "tests" && kind === "mentorship" && (
-              <SessionsTab sessions={sessions} isPurchased={isPurchased} batchId={id} user={user} />
+              <SessionsTab sessions={sessions} isPurchased={isPurchased} batchId={id} user={user} accent={accent} />
             )}
             {activeTab === "seriesTests" && kind === "mentorship" && (
-              <BatchSeriesTestsTab batchId={id} isPurchased={isPurchased} user={user} navigate={navigate} />
+              <BatchSeriesTestsTab batchId={id} isPurchased={isPurchased} user={user} navigate={navigate} accent={accent} />
             )}
             {activeTab === "assets" && (
               <AssetsTab
@@ -530,9 +559,9 @@ function CourseHubPage() {
               <AnnouncementsTab announcements={announcements} isPurchased={isPurchased} />
             )}
             {activeTab === "chat" && kind === "mentorship" && (
-              <ChatTab batchId={id} isPurchased={isPurchased} user={user} />
+              <ChatTab batchId={id} isPurchased={isPurchased} user={user} accent={accent} />
             )}
-            {activeTab === "help" && <HelpTab isPurchased={isPurchased} user={user} kind={kind} itemId={id} />}
+            {activeTab === "help" && <HelpTab isPurchased={isPurchased} user={user} kind={kind} itemId={id} accent={accent} />}
           </div>
         </main>
       </div>
@@ -557,8 +586,9 @@ function CourseHubPage() {
               key={t.key}
               onClick={() => setActiveTab(t.key)}
               className={`flex shrink-0 flex-col items-center gap-0.5 rounded-2xl px-4 py-2 text-[9px] font-semibold transition-all duration-200 ${
-                active ? "clay-btn text-white" : "text-foreground/60"
+                active ? "text-white" : "text-foreground/60"
               }`}
+              style={active ? { background: accent.deep } : undefined}
             >
               <Icon className="h-4 w-4" />
               {t.label}
@@ -618,12 +648,13 @@ function CourseHubPage() {
                         {couponChecking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
                       </button>
                     </div>
-                    {couponError && <p className="mt-1.5 text-xs font-medium text-rose-600">{couponError}</p>}
+                    {couponError && <p className="mt-1.5 text-xs font-medium" style={{ color: DESTRUCTIVE }}>{couponError}</p>}
                   </div>
                 ) : (
                   <button
                     onClick={() => setShowCouponField(true)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)]"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                    style={{ color: accent.deep }}
                   >
                     <Tag className="h-3.5 w-3.5" />
                     Have a coupon code?
@@ -651,7 +682,7 @@ function CourseHubPage() {
                     )
                   )}
                   {!appliedCoupon && discountPercent ? (
-                    <span className="text-xs font-semibold text-[var(--sky-deep)]">{discountPercent}% OFF</span>
+                    <span className="text-xs font-bold" style={{ color: accent.deep }}>{discountPercent}% off</span>
                   ) : null}
                 </div>
                 <p className="truncate text-xs text-foreground/50">
@@ -661,14 +692,18 @@ function CourseHubPage() {
               <button
                 onClick={handlePurchase}
                 disabled={purchasing}
-                className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
+                className="flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
+                style={{ background: accent.deep }}
               >
                 {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : user ? "Purchase" : "Log in to purchase"}
               </button>
             </div>
           </div>
           {purchaseError && (
-            <div className="clay-inset mx-auto mt-2 max-w-xl rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-center text-xs font-medium text-foreground">
+            <div
+              className="clay-inset mx-auto mt-2 max-w-xl rounded-2xl px-4 py-2 text-center text-xs font-medium text-foreground"
+              style={{ background: CORAL.soft }}
+            >
               {purchaseError}
             </div>
           )}
@@ -773,7 +808,8 @@ function LockGate({ locked, label = "Purchase to unlock", children }: { locked: 
 }
 
 // ─── Mentor bio card — now includes the intro video and a real link to the
-// mentor's full public profile page, not just a static name label. ─────────
+// mentor's full public profile page, not just a static name label. Uses the
+// purple accent throughout, matching the Mentors tab on the dashboard. ─────
 function MentorBioCard({ mentorProfile }: { mentorProfile: MentorProfile }) {
   const lockedItems = [
     { icon: Trophy, label: "AIIMS / IIT Rank", value: mentorProfile.aiimsIitRank },
@@ -784,17 +820,20 @@ function MentorBioCard({ mentorProfile }: { mentorProfile: MentorProfile }) {
   return (
     <div className="clay p-4 sm:p-6">
       <div className="flex items-start gap-3 sm:gap-4">
-        <div className="clay-inset flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-16 sm:w-16">
+        <div
+          className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full sm:h-16 sm:w-16"
+          style={{ background: PURPLE.soft }}
+        >
           {mentorProfile.profilePictureUrl ? (
             <img src={mentorProfile.profilePictureUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <span className="font-display text-lg font-bold text-foreground/50 sm:text-xl">
+            <span className="font-display text-lg font-bold sm:text-xl" style={{ color: PURPLE.deep }}>
               {mentorProfile.name.charAt(0)}
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/50 sm:text-xs">
+          <p className="text-[10px] font-bold uppercase tracking-wide sm:text-xs" style={{ color: PURPLE.deep }}>
             Your Mentor
           </p>
           <Link
@@ -802,10 +841,10 @@ function MentorBioCard({ mentorProfile }: { mentorProfile: MentorProfile }) {
             params={{ mentorId: mentorProfile.id }}
             className="group mt-0.5 inline-flex items-center gap-1.5"
           >
-            <span className="font-display text-base font-bold text-foreground transition-colors group-hover:text-[var(--sky-deep)] sm:text-lg">
+            <span className="font-display text-base font-bold text-foreground sm:text-lg">
               {mentorProfile.name}
             </span>
-            <BadgeCheck className="h-4 w-4 shrink-0 fill-[var(--sky-deep)] text-white" />
+            <BadgeCheck className="h-4 w-4 shrink-0 text-white" style={{ fill: PURPLE.deep }} />
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-foreground/30 transition-transform group-hover:translate-x-0.5" />
           </Link>
           {mentorProfile.yearOfStudy && <p className="text-xs text-foreground/50">{mentorProfile.yearOfStudy}</p>}
@@ -847,7 +886,8 @@ function MentorBioCard({ mentorProfile }: { mentorProfile: MentorProfile }) {
       <Link
         to="/mentor-profile/$mentorId"
         params={{ mentorId: mentorProfile.id }}
-        className="clay-btn-ghost mt-4 flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-semibold text-foreground/70 transition-transform hover:scale-[1.02]"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-xs font-bold transition-transform hover:scale-[1.02]"
+        style={{ background: PURPLE.soft, color: PURPLE.deep }}
       >
         View full mentor profile
         <ChevronRight className="h-3.5 w-3.5" />
@@ -865,6 +905,7 @@ function OverviewTab({
   user,
   itemId,
   navigate,
+  accent,
 }: {
   kind: Kind;
   bundle: BundleDetail | null;
@@ -874,6 +915,7 @@ function OverviewTab({
   user: AuthedUser | null;
   itemId: string;
   navigate: ReturnType<typeof useNavigate>;
+  accent: { soft: string; deep: string };
 }) {
   const [showCallbackForm, setShowCallbackForm] = useState(false);
   const [name, setName] = useState("");
@@ -923,7 +965,7 @@ function OverviewTab({
           <div className="space-y-1.5">
             {mentorship.highlights.map((h, i) => (
               <p key={i} className="flex items-start gap-2 text-sm text-foreground/70">
-                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--sky-deep)]" />
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ background: accent.deep }} />
                 {h}
               </p>
             ))}
@@ -937,7 +979,7 @@ function OverviewTab({
           <div className="space-y-1.5">
             {bundle.features.map((f, i) => (
               <p key={i} className="flex items-start gap-2 text-sm text-foreground/70">
-                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[var(--sky-deep)]" />
+                <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ background: accent.deep }} />
                 {f}
               </p>
             ))}
@@ -982,7 +1024,8 @@ function OverviewTab({
         ) : !user ? (
           <button
             onClick={() => navigate({ to: "/auth" })}
-            className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-transform hover:scale-105"
+            className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white transition-transform hover:scale-105"
+            style={{ background: accent.deep }}
           >
             <PhoneCall className="h-4 w-4" />
             Log in to request a Call Back
@@ -1011,7 +1054,8 @@ function OverviewTab({
             <button
               type="submit"
               disabled={sending}
-              className="clay-btn flex w-full items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+              className="flex w-full items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-70"
+              style={{ background: accent.deep }}
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit request"}
             </button>
@@ -1019,7 +1063,8 @@ function OverviewTab({
         ) : (
           <button
             onClick={() => setShowCallbackForm(true)}
-            className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-transform hover:scale-105"
+            className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white transition-transform hover:scale-105"
+            style={{ background: accent.deep }}
           >
             <PhoneCall className="h-4 w-4" />
             Request a Call Back
@@ -1035,11 +1080,13 @@ function TestsTab({
   isPurchased,
   navigate,
   user,
+  accent,
 }: {
   tests: TestRow[] | null;
   isPurchased: boolean;
   navigate: ReturnType<typeof useNavigate>;
   user: AuthedUser | null;
+  accent: { soft: string; deep: string };
 }) {
   const [attemptsByTest, setAttemptsByTest] = useState<Record<string, { count: number; bestScore: number; totalMarks: number } | undefined>>({});
 
@@ -1104,7 +1151,7 @@ function TestsTab({
                 </p>
                 <p className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold">
                   {isLive ? (
-                    <span className="inline-flex items-center gap-1.5 text-[var(--coral-soft)]">
+                    <span className="inline-flex items-center gap-1.5" style={{ color: CORAL.deep }}>
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
                     </span>
                   ) : isUpcoming ? (
@@ -1124,7 +1171,8 @@ function TestsTab({
                 <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
                   <button
                     onClick={() => navigate({ to: "/test-analysis/$testId", params: { testId: t.id } })}
-                    className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                    className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white"
+                    style={{ background: accent.deep }}
                   >
                     <BarChart3 className="h-4 w-4" />
                     Analysis
@@ -1132,7 +1180,8 @@ function TestsTab({
                   <button
                     disabled={!isPurchased}
                     onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
-                    className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline disabled:opacity-40"
+                    className="text-[11px] font-semibold hover:underline disabled:opacity-40"
+                    style={{ color: accent.deep }}
                   >
                     Retake
                   </button>
@@ -1147,7 +1196,8 @@ function TestsTab({
                     navigate({ to: "/test/$testId", params: { testId: t.id } });
                   }}
                   disabled={!user && isPurchased}
-                  className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-40"
+                  className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+                  style={{ background: accent.deep }}
                 >
                   <PlayCircle className="h-4 w-4" />
                   {isPurchased ? "Start Test" : "Start Test"}
@@ -1168,11 +1218,13 @@ function SessionsTab({
   isPurchased,
   batchId,
   user,
+  accent,
 }: {
   sessions: SessionRow[] | null;
   isPurchased: boolean;
   batchId: string;
   user: AuthedUser | null;
+  accent: { soft: string; deep: string };
 }) {
   const navigate = useNavigate();
   const [statuses, setStatuses] = useState<Record<string, SessionStatus> | null>(null);
@@ -1236,7 +1288,10 @@ function SessionsTab({
             );
           } else if ((status?.watchPercent ?? 0) > 0) {
             watchBadge = (
-              <span className="rounded-full bg-[var(--lemon-soft)]/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                style={{ background: LEMON.soft, color: LEMON.deep }}
+              >
                 {status?.watchPercent}% watched
               </span>
             );
@@ -1255,7 +1310,10 @@ function SessionsTab({
           );
         } else if (!isPast && s.status === "scheduled") {
           watchBadge = (
-            <span className="inline-flex items-center gap-1 rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--sky-deep)]">
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+              style={{ color: accent.deep }}
+            >
               <Radio className="h-3 w-3" /> Upcoming
             </span>
           );
@@ -1281,7 +1339,10 @@ function SessionsTab({
                   <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
                     <span className="truncate">{s.track === "AsyncLecture" ? s.lectureTitle : meta.label}</span>
                     {s.status === "cancelled" && (
-                      <span className="rounded-full bg-[var(--coral-soft)]/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                        style={{ background: CORAL.soft, color: CORAL.deep }}
+                      >
                         Cancelled
                       </span>
                     )}
@@ -1305,7 +1366,8 @@ function SessionsTab({
                   (s.track === "AsyncLecture" ? (
                     <button
                       onClick={() => navigate({ to: "/lecture/$sessionId", params: { sessionId: s.id } })}
-                      className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                      className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white"
+                      style={{ background: accent.deep }}
                     >
                       <PlayCircle className="h-4 w-4" />
                       {primaryLabel}
@@ -1315,7 +1377,8 @@ function SessionsTab({
                       href={s.meetingLink ?? "#"}
                       target="_blank"
                       rel="noreferrer"
-                      className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                      className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white"
+                      style={{ background: accent.deep }}
                     >
                       <Link2 className="h-4 w-4" />
                       {primaryLabel}
@@ -1329,6 +1392,7 @@ function SessionsTab({
                     user={user}
                     initialRating={status?.myRating ?? 0}
                     onSaved={refreshStatuses}
+                    accent={accent}
                   />
                 )}
               </div>
@@ -1345,11 +1409,13 @@ function BatchSeriesTestsTab({
   isPurchased,
   user,
   navigate,
+  accent,
 }: {
   batchId: string;
   isPurchased: boolean;
   user: AuthedUser | null;
   navigate: ReturnType<typeof useNavigate>;
+  accent: { soft: string; deep: string };
 }) {
   const [tests, setTests] = useState<BatchSeriesTestRow[] | null>(null);
   const [attemptsByTest, setAttemptsByTest] = useState<
@@ -1518,7 +1584,10 @@ function BatchSeriesTestsTab({
   return (
     <div className="space-y-3">
       {purchaseError && (
-        <div className="clay-inset rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-center text-xs font-medium text-foreground">
+        <div
+          className="clay-inset rounded-2xl px-4 py-2 text-center text-xs font-medium text-foreground"
+          style={{ background: CORAL.soft }}
+        >
           {purchaseError}
         </div>
       )}
@@ -1566,7 +1635,7 @@ function BatchSeriesTestsTab({
                     {start === null ? (
                       <span className="text-foreground/50">Available now</span>
                     ) : isLive ? (
-                      <span className="inline-flex items-center gap-1.5 text-[var(--coral-soft)]">
+                      <span className="inline-flex items-center gap-1.5" style={{ color: CORAL.deep }}>
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /> LIVE
                       </span>
                     ) : (
@@ -1587,7 +1656,8 @@ function BatchSeriesTestsTab({
                     <button
                       onClick={() => handleBuyTest(t)}
                       disabled={purchasingId === t.id}
-                      className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70"
+                      className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white disabled:opacity-70"
+                      style={{ background: accent.deep }}
                     >
                       {purchasingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${t.price}`}
                     </button>
@@ -1596,14 +1666,16 @@ function BatchSeriesTestsTab({
                   <div className="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1.5">
                     <button
                       onClick={() => navigate({ to: "/test-analysis/$testId", params: { testId: t.id } })}
-                      className="clay-btn flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                      className="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white"
+                      style={{ background: accent.deep }}
                     >
                       <BarChart3 className="h-4 w-4" />
                       Analysis
                     </button>
                     <button
                       onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
-                      className="text-[11px] font-semibold text-[var(--sky-deep)] hover:underline"
+                      className="text-[11px] font-semibold hover:underline"
+                      style={{ color: accent.deep }}
                     >
                       Retake
                     </button>
@@ -1611,7 +1683,8 @@ function BatchSeriesTestsTab({
                 ) : (
                   <button
                     onClick={() => navigate({ to: "/test/$testId", params: { testId: t.id } })}
-                    className="clay-btn flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold"
+                    className="flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs font-bold text-white"
+                    style={{ background: accent.deep }}
                   >
                     <PlayCircle className="h-4 w-4" />
                     Start Test
@@ -1632,12 +1705,14 @@ function SessionKebabMenu({
   user,
   initialRating,
   onSaved,
+  accent,
 }: {
   sessionId: string;
   batchId: string;
   user: AuthedUser;
   initialRating: number;
   onSaved: () => void;
+  accent: { soft: string; deep: string };
 }) {
   const [open, setOpen] = useState(false);
   const [rating, setRating] = useState(initialRating);
@@ -1702,7 +1777,8 @@ function SessionKebabMenu({
             <button
               onClick={handleSave}
               disabled={rating === 0 || saving}
-              className="clay-btn mt-2 w-full rounded-full py-1.5 text-xs font-semibold disabled:opacity-70"
+              className="mt-2 w-full rounded-full py-1.5 text-xs font-bold text-white disabled:opacity-70"
+              style={{ background: accent.deep }}
             >
               {saving ? "Saving…" : "Submit review"}
             </button>
@@ -1869,10 +1945,12 @@ function ChatTab({
   batchId,
   isPurchased,
   user,
+  accent,
 }: {
   batchId: string;
   isPurchased: boolean;
   user: AuthedUser | null;
+  accent: { soft: string; deep: string };
 }) {
   const navigate = useNavigate();
   const [mentorId, setMentorId] = useState<string | null>(null);
@@ -1988,9 +2066,12 @@ function ChatTab({
         </Link>
         {lockStatus && (
           <span
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-              lockStatus.isLockedNow ? "bg-[var(--coral-soft)]/50 text-foreground" : "bg-[var(--mint-soft)]/60 text-foreground"
-            }`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide"
+            style={
+              lockStatus.isLockedNow
+                ? { background: CORAL.soft, color: CORAL.deep }
+                : { background: "var(--mint-soft)", color: "inherit" }
+            }
           >
             {lockStatus.isLockedNow ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             <span className="hidden sm:inline">
@@ -2015,9 +2096,12 @@ function ChatTab({
           messages.map((m) => (
             <div key={m.id} className={`flex ${m.sender === "student" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm sm:max-w-[75%] ${
-                  m.sender === "student" ? "clay-btn text-white" : "clay-inset text-foreground"
-                }`}
+                className={
+                  m.sender === "student"
+                    ? "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm text-white sm:max-w-[75%]"
+                    : "clay-inset max-w-[80%] rounded-2xl px-3.5 py-2 text-sm text-foreground sm:max-w-[75%]"
+                }
+                style={m.sender === "student" ? { background: accent.deep } : undefined}
               >
                 {m.body}
               </div>
@@ -2029,7 +2113,7 @@ function ChatTab({
 
       <div className="shrink-0 border-t border-foreground/10 p-3">
         {lockStatus?.isLockedNow && (
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--destructive)]">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: DESTRUCTIVE }}>
             <Lock className="h-3 w-3" />
             Messaging is locked right now by your mentor.
           </p>
@@ -2045,13 +2129,14 @@ function ChatTab({
           <button
             type="submit"
             disabled={sending || !draft.trim() || lockStatus?.isLockedNow}
-            className="clay-btn flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
+            style={{ background: accent.deep }}
             aria-label="Send"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </form>
-        {error && <p className="mt-2 text-xs font-medium text-[var(--destructive)]">{error}</p>}
+        {error && <p className="mt-2 text-xs font-medium" style={{ color: DESTRUCTIVE }}>{error}</p>}
       </div>
     </div>
   );
@@ -2062,11 +2147,13 @@ function HelpTab({
   user,
   kind,
   itemId,
+  accent,
 }: {
   isPurchased: boolean;
   user: AuthedUser | null;
   kind: Kind;
   itemId: string;
+  accent: { soft: string; deep: string };
 }) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -2127,7 +2214,8 @@ function HelpTab({
             <button
               type="submit"
               disabled={!isPurchased || sending}
-              className="clay-btn flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
+              className="flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-70"
+              style={{ background: accent.deep }}
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit ticket"}
             </button>
