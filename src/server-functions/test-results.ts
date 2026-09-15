@@ -32,8 +32,11 @@ export const getTestAttempt = createServerFn({ method: "GET" })
       questionId: string;
       questionNo: number;
       subject: string;
+      type?: "mcq" | "integer"; // absent on attempts submitted before this change
       selectedOption: OptionKey | null;
-      correctOption: OptionKey;
+      correctOption: OptionKey | null;
+      selectedAnswer?: number | null;
+      correctAnswer?: number | null;
       isCorrect: boolean;
       marksAwarded: number;
     }[];
@@ -52,14 +55,18 @@ export const getTestAttempt = createServerFn({ method: "GET" })
       .map((r) => {
         const doc = questionById.get(r.questionId);
         if (!doc) return null;
+        const type = r.type ?? (doc.type as "mcq" | "integer") ?? "mcq";
         return {
           questionNo: r.questionNo,
           subject: r.subject,
+          type,
           body: doc.body as string,
-          options: doc.options as Record<OptionKey, string>,
+          options: type === "mcq" ? (doc.options as Record<OptionKey, string>) : undefined,
           solution: doc.solution as string,
           selectedOption: r.selectedOption,
-          correctOption: r.correctOption,
+          correctOption: type === "mcq" ? (doc.correctOption as OptionKey) : undefined,
+          selectedAnswer: r.selectedAnswer ?? null,
+          correctAnswer: type === "integer" ? (doc.correctAnswer as number) : undefined,
           isCorrect: r.isCorrect,
           marksAwarded: r.marksAwarded,
         };
@@ -198,11 +205,14 @@ export const getTestAnalysis = createServerFn({ method: "GET" })
         const doc = questionById.get(id);
         const tally = questionTally.get(id)!;
         if (!doc) return null;
+        const type = (doc.type as "mcq" | "integer") ?? "mcq";
         return {
           questionNo: doc.questionNo as number,
           subject: doc.subject as string,
           body: doc.body as string,
-          correctOption: doc.correctOption as OptionKey,
+          type,
+          correctOption: type === "mcq" ? (doc.correctOption as OptionKey) : undefined,
+          correctAnswer: type === "integer" ? (doc.correctAnswer as number) : undefined,
           solution: doc.solution as string,
           wrongCount: tally.wrongCount,
           totalSeen: tally.totalSeen,
@@ -224,6 +234,7 @@ export const getTestAnalysis = createServerFn({ method: "GET" })
       recurringMistakes,
     };
   });
+
 export const getLeaderboard = createServerFn({ method: "GET" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {

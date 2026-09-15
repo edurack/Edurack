@@ -12,6 +12,7 @@ type AdminUser = { getIdToken: () => Promise<string> };
 
 type DifficultyLevel = "Easy" | "Medium" | "Hard";
 type OptionKey = "A" | "B" | "C" | "D";
+type QuestionType = "mcq" | "integer";
 
 type BundleOption = { id: string; title: string };
 
@@ -68,12 +69,15 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   const [threshold, setThreshold] = useState<number | null>(null);
   const [countLoading, setCountLoading] = useState(false);
 
+  const [questionType, setQuestionType] = useState<QuestionType>("mcq");
+
   const [questionBody, setQuestionBody] = useState("");
   const [optionA, setOptionA] = useState("");
   const [optionB, setOptionB] = useState("");
   const [optionC, setOptionC] = useState("");
   const [optionD, setOptionD] = useState("");
   const [correctOption, setCorrectOption] = useState<OptionKey>("A");
+  const [integerAnswer, setIntegerAnswer] = useState("");
 
   const [solution, setSolution] = useState("");
   const [difficulty, setDifficulty] = useState<DifficultyLevel>("Medium");
@@ -155,12 +159,14 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   }, [testId, subject]);
 
   function resetQuestionFields() {
+    setQuestionType("mcq");
     setQuestionBody("");
     setOptionA("");
     setOptionB("");
     setOptionC("");
     setOptionD("");
     setCorrectOption("A");
+    setIntegerAnswer("");
     setSolution("");
     setDifficulty("Medium");
     setIsPYQ(false);
@@ -177,9 +183,17 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     if (!subject) return setError("Select a subject.");
     if (nextNumber === null) return setError("Still working out the question number — try again in a moment.");
     if (!questionBody.trim()) return setError("Enter the question body.");
-    if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
-      return setError("All four options (A–D) must be filled in.");
+
+    if (questionType === "mcq") {
+      if (!optionA.trim() || !optionB.trim() || !optionC.trim() || !optionD.trim()) {
+        return setError("All four options (A–D) must be filled in.");
+      }
+    } else {
+      if (integerAnswer.trim() === "" || Number.isNaN(Number(integerAnswer))) {
+        return setError("Enter a valid numeric answer.");
+      }
     }
+
     if (!solution.trim()) return setError("Enter the step-by-step solution.");
     if (isPYQ && !pyqYear.trim()) return setError("Enter the PYQ year, or uncheck 'Previous Year Question'.");
     if (threshold !== null && nextNumber > threshold) {
@@ -200,13 +214,20 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             subject,
             questionNo: nextNumber,
             body: questionBody.trim(),
-            options: {
-              A: optionA.trim(),
-              B: optionB.trim(),
-              C: optionC.trim(),
-              D: optionD.trim(),
-            },
-            correctOption,
+            type: questionType,
+            ...(questionType === "mcq"
+              ? {
+                  options: {
+                    A: optionA.trim(),
+                    B: optionB.trim(),
+                    C: optionC.trim(),
+                    D: optionD.trim(),
+                  },
+                  correctOption,
+                }
+              : {
+                  correctAnswer: Number(integerAnswer),
+                }),
             solution: solution.trim(),
             difficulty,
             isPYQ,
@@ -336,6 +357,33 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           </div>
 
           <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
+            {/* ── Type toggle ────────────────────────────────────────── */}
+            <div>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                Question type
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuestionType("mcq")}
+                  className={`rounded-2xl px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
+                    questionType === "mcq" ? "clay-btn text-white" : "clay-chip text-foreground/70"
+                  }`}
+                >
+                  MCQ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuestionType("integer")}
+                  className={`rounded-2xl px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
+                    questionType === "integer" ? "clay-btn text-white" : "clay-chip text-foreground/70"
+                  }`}
+                >
+                  Integer / Numerical
+                </button>
+              </div>
+            </div>
+
             <ClayField label="Question body (text, LaTeX $…$/$$…$$, or image URL)">
               <textarea
                 value={questionBody}
@@ -346,49 +394,61 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
               />
             </ClayField>
 
-            {/* ── Options block ─────────────────────────────────────── */}
-            <div>
-              <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-                Options — tap the marker to flag the correct answer
-              </span>
-              <div className="space-y-2">
-                {(
-                  [
-                    { key: "A" as OptionKey, value: optionA, setValue: setOptionA },
-                    { key: "B" as OptionKey, value: optionB, setValue: setOptionB },
-                    { key: "C" as OptionKey, value: optionC, setValue: setOptionC },
-                    { key: "D" as OptionKey, value: optionD, setValue: setOptionD },
-                  ] as const
-                ).map((opt) => {
-                  const isCorrect = correctOption === opt.key;
-                  return (
-                    <div key={opt.key} className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCorrectOption(opt.key)}
-                        aria-label={`Mark option ${opt.key} as correct`}
-                        aria-pressed={isCorrect}
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold transition-all ${
-                          isCorrect ? "clay-btn text-white" : "clay-btn-ghost text-foreground/50"
-                        }`}
-                      >
-                        {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : opt.key}
-                      </button>
-                      <input
-                        value={opt.value}
-                        onChange={(e) => opt.setValue(e.target.value)}
-                        placeholder={`Option ${opt.key}`}
-                        className={inputClass + " flex-1"}
-                      />
-                    </div>
-                  );
-                })}
+            {/* ── Options block (MCQ) or numeric answer (Integer) ─────── */}
+            {questionType === "mcq" ? (
+              <div>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                  Options — tap the marker to flag the correct answer
+                </span>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { key: "A" as OptionKey, value: optionA, setValue: setOptionA },
+                      { key: "B" as OptionKey, value: optionB, setValue: setOptionB },
+                      { key: "C" as OptionKey, value: optionC, setValue: setOptionC },
+                      { key: "D" as OptionKey, value: optionD, setValue: setOptionD },
+                    ] as const
+                  ).map((opt) => {
+                    const isCorrect = correctOption === opt.key;
+                    return (
+                      <div key={opt.key} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCorrectOption(opt.key)}
+                          aria-label={`Mark option ${opt.key} as correct`}
+                          aria-pressed={isCorrect}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold transition-all ${
+                            isCorrect ? "clay-btn text-white" : "clay-btn-ghost text-foreground/50"
+                          }`}
+                        >
+                          {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : opt.key}
+                        </button>
+                        <input
+                          value={opt.value}
+                          onChange={(e) => opt.setValue(e.target.value)}
+                          placeholder={`Option ${opt.key}`}
+                          className={inputClass + " flex-1"}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 flex items-center gap-1.5 text-xs text-foreground/40">
+                  <Circle className="h-3 w-3" />
+                  Currently marked correct: <span className="font-semibold text-foreground/60">Option {correctOption}</span>
+                </p>
               </div>
-              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-foreground/40">
-                <Circle className="h-3 w-3" />
-                Currently marked correct: <span className="font-semibold text-foreground/60">Option {correctOption}</span>
-              </p>
-            </div>
+            ) : (
+              <ClayField label="Correct numerical answer">
+                <input
+                  value={integerAnswer}
+                  onChange={(e) => setIntegerAnswer(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="e.g. 5 or 12.5"
+                  className={inputClass}
+                />
+              </ClayField>
+            )}
           </fieldset>
         </div>
 

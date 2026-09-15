@@ -117,14 +117,18 @@ export const getTestForTaking = createServerFn({ method: "GET" })
         timeLimitMinutes: (test.durationMinutes as number) ?? 180,
       },
       attemptNumber: priorAttemptCount + 1,
-      questions: questionDocs.map((q) => ({
-        id: String(q._id),
-        subject: q.subject as string,
-        questionNo: q.questionNo as number,
-        body: q.body as string,
-        options: q.options as { A: string; B: string; C: string; D: string },
-        // Deliberately omitted: correctOption, solution.
-      })),
+      questions: questionDocs.map((q) => {
+        const type = (q.type as "mcq" | "integer") ?? "mcq";
+        return {
+          id: String(q._id),
+          subject: q.subject as string,
+          questionNo: q.questionNo as number,
+          body: q.body as string,
+          type,
+          options: type === "mcq" ? (q.options as { A: string; B: string; C: string; D: string }) : undefined,
+          // Deliberately omitted: correctOption, correctAnswer, solution.
+        };
+      }),
     };
   });
 
@@ -133,7 +137,7 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
     (data: {
       token: string;
       testId: string;
-      answers: Record<string, "A" | "B" | "C" | "D" | undefined>;
+      answers: Record<string, "A" | "B" | "C" | "D" | number | undefined>;
       timeTakenMinutes: number;
     }) => data,
   )
@@ -157,8 +161,11 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
       questionId: string;
       questionNo: number;
       subject: string;
+      type: "mcq" | "integer";
       selectedOption: "A" | "B" | "C" | "D" | null;
-      correctOption: "A" | "B" | "C" | "D";
+      correctOption: "A" | "B" | "C" | "D" | null;
+      selectedAnswer: number | null;
+      correctAnswer: number | null;
       isCorrect: boolean;
       marksAwarded: number;
     }[] = [];
@@ -167,36 +174,66 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
 
     for (const q of questionDocs) {
       const questionId = String(q._id);
-      const given = data.answers[questionId] ?? null;
-      const correctOption = q.correctOption as "A" | "B" | "C" | "D";
+      const type = (q.type as "mcq" | "integer") ?? "mcq";
       const subject = q.subject as string;
+      const given = data.answers[questionId];
 
       let marksAwarded = 0;
       let isCorrect = false;
+      let selectedOption: "A" | "B" | "C" | "D" | null = null;
+      let correctOption: "A" | "B" | "C" | "D" | null = null;
+      let selectedAnswer: number | null = null;
+      let correctAnswer: number | null = null;
 
-      if (!given) {
-        unansweredCount++;
-      } else if (given === correctOption) {
-        correctCount++;
-        marksAwarded = 4;
-        isCorrect = true;
+      if (type === "mcq") {
+        correctOption = q.correctOption as "A" | "B" | "C" | "D";
+        selectedOption = typeof given === "string" ? given : null;
+
+        if (!selectedOption) {
+          unansweredCount++;
+        } else if (selectedOption === correctOption) {
+          correctCount++;
+          marksAwarded = 4;
+          isCorrect = true;
+        } else {
+          incorrectCount++;
+          marksAwarded = -1;
+        }
       } else {
-        incorrectCount++;
-        marksAwarded = -1;
+        // Integer/Numerical type — JEE convention: exact match, +4/0, no
+        // negative marking. Epsilon guards against float rounding only
+        // (e.g. 4.9999999 vs 5), it's not a lenient tolerance range.
+        correctAnswer = q.correctAnswer as number;
+        selectedAnswer = typeof given === "number" && Number.isFinite(given) ? given : null;
+
+        if (selectedAnswer === null) {
+          unansweredCount++;
+        } else if (Math.abs(selectedAnswer - correctAnswer) < 1e-6) {
+          correctCount++;
+          marksAwarded = 4;
+          isCorrect = true;
+        } else {
+          incorrectCount++;
+          marksAwarded = 0;
+        }
       }
 
       questionResults.push({
         questionId,
         questionNo: q.questionNo as number,
         subject,
-        selectedOption: given,
+        type,
+        selectedOption,
         correctOption,
+        selectedAnswer,
+        correctAnswer,
         isCorrect,
         marksAwarded,
       });
 
       const tally = subjectTally.get(subject) ?? { correct: 0, incorrect: 0, unanswered: 0, marks: 0 };
-      if (!given) tally.unanswered++;
+      const wasAnswered = type === "mcq" ? Boolean(selectedOption) : selectedAnswer !== null;
+      if (!wasAnswered) tally.unanswered++;
       else if (isCorrect) tally.correct++;
       else tally.incorrect++;
       tally.marks += marksAwarded;

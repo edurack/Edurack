@@ -90,6 +90,12 @@ export type QuestionOptions = {
   D: string;
 };
 
+// "mcq" — classic 4-option question, graded against correctOption.
+// "integer" — JEE/NEET-style Numerical/Integer-type question: no options,
+// graded by exact match against correctAnswer (see submitTestAttempt in
+// test-engine.ts for the +4/0 marking scheme).
+export type QuestionType = "mcq" | "integer";
+
 export type Question = {
   id: string;
   bundleId: string;
@@ -97,8 +103,12 @@ export type Question = {
   subject: string;
   questionNo: number;
   body: string;
-  options: QuestionOptions;
-  correctOption: "A" | "B" | "C" | "D";
+  type: QuestionType;
+  // Present only when type === "mcq".
+  options?: QuestionOptions;
+  correctOption?: "A" | "B" | "C" | "D";
+  // Present only when type === "integer".
+  correctAnswer?: number;
   solution: string;
   difficulty: "Easy" | "Medium" | "Hard";
   isPYQ: boolean;

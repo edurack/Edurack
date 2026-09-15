@@ -13,6 +13,8 @@ export const Route = createFileRoute("/test-analysis/$testId")({
   component: TestAnalysisPage,
 });
 
+type QuestionType = "mcq" | "integer";
+
 type AttemptRow = {
   id: string;
   attemptNumber: number;
@@ -34,7 +36,9 @@ type RecurringMistake = {
   questionNo: number;
   subject: string;
   body: string;
-  correctOption: "A" | "B" | "C" | "D";
+  type: QuestionType;
+  correctOption?: "A" | "B" | "C" | "D";
+  correctAnswer?: number;
   solution: string;
   wrongCount: number;
   totalSeen: number;
@@ -333,7 +337,9 @@ function TestAnalysisContent({
                   </div>
                   <SmartContent value={q.body} className="mb-2 text-sm text-foreground" />
                   <div className="clay-inset rounded-xl px-3 py-2 text-xs text-foreground/70">
-                    <span className="font-semibold">Correct answer: {q.correctOption}</span>
+                    <span className="font-semibold">
+                      Correct answer: {q.type === "mcq" ? q.correctOption : q.correctAnswer}
+                    </span>
                     {q.solution && (
                       <div className="mt-1">
                         <SmartContent value={q.solution} className="text-foreground/70" />

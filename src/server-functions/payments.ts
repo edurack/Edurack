@@ -327,3 +327,63 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+  // ─── Claim a free item (selling price is literally 0) ──────────────────────
+// Some bundles/mentorship batches are published at ₹0 (promos, giveaways).
+// Razorpay can't create a ₹0 order, so this bypasses the payment gateway
+// entirely — but it re-checks the price server-side via
+// lookupItemPriceAndTitle before writing anything, so a client can't spoof
+// "this is free" to grab a paid item for nothing. Writes the exact same
+// `purchases` shape verifyRazorpayPayment does, with a synthetic
+// "free_..." id in place of a real Razorpay payment id, so every other
+// consumer of `purchases` (the ledger, hasPurchased, receipts) keeps
+// working unchanged — it's just a purchase with amount: 0.
+export const claimFreeItem = createServerFn({ method: "POST" })
+  .validator((data: { token: string; itemType: ItemType; itemId: string }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await requireSignedIn(data.token);
+    const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+
+    if (sellingPrice > 0) {
+      throw new Error("This item isn't free — use regular checkout.");
+    }
+
+    const db = await getDb();
+    const commissionPercent = await resolveCommissionPercent(data.itemType, data.itemId);
+    const freePaymentId = `free_${decoded.uid}_${Date.now()}`;
+
+    await db.collection("purchases").updateOne(
+      { uid: decoded.uid, itemType: data.itemType, itemId: data.itemId },
+      {
+        $set: {
+          uid: decoded.uid,
+          itemType: data.itemType,
+          itemId: data.itemId,
+          amount: 0,
+          razorpayOrderId: freePaymentId,
+          razorpayPaymentId: freePaymentId,
+          purchasedAt: new Date(),
+          ...(commissionPercent != null ? { platformCommissionPercent: commissionPercent } : {}),
+        },
+      },
+      { upsert: true },
+    );
+
+    if (decoded.email) {
+      try {
+        await sendMail({
+          to: decoded.email,
+          subject: `You're enrolled — ${title}`,
+          html: purchaseConfirmationEmailHtml({
+            itemTitle: title,
+            itemType: data.itemType === "mentorTest" ? "bundle" : data.itemType,
+            amount: 0,
+          }),
+        });
+      } catch (err) {
+        console.error(`[claimFreeItem] confirmation email failed for uid=${decoded.uid}:`, err);
+      }
+    }
+
+    return { ok: true };
+  });

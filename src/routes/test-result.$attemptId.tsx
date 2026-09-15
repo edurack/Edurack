@@ -13,6 +13,7 @@ export const Route = createFileRoute("/test-result/$attemptId")({
 });
 
 type OptionKey = "A" | "B" | "C" | "D";
+type QuestionType = "mcq" | "integer";
 
 type SubjectBreakdown = { subject: string; correct: number; incorrect: number; unanswered: number; marks: number };
 
@@ -37,11 +38,14 @@ type Attempt = {
 type ReviewQuestion = {
   questionNo: number;
   subject: string;
+  type: QuestionType;
   body: string;
-  options: Record<OptionKey, string>;
+  options?: Record<OptionKey, string>;
   solution: string;
   selectedOption: OptionKey | null;
-  correctOption: OptionKey;
+  correctOption?: OptionKey;
+  selectedAnswer: number | null;
+  correctAnswer?: number;
   isCorrect: boolean;
   marksAwarded: number;
 };
@@ -313,60 +317,84 @@ function TestResultContent({
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredReview.map((q) => (
-              <div key={`${q.subject}-${q.questionNo}`} className="clay-inset rounded-2xl p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-bold text-foreground/50">
-                    Q{q.questionNo} · {q.subject}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                      q.isCorrect
-                        ? "bg-[var(--mint-soft)] text-foreground"
-                        : q.selectedOption
-                          ? "bg-[var(--coral-soft)] text-foreground"
-                          : "bg-foreground/10 text-foreground/50"
-                    }`}
-                  >
-                    {q.isCorrect ? "Correct" : q.selectedOption ? "Incorrect" : "Skipped"} · {q.marksAwarded > 0 ? "+" : ""}
-                    {q.marksAwarded}
-                  </span>
-                </div>
+            {filteredReview.map((q) => {
+              const hasAnswer = q.type === "mcq" ? Boolean(q.selectedOption) : q.selectedAnswer !== null;
+              return (
+                <div key={`${q.subject}-${q.questionNo}`} className="clay-inset rounded-2xl p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground/50">
+                      Q{q.questionNo} · {q.subject}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        q.isCorrect
+                          ? "bg-[var(--mint-soft)] text-foreground"
+                          : hasAnswer
+                            ? "bg-[var(--coral-soft)] text-foreground"
+                            : "bg-foreground/10 text-foreground/50"
+                      }`}
+                    >
+                      {q.isCorrect ? "Correct" : hasAnswer ? "Incorrect" : "Skipped"} · {q.marksAwarded > 0 ? "+" : ""}
+                      {q.marksAwarded}
+                    </span>
+                  </div>
 
-                <SmartContent value={q.body} className="mb-3 text-sm text-foreground" />
+                  <SmartContent value={q.body} className="mb-3 text-sm text-foreground" />
 
-                <div className="space-y-1.5">
-                  {(["A", "B", "C", "D"] as const).map((opt) => {
-                    const isSelected = q.selectedOption === opt;
-                    const isCorrectOpt = q.correctOption === opt;
-                    return (
+                  {q.type === "mcq" ? (
+                    <div className="space-y-1.5">
+                      {(["A", "B", "C", "D"] as const).map((opt) => {
+                        const isSelected = q.selectedOption === opt;
+                        const isCorrectOpt = q.correctOption === opt;
+                        return (
+                          <div
+                            key={opt}
+                            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
+                              isCorrectOpt
+                                ? "bg-[var(--mint-soft)]/50"
+                                : isSelected
+                                  ? "bg-[var(--coral-soft)]/50"
+                                  : "bg-transparent"
+                            }`}
+                          >
+                            <span className="font-semibold text-foreground/50">({opt})</span>
+                            <SmartContent value={q.options?.[opt] ?? ""} className="text-foreground" />
+                            {isCorrectOpt && <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-[var(--mint-soft)]" />}
+                            {isSelected && !isCorrectOpt && <XCircle className="ml-auto h-4 w-4 shrink-0 text-[var(--coral-soft)]" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
                       <div
-                        key={opt}
-                        className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
-                          isCorrectOpt
-                            ? "bg-[var(--mint-soft)]/50"
-                            : isSelected
-                              ? "bg-[var(--coral-soft)]/50"
-                              : "bg-transparent"
+                        className={`rounded-xl px-3 py-2 text-sm ${
+                          q.selectedAnswer === null
+                            ? "bg-transparent text-foreground/50"
+                            : q.isCorrect
+                              ? "bg-[var(--mint-soft)]/50"
+                              : "bg-[var(--coral-soft)]/50"
                         }`}
                       >
-                        <span className="font-semibold text-foreground/50">({opt})</span>
-                        <SmartContent value={q.options[opt]} className="text-foreground" />
-                        {isCorrectOpt && <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-[var(--mint-soft)]" />}
-                        {isSelected && !isCorrectOpt && <XCircle className="ml-auto h-4 w-4 shrink-0 text-[var(--coral-soft)]" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-foreground/40">Your answer</p>
+                        <p className="font-semibold text-foreground">{q.selectedAnswer ?? "—"}</p>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="rounded-xl bg-[var(--mint-soft)]/50 px-3 py-2 text-sm">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-foreground/40">Correct answer</p>
+                        <p className="font-semibold text-foreground">{q.correctAnswer}</p>
+                      </div>
+                    </div>
+                  )}
 
-                {q.solution && (
-                  <div className="clay-inset mt-3 rounded-xl px-4 py-3">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">Solution</p>
-                    <SmartContent value={q.solution} className="text-sm text-foreground/80" />
-                  </div>
-                )}
-              </div>
-            ))}
+                  {q.solution && (
+                    <div className="clay-inset mt-3 rounded-xl px-4 py-3">
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">Solution</p>
+                      <SmartContent value={q.solution} className="text-sm text-foreground/80" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

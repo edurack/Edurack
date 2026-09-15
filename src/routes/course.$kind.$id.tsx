@@ -28,7 +28,7 @@ import {
   submitSupportTicket,
   listMentorBatchSeriesTestsForStudent,
 } from "@/server-functions/batch-hub";
-import { createRazorpayOrder, verifyRazorpayPayment, previewCoupon } from "@/server-functions/payments";
+import { createRazorpayOrder, verifyRazorpayPayment, previewCoupon, claimFreeItem } from "@/server-functions/payments";
 import { listMyAttemptsForTest } from "@/server-functions/test-results";
 
 declare global {
@@ -366,6 +366,7 @@ function CourseHubPage() {
   // since displayPrice is only ever rendered inside the showPurchaseBar block.
   const safeSellingPrice = sellingPrice ?? 0;
   const displayPrice = appliedCoupon ? appliedCoupon.discountedPrice : safeSellingPrice;
+  const isFreeItem = safeSellingPrice === 0;
 
   async function handleApplyCoupon() {
     if (!user) {
@@ -402,9 +403,6 @@ function CourseHubPage() {
 
   async function handlePurchase() {
     if (!user) {
-      // Explicit, user-initiated redirect — not a mount-time effect — so
-      // this can never turn into a back-button loop the way the old
-      // always-redirect-on-mount effect did.
       navigate({ to: "/auth" });
       return;
     }
@@ -412,6 +410,17 @@ function CourseHubPage() {
     setPurchasing(true);
     try {
       const token = await user.getIdToken();
+
+      // Free items skip Razorpay entirely — it can't create a ₹0 order.
+      // claimFreeItem re-checks the price server-side, so this can't be
+      // abused to grab a paid item by spoofing isFreeItem client-side.
+      if (isFreeItem) {
+        await claimFreeItem({ data: { token, itemType: kind, itemId: id } });
+        setIsPurchased(true);
+        setPurchasing(false);
+        return;
+      }
+
       const order = await createRazorpayOrder({
         data: { token, itemType: kind, itemId: id, couponCode: appliedCoupon?.code },
       });
@@ -666,25 +675,37 @@ function CourseHubPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-display text-lg font-bold text-foreground">
-                    ₹{displayPrice.toLocaleString()}
-                  </span>
-                  {appliedCoupon ? (
-                    <span className="text-sm text-foreground/40 line-through">
-                      ₹{safeSellingPrice.toLocaleString()}
+                  {isFreeItem ? (
+                    <span className="font-display text-lg font-bold" style={{ color: accent.deep }}>
+                      Free
                     </span>
                   ) : (
-                    crossedPrice &&
-                    crossedPrice > safeSellingPrice && (
-                      <span className="text-sm text-foreground/40 line-through">
-                        ₹{crossedPrice.toLocaleString()}
+                    <>
+                      <span className="font-display text-lg font-bold text-foreground">
+                        ₹{displayPrice.toLocaleString()}
                       </span>
-                    )
+                      {appliedCoupon ? (
+                        <span className="text-sm text-foreground/40 line-through">
+                          ₹{safeSellingPrice.toLocaleString()}
+                        </span>
+                      ) : (
+                        crossedPrice &&
+                        crossedPrice > safeSellingPrice && (
+                          <span className="text-sm text-foreground/40 line-through">
+                            ₹{crossedPrice.toLocaleString()}
+                          </span>
+                        )
+                      )}
+                      {!appliedCoupon && discountPercent ? (
+                        <span className="text-xs font-bold" style={{ color: accent.deep }}>{discountPercent}% off</span>
+                      ) : null}
+                    </>
                   )}
-                  {!appliedCoupon && discountPercent ? (
-                    <span className="text-xs font-bold" style={{ color: accent.deep }}>{discountPercent}% off</span>
-                  ) : null}
+
                 </div>
+                <p className="truncate text-xs text-foreground/50">
+                  {user ? (isFreeItem ? "Claim this for free" : "Purchase to unlock everything") : "Log in to unlock everything"}
+                </p>
                 <p className="truncate text-xs text-foreground/50">
                   {user ? "Purchase to unlock everything" : "Log in to purchase and unlock everything"}
                 </p>
@@ -695,8 +716,13 @@ function CourseHubPage() {
                 className="flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
                 style={{ background: accent.deep }}
               >
-                {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : user ? "Purchase" : "Log in to purchase"}
-              </button>
+              {purchasing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : user ? (
+                isFreeItem ? "Get for free" : "Purchase"
+              ) : (
+                "Log in to purchase"
+              )}              </button>
             </div>
           </div>
           {purchaseError && (

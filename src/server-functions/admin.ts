@@ -230,12 +230,13 @@ export const listBundles = createServerFn({ method: "GET" })
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
         updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : null,
         mentorId: (r.mentorId as string | null) ?? null,
+        batchId: (r.batchId as string | null) ?? null,
         marketingPercent: (r.marketingPercent as number | null) ?? null,
-        kind: (r.kind as string) ?? "standard",
+        kind: (r.kind as "standard" | "mentorBatchSeries") ?? "standard",
       })),
     };
   });
-
+  
 export const updateBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; bundle: Partial<BundleInput> }) => data)
   .handler(async ({ data }) => {
@@ -426,8 +427,10 @@ export const listQuestions = createServerFn({ method: "GET" })
         subject: r.subject as string,
         questionNo: r.questionNo as number,
         body: r.body as string,
+        type: (r.type as QuestionInput["type"]) ?? "mcq",
         options: r.options as QuestionInput["options"],
         correctOption: r.correctOption as QuestionInput["correctOption"],
+        correctAnswer: r.correctAnswer as QuestionInput["correctAnswer"],
         solution: r.solution as string,
         difficulty: r.difficulty as QuestionInput["difficulty"],
         isPYQ: Boolean(r.isPYQ),
@@ -446,8 +449,12 @@ type QuestionInput = {
   subject: string;
   questionNo: number;
   body: string;
-  options: { A: string; B: string; C: string; D: string };
-  correctOption: "A" | "B" | "C" | "D";
+  type: "mcq" | "integer";
+  // Present only when type === "mcq".
+  options?: { A: string; B: string; C: string; D: string };
+  correctOption?: "A" | "B" | "C" | "D";
+  // Present only when type === "integer".
+  correctAnswer?: number;
   solution: string;
   difficulty: "Easy" | "Medium" | "Hard";
   isPYQ: boolean;
@@ -458,6 +465,20 @@ export const createQuestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; question: QuestionInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+
+    const q = data.question;
+    if (q.type === "mcq") {
+      if (!q.options || !q.correctOption) {
+        throw new Error("MCQ questions require options and a correctOption.");
+      }
+    } else if (q.type === "integer") {
+      if (typeof q.correctAnswer !== "number" || !Number.isFinite(q.correctAnswer)) {
+        throw new Error("Integer questions require a numeric correctAnswer.");
+      }
+    } else {
+      throw new Error("Unknown question type.");
+    }
+
     const db = await getDb();
     const result = await db.collection("questions").insertOne({
       ...data.question,
@@ -484,8 +505,10 @@ export const listQuestionsForTestSubject = createServerFn({ method: "GET" })
         subject: r.subject as string,
         questionNo: r.questionNo as number,
         body: r.body as string,
-        options: r.options as { A: string; B: string; C: string; D: string },
-        correctOption: r.correctOption as "A" | "B" | "C" | "D",
+        type: (r.type as "mcq" | "integer") ?? "mcq",
+        options: (r.options as { A: string; B: string; C: string; D: string } | undefined) ?? undefined,
+        correctOption: (r.correctOption as "A" | "B" | "C" | "D" | undefined) ?? undefined,
+        correctAnswer: (r.correctAnswer as number | undefined) ?? undefined,
         solution: r.solution as string,
         difficulty: r.difficulty as "Easy" | "Medium" | "Hard",
         isPYQ: Boolean(r.isPYQ),
@@ -502,6 +525,29 @@ export const updateQuestion = createServerFn({ method: "POST" })
     await requireAdmin(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
+
+    const existing = await db.collection("questions").findOne({ _id: new ObjectId(data.id) });
+    if (!existing) throw new Error("Question not found.");
+
+    const type = (data.question.type as "mcq" | "integer" | undefined) ?? (existing.type as "mcq" | "integer") ?? "mcq";
+
+    if (type === "integer" && data.question.correctAnswer !== undefined) {
+      if (typeof data.question.correctAnswer !== "number" || !Number.isFinite(data.question.correctAnswer)) {
+        throw new Error("correctAnswer must be a valid number.");
+      }
+    }
+    if (type === "mcq" && data.question.correctOption !== undefined) {
+      if (!["A", "B", "C", "D"].includes(data.question.correctOption)) {
+        throw new Error("correctOption must be one of A, B, C, D.");
+      }
+    }
+    if (type === "mcq" && data.question.options !== undefined) {
+      const { A, B, C, D } = data.question.options;
+      if (!A?.trim() || !B?.trim() || !C?.trim() || !D?.trim()) {
+        throw new Error("All four options (A–D) must be non-empty.");
+      }
+    }
+
     await db.collection("questions").updateOne(
       { _id: new ObjectId(data.id) },
       { $set: { ...data.question } },
@@ -527,8 +573,10 @@ export const listQuestionsForTest = createServerFn({ method: "GET" })
         subject: r.subject as string,
         questionNo: r.questionNo as number,
         body: r.body as string,
-        options: r.options as { A: string; B: string; C: string; D: string },
-        correctOption: r.correctOption as "A" | "B" | "C" | "D",
+        type: (r.type as "mcq" | "integer") ?? "mcq",
+        options: (r.options as { A: string; B: string; C: string; D: string } | undefined) ?? undefined,
+        correctOption: (r.correctOption as "A" | "B" | "C" | "D" | undefined) ?? undefined,
+        correctAnswer: (r.correctAnswer as number | undefined) ?? undefined,
         solution: r.solution as string,
         difficulty: r.difficulty as "Easy" | "Medium" | "Hard",
         isPYQ: Boolean(r.isPYQ),

@@ -26,7 +26,8 @@ type Question = {
   subject: string;
   questionNo: number;
   body: string;
-  options: Record<OptionKey, string>;
+  type: "mcq" | "integer";
+  options?: Record<OptionKey, string>;
 };
 
 type TestMeta = {
@@ -90,7 +91,7 @@ function TestEnginePage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [activeSubject, setActiveSubject] = useState<string>("");
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, OptionKey | undefined>>({});
+  const [answers, setAnswers] = useState<Record<string, OptionKey | number | undefined>>({});
   const [statuses, setStatuses] = useState<Record<string, QuestionStatus>>({});
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -361,16 +362,28 @@ function TestEnginePage() {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: option }));
   }
 
+  function setIntegerAnswer(value: string) {
+    if (!currentQuestion) return;
+    if (value === "") {
+      setAnswers((prev) => ({ ...prev, [currentQuestion.id]: undefined }));
+      return;
+    }
+    if (!/^-?\d*\.?\d*$/.test(value)) return; // block invalid keystrokes
+    const num = Number(value);
+    if (Number.isNaN(num)) return;
+    setAnswers((prev) => ({ ...prev, [currentQuestion.id]: num }));
+  }
+
   function saveAndNext() {
     if (!currentQuestion) return;
-    const hasAnswer = Boolean(answers[currentQuestion.id]);
+    const hasAnswer = answers[currentQuestion.id] !== undefined;
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered" : "not-answered" }));
     advance();
   }
 
   function saveAndMark() {
     if (!currentQuestion) return;
-    const hasAnswer = Boolean(answers[currentQuestion.id]);
+    const hasAnswer = answers[currentQuestion.id] !== undefined;
     setStatuses((prev) => ({ ...prev, [currentQuestion.id]: hasAnswer ? "answered-marked" : "marked" }));
     advance();
   }
@@ -609,26 +622,44 @@ function TestEnginePage() {
 
               <SmartContent value={currentQuestion.body} className="mb-5 text-sm text-foreground" />
 
-              <div className="space-y-2.5">
-                {(["A", "B", "C", "D"] as const).map((opt) => (
-                  <label
-                    key={opt}
-                    className={`clay-inset flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition ${
-                      answers[currentQuestion.id] === opt ? `ring-2 ${currentAccent.ring}` : ""
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name={`q-${currentQuestion.id}`}
-                      checked={answers[currentQuestion.id] === opt}
-                      onChange={() => selectOption(opt)}
-                      className="h-4 w-4 shrink-0"
-                    />
-                    <span className="text-sm font-semibold text-foreground/50">({opt})</span>
-                    <SmartContent value={currentQuestion.options[opt]} className="text-sm text-foreground" />
+              {currentQuestion.type === "mcq" ? (
+                <div className="space-y-2.5">
+                  {(["A", "B", "C", "D"] as const).map((opt) => (
+                    <label
+                      key={opt}
+                      className={`clay-inset flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition ${
+                        answers[currentQuestion.id] === opt ? `ring-2 ${currentAccent.ring}` : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`q-${currentQuestion.id}`}
+                        checked={answers[currentQuestion.id] === opt}
+                        onChange={() => selectOption(opt)}
+                        className="h-4 w-4 shrink-0"
+                      />
+                      <span className="text-sm font-semibold text-foreground/50">({opt})</span>
+                      <SmartContent value={currentQuestion.options?.[opt] ?? ""} className="text-sm text-foreground" />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="clay-inset rounded-2xl px-4 py-3">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                    Enter your numerical answer
                   </label>
-                ))}
-              </div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={
+                      typeof answers[currentQuestion.id] === "number" ? String(answers[currentQuestion.id]) : ""
+                    }
+                    onChange={(e) => setIntegerAnswer(e.target.value)}
+                    placeholder="e.g. 5"
+                    className="w-full rounded-xl bg-transparent text-lg font-semibold text-foreground focus:outline-none"
+                  />
+                </div>
+              )}
 
               {/* Primary actions — 2-up grid on mobile so nothing overflows
                   or wraps awkwardly on narrow phones; single row from sm up. */}

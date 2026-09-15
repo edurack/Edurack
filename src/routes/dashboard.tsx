@@ -769,6 +769,10 @@ function ListingCard({ listing, showKindBadge }: { listing: Listing; showKindBad
               <BadgeCheck className="h-3.5 w-3.5" />
               You're in
             </span>
+          ) : listing.sellingPrice === 0 ? (
+            <span className="font-display text-lg font-bold" style={{ color: kindColor.deep }}>
+              Free
+            </span>
           ) : (
             <>
               <span className="font-display text-lg font-bold text-foreground">₹{listing.sellingPrice.toLocaleString()}</span>
@@ -790,7 +794,7 @@ function ListingCard({ listing, showKindBadge }: { listing: Listing; showKindBad
           className="flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold text-white transition-transform duration-200 hover:-translate-y-0.5"
           style={{ background: kindColor.deep }}
         >
-          <span>{listing.purchased ? "Study now" : "Buy now"}</span>
+          <span>{listing.purchased ? "Study now" : listing.sellingPrice === 0 ? "Get for free" : "Buy now"}</span>
           <ArrowRight className="h-4 w-4" />
         </button>
       </div>

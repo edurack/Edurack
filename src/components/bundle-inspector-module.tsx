@@ -113,11 +113,13 @@ export function BundleInspectorModule({ adminUser }: { adminUser: AdminUser }) {
           q.questionNo,
           q.subject,
           q.body,
-          q.options.A,
-          q.options.B,
-          q.options.C,
-          q.options.D,
+          q.type,
+          q.options?.A,
+          q.options?.B,
+          q.options?.C,
+          q.options?.D,
           q.correctOption,
+          q.correctAnswer,
           q.solution,
           q.difficulty,
           q.isPYQ ? "pyq" : "",
@@ -512,19 +514,30 @@ function EditableQuestionCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(question.body);
-  const [optionA, setOptionA] = useState(question.options.A);
-  const [optionB, setOptionB] = useState(question.options.B);
-  const [optionC, setOptionC] = useState(question.options.C);
-  const [optionD, setOptionD] = useState(question.options.D);
-  const [correctOption, setCorrectOption] = useState(question.correctOption);
+  const [optionA, setOptionA] = useState(question.options?.A ?? "");
+  const [optionB, setOptionB] = useState(question.options?.B ?? "");
+  const [optionC, setOptionC] = useState(question.options?.C ?? "");
+  const [optionD, setOptionD] = useState(question.options?.D ?? "");
+  const [correctOption, setCorrectOption] = useState(question.correctOption ?? "A");
+  const [integerAnswer, setIntegerAnswer] = useState(
+    question.correctAnswer !== undefined ? String(question.correctAnswer) : "",
+  );
   const [solution, setSolution] = useState(question.solution);
   const [difficulty, setDifficulty] = useState(question.difficulty);
   const [isPYQ, setIsPYQ] = useState(question.isPYQ);
   const [pyqYear, setPyqYear] = useState(question.pyqYear ?? "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const isInteger = question.type === "integer";
 
   async function save() {
+    setSaveError(null);
+    if (isInteger && (integerAnswer.trim() === "" || Number.isNaN(Number(integerAnswer)))) {
+      setSaveError("Enter a valid numeric answer.");
+      return;
+    }
     setSaving(true);
     try {
       const token = await adminUser.getIdToken();
@@ -534,8 +547,9 @@ function EditableQuestionCard({
           id: question.id,
           question: {
             body,
-            options: { A: optionA, B: optionB, C: optionC, D: optionD },
-            correctOption,
+            ...(isInteger
+              ? { correctAnswer: Number(integerAnswer) }
+              : { options: { A: optionA, B: optionB, C: optionC, D: optionD }, correctOption }),
             solution,
             difficulty,
             isPYQ,
@@ -545,6 +559,8 @@ function EditableQuestionCard({
       });
       setEditing(false);
       onSaved();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Could not save this question.");
     } finally {
       setSaving(false);
     }
@@ -566,10 +582,13 @@ function EditableQuestionCard({
     return (
       <div className="clay-inset px-4 py-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-foreground/50">Q{question.questionNo}</span>
             <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/50">
               {question.difficulty}
+            </span>
+            <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/60">
+              {isInteger ? "Integer" : "MCQ"}
             </span>
             {question.isPYQ && (
               <span className="rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
@@ -577,7 +596,7 @@ function EditableQuestionCard({
               </span>
             )}
             <span className="rounded-full bg-[var(--mint-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground">
-              Correct: {question.correctOption}
+              {isInteger ? `Answer: ${question.correctAnswer}` : `Correct: ${question.correctOption}`}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -597,13 +616,19 @@ function EditableQuestionCard({
           </div>
         </div>
         <SmartContent value={question.body} className="mb-2 text-sm text-foreground" />
-        <div className="grid grid-cols-1 gap-1.5 text-xs text-foreground/60 sm:grid-cols-2">
-          {(["A", "B", "C", "D"] as const).map((opt) => (
-            <div key={opt} className={opt === question.correctOption ? "font-semibold text-[var(--sky-deep)]" : ""}>
-              {opt}. <SmartContent value={question.options[opt]} className="inline" />
-            </div>
-          ))}
-        </div>
+        {isInteger ? (
+          <p className="text-xs text-foreground/60">
+            Numerical answer: <span className="font-semibold text-[var(--sky-deep)]">{question.correctAnswer}</span>
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-1.5 text-xs text-foreground/60 sm:grid-cols-2">
+            {(["A", "B", "C", "D"] as const).map((opt) => (
+              <div key={opt} className={opt === question.correctOption ? "font-semibold text-[var(--sky-deep)]" : ""}>
+                {opt}. <SmartContent value={question.options?.[opt] ?? ""} className="inline" />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -611,28 +636,47 @@ function EditableQuestionCard({
   return (
     <div className="clay-inset space-y-3 px-4 py-4">
       <QuickField label="Body" value={body} onChange={setBody} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <QuickField label="Option A" value={optionA} onChange={setOptionA} />
-        <QuickField label="Option B" value={optionB} onChange={setOptionB} />
-        <QuickField label="Option C" value={optionC} onChange={setOptionC} />
-        <QuickField label="Option D" value={optionD} onChange={setOptionD} />
-      </div>
+
+      {isInteger ? (
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-foreground/50">
+            Correct numerical answer
+          </span>
+          <input
+            value={integerAnswer}
+            onChange={(e) => setIntegerAnswer(e.target.value)}
+            inputMode="decimal"
+            placeholder="e.g. 5 or 12.5"
+            className={inputClass}
+          />
+        </label>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <QuickField label="Option A" value={optionA} onChange={setOptionA} />
+            <QuickField label="Option B" value={optionB} onChange={setOptionB} />
+            <QuickField label="Option C" value={optionC} onChange={setOptionC} />
+            <QuickField label="Option D" value={optionD} onChange={setOptionD} />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Correct:</span>
+            {(["A", "B", "C", "D"] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setCorrectOption(opt)}
+                className={`h-7 w-7 rounded-full text-xs font-bold transition-all ${
+                  correctOption === opt ? "clay-btn text-white" : "clay-btn-ghost text-foreground/60"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Correct:</span>
-          {(["A", "B", "C", "D"] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setCorrectOption(opt)}
-              className={`h-7 w-7 rounded-full text-xs font-bold transition-all ${
-                correctOption === opt ? "clay-btn text-white" : "clay-btn-ghost text-foreground/60"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
         <select
           value={difficulty}
           onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}
@@ -656,6 +700,9 @@ function EditableQuestionCard({
         )}
       </div>
       <QuickField label="Solution" value={solution} onChange={setSolution} />
+
+      {saveError && <p className="text-xs font-medium text-rose-600">{saveError}</p>}
+
       <div className="flex gap-2">
         <button
           onClick={save}
