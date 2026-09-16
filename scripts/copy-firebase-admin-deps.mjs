@@ -111,7 +111,8 @@ if (!existsSync(functionDir)) {
 
 const seenPaths = new Set();
 copyPackage("firebase-admin", root, seenPaths);
-copyPackage("json-bigint", root, seenPaths); // Force-inject json-bigint to the output
+copyPackage("json-bigint", root, seenPaths);
 copyPackage("mongodb", root, seenPaths);
-copyPackage("bson", root, seenPaths); // mongodb's own dependency, but copied explicitly in case its own package.json listing is somehow bypassed — harmless if seenPaths already caught it via mongodb's recursive walk
+copyPackage("bson", root, seenPaths);
+copyPackage("punycode", root, seenPaths);
 console.log("[copy-firebase-admin-deps] done");
