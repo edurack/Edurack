@@ -1,3 +1,28 @@
+# --------------------------------------------------
+# AI SEARCH CRAWLERS (Optimizing for GEO Citations)
+# --------------------------------------------------
+
+# Allow ChatGPT Search to cite your site
+User-agent: OAI-SearchBot
+Allow: /
+
+# Allow Perplexity to pull live text and cite your site
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+
+# Allow Anthropic/Claude Search to cite your site
+User-agent: Claude-SearchBot
+Allow: /
+
+# Allow Google Gemini to pull real-time site updates
+User-agent: Google-Extended
+Allow: /
+
+# --------------------------------------------------
+# TRADITIONAL SEARCH CRAWLERS & GENERAL FALLBACK
+# --------------------------------------------------
 User-agent: *
 Allow: /
 
