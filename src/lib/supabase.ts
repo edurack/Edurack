@@ -86,19 +86,31 @@ export const MAX_BUNDLE_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
 export const PROMOTER_UPLOADS_BUCKET = "promoter-uploads";
 export const MAX_PROMOTER_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
 
+export const SESSION_TEMPLATES_BUCKET = "session-templates";
+export const MAX_SESSION_TEMPLATE_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
+
+export const QUESTION_ASSETS_BUCKET = "question-assets";
+export const MAX_QUESTION_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB pre-compression
+
+
 // Shared helper — uploads a single File to the given bucket under a
 // collision-proof generated name, and returns its public URL. Every
 // upload field across the admin dashboard, mentor portal, and promoter
 // portal goes through this one function so the naming scheme and error
 // shape stay identical everywhere.
-export async function uploadToSupabase(bucket: string, file: File): Promise<string> {
+export async function uploadToSupabase(
+  bucket: string,
+  file: File,
+  cacheControlSeconds = 3600,
+): Promise<string> {
   const ext = file.name.includes(".") ? file.name.split(".").pop() : "bin";
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const { error } = await supabase.storage.from(bucket).upload(path, file, {
-    cacheControl: "3600",
+    cacheControl: String(cacheControlSeconds),
     upsert: false,
   });
   if (error) throw error;
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
   return data.publicUrl;
 }
+

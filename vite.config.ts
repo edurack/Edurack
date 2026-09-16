@@ -11,7 +11,7 @@ export default defineConfig({
       // Vite/Rolldown version — plain package names are fine here since
       // Vite resolves externals at the package level (covers subpaths
       // like "firebase-admin/app" automatically).
-      external: ["firebase-admin", "google-auth-library", "node-fetch"],
+      external: ["firebase-admin", "google-auth-library", "node-fetch", "mongodb", "bson"],
     },
     build: {
       rollupOptions: {
@@ -21,7 +21,9 @@ export default defineConfig({
         external: [
           /^firebase-admin(\/.*)?$/,
           /^google-auth-library(\/.*)?$/,
-          /^node-fetch(\/.*)?$/
+          /^node-fetch(\/.*)?$/,
+          /^mongodb(\/.*)?$/,
+          /^bson(\/.*)?$/,
         ],
       },
     },

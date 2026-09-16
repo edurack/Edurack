@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Edurack — Launch Carousel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --bg: #F8FAFC;
+    --card: #FDFEFF;
+    --fg: #1E2A44;
+    --muted: #64748B;
+    --primary: #4E9FE0;
+    --primary-light: #5FADEC;
+    --primary-deep: #3D5FCE;
+    --sky-soft: #DCEBFA;
+    --sky-deep: #3E7FDB;
+    --teal-soft: #BEE8E4;
+    --teal-accent: #6FD3C8;
+    --mint-soft: #C2EED2;
+    --coral-soft: #F1CBAE;
+    --lemon-soft: #F3E9A8;
+    --lilac-soft: #E6D4F1;
+    --border: #D9E1EA;
+    --clay-shadow: -8px -8px 20px rgba(255,255,255,.9), 10px 12px 24px rgba(30,80,140,.14), inset 2px 2px 4px rgba(255,255,255,.9), inset -3px -3px 8px rgba(30,80,140,.08);
+    --clay-shadow-sm: -4px -4px 10px rgba(255,255,255,.85), 6px 6px 14px rgba(30,80,140,.12), inset 1px 1px 2px rgba(255,255,255,.9), inset -2px -2px 5px rgba(30,80,140,.06);
+    --clay-shadow-button: -3px -3px 8px rgba(255,255,255,.9), 6px 8px 16px rgba(20,70,140,.25), inset 1px 2px 3px rgba(255,255,255,.6), inset -2px -3px 6px rgba(20,70,140,.25);
+  }
+
+  *{ box-sizing: border-box; margin:0; padding:0; }
+
+  body{
+    font-family:"Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    background: #0e1420;
+    color: var(--fg);
+    padding: 40px 0 90px;
+  }
+
+  h1,h2,h3,h4{ font-family:"Bricolage Grotesque", ui-sans-serif, sans-serif; letter-spacing:-0.02em; }
+
+  .toolbar{ max-width: 1100px; margin: 0 auto 32px; padding: 0 24px; color: #cdd7e6; }
+  .toolbar h2{ color:#f4f8ff; font-size: 1.55rem; margin-bottom: 6px; }
+  .toolbar p{ color:#9fb0c7; font-size: .92rem; max-width: 640px; line-height:1.5; }
+  .toolbar .row{ display:flex; align-items:center; gap:14px; margin-top:16px; flex-wrap:wrap; }
+  .toolbar button.all{
+    background: linear-gradient(145deg, var(--primary-light), var(--primary-deep));
+    color:white; border:none; padding: 13px 26px; border-radius: 9999px;
+    font-family:"Plus Jakarta Sans"; font-weight:700; font-size:.9rem; cursor:pointer;
+    box-shadow: 0 8px 20px rgba(20,70,140,.4);
+  }
+  .toolbar #status{ font-size:.85rem; color:#8ea3c2; }
+
+  .gallery{ display:flex; gap: 36px; overflow-x: auto; padding: 12px 48px 40px; scroll-snap-type: x mandatory; }
+  .slide-wrap{ scroll-snap-align:center; display:flex; flex-direction:column; align-items:center; gap:16px; flex:none; }
+
+  /* On-screen preview is scaled down; the true render size is always 1080x1350 */
+  .slide{
+    width: 1080px; height: 1350px; position: relative; overflow: hidden;
+    background: linear-gradient(150deg, #EAF2FB 0%, #F8FAFC 45%, #F5F1FA 100%);
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    flex: none;
+    transform-origin: top left;
+  }
+  .slide .dotgrid{
+    content:""; position:absolute; right:0; bottom:0; width:520px; height:420px; pointer-events:none; z-index:0;
+    opacity:.35;
+    background-image: radial-gradient(var(--border) 1.6px, transparent 1.6px);
+    background-size: 26px 26px;
+  }
+  .ghost{
+    position:absolute; z-index:0; pointer-events:none; font-family:"Bricolage Grotesque"; font-weight:800;
+    color: var(--sky-soft); line-height:1; letter-spacing:-0.03em;
+  }
+
+  .dl-btn{
+    background: var(--card); color: var(--fg); border: 1px solid var(--border);
+    padding: 10px 20px; border-radius: 9999px;
+    font-family:"Plus Jakarta Sans"; font-weight:600; font-size:.82rem; cursor:pointer;
+    box-shadow: var(--clay-shadow-sm);
+  }
+
+  /* ---------- shared chrome ---------- */
+  .pad{ position:relative; z-index:1; padding: 56px 60px; height:100%; display:flex; flex-direction:column; }
+
+  .topbar{ display:flex; align-items:center; justify-content:space-between; }
+  .brandmark{ display:flex; align-items:center; gap:12px; }
+  .brandmark img{ width:38px; height:38px; object-fit:contain; }
+  .brandmark span{ font-family:"Bricolage Grotesque"; font-weight:800; font-size:1.2rem; letter-spacing:-0.01em; color: var(--fg); }
+  .tag{
+    font-size:.68rem; font-weight:700; letter-spacing:.13em; text-transform:uppercase;
+    color: var(--muted); border:1.5px solid var(--border); padding:7px 15px; border-radius:9999px;
+    background: var(--card);
+  }
+
+  .progress{ position:absolute; z-index:2; bottom:44px; left:60px; display:flex; gap:7px; }
+  .progress i{ width:24px; height:5px; border-radius:99px; background: var(--border); display:block; }
+  .progress i.on{ background: var(--primary); width:40px; }
+
+  .swipe{
+    position:absolute; z-index:2; bottom:40px; right:60px; display:flex; align-items:center; gap:9px;
+    background: linear-gradient(145deg, var(--primary-light), var(--primary-deep));
+    color:white; padding:14px 24px; border-radius:9999px; font-weight:700; font-size:.98rem;
+    box-shadow: var(--clay-shadow-button);
+  }
+  .swipe svg{ width:20px; height:20px; }
+
+  .accent{ color: var(--sky-deep); }
+  .underline-accent{ background: linear-gradient(transparent 62%, var(--mint-soft) 62%); padding: 0 2px; }
+
+  /* ---------- Slide 1 ---------- */
+  #s1 .pad{ justify-content:flex-start; }
+  #s1 .kicker{ font-size:1.08rem; font-weight:600; color: var(--sky-deep); margin-top:22px; margin-bottom:16px; }
+  #s1 h1{ font-size: 4.1rem; line-height:1.08; font-weight:800; color: var(--fg); max-width: 840px; }
+  #s1 .sub{ margin-top:18px; font-size:1.25rem; color: var(--muted); font-weight:500; }
+  #s1 .visual{ position:relative; flex:1; margin-top:8px; display:flex; align-items:center; justify-content:center; }
+  #s1 .visual img{ width:250px; filter: drop-shadow(0 24px 32px rgba(20,70,140,.25)); }
+  #s1 .float-chip{
+    position:absolute; background:var(--card); border-radius:9999px; padding:13px 22px;
+    box-shadow: var(--clay-shadow-sm); font-weight:700; font-size:.98rem; color:var(--fg);
+    display:flex; align-items:center; gap:9px;
+  }
+  #s1 .float-chip i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+  #s1 .chip-a{ top:8%; left:2%; }
+  #s1 .chip-a i{ background: var(--primary); }
+  #s1 .chip-b{ top:18%; right:0%; }
+  #s1 .chip-b i{ background: var(--teal-accent); }
+  #s1 .chip-c{ bottom:14%; left:6%; }
+  #s1 .chip-c i{ background: var(--coral-soft); border:2px solid #d99a6c; }
+  #s1 .foot-brand{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
+  #s1 .foot-brand .site{ font-family:"Bricolage Grotesque"; font-weight:800; font-size:1.45rem; letter-spacing:.02em; }
+  #s1 .foot-brand .line{ flex:1; height:1.5px; background:var(--border); margin:0 20px; }
+
+  /* ---------- Slide 2 ---------- */
+  #s2 .eyebrow{ margin-top:26px; font-size:1.05rem; font-weight:700; letter-spacing:.06em; color:var(--muted); }
+  #s2 .steps{ margin-top:26px; display:flex; flex-direction:column; gap:0; }
+  #s2 .step{ display:flex; align-items:center; gap:22px; padding: 20px 26px; border-radius:20px; }
+  #s2 .step:nth-child(odd){ background: var(--card); box-shadow: var(--clay-shadow-sm); margin:5px 0; }
+  #s2 .step .ic{
+    width:50px; height:50px; border-radius:14px; flex:none; display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(145deg, var(--card), var(--sky-soft)); box-shadow: var(--clay-shadow-sm); color:var(--sky-deep);
+  }
+  #s2 .step .ic svg{ width:25px; height:25px; }
+  #s2 .step p{ font-size:1.85rem; font-weight:700; color: var(--fg); }
+  #s2 .connect{ width:2px; height:16px; background: var(--border); margin-left:96px; }
+  #s2 .big{ display:flex; align-items:center; gap:20px; margin-top:auto; padding-top:24px; border-top:1.5px dashed var(--border); }
+  #s2 .big svg{ width:46px; height:46px; color:var(--sky-deep); flex:none; }
+  #s2 .big h2{ font-size: 2.8rem; font-weight:800; line-height:1.1; max-width:760px; }
+
+  /* ---------- Slide 3 ---------- */
+  #s3 h2.lead{ margin-top:28px; font-size: 3.2rem; font-weight:800; max-width: 840px; line-height:1.1; }
+  #s3 .list{ margin-top:34px; display:flex; flex-direction:column; gap:18px; }
+  #s3 .list .row{
+    display:flex; align-items:center; gap:22px; background:var(--card); border-radius:22px;
+    padding:28px 30px; box-shadow: var(--clay-shadow-sm);
+  }
+  #s3 .list .row .ic{
+    width:54px; height:54px; border-radius:14px; flex:none; display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(145deg, var(--sky-soft), var(--teal-soft)); color:var(--sky-deep);
+  }
+  #s3 .list svg{ width:27px; height:27px; }
+  #s3 .list p{ font-size:1.55rem; font-weight:600; color: var(--fg); }
+  #s3 .clincher{ display:flex; align-items:center; gap:16px; margin-top:auto; padding-top:24px; border-top:1.5px dashed var(--border); }
+  #s3 .clincher .arrow{ width:40px; height:40px; color:var(--sky-deep); flex:none; }
+  #s3 .clincher h2{ font-size:2.5rem; font-weight:800; color: var(--sky-deep); }
+
+  /* ---------- Slide 4 ---------- */
+  #s4 h2.lead{ margin-top:22px; font-size:2.9rem; font-weight:800; max-width:780px; line-height:1.12; }
+  #s4 .flow{ margin-top:28px; display:flex; flex-direction:column; gap:0; position:relative; flex:1; justify-content:center; }
+  #s4 .node{ display:flex; align-items:center; gap:20px; position:relative; z-index:1; padding: 11px 0; }
+  #s4 .node .chip{
+    background: var(--card); border-radius:18px; padding: 22px 28px; box-shadow: var(--clay-shadow-sm);
+    font-size:1.3rem; font-weight:700; color:var(--fg); flex:1;
+  }
+  #s4 .node.mid .chip{ background: linear-gradient(145deg, var(--card), var(--sky-soft)); }
+  #s4 .node .num{
+    width:46px; height:46px; border-radius:50%; background: var(--fg); color:white; flex:none;
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.05rem;
+  }
+  #s4 .connector{ position:absolute; left:22px; top:40px; bottom:40px; width:2px; background: repeating-linear-gradient(var(--border), var(--border) 6px, transparent 6px, transparent 12px); z-index:0; }
+  #s4 .loop{ margin-top:12px; display:flex; align-items:center; gap:12px; padding-left:66px; color: var(--sky-deep); font-weight:700; font-size:1.08rem; }
+  #s4 .foot-note{ margin-top:26px; padding-top:24px; border-top:1.5px dashed var(--border); font-size:1.3rem; color: var(--muted); font-weight:500; max-width:680px; }
+  #s4 .foot-note b{ color: var(--fg); }
+
+  /* ---------- Slide 5 ---------- */
+  #s5{ background: linear-gradient(150deg, #E4F1FB 0%, #F8FAFC 45%, #EFE6F7 100%); }
+  #s5 .pad{ justify-content:space-between; }
+  #s5 .hero-block{ margin-top:34px; }
+  #s5 .kicker{ font-size:1.22rem; font-weight:600; color:var(--muted); }
+  #s5 .brandbig{ display:flex; align-items:center; gap:16px; margin-top:16px; }
+  #s5 .brandbig img{ width:64px; }
+  #s5 .brandbig span{ font-family:"Bricolage Grotesque"; font-weight:800; font-size:4.1rem; letter-spacing:-0.01em; }
+  #s5 .desc{ margin-top:22px; font-size:1.48rem; line-height:1.42; color:var(--fg); font-weight:500; max-width:760px; }
+  #s5 .chips{ margin-top:32px; display:flex; align-items:center; flex-wrap:wrap; gap:14px; }
+  #s5 .chips .chip{ background: var(--card); border-radius:9999px; padding:16px 26px; font-weight:700; font-size:1.08rem; box-shadow: var(--clay-shadow-sm); color:var(--fg); }
+  #s5 .chips .chip.active{ background: linear-gradient(145deg, var(--primary-light), var(--primary-deep)); color:white; box-shadow: var(--clay-shadow-button); }
+  #s5 .chips .arrow{ color: var(--muted); font-size:1.3rem; }
+  #s5 .exams-row{ display:flex; align-items:center; gap:16px; padding-top:24px; border-top:1.5px dashed var(--border); }
+  #s5 .exams-row .label{ font-size:1rem; font-weight:600; color:var(--muted); }
+  #s5 .exams-row .tags{ display:flex; gap:10px; flex-wrap:wrap; }
+  #s5 .exams-row .tags span{ background:var(--card); border:1.5px solid var(--border); padding:8px 16px; border-radius:9999px; font-weight:700; font-size:.9rem; color:var(--fg); }
+
+  /* ---------- Slide 6 ---------- */
+  #s6 .eyebrow{ margin-top:18px; font-size:1.08rem; font-weight:700; letter-spacing:.08em; color:var(--sky-deep); }
+  #s6 h2.head{ font-size:2.75rem; font-weight:800; margin-top:12px; max-width:760px; line-height:1.14; }
+  #s6 .cards{ margin-top:30px; display:flex; flex-direction:column; gap:18px; }
+  #s6 .card{ background: var(--card); border-radius:24px; padding: 30px 32px; box-shadow: var(--clay-shadow-sm); display:flex; gap:24px; align-items:center; }
+  #s6 .card .ic{
+    width:64px; height:64px; border-radius:18px; flex:none; display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(145deg, var(--sky-soft), var(--teal-soft)); color:var(--sky-deep);
+  }
+  #s6 .card .ic svg{ width:30px; height:30px; }
+  #s6 .card h3{ font-size:1.42rem; font-weight:800; color:var(--fg); }
+  #s6 .card p{ margin-top:6px; font-size:1.12rem; color:var(--muted); font-weight:500; line-height:1.38; }
+  #s6 .kicker-bottom{ display:flex; align-items:center; gap:14px; margin-top:auto; padding-top:22px; border-top:1.5px dashed var(--border); font-size:1.3rem; font-weight:700; color:var(--fg); }
+  #s6 .kicker-bottom svg{ width:32px; height:32px; color:var(--sky-deep); }
+
+  /* ---------- Slide 7 ---------- */
+  #s7{ background: linear-gradient(155deg, #1B2740, #2A3A70 55%, #3D63AC); color:#f2f6ff; }
+  #s7 .brandmark span{ color:#f2f6ff; }
+  #s7 .tag{ color:#cfe0f5; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.06); }
+  #s7 .old{ margin-top:38px; font-size:1.28rem; color:#b9c7de; font-weight:500; }
+  #s7 .old .cycle{ margin-top:12px; font-size:1.45rem; font-weight:700; color:#8fa2bf; text-decoration: line-through; text-decoration-color: rgba(255,120,120,.6); text-decoration-thickness:3px; }
+  #s7 .new{ margin-top:28px; }
+  #s7 .new .label{ font-size:1.22rem; color:#dbe7fa; font-weight:600; }
+  #s7 .new .cycle{ margin-top:14px; font-size:2.15rem; font-weight:800; color:#ffffff; line-height:1.38; }
+  #s7 .new .cycle b{ color: var(--teal-accent); }
+  #s7 .closing{ margin-top:auto; }
+  #s7 .closing h2{ font-size:2.9rem; font-weight:800; }
+  #s7 .closing .tagline{ margin-top:12px; font-size:1.2rem; color:#c9d6ec; font-weight:500; max-width:620px; }
+  #s7 .exams{ margin-top:20px; display:flex; gap:12px; flex-wrap:wrap; }
+  #s7 .exams span{ background: rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.18); padding:9px 18px; border-radius:9999px; font-weight:700; font-size:.95rem; }
+  #s7 .url{ margin-top:28px; display:flex; align-items:center; justify-content:space-between; }
+  #s7 .url .site{ font-family:"Bricolage Grotesque"; font-weight:800; font-size:1.5rem; }
+  #s7 .url .cta{ background: white; color: #2A3A78; padding:15px 32px; border-radius:9999px; font-weight:800; font-size:1rem; }
+
+  @media (max-width: 1100px){ .gallery{ padding-left:20px; padding-right:20px; } }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h2>Edurack — Launch Carousel</h2>
+  <p>Seven slides, sized 1080×1350 for Instagram/LinkedIn. Scroll sideways to review, then download each slide — the PNG matches exactly what you see here, at 2× resolution (2160×2700px).</p>
+  <div class="row">
+    <button class="all" onclick="downloadAll()">Download all 7 slides</button>
+    <span id="status"></span>
+  </div>
+</div>
+
+<div class="gallery" id="gallery">
+
+  <!-- SLIDE 1 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s1">
+      <div class="dotgrid"></div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">NEET · JEE · CUET · IPMAT</div>
+        </div>
+        <div class="kicker">A short story about your prep 👇</div>
+        <h1>Your exam preparation is <span class="underline-accent">more than</span> just studying.</h1>
+        <div class="sub">And we're building something around that.</div>
+
+        <div class="visual">
+          <div class="float-chip chip-a"><i></i>Real practice</div>
+          <div class="float-chip chip-b"><i></i>Clear insights</div>
+          <img class="edurack-logo" alt="">
+          <div class="float-chip chip-c"><i></i>Real mentors</div>
+        </div>
+
+        <div class="foot-brand">
+          <span class="site accent">edurack.in</span>
+          <div class="line"></div>
+          <span style="font-weight:600;color:var(--muted)">Launching soon</span>
+        </div>
+      </div>
+      <div class="progress"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s1')">Download slide 1</button>
+  </div>
+
+  <!-- SLIDE 2 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s2">
+      <div class="dotgrid"></div>
+      <div class="ghost" style="right:-30px; top:60px; font-size:15rem;">↺</div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">The reality</div>
+        </div>
+        <div class="eyebrow">Sound familiar?</div>
+        <div class="steps">
+          <div class="step"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><p>You study.</p></div>
+          <div class="connect"></div>
+          <div class="step"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><p>You practice questions.</p></div>
+          <div class="connect"></div>
+          <div class="step"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div><p>You take mocks.</p></div>
+          <div class="connect"></div>
+          <div class="step"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.9 6.3 6.9.9-5 4.9 1.2 6.9L12 17.8l-6 3.2 1.2-6.9-5-4.9 6.9-.9z"/></svg></div><p>Then you get a score.</p></div>
+        </div>
+        <div class="big">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+          <h2>And the cycle starts again.</h2>
+        </div>
+      </div>
+      <div class="progress"><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s2')">Download slide 2</button>
+  </div>
+
+  <!-- SLIDE 3 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s3">
+      <div class="dotgrid"></div>
+      <div class="ghost" style="right:40px; top:170px; font-size:11rem;">?</div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">The problem</div>
+        </div>
+        <h2 class="lead">But a score is only a number.</h2>
+        <div class="list">
+          <div class="row"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div><p>What you actually understand</p></div>
+          <div class="row"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div><p>Where you're making mistakes</p></div>
+          <div class="row"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div><p>What you should improve next</p></div>
+          <div class="row"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div><p>Or who can help you get there</p></div>
+        </div>
+        <div class="clincher">
+          <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          <h2>So what happens next?</h2>
+        </div>
+      </div>
+      <div class="progress"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s3')">Download slide 3</button>
+  </div>
+
+  <!-- SLIDE 4 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s4">
+      <div class="dotgrid"></div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">Connecting the dots</div>
+        </div>
+        <h2 class="lead">Imagine if your preparation could <span class="underline-accent">connect the dots.</span></h2>
+        <div class="flow">
+          <div class="connector"></div>
+          <div class="node"><div class="num">1</div><div class="chip">Test</div></div>
+          <div class="node mid"><div class="num">2</div><div class="chip">Understand your performance</div></div>
+          <div class="node mid"><div class="num">3</div><div class="chip">Know what to improve</div></div>
+          <div class="node mid"><div class="num">4</div><div class="chip">Get the right guidance</div></div>
+          <div class="node"><div class="num">5</div><div class="chip">Test again</div></div>
+        </div>
+        <div class="loop">↺ back to Test — sharper every round</div>
+        <div class="foot-note">Not just more preparation. <b>Better-directed preparation.</b></div>
+      </div>
+      <div class="progress"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s4')">Download slide 4</button>
+  </div>
+
+  <!-- SLIDE 5 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s5">
+      <div class="dotgrid"></div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">The reveal</div>
+        </div>
+        <div class="hero-block">
+          <div class="kicker">That's what we're building.</div>
+          <div class="brandbig"><img class="edurack-logo" alt=""><span>edurack</span></div>
+          <div class="desc">A preparation platform connecting realistic practice, performance insights and mentorship — in one place.</div>
+          <div class="chips">
+            <div class="chip active">Practice</div><div class="arrow">→</div>
+            <div class="chip">Analyze</div><div class="arrow">→</div>
+            <div class="chip">Get Guided</div><div class="arrow">→</div>
+            <div class="chip">Improve</div>
+          </div>
+        </div>
+        <div class="exams-row">
+          <div class="label">Built for</div>
+          <div class="tags"><span>NEET</span><span>JEE</span><span>CUET</span><span>IPMAT</span></div>
+        </div>
+      </div>
+      <div class="progress"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s5')">Download slide 5</button>
+  </div>
+
+  <!-- SLIDE 6 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s6">
+      <div class="dotgrid"></div>
+      <div class="ghost" style="right:-20px; top:40px; font-size:13rem;">3</div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">The platform</div>
+        </div>
+        <div class="eyebrow">ONE PLATFORM, THREE ESSENTIALS</div>
+        <h2 class="head">Everything your prep was missing, together.</h2>
+        <div class="cards">
+          <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></div><div><h3>Practice</h3><p>Realistic exam-style simulations to prepare like the real thing.</p></div></div>
+          <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div><div><h3>Analyze</h3><p>Understand your performance beyond just a score.</p></div></div>
+          <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><div><h3>Get Guided</h3><p>Connect with mentors who have already walked the path.</p></div></div>
+        </div>
+        <div class="kicker-bottom">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+          And keep improving.
+        </div>
+      </div>
+      <div class="progress"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+      <div class="swipe">Swipe <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s6')">Download slide 6</button>
+  </div>
+
+  <!-- SLIDE 7 -->
+  <div class="slide-wrap">
+    <div class="slide" id="s7">
+      <div class="dotgrid" style="opacity:.15; background-image: radial-gradient(rgba(255,255,255,.6) 1.6px, transparent 1.6px);"></div>
+      <div class="pad">
+        <div class="topbar">
+          <div class="brandmark"><img class="edurack-logo" alt="Edurack"><span>edurack</span></div>
+          <div class="tag">Our stance</div>
+        </div>
+        <div class="old">We don't believe preparation should be
+          <div class="cycle">Study → Mock → Score → Repeat</div>
+        </div>
+        <div class="new">
+          <div class="label">Instead —</div>
+          <div class="cycle"><b>Practice.</b> <b>Analyze.</b> <b>Get Guided.</b> <b>Improve.</b></div>
+        </div>
+        <div class="closing">
+          <h2>This is Edurack.</h2>
+          <div class="tagline">A preparation platform built for NEET, JEE, CUET and IPMAT aspirants who want direction, not just more mocks.</div>
+          <div class="exams"><span>NEET</span><span>JEE</span><span>CUET</span><span>IPMAT</span></div>
+          <div class="url"><div class="site">edurack.in</div><div class="cta">Get Started</div></div>
+        </div>
+      </div>
+      <div class="progress" style="left:60px;"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+    </div>
+    <button class="dl-btn" onclick="downloadSlide('s7')">Download slide 7</button>
+  </div>
+
+</div>
+
+<script>
+// ---- single shared logo asset, injected once to keep the file lean ----
+const LOGO_SRC = "data:image/webp;base64,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";
+document.querySelectorAll('img.edurack-logo').forEach(img => img.src = LOGO_SRC);
+
+function waitForImages(el){
+  const imgs = Array.from(el.querySelectorAll('img'));
+  return Promise.all(imgs.map(img => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+    return new Promise(res => { img.onload = res; img.onerror = res; });
+  }));
+}
+
+async function renderSlide(id){
+  const source = document.getElementById(id);
+
+  // Render an isolated, off-screen clone at native scale (no CSS transforms,
+  // no scroll offsets) so the exported PNG matches the on-screen slide exactly.
+  const holder = document.createElement('div');
+  holder.style.position = 'fixed';
+  holder.style.left = '0';
+  holder.style.top = '0';
+  holder.style.width = '1080px';
+  holder.style.height = '1350px';
+  holder.style.margin = '0';
+  holder.style.transform = 'none';
+  holder.style.zIndex = '-1';
+  holder.style.pointerEvents = 'none';
+  holder.style.opacity = '0.01'; // stays in normal render path, not display:none
+
+  const clone = source.cloneNode(true);
+  clone.style.margin = '0';
+  clone.style.transform = 'none';
+  clone.style.boxShadow = 'none'; // avoid extra canvas padding from drop shadow
+  holder.appendChild(clone);
+  document.body.appendChild(holder);
+
+  try{
+    await document.fonts.ready;
+    await waitForImages(clone);
+    // two RAFs so layout/paint settle before capture
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const bg = getComputedStyle(source).backgroundColor;
+    const canvas = await html2canvas(clone, {
+      backgroundColor: (bg && bg !== 'rgba(0, 0, 0, 0)') ? bg : '#F8FAFC',
+      scale: 2,
+      width: 1080,
+      height: 1350,
+      x: 0,
+      y: 0,
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: 1080,
+      windowHeight: 1350,
+      useCORS: true,
+      allowTaint: true,
+      imageTimeout: 15000,
+      logging: false
+    });
+    return canvas;
+  } finally {
+    holder.remove();
+  }
+}
+
+async function downloadSlide(id){
+  const btn = document.querySelector('button[onclick="downloadSlide(\'' + id + '\')"]');
+  const original = btn ? btn.textContent : null;
+  if (btn){ btn.textContent = 'Preparing…'; btn.disabled = true; }
+  try{
+    const canvas = await renderSlide(id);
+    const link = document.createElement('a');
+    link.download = 'edurack-' + id + '.png';
+    link.href = canvas.toDataURL('image/png', 1.0);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } catch(err){
+    console.error('Export failed for', id, err);
+    alert('Could not export this slide. Please try again — ' + (err && err.message ? err.message : err));
+  } finally {
+    if (btn){ btn.textContent = original; btn.disabled = false; }
+  }
+}
+
+async function downloadAll(){
+  const ids = ['s1','s2','s3','s4','s5','s6','s7'];
+  const status = document.getElementById('status');
+  for (let i = 0; i < ids.length; i++){
+    if (status) status.textContent = 'Exporting slide ' + (i+1) + ' of ' + ids.length + '…';
+    await downloadSlide(ids[i]);
+    await new Promise(r => setTimeout(r, 350));
+  }
+  if (status) status.textContent = 'Done — 7 slides downloaded (2160×2700px each).';
+}
+</script>
+
+</body>
+</html>

@@ -12,6 +12,8 @@ import { MentorSupportModule } from "@/components/mentor-support-module";
 import { MentorLectureLibraryModule } from "@/components/mentor-lecture-library-module";
 import { MentorTestSeriesModule } from "@/components/mentor-test-series-module";
 import { MentorSellTestsModule } from "@/components/mentor-sell-tests-module";
+import { MentorSessionsModule } from "@/components/mentor-sessions-module";
+
 
 type ModuleKey =
   | "overview"
@@ -22,6 +24,7 @@ type ModuleKey =
   | "support"
   | "library"
   | "testSeries"
+  | "sessions"
   | "sellTests";
 
 // Overview leads now — a mentor logging in sees what needs their attention,
@@ -37,6 +40,7 @@ const MODULES: { key: ModuleKey; label: string; icon: typeof User }[] = [
   { key: "library", label: "Lecture Library", icon: Library },
   { key: "announcements", label: "Announcements", icon: Megaphone },
   { key: "testSeries", label: "Test Series", icon: ClipboardList },
+  { key: "sessions", label: "Sessions", icon: CalendarClock },
   { key: "sellTests", label: "Sell Tests", icon: Tag },
   { key: "profile", label: "Profile", icon: User },
   { key: "support", label: "Help Desk", icon: LifeBuoy },
@@ -193,6 +197,7 @@ function MentorDashboardPage() {
               {activeModule === "chat" && <MentorChatModule mentorToken={mentorToken} />}
               {activeModule === "support" && <MentorSupportModule mentorToken={mentorToken} />}
               {activeModule === "testSeries" && <MentorTestSeriesModule mentorToken={mentorToken} />}
+              {activeModule === "sessions" && <MentorSessionsModule mentorToken={mentorToken} />}
               {activeModule === "sellTests" && (
                 <MentorSellTestsModule mentorToken={mentorToken} mentorEmail={mentor.email ?? null} />
               )}

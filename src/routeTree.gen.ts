@@ -9,84 +9,43 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TicketsRouteImport } from './routes/tickets'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as PurchasesRouteImport } from './routes/purchases'
-import { Route as ProfileRouteImport } from './routes/profile'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as JoinMentorRouteImport } from './routes/join-mentor'
-import { Route as HelpRouteImport } from './routes/help'
-import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as DashboardRouteImport } from './routes/dashboard'
-import { Route as ContactRouteImport } from './routes/contact'
-import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TestTestIdRouteImport } from './routes/test.$testId'
-import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
-import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
-import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
-import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
-import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
-import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
-import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
-import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
-import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/mentor-onboarding/$applicationId'
-import { Route as LegalTermsRouteImport } from './routes/legal/terms'
-import { Route as LegalRefundRouteImport } from './routes/legal/refund'
-import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
-import { Route as LectureSessionIdRouteImport } from './routes/lecture.$sessionId'
-import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ContactRouteImport } from './routes/contact'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as HelpRouteImport } from './routes/help'
+import { Route as JoinMentorRouteImport } from './routes/join-mentor'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as MySessionsRouteImport } from './routes/my-sessions'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PurchasesRouteImport } from './routes/purchases'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
+import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as InternAuthRouteImport } from './routes/intern/auth'
+import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
+import { Route as LectureSessionIdRouteImport } from './routes/lecture.$sessionId'
+import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
+import { Route as LegalRefundRouteImport } from './routes/legal/refund'
+import { Route as LegalTermsRouteImport } from './routes/legal/terms'
+import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/mentor-onboarding/$applicationId'
+import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
+import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
+import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
+import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
+import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
+import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
+import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
+import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
+import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
+import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 
-const TicketsRoute = TicketsRouteImport.update({
-  id: '/tickets',
-  path: '/tickets',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PurchasesRoute = PurchasesRouteImport.update({
-  id: '/purchases',
-  path: '/purchases',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProfileRoute = ProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JoinMentorRoute = JoinMentorRouteImport.update({
-  id: '/join-mentor',
-  path: '/join-mentor',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HelpRoute = HelpRouteImport.update({
-  id: '/help',
-  path: '/help',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
-  id: '/forgot-password',
-  path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactRoute = ContactRouteImport.update({
-  id: '/contact',
-  path: '/contact',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -94,54 +53,99 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TestTestIdRoute = TestTestIdRouteImport.update({
-  id: '/test/$testId',
-  path: '/test/$testId',
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TestResultAttemptIdRoute = TestResultAttemptIdRouteImport.update({
-  id: '/test-result/$attemptId',
-  path: '/test-result/$attemptId',
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TestAnalysisTestIdRoute = TestAnalysisTestIdRouteImport.update({
-  id: '/test-analysis/$testId',
-  path: '/test-analysis/$testId',
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SoldTestIdRoute = SoldTestIdRouteImport.update({
-  id: '/sold-test/$id',
-  path: '/sold-test/$id',
+const JoinMentorRoute = JoinMentorRouteImport.update({
+  id: '/join-mentor',
+  path: '/join-mentor',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SimulatorLiveRoute = SimulatorLiveRouteImport.update({
-  id: '/simulator/live',
-  path: '/simulator/live',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PromoterDashboardRoute = PromoterDashboardRouteImport.update({
-  id: '/promoter/dashboard',
-  path: '/promoter/dashboard',
+const MySessionsRoute = MySessionsRouteImport.update({
+  id: '/my-sessions',
+  path: '/my-sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PromoterAuthRoute = PromoterAuthRouteImport.update({
-  id: '/promoter/auth',
-  path: '/promoter/auth',
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MentorDashboardRoute = MentorDashboardRouteImport.update({
-  id: '/mentor/dashboard',
-  path: '/mentor/dashboard',
+const PurchasesRoute = PurchasesRouteImport.update({
+  id: '/purchases',
+  path: '/purchases',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MentorProfileMentorIdRoute = MentorProfileMentorIdRouteImport.update({
-  id: '/mentor-profile/$mentorId',
-  path: '/mentor-profile/$mentorId',
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TicketsRoute = TicketsRouteImport.update({
+  id: '/tickets',
+  path: '/tickets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuthRoute = AdminAuthRouteImport.update({
+  id: '/admin/auth',
+  path: '/admin/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/admin/dashboard',
+  path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternAuthRoute = InternAuthRouteImport.update({
+  id: '/intern/auth',
+  path: '/intern/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternDashboardRoute = InternDashboardRouteImport.update({
+  id: '/intern/dashboard',
+  path: '/intern/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LectureSessionIdRoute = LectureSessionIdRouteImport.update({
+  id: '/lecture/$sessionId',
+  path: '/lecture/$sessionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
+  id: '/legal/privacy',
+  path: '/legal/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalRefundRoute = LegalRefundRouteImport.update({
+  id: '/legal/refund',
+  path: '/legal/refund',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LegalTermsRoute = LegalTermsRouteImport.update({
+  id: '/legal/terms',
+  path: '/legal/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MentorOnboardingApplicationIdRoute =
@@ -150,39 +154,59 @@ const MentorOnboardingApplicationIdRoute =
     path: '/mentor-onboarding/$applicationId',
     getParentRoute: () => rootRouteImport,
   } as any)
-const LegalTermsRoute = LegalTermsRouteImport.update({
-  id: '/legal/terms',
-  path: '/legal/terms',
+const MentorProfileMentorIdRoute = MentorProfileMentorIdRouteImport.update({
+  id: '/mentor-profile/$mentorId',
+  path: '/mentor-profile/$mentorId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LegalRefundRoute = LegalRefundRouteImport.update({
-  id: '/legal/refund',
-  path: '/legal/refund',
+const MentorDashboardRoute = MentorDashboardRouteImport.update({
+  id: '/mentor/dashboard',
+  path: '/mentor/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LegalPrivacyRoute = LegalPrivacyRouteImport.update({
-  id: '/legal/privacy',
-  path: '/legal/privacy',
+const PromoterAuthRoute = PromoterAuthRouteImport.update({
+  id: '/promoter/auth',
+  path: '/promoter/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LectureSessionIdRoute = LectureSessionIdRouteImport.update({
-  id: '/lecture/$sessionId',
-  path: '/lecture/$sessionId',
+const PromoterDashboardRoute = PromoterDashboardRouteImport.update({
+  id: '/promoter/dashboard',
+  path: '/promoter/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminDashboardRoute = AdminDashboardRouteImport.update({
-  id: '/admin/dashboard',
-  path: '/admin/dashboard',
+const SimulatorLiveRoute = SimulatorLiveRouteImport.update({
+  id: '/simulator/live',
+  path: '/simulator/live',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminAuthRoute = AdminAuthRouteImport.update({
-  id: '/admin/auth',
-  path: '/admin/auth',
+const SoldTestIdRoute = SoldTestIdRouteImport.update({
+  id: '/sold-test/$id',
+  path: '/sold-test/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestAnalysisTestIdRoute = TestAnalysisTestIdRouteImport.update({
+  id: '/test-analysis/$testId',
+  path: '/test-analysis/$testId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestResultAttemptIdRoute = TestResultAttemptIdRouteImport.update({
+  id: '/test-result/$attemptId',
+  path: '/test-result/$attemptId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestTestIdRoute = TestTestIdRouteImport.update({
+  id: '/test/$testId',
+  path: '/test/$testId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CourseKindIdRoute = CourseKindIdRouteImport.update({
   id: '/course/$kind/$id',
   path: '/course/$kind/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
+  id: '/intern/trial/$code',
+  path: '/intern/trial/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -195,12 +219,15 @@ export interface FileRoutesByFullPath {
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
+  '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/intern/auth': typeof InternAuthRoute
+  '/intern/dashboard': typeof InternDashboardRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -216,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
+  '/intern/trial/$code': typeof InternTrialCodeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -226,12 +254,15 @@ export interface FileRoutesByTo {
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
+  '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/intern/auth': typeof InternAuthRoute
+  '/intern/dashboard': typeof InternDashboardRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -247,6 +278,7 @@ export interface FileRoutesByTo {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
+  '/intern/trial/$code': typeof InternTrialCodeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -258,12 +290,15 @@ export interface FileRoutesById {
   '/help': typeof HelpRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
+  '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/intern/auth': typeof InternAuthRoute
+  '/intern/dashboard': typeof InternDashboardRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -279,6 +314,7 @@ export interface FileRoutesById {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
+  '/intern/trial/$code': typeof InternTrialCodeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -291,12 +327,15 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-mentor'
     | '/login'
+    | '/my-sessions'
     | '/profile'
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/intern/auth'
+    | '/intern/dashboard'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -312,6 +351,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/course/$kind/$id'
+    | '/intern/trial/$code'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -322,12 +362,15 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-mentor'
     | '/login'
+    | '/my-sessions'
     | '/profile'
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/intern/auth'
+    | '/intern/dashboard'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -343,6 +386,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/course/$kind/$id'
+    | '/intern/trial/$code'
   id:
     | '__root__'
     | '/'
@@ -353,12 +397,15 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-mentor'
     | '/login'
+    | '/my-sessions'
     | '/profile'
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/intern/auth'
+    | '/intern/dashboard'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -374,6 +421,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/course/$kind/$id'
+    | '/intern/trial/$code'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -385,12 +433,15 @@ export interface RootRouteChildren {
   HelpRoute: typeof HelpRoute
   JoinMentorRoute: typeof JoinMentorRoute
   LoginRoute: typeof LoginRoute
+  MySessionsRoute: typeof MySessionsRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  InternAuthRoute: typeof InternAuthRoute
+  InternDashboardRoute: typeof InternDashboardRoute
   LectureSessionIdRoute: typeof LectureSessionIdRoute
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalRefundRoute: typeof LegalRefundRoute
@@ -406,78 +457,16 @@ export interface RootRouteChildren {
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
   TestTestIdRoute: typeof TestTestIdRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
+  InternTrialCodeRoute: typeof InternTrialCodeRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/tickets': {
-      id: '/tickets'
-      path: '/tickets'
-      fullPath: '/tickets'
-      preLoaderRoute: typeof TicketsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/purchases': {
-      id: '/purchases'
-      path: '/purchases'
-      fullPath: '/purchases'
-      preLoaderRoute: typeof PurchasesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/profile': {
-      id: '/profile'
-      path: '/profile'
-      fullPath: '/profile'
-      preLoaderRoute: typeof ProfileRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/join-mentor': {
-      id: '/join-mentor'
-      path: '/join-mentor'
-      fullPath: '/join-mentor'
-      preLoaderRoute: typeof JoinMentorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/help': {
-      id: '/help'
-      path: '/help'
-      fullPath: '/help'
-      preLoaderRoute: typeof HelpRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/forgot-password': {
-      id: '/forgot-password'
-      path: '/forgot-password'
-      fullPath: '/forgot-password'
-      preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contact': {
-      id: '/contact'
-      path: '/contact'
-      fullPath: '/contact'
-      preLoaderRoute: typeof ContactRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -487,116 +476,81 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/test/$testId': {
-      id: '/test/$testId'
-      path: '/test/$testId'
-      fullPath: '/test/$testId'
-      preLoaderRoute: typeof TestTestIdRouteImport
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/test-result/$attemptId': {
-      id: '/test-result/$attemptId'
-      path: '/test-result/$attemptId'
-      fullPath: '/test-result/$attemptId'
-      preLoaderRoute: typeof TestResultAttemptIdRouteImport
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/test-analysis/$testId': {
-      id: '/test-analysis/$testId'
-      path: '/test-analysis/$testId'
-      fullPath: '/test-analysis/$testId'
-      preLoaderRoute: typeof TestAnalysisTestIdRouteImport
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/sold-test/$id': {
-      id: '/sold-test/$id'
-      path: '/sold-test/$id'
-      fullPath: '/sold-test/$id'
-      preLoaderRoute: typeof SoldTestIdRouteImport
+    '/join-mentor': {
+      id: '/join-mentor'
+      path: '/join-mentor'
+      fullPath: '/join-mentor'
+      preLoaderRoute: typeof JoinMentorRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/simulator/live': {
-      id: '/simulator/live'
-      path: '/simulator/live'
-      fullPath: '/simulator/live'
-      preLoaderRoute: typeof SimulatorLiveRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/promoter/dashboard': {
-      id: '/promoter/dashboard'
-      path: '/promoter/dashboard'
-      fullPath: '/promoter/dashboard'
-      preLoaderRoute: typeof PromoterDashboardRouteImport
+    '/my-sessions': {
+      id: '/my-sessions'
+      path: '/my-sessions'
+      fullPath: '/my-sessions'
+      preLoaderRoute: typeof MySessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/promoter/auth': {
-      id: '/promoter/auth'
-      path: '/promoter/auth'
-      fullPath: '/promoter/auth'
-      preLoaderRoute: typeof PromoterAuthRouteImport
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mentor/dashboard': {
-      id: '/mentor/dashboard'
-      path: '/mentor/dashboard'
-      fullPath: '/mentor/dashboard'
-      preLoaderRoute: typeof MentorDashboardRouteImport
+    '/purchases': {
+      id: '/purchases'
+      path: '/purchases'
+      fullPath: '/purchases'
+      preLoaderRoute: typeof PurchasesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mentor-profile/$mentorId': {
-      id: '/mentor-profile/$mentorId'
-      path: '/mentor-profile/$mentorId'
-      fullPath: '/mentor-profile/$mentorId'
-      preLoaderRoute: typeof MentorProfileMentorIdRouteImport
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mentor-onboarding/$applicationId': {
-      id: '/mentor-onboarding/$applicationId'
-      path: '/mentor-onboarding/$applicationId'
-      fullPath: '/mentor-onboarding/$applicationId'
-      preLoaderRoute: typeof MentorOnboardingApplicationIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/legal/terms': {
-      id: '/legal/terms'
-      path: '/legal/terms'
-      fullPath: '/legal/terms'
-      preLoaderRoute: typeof LegalTermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/legal/refund': {
-      id: '/legal/refund'
-      path: '/legal/refund'
-      fullPath: '/legal/refund'
-      preLoaderRoute: typeof LegalRefundRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/legal/privacy': {
-      id: '/legal/privacy'
-      path: '/legal/privacy'
-      fullPath: '/legal/privacy'
-      preLoaderRoute: typeof LegalPrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/lecture/$sessionId': {
-      id: '/lecture/$sessionId'
-      path: '/lecture/$sessionId'
-      fullPath: '/lecture/$sessionId'
-      preLoaderRoute: typeof LectureSessionIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/dashboard': {
-      id: '/admin/dashboard'
-      path: '/admin/dashboard'
-      fullPath: '/admin/dashboard'
-      preLoaderRoute: typeof AdminDashboardRouteImport
+    '/tickets': {
+      id: '/tickets'
+      path: '/tickets'
+      fullPath: '/tickets'
+      preLoaderRoute: typeof TicketsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/auth': {
@@ -606,11 +560,137 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/admin/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intern/auth': {
+      id: '/intern/auth'
+      path: '/intern/auth'
+      fullPath: '/intern/auth'
+      preLoaderRoute: typeof InternAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intern/dashboard': {
+      id: '/intern/dashboard'
+      path: '/intern/dashboard'
+      fullPath: '/intern/dashboard'
+      preLoaderRoute: typeof InternDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lecture/$sessionId': {
+      id: '/lecture/$sessionId'
+      path: '/lecture/$sessionId'
+      fullPath: '/lecture/$sessionId'
+      preLoaderRoute: typeof LectureSessionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/privacy': {
+      id: '/legal/privacy'
+      path: '/legal/privacy'
+      fullPath: '/legal/privacy'
+      preLoaderRoute: typeof LegalPrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/refund': {
+      id: '/legal/refund'
+      path: '/legal/refund'
+      fullPath: '/legal/refund'
+      preLoaderRoute: typeof LegalRefundRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/legal/terms': {
+      id: '/legal/terms'
+      path: '/legal/terms'
+      fullPath: '/legal/terms'
+      preLoaderRoute: typeof LegalTermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentor-onboarding/$applicationId': {
+      id: '/mentor-onboarding/$applicationId'
+      path: '/mentor-onboarding/$applicationId'
+      fullPath: '/mentor-onboarding/$applicationId'
+      preLoaderRoute: typeof MentorOnboardingApplicationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentor-profile/$mentorId': {
+      id: '/mentor-profile/$mentorId'
+      path: '/mentor-profile/$mentorId'
+      fullPath: '/mentor-profile/$mentorId'
+      preLoaderRoute: typeof MentorProfileMentorIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentor/dashboard': {
+      id: '/mentor/dashboard'
+      path: '/mentor/dashboard'
+      fullPath: '/mentor/dashboard'
+      preLoaderRoute: typeof MentorDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/promoter/auth': {
+      id: '/promoter/auth'
+      path: '/promoter/auth'
+      fullPath: '/promoter/auth'
+      preLoaderRoute: typeof PromoterAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/promoter/dashboard': {
+      id: '/promoter/dashboard'
+      path: '/promoter/dashboard'
+      fullPath: '/promoter/dashboard'
+      preLoaderRoute: typeof PromoterDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/simulator/live': {
+      id: '/simulator/live'
+      path: '/simulator/live'
+      fullPath: '/simulator/live'
+      preLoaderRoute: typeof SimulatorLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sold-test/$id': {
+      id: '/sold-test/$id'
+      path: '/sold-test/$id'
+      fullPath: '/sold-test/$id'
+      preLoaderRoute: typeof SoldTestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-analysis/$testId': {
+      id: '/test-analysis/$testId'
+      path: '/test-analysis/$testId'
+      fullPath: '/test-analysis/$testId'
+      preLoaderRoute: typeof TestAnalysisTestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-result/$attemptId': {
+      id: '/test-result/$attemptId'
+      path: '/test-result/$attemptId'
+      fullPath: '/test-result/$attemptId'
+      preLoaderRoute: typeof TestResultAttemptIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test/$testId': {
+      id: '/test/$testId'
+      path: '/test/$testId'
+      fullPath: '/test/$testId'
+      preLoaderRoute: typeof TestTestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/course/$kind/$id': {
       id: '/course/$kind/$id'
       path: '/course/$kind/$id'
       fullPath: '/course/$kind/$id'
       preLoaderRoute: typeof CourseKindIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intern/trial/$code': {
+      id: '/intern/trial/$code'
+      path: '/intern/trial/$code'
+      fullPath: '/intern/trial/$code'
+      preLoaderRoute: typeof InternTrialCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -625,12 +705,15 @@ const rootRouteChildren: RootRouteChildren = {
   HelpRoute: HelpRoute,
   JoinMentorRoute: JoinMentorRoute,
   LoginRoute: LoginRoute,
+  MySessionsRoute: MySessionsRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  InternAuthRoute: InternAuthRoute,
+  InternDashboardRoute: InternDashboardRoute,
   LectureSessionIdRoute: LectureSessionIdRoute,
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalRefundRoute: LegalRefundRoute,
@@ -646,6 +729,7 @@ const rootRouteChildren: RootRouteChildren = {
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,
   TestTestIdRoute: TestTestIdRoute,
   CourseKindIdRoute: CourseKindIdRoute,
+  InternTrialCodeRoute: InternTrialCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

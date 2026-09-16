@@ -7,7 +7,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
-import { randomBytes } from "node:crypto";
 import type {
   AdminPromoterCouponRequestView,
   AdminPromoterPayoutRequestView,
@@ -24,7 +23,8 @@ async function requireAdmin(token: string) {
   return decoded;
 }
 
-function randomInviteCode() {
+async function randomInviteCode(): Promise<string> {
+  const { randomBytes } = await import("node:crypto");
   // Human-typeable: 8 hex chars, uppercased, e.g. "PRM-9F3A2C1B" style.
   return `PRM-${randomBytes(4).toString("hex").toUpperCase()}`;
 }
@@ -38,14 +38,14 @@ export const createPromoterInvite = createServerFn({ method: "POST" })
     if (!data.name.trim()) throw new Error("Enter the promoter's name.");
 
     const db = await getDb();
-    let secretCode = randomInviteCode();
+    let secretCode = await randomInviteCode();
 
     // Vanishingly unlikely to collide, but check anyway rather than trust
     // randomness blindly for something that gates account creation.
     for (let attempt = 0; attempt < 5; attempt++) {
       const existing = await db.collection("promoters").findOne({ secretCode });
       if (!existing) break;
-      secretCode = randomInviteCode();
+      secretCode = await randomInviteCode();
     }
 
     const result = await db.collection("promoters").insertOne({

@@ -13,7 +13,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
-import { scryptSync, createHmac, timingSafeEqual } from "node:crypto";
 import type {
   MentorProfileExtended,
   MentorProfileUpdateInput,
@@ -22,7 +21,16 @@ import type {
   YearOfStudy,
 } from "@/lib/admin-types";
 
-function verifyPassword(password: string, hash: string, salt: string): boolean {
+// NOTE: node:crypto is intentionally NEVER imported statically at the top
+// of this file. A static top-level `import ... from "node:crypto"` gets
+// pulled into the client bundle (same root cause as the earlier MongoDB
+// browser crash) because this file's exports are used from client
+// components. Every function below that needs crypto does
+// `await import("node:crypto")` locally instead, which only ever executes
+// on the server.
+
+async function verifyPassword(password: string, hash: string, salt: string): Promise<boolean> {
+  const { scryptSync, timingSafeEqual } = await import("node:crypto");
   const candidate = scryptSync(password, salt, 64);
   const expected = Buffer.from(hash, "hex");
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
@@ -38,7 +46,8 @@ function getSessionSecret(): string {
 
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
-function signMentorToken(mentorId: string): string {
+async function signMentorToken(mentorId: string): Promise<string> {
+  const { createHmac } = await import("node:crypto");
   const secret = getSessionSecret();
   const expiresAt = Date.now() + SESSION_DURATION_MS;
   const payload = `${mentorId}.${expiresAt}`;
@@ -46,7 +55,7 @@ function signMentorToken(mentorId: string): string {
   return `${payload}.${signature}`;
 }
 
-function verifyMentorToken(token: string): { mentorId: string } | null {
+async function verifyMentorToken(token: string): Promise<{ mentorId: string } | null> {
   let secret: string;
   try {
     secret = getSessionSecret();
@@ -58,6 +67,7 @@ function verifyMentorToken(token: string): { mentorId: string } | null {
   if (parts.length !== 3) return null;
   const [mentorId, expiresAtStr, signature] = parts;
 
+  const { createHmac, timingSafeEqual } = await import("node:crypto");
   const expectedSignature = createHmac("sha256", secret)
     .update(`${mentorId}.${expiresAtStr}`)
     .digest("hex");
@@ -81,8 +91,8 @@ function verifyMentorToken(token: string): { mentorId: string } | null {
 // cryptographically valid until it naturally expires up to 7 days later.
 // This is the single choke point every mentor-facing server function
 // routes through, so termination takes effect on the very next request.
-async function requireMentor(token: string): Promise<string> {
-  const verified = verifyMentorToken(token);
+export async function requireMentor(token: string): Promise<string> {
+  const verified = await verifyMentorToken(token);
   if (!verified) throw new Error("Session expired. Please sign in again.");
   const { ObjectId } = await import("mongodb");
   const db = await getDb();
@@ -115,14 +125,17 @@ export const mentorLogin = createServerFn({ method: "POST" })
     const db = await getDb();
     const mentor = await db.collection("mentors").findOne({ username: data.username });
 
-    if (!mentor || !verifyPassword(data.password, mentor.passwordHash as string, mentor.passwordSalt as string)) {
+    if (
+      !mentor ||
+      !(await verifyPassword(data.password, mentor.passwordHash as string, mentor.passwordSalt as string))
+    ) {
       throw new Error("Incorrect username or password.");
     }
     if (mentor.status === "terminated") {
       throw new Error("This account has been deactivated. Please contact Edurack support.");
     }
 
-    const token = signMentorToken(String(mentor._id));
+    const token = await signMentorToken(String(mentor._id));
     return {
       ok: true,
       token,

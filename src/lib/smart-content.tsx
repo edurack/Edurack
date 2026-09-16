@@ -1,9 +1,3 @@
-// Renders a single admin-entered string as whichever of the three formats it
-// actually is: an image (if it's a URL ending in an image extension), LaTeX
-// (if it contains $...$ or $$...$$ delimiters, mixed freely with plain
-// text), or plain text otherwise. Used for question bodies, all four
-// options, and solutions — anywhere the spec calls for "text OR image URL OR
-// LaTeX" in one field.
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -13,14 +7,13 @@ function escapeHtml(str: string): string {
 
 const MATH_PATTERN = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
 
-export function renderMixedLatexHtml(value: string): string {
+export function renderMixedLatexHtml(text: string): string {
   let html = "";
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   MATH_PATTERN.lastIndex = 0;
-
-  while ((match = MATH_PATTERN.exec(value)) !== null) {
-    html += escapeHtml(value.slice(lastIndex, match.index));
+  while ((match = MATH_PATTERN.exec(text)) !== null) {
+    html += escapeHtml(text.slice(lastIndex, match.index));
     const isDisplay = match[1] !== undefined;
     const expr = (match[1] ?? match[2] ?? "").trim();
     try {
@@ -30,39 +23,99 @@ export function renderMixedLatexHtml(value: string): string {
     }
     lastIndex = match.index + match[0].length;
   }
-  html += escapeHtml(value.slice(lastIndex));
+  html += escapeHtml(text.slice(lastIndex));
   return html;
 }
 
+// Admin-inserted diagrams look like ![alt](url) — see image-insert-field.tsx
+const IMAGE_MD_PATTERN = /!\[[^\]]*\]\(([^)]+)\)/g;
+
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i;
 
-export function isImageUrl(value: string): boolean {
+// Legacy support: fields saved before the diagram-upload feature existed
+// may just be a bare URL with nothing else in the field.
+function isBareImageUrl(value: string): boolean {
   const trimmed = value.trim();
   return /^https?:\/\//i.test(trimmed) && IMAGE_EXTENSION_PATTERN.test(trimmed);
 }
 
-export function SmartContent({ value, className }: { value: string; className?: string }) {
+type Segment = { type: "text"; html: string } | { type: "image"; url: string };
+
+function splitIntoSegments(value: string): Segment[] {
+  const segments: Segment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  IMAGE_MD_PATTERN.lastIndex = 0;
+  while ((match = IMAGE_MD_PATTERN.exec(value)) !== null) {
+    const textChunk = value.slice(lastIndex, match.index);
+    if (textChunk.trim()) segments.push({ type: "text", html: renderMixedLatexHtml(textChunk) });
+    segments.push({ type: "image", url: match[1].trim() });
+    lastIndex = match.index + match[0].length;
+  }
+  const rest = value.slice(lastIndex);
+  if (rest.trim()) segments.push({ type: "text", html: renderMixedLatexHtml(rest) });
+  return segments;
+}
+
+export function SmartContent({
+  value,
+  className,
+  eager = false,
+}: {
+  value: string;
+  className?: string;
+  // Pass true only for the question currently on screen, so its image
+  // starts downloading immediately instead of waiting on the browser's
+  // lazy-load viewport check. Leave false everywhere else (review lists,
+  // off-screen options, past-attempt pages) so those don't compete for
+  // bandwidth with what the student is actually looking at right now.
+  eager?: boolean;
+}) {
   const trimmed = value.trim();
 
   if (!trimmed) {
     return <p className={`italic text-foreground/30 ${className ?? ""}`}>Empty</p>;
   }
 
-  if (isImageUrl(trimmed)) {
+  if (isBareImageUrl(trimmed)) {
     return (
       <img
         src={trimmed}
         alt="Question asset"
-        className={`max-h-48 rounded-xl object-contain ${className ?? ""}`}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        className={`max-h-64 rounded-xl object-contain ${className ?? ""}`}
       />
     );
   }
 
-  if (trimmed.includes("$")) {
-    return (
-      <div className={className} dangerouslySetInnerHTML={{ __html: renderMixedLatexHtml(trimmed) }} />
-    );
+  const segments = splitIntoSegments(trimmed);
+
+  if (segments.length === 0) {
+    return <p className={className}>{trimmed}</p>;
   }
 
-  return <p className={className}>{trimmed}</p>;
+  // Pure text/LaTeX, no diagram — keep this as the cheap single-node path.
+  if (segments.length === 1 && segments[0].type === "text") {
+    return <div className={className} dangerouslySetInnerHTML={{ __html: segments[0].html }} />;
+  }
+
+  return (
+    <div className={className}>
+      {segments.map((seg, i) =>
+        seg.type === "image" ? (
+          <img
+            key={i}
+            src={seg.url}
+            alt="Question diagram"
+            loading={eager ? "eager" : "lazy"}
+            decoding="async"
+            className="my-2 max-h-64 rounded-xl object-contain"
+          />
+        ) : (
+          <span key={i} dangerouslySetInnerHTML={{ __html: seg.html }} />
+        ),
+      )}
+    </div>
+  );
 }

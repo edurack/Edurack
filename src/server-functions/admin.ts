@@ -2,9 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { sendMail, sendMailBatch } from "@/lib/mailer";
 import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
-import { scryptSync, randomBytes } from "node:crypto";
 import type { ExamKey, Track } from "@/lib/admin-types";
 import { PLATFORM_COMMISSION_PERCENT, DEFAULT_BATCH_PROMOTION_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
+
 
 // ─── Authorization helper ────────────────────────────────────────────────
 // Every admin-only server function below calls this first. It verifies the
@@ -599,11 +599,13 @@ export const deleteQuestion = createServerFn({ method: "POST" })
 
 // ─── Module 6: Mentor Allocation & Schedule Hub ─────────────────────────────
 
-function hashPassword(password: string): { hash: string; salt: string } {
+async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
+  const { scryptSync, randomBytes } = await import("node:crypto");
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, 64).toString("hex");
   return { hash, salt };
 }
+
 
 type MentorOnboardingInput = {
   username: string;
@@ -624,7 +626,7 @@ export const createMentor = createServerFn({ method: "POST" })
     // Password is hashed here, never stored or returned in plain text — even
     // though there's no mentor login flow consuming it yet, storing
     // plaintext passwords is a bad habit to start regardless.
-    const { hash, salt } = hashPassword(data.mentor.password);
+const { hash, salt } = await hashPassword(data.mentor.password);
 
     const result = await db.collection("mentors").insertOne({
       username: data.mentor.username,

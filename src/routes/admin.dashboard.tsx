@@ -2,8 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
-import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps } from "@tabler/icons-react";
-import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall } from "lucide-react"; // TODO: no Tabler mapping found yet
+import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps, IconUserCheck as UserCheck, IconFlask as FlaskConical } from "@tabler/icons-react";
+import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, CalendarClock } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
@@ -46,6 +46,10 @@ import { QuestionIngestionModule } from "@/components/question-ingestion-module"
 import { BundleInspectorModule } from "@/components/bundle-inspector-module";
 import { MentorHubModule } from "@/components/mentor-hub-module";
 import { SellTestsAdminModule } from "@/components/sell-tests-admin-module";
+import { SessionTemplatesAdminModule } from "@/components/session-templates-admin-module";
+import { InternHubModule } from "@/components/admin/intern-hub-module";
+import { InternTrialModule } from "@/components/admin/intern-trial-module";
+
 
 type ModuleKey =
   | "overview"
@@ -57,8 +61,11 @@ type ModuleKey =
   | "inspector"
   | "students"
   | "applications"
+  | "sessionTemplates"
   | "mentors"
   | "promoters"
+  | "interns"
+  | "internTrials"
   | "dangerZone"
   | "tickets";
 
@@ -79,6 +86,8 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "questions", label: "Questions", icon: ListChecks  as any },
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
+      { key: "sessionTemplates", label: "Session Templates", icon: CalendarClock as any },
+
 
     ],
   },
@@ -86,9 +95,11 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
   label: "People",
   items: [
     { key: "students", label: "Students", icon: Users },
-    { key: "applications", label: "Applications", icon: FileCheck },
+    { key: "applications", label: "Applications", icon: FileCheck as any},
     { key: "mentors", label: "Mentors", icon: GraduationCap },
     { key: "promoters", label: "Promoters", icon: Megaphone },  // ← add (Megaphone already imported)
+    { key: "interns", label: "Interns", icon: UserCheck as any },
+    { key: "internTrials", label: "Intern Trials", icon: FlaskConical as any },
   ],
 },
   { label: "Support", items: [{ key: "tickets", label: "Tickets", icon: LifeBuoy }] },
@@ -346,6 +357,8 @@ function ModuleRouter({
       return <BundleInspectorModule adminUser={adminUser} />;
     case "sellTests":
       return <SellTestsAdminModule adminUser={adminUser} />;
+    case "sessionTemplates": 
+      return <SessionTemplatesAdminModule adminUser={adminUser} />;
     case "students":
       return <StudentsModule adminUser={adminUser} />;
     case "applications":
@@ -354,6 +367,12 @@ function ModuleRouter({
       return <MentorHubModule adminUser={adminUser} />;
     case "promoters":
       return <PromoterHubModule adminUser={adminUser} />;
+    case "promoters":
+      return <PromoterHubModule adminUser={adminUser} />;
+    case "interns":
+      return <InternHubModule adminUser={adminUser} />;
+    case "internTrials":
+      return <InternTrialModule adminUser={adminUser} />;
     case "tickets":
       return <TicketsModule adminUser={adminUser} initialTicketId={ticketId} />;
     case "dangerZone":
@@ -1178,7 +1197,7 @@ function StudentProfileDrawer({
             </DrawerSection>
 
             {/* Performance */}
-            <DrawerSection icon={ClipboardCheck as React.ForwardRefExoticComponent<IconProps & React.RefAttributes<SVGSVGElement>>} title="Batch performance">
+            <DrawerSection icon={ClipboardCheck as any} title="Batch performance">
               {data.batchPerformance.length === 0 ? (
                 <p className="text-sm text-foreground/60">No test attempts yet.</p>
               ) : (

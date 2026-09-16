@@ -7,6 +7,7 @@ import {
   listTestCoresForBundle,
   listQuestionsForTestSubject,
 } from "@/server-functions/admin";
+import { ImageInsertField } from "./admin/image-insert-field";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
@@ -384,14 +385,9 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
               </div>
             </div>
 
-            <ClayField label="Question body (text, LaTeX $…$/$$…$$, or image URL)">
-              <textarea
-                value={questionBody}
-                onChange={(e) => setQuestionBody(e.target.value)}
-                rows={4}
-                placeholder="e.g. The velocity of a particle is given by $v = u + at$. Find…"
-                className={textareaClass}
-              />
+            <ClayField label="Question body (text, LaTeX $…$/$$…$$, or diagram)">
+              <ImageInsertField value={questionBody} onChange={setQuestionBody} rows={4} className={textareaClass}
+                placeholder="e.g. The velocity of a particle is given by $v = u + at$. Find…" />
             </ClayField>
 
             {/* ── Options block (MCQ) or numeric answer (Integer) ─────── */}
@@ -423,11 +419,12 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                         >
                           {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : opt.key}
                         </button>
-                        <input
+                        <ImageInsertField
                           value={opt.value}
-                          onChange={(e) => opt.setValue(e.target.value)}
+                          onChange={opt.setValue}
                           placeholder={`Option ${opt.key}`}
-                          className={inputClass + " flex-1"}
+                          className={inputClass}
+                          compact
                         />
                       </div>
                     );
@@ -463,12 +460,12 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
 
           <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
             <ClayField label="Step-by-step solution (LaTeX enabled)">
-              <textarea
+              <ImageInsertField
                 value={solution}
-                onChange={(e) => setSolution(e.target.value)}
+                onChange={setSolution}
                 rows={5}
-                placeholder="Step 1: … $$v^2 = u^2 + 2as$$ Step 2: …"
                 className={textareaClass}
+                placeholder="Step 1: … $$v^2 = u^2 + 2as$$ Step 2: …"
               />
             </ClayField>
 

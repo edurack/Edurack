@@ -314,3 +314,88 @@ export function mentorPasswordResetEmailHtml(params: {
   `;
   return emailLayout({ previewText: "Your Edurack mentor password has been reset", bodyHtml: body });
 }
+
+// ─── Mentor Sessions (open slot scheduling) ─────────────────────────────
+// Everything below is NEW — added for the Sessions feature. Reuses the
+// same emailLayout/emailBadge/emailButton/BRAND/FONT_STACK primitives
+// above, so it lives in this file rather than a separate one.
+
+function formatSessionTime(date: string, startTime: string) {
+  const d = new Date(`${date}T${startTime}:00`);
+  return d.toLocaleString("en-IN", { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+// ─── Session booking: confirmation to the student ─────────────────────────
+export function sessionBookingConfirmationEmailHtml(params: {
+  studentName: string;
+  mentorName: string;
+  title: string;
+  date: string;
+  startTime: string;
+}): string {
+  const body = `
+    ${emailBadge("Session booked", BRAND.mintSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      You're booked with ${params.mentorName}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Hi ${params.studentName}, your session <strong style="color: ${BRAND.text};">${params.title}</strong> is confirmed for
+      <strong style="color: ${BRAND.text};">${formatSessionTime(params.date, params.startTime)}</strong>.
+    </p>
+    <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
+      You'll get the meeting link before it starts — check "My Sessions" on your dashboard.
+    </p>
+  `;
+  return emailLayout({ previewText: `Confirmed: ${params.title} with ${params.mentorName}`, bodyHtml: body });
+}
+
+// ─── Session booking: notification to the mentor ──────────────────────────
+export function sessionBookingNotificationEmailHtml(params: {
+  mentorName: string;
+  studentName: string;
+  title: string;
+  date: string;
+  startTime: string;
+}): string {
+  const body = `
+    ${emailBadge("New booking", BRAND.skySoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      ${params.studentName} booked ${params.title}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Hi ${params.mentorName}, you have a new session booked for
+      <strong style="color: ${BRAND.text};">${formatSessionTime(params.date, params.startTime)}</strong>.
+    </p>
+    <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
+      Add a meeting link from your Sessions tab before it starts.
+    </p>
+  `;
+  return emailLayout({ previewText: `New booking: ${params.studentName} — ${params.title}`, bodyHtml: body });
+}
+
+// ─── Session reminder (~1 hour before, sent to student and/or mentor) ─────
+export function sessionReminderEmailHtml(params: {
+  name: string;
+  counterpartName: string;
+  title: string;
+  startTime: string;
+  meetingLink: string | null;
+}): string {
+  const body = `
+    ${emailBadge("Starting soon", BRAND.lemonSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      ${params.title} starts at ${params.startTime}
+    </h1>
+    <p style="margin: 0 0 8px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Hi ${params.name}, your session with <strong style="color: ${BRAND.text};">${params.counterpartName}</strong> starts in about an hour.
+    </p>
+    ${
+      params.meetingLink
+        ? emailButton(params.meetingLink, "Join the session")
+        : `<p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
+             The meeting link will be added shortly — check your dashboard.
+           </p>`
+    }
+  `;
+  return emailLayout({ previewText: `Starting soon: ${params.title} at ${params.startTime}`, bodyHtml: body });
+}

@@ -289,6 +289,18 @@ function TestEnginePage() {
     };
   }, []);
 
+
+  useEffect(() => {
+    const next = subjectQuestions[currentIndex + 1];
+    if (!next) return;
+    const fields = [next.body, ...Object.values(next.options ?? {})];
+    const urls = fields.flatMap((s) => [...s.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]));
+    urls.forEach((url) => {
+      const img = new window.Image();
+      img.src = url;
+    });
+  }, [currentIndex, activeSubject, subjectQuestions]);
+
   function startTest() {
     startTimeRef.current = Date.now();
     requestFullscreenSafe()
@@ -620,7 +632,7 @@ function TestEnginePage() {
                 </span>
               </div>
 
-              <SmartContent value={currentQuestion.body} className="mb-5 text-sm text-foreground" />
+              <SmartContent value={currentQuestion.body} className="mb-5 text-sm text-foreground" eager />
 
               {currentQuestion.type === "mcq" ? (
                 <div className="space-y-2.5">
@@ -639,7 +651,7 @@ function TestEnginePage() {
                         className="h-4 w-4 shrink-0"
                       />
                       <span className="text-sm font-semibold text-foreground/50">({opt})</span>
-                      <SmartContent value={currentQuestion.options?.[opt] ?? ""} className="text-sm text-foreground" />
+                      <SmartContent value={currentQuestion.options?.[opt] ?? ""} className="text-sm text-foreground" eager />
                     </label>
                   ))}
                 </div>

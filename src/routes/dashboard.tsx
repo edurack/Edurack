@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";
 import { getMyPurchases } from "@/server-functions/student-data";
+import { StudentOpenSessionsModule } from "@/components/student-open-sessions-module";
 import { AppHeader } from "@/components/app-header";
 
 export const Route = createFileRoute("/dashboard")({
@@ -187,7 +188,7 @@ function batchToListing(b: MentorshipBatch, purchasedKeys: Set<string>): Listing
 const TRACK_FILTERS: TrackFilter[] = ["All", "Dropper", "11th", "12th"];
 const EXAM_FILTERS: ExamFilter[] = ["All", "neet", "jee", "cuet", "ipmat"];
 
-type MainTab = "forYou" | "series" | "mentorship" | "tests" | "mentors";
+type MainTab = "forYou" | "series" | "mentorship" | "tests" | "mentors" | "sessions";
 
 function DashboardPage() {
   const { user, loading } = useAuth();
@@ -318,9 +319,11 @@ function DashboardPage() {
     { key: "mentorship", label: "Mentorships", color: KIND_COLORS["Mentorship"].deep },
     { key: "tests", label: "Tests", color: AMBER_DEEP },
     { key: "mentors", label: "Mentors", color: PURPLE_DEEP },
+    { key: "sessions", label: "Book a session" },
   ];
 
   const showFilters = tab === "series" || tab === "mentorship";
+
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -474,6 +477,7 @@ function DashboardPage() {
               )}
               {tab === "tests" && <SoldTestGrid tests={soldTests} />}
               {tab === "mentors" && <MentorGrid mentors={mentors} />}
+              {tab === "sessions" && <StudentOpenSessionsModule getToken={() => user.getIdToken()} />}
             </div>
           </>
         )}
