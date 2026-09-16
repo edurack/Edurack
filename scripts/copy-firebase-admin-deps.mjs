@@ -10,7 +10,9 @@
 // NOT actually copy anything — the external import then resolves to
 // nothing at runtime instead ("Cannot find package 'firebase-admin'").
 //
-// So: we copy firebase-admin and its full dependency tree ourselves.
+// So: we copy firebase-admin and its full dependency tree ourselves. This
+// also now covers mongodb and its dependency tree, for the same reason
+// (mongodb is externalized in vite.config.ts too).
 //
 // FIX HISTORY:
 // v1: assumed every dependency was hoisted to the flat root node_modules
@@ -23,14 +25,28 @@
 //     "./package.json" as an allowed subpath — Node's exports enforcement
 //     then throws ERR_PACKAGE_PATH_NOT_EXPORTED even though the file exists
 //     on disk, so the whole package silently got skipped.
-// v3 (actual fix): don't resolve "package.json" as a module subpath at all
-//     (that goes through exports enforcement). Instead use
-//     `require.resolve.paths(name)` to get the list of node_modules
-//     directories Node would search for `name` — that's plain directory
-//     listing and does NOT go through any package's exports map — then
-//     manually check each candidate directory with a filesystem existsSync
-//     check for the package folder. This finds the same on-disk location
-//     Node's resolver would use, without tripping over exports maps.
+// v3: don't resolve "package.json" as a module subpath at all (that goes
+//     through exports enforcement). Instead use `require.resolve.paths(name)`
+//     to get the list of node_modules directories Node would search for
+//     `name` — that's plain directory listing and does NOT go through any
+//     package's exports map — then manually check each candidate directory
+//     with a filesystem existsSync check for the package folder. This finds
+//     the same on-disk location Node's resolver would use, without tripping
+//     over exports maps.
+// v4 (actual fix, mongodb tree): v3 still silently failed for any package
+//     name that collides with a Node core module — e.g. "punycode" is BOTH
+//     a real npm package (a transitive dep of mongodb, via
+//     mongodb-connection-string-url -> whatwg-url -> tr46) AND a deprecated
+//     Node core module. require.resolve.paths(request) returns null
+//     whenever `request` matches a core module name, short-circuiting
+//     before ever checking node_modules — so it always failed to resolve
+//     "punycode" even though the real package sat right there on disk.
+//     Fix: when the plain name resolves to nothing, retry with a trailing
+//     slash ("punycode/") — never a valid core-module specifier, so it
+//     forces genuine node_modules resolution. This is the same trick tr46
+//     itself uses at runtime (its own require call is `require('punycode/')`,
+//     note the slash). Only affects the lookup; the on-disk destination
+//     path still uses the clean package name.
 import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,14 +69,24 @@ function nameSegments(name) {
 // package's "exports" map restrictions.
 function resolvePackageDir(name, fromDir) {
   const req = createRequire(join(fromDir, "noop.js"));
-  let candidateDirs;
-  try {
-    // require.resolve.paths gives the ordered list of node_modules dirs
-    // Node would search — this call itself does not touch `name`'s own
-    // exports map, only the caller's resolution context.
-    candidateDirs = req.resolve.paths(name) || [];
-  } catch {
-    candidateDirs = [];
+
+  function tryPaths(request) {
+    try {
+      return req.resolve.paths(request) || [];
+    } catch {
+      return [];
+    }
+  }
+
+  // require.resolve.paths(request) returns null whenever `request` is a
+  // Node core module — short-circuiting before ever checking node_modules.
+  // Some npm packages (e.g. "punycode") share a name with a core module,
+  // so the plain name always short-circuits even though the real package
+  // is on disk. A trailing slash is never a valid core-module specifier,
+  // so retrying with one forces genuine node_modules resolution instead.
+  let candidateDirs = tryPaths(name);
+  if (candidateDirs.length === 0) {
+    candidateDirs = tryPaths(name + "/");
   }
 
   for (const dir of candidateDirs) {
@@ -95,11 +121,11 @@ function copyPackage(name, fromDir, seenPaths) {
   console.log(`[copy-firebase-admin-deps] copied ${name} -> ${relative(root, dest)}`);
 
   const pkgJsonPath = join(src, "package.json");
-const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
-const deps = { ...(pkg.dependencies || {}), ...(pkg.optionalDependencies || {}) };
-for (const dep of Object.keys(deps)) {
-  copyPackage(dep, src, seenPaths);
-}
+  const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+  const deps = { ...(pkg.dependencies || {}), ...(pkg.optionalDependencies || {}) };
+  for (const dep of Object.keys(deps)) {
+    copyPackage(dep, src, seenPaths);
+  }
 }
 
 if (!existsSync(functionDir)) {
@@ -111,7 +137,7 @@ if (!existsSync(functionDir)) {
 
 const seenPaths = new Set();
 copyPackage("firebase-admin", root, seenPaths);
-copyPackage("json-bigint", root, seenPaths);
+copyPackage("json-bigint", root, seenPaths); // Force-inject json-bigint to the output
 copyPackage("mongodb", root, seenPaths);
 copyPackage("bson", root, seenPaths);
 copyPackage("punycode", root, seenPaths);
