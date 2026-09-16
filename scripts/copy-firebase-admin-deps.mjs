@@ -95,11 +95,11 @@ function copyPackage(name, fromDir, seenPaths) {
   console.log(`[copy-firebase-admin-deps] copied ${name} -> ${relative(root, dest)}`);
 
   const pkgJsonPath = join(src, "package.json");
-  const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
-  const deps = { ...(pkg.dependencies || {}) };
-  for (const dep of Object.keys(deps)) {
-    copyPackage(dep, src, seenPaths);
-  }
+const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+const deps = { ...(pkg.dependencies || {}), ...(pkg.optionalDependencies || {}) };
+for (const dep of Object.keys(deps)) {
+  copyPackage(dep, src, seenPaths);
+}
 }
 
 if (!existsSync(functionDir)) {
