@@ -83,7 +83,9 @@ export function ImageInsertField({
             {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
             {uploading ? "Uploading…" : "Insert diagram"}
           </button>
-          <span className="text-[11px] text-foreground/40">or paste (Ctrl+V) directly into the box</span>
+          <span className="text-[11px] text-foreground/40">
+            or paste (Ctrl+V) directly into the box — images and SVG code both convert automatically
+          </span>
         </div>
       )}
       {uploadError && (
@@ -95,7 +97,7 @@ export function ImageInsertField({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.svg"
         hidden
         onChange={(e) => {
           const file = e.target.files?.[0];

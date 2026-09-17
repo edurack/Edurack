@@ -84,24 +84,36 @@ export function SmartContent({
         alt="Question asset"
         loading={eager ? "eager" : "lazy"}
         decoding="async"
-        className={`max-h-64 rounded-xl object-contain ${className ?? ""}`}
+        className={`max-h-64 max-w-full rounded-xl object-contain ${className ?? ""}`}
       />
     );
   }
 
   const segments = splitIntoSegments(trimmed);
 
+  // whitespace-pre-wrap: without it, the line breaks / blank lines / extra
+  // indentation someone typed into the input box (e.g. "Step 1: ...\n\nStep
+  // 2: ...") get collapsed by normal HTML whitespace rules and vanish on
+  // render — the box shows exactly what was typed, but only pre-wrap makes
+  // the browser actually render it that way.
+  // break-words: without it, one long unbroken run of text (a long URL, a
+  // run-on chemical formula, etc.) won't wrap and can push the container —
+  // and anything sharing a flex row with it — wider than its box.
+  const wrapClass = "whitespace-pre-wrap break-words";
+
   if (segments.length === 0) {
-    return <p className={className}>{trimmed}</p>;
+    return <p className={`${wrapClass} ${className ?? ""}`}>{trimmed}</p>;
   }
 
   // Pure text/LaTeX, no diagram — keep this as the cheap single-node path.
   if (segments.length === 1 && segments[0].type === "text") {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: segments[0].html }} />;
+    return (
+      <div className={`${wrapClass} ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: segments[0].html }} />
+    );
   }
 
   return (
-    <div className={className}>
+    <div className={`${wrapClass} ${className ?? ""}`}>
       {segments.map((seg, i) =>
         seg.type === "image" ? (
           <img
@@ -110,7 +122,7 @@ export function SmartContent({
             alt="Question diagram"
             loading={eager ? "eager" : "lazy"}
             decoding="async"
-            className="my-2 max-h-64 rounded-xl object-contain"
+            className="my-2 max-h-64 max-w-full rounded-xl object-contain"
           />
         ) : (
           <span key={i} dangerouslySetInnerHTML={{ __html: seg.html }} />

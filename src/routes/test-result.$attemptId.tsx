@@ -358,7 +358,14 @@ function TestResultContent({
                             }`}
                           >
                             <span className="font-semibold text-foreground/50">({opt})</span>
-                            <SmartContent value={q.options?.[opt] ?? ""} className="text-foreground" />
+                            {/* min-w-0 is load-bearing here: a flex child's default
+                                min-width is "auto" (content-based), so without it a
+                                wide diagram or long unbroken string inside would
+                                push this whole row (and the icon after it) wider
+                                than the card instead of shrinking/wrapping to fit. */}
+                            <div className="min-w-0 flex-1">
+                              <SmartContent value={q.options?.[opt] ?? ""} className="text-foreground" />
+                            </div>
                             {isCorrectOpt && <CheckCircle2 className="ml-auto h-4 w-4 shrink-0 text-[var(--mint-soft)]" />}
                             {isSelected && !isCorrectOpt && <XCircle className="ml-auto h-4 w-4 shrink-0 text-[var(--coral-soft)]" />}
                           </div>

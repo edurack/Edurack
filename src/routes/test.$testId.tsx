@@ -651,7 +651,14 @@ function TestEnginePage() {
                         className="h-4 w-4 shrink-0"
                       />
                       <span className="text-sm font-semibold text-foreground/50">({opt})</span>
-                      <SmartContent value={currentQuestion.options?.[opt] ?? ""} className="text-sm text-foreground" eager />
+                      {/* min-w-0 is load-bearing here: a flex child's default
+                          min-width is "auto" (content-based), so without it a
+                          wide diagram or long unbroken string inside would
+                          push this whole row wider than the card instead of
+                          shrinking/wrapping to fit. */}
+                      <div className="min-w-0 flex-1">
+                        <SmartContent value={currentQuestion.options?.[opt] ?? ""} className="text-sm text-foreground" eager />
+                      </div>
                     </label>
                   ))}
                 </div>
