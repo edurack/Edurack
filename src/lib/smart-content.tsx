@@ -17,7 +17,17 @@ export function renderMixedLatexHtml(text: string): string {
     const isDisplay = match[1] !== undefined;
     const expr = (match[1] ?? match[2] ?? "").trim();
     try {
-      html += katex.renderToString(expr, { throwOnError: false, displayMode: isDisplay });
+      const rendered = katex.renderToString(expr, { throwOnError: false, displayMode: isDisplay });
+      // Display-mode ($$...$$) equations render as one unbreakable block —
+      // KaTeX never wraps or shrinks them to fit. A long derivation (the
+      // exact "Mgh = ... + 1/2(2/5 M..." case) would otherwise just keep
+      // extending past its card and drag the whole page into horizontal
+      // scroll with it. Giving only the display ones their own
+      // overflow-x:auto strip, capped to the available width, lets a long
+      // equation scroll sideways in place instead — inline ($...$) math
+      // is left alone since it's short by nature and sits inside normal
+      // wrapping text.
+      html += isDisplay ? `<div style="overflow-x:auto;max-width:100%;">${rendered}</div>` : rendered;
     } catch {
       html += escapeHtml(match[0]);
     }
