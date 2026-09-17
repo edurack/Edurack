@@ -4,6 +4,8 @@ import {
   IconCircleCheck as CheckCircle2,
   IconTrash as Trash2,
   IconPencil as Pencil,
+  IconFileText as FileText,
+  IconHelpCircle as HelpCircle,
 } from "@tabler/icons-react";
 import { Circle } from "lucide-react";
 import {
@@ -14,10 +16,19 @@ import {
   submitDrafts,
   getTaskProgress,
 } from "@/server-functions/intern-portal";
+import { ImageInsertField } from "@/components/admin/image-insert-field";
+import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
+import { useTour, OnboardingTour, type TourStep } from "./onboarding-tour";
 
 type OptionKey = "A" | "B" | "C" | "D";
 type QuestionType = "mcq" | "integer";
-type Task = { id: string; subject: string; targetCount: number; instructions: string };
+type Task = {
+  id: string;
+  subject: string;
+  targetCount: number;
+  instructions: string;
+  referencePdfUrl: string | null;
+};
 
 const inputClass =
   "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
@@ -39,6 +50,33 @@ const emptyForm = {
   questionType: "mcq" as QuestionType,
 };
 
+const WORKSPACE_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="reference-doc"]',
+    title: "Reference material",
+    description:
+      "If your admin attached a document, it has the exact questions or source material to work from — open it before you start writing.",
+  },
+  {
+    selector: '[data-tour="question-form"]',
+    title: "Add a question",
+    description:
+      "Write the question, tap a letter to mark the correct option, and fill in a full step-by-step solution. The little image icon in each text box lets you insert diagrams or photos of the original question.",
+  },
+  {
+    selector: '[data-tour="preview"]',
+    title: "Check before you add it",
+    description:
+      "This box shows exactly how your question will look once reviewed — images and LaTeX rendered, not raw code. Always check here before hitting \"Add to drafts\".",
+  },
+  {
+    selector: '[data-tour="ready-to-submit"]',
+    title: "Submit for review",
+    description:
+      "Questions you add sit here until you select them and hit Submit — that's what sends them to Edurack's admin for approval. Anything not yet submitted you can keep editing freely.",
+  },
+];
+
 export function TaskWorkspaceModule({ token, task }: { token: string; task: Task }) {
   const [drafts, setDrafts] = useState<Awaited<ReturnType<typeof getTaskDrafts>>["drafts"] | null>(null);
   const [progress, setProgress] = useState<Awaited<ReturnType<typeof getTaskProgress>>["progress"] | null>(null);
@@ -47,6 +85,8 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const tour = useTour("internTourWorkspaceSeen");
 
   async function refresh() {
     const [d, p] = await Promise.all([
@@ -156,8 +196,33 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
   return (
     <div className="space-y-6">
       <div className="clay p-5 sm:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">{task.subject}</h2>
-        {task.instructions && <p className="mt-2 text-sm text-foreground/70">{task.instructions}</p>}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">{task.subject}</h2>
+            {task.instructions && <p className="mt-2 text-sm text-foreground/70">{task.instructions}</p>}
+          </div>
+          <button
+            onClick={tour.start}
+            className="clay-btn-ghost flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/60"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            Help
+          </button>
+        </div>
+
+        {task.referencePdfUrl && (
+          <a
+            data-tour="reference-doc"
+            href={task.referencePdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="clay-inset mt-4 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-[var(--sky-deep)] transition-colors hover:bg-foreground/5"
+          >
+            <FileText className="h-4 w-4 shrink-0" />
+            Open reference document
+          </a>
+        )}
+
         {progress && (
           <p className="mt-3 text-xs text-foreground/50">
             Target: {task.targetCount} · Approved: {progress.approvedCount} · Awaiting review: {progress.submittedCount} ·
@@ -167,7 +232,7 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
       </div>
 
       {/* ── Form: add / edit a question ─────────────────────────────── */}
-      <form onSubmit={handleSave} className="clay space-y-4 p-5 sm:p-6">
+      <form onSubmit={handleSave} data-tour="question-form" className="clay space-y-4 p-5 sm:p-6">
         <h3 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
           {editingId ? "Edit question" : "Add a question"}
         </h3>
@@ -193,12 +258,12 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           </button>
         </div>
 
-        <textarea
+        <ImageInsertField
           value={form.body}
-          onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+          onChange={(v: string) => setForm((f) => ({ ...f, body: v }))}
           rows={4}
-          placeholder="Question body (text, LaTeX $…$/$$…$$, or describe the diagram)"
           className={textareaClass}
+          placeholder="Question body — text, LaTeX $…$/$$…$$, or insert an image of the original question"
         />
 
         {form.questionType === "mcq" ? (
@@ -223,11 +288,12 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
                   >
                     {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : opt.key}
                   </button>
-                  <input
+                  <ImageInsertField
                     value={form[opt.field]}
-                    onChange={(e) => setForm((f) => ({ ...f, [opt.field]: e.target.value }))}
+                    onChange={(v: string) => setForm((f) => ({ ...f, [opt.field]: v }))}
                     placeholder={`Option ${opt.key}`}
-                    className={inputClass + " flex-1"}
+                    className={inputClass}
+                    compact
                   />
                 </div>
               );
@@ -243,12 +309,12 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           />
         )}
 
-        <textarea
+        <ImageInsertField
           value={form.solution}
-          onChange={(e) => setForm((f) => ({ ...f, solution: e.target.value }))}
+          onChange={(v: string) => setForm((f) => ({ ...f, solution: v }))}
           rows={4}
-          placeholder="Step-by-step solution (LaTeX enabled)"
           className={textareaClass}
+          placeholder="Step-by-step solution (LaTeX enabled, images allowed)"
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -283,6 +349,42 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           />
         )}
 
+        {/* ── Live preview — exactly what admin will see when they review
+             this, rendered images and LaTeX included, so mistakes get
+             caught here instead of after submitting. ────────────────── */}
+        <div data-tour="preview" className="clay-inset rounded-2xl p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            Preview — this is how it'll look to the reviewer
+          </p>
+          <QuestionContentRenderer content={form.body} />
+          {form.questionType === "mcq" ? (
+            <ul className="mt-3 space-y-1.5">
+              {(
+                [
+                  { key: "A" as OptionKey, value: form.optionA },
+                  { key: "B" as OptionKey, value: form.optionB },
+                  { key: "C" as OptionKey, value: form.optionC },
+                  { key: "D" as OptionKey, value: form.optionD },
+                ] as const
+              ).map((opt) => (
+                <li
+                  key={opt.key}
+                  className={`flex gap-2 ${form.correctOption === opt.key ? "text-emerald-600" : "text-foreground/70"}`}
+                >
+                  <span className="shrink-0 font-semibold">{opt.key}.</span>
+                  <QuestionContentRenderer content={opt.value} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            form.integerAnswer && (
+              <p className="mt-3 text-sm text-foreground/70">Answer: {form.integerAnswer}</p>
+            )
+          )}
+          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">Solution</p>
+          <QuestionContentRenderer content={form.solution} className="text-foreground/70" />
+        </div>
+
         {error && (
           <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">{error}</p>
         )}
@@ -308,7 +410,7 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
       </form>
 
       {/* ── Editable drafts (draft / rejected) ──────────────────────── */}
-      <div className="clay p-5 sm:p-6">
+      <div data-tour="ready-to-submit" className="clay p-5 sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
             Ready to submit ({editable.length})
@@ -327,7 +429,9 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
             <div key={d.id} className="clay-inset flex items-start gap-3 rounded-2xl p-4">
               <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggleSelected(d.id)} className="mt-1 h-4 w-4" />
               <div className="flex-1">
-                <p className="text-sm text-foreground line-clamp-2">{d.body}</p>
+                <div className="max-h-20 overflow-hidden">
+                  <QuestionContentRenderer content={d.body} />
+                </div>
                 {d.status === "rejected" && d.adminFeedback && (
                   <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-rose-600">
                     <Circle className="h-3 w-3" /> Rejected: {d.adminFeedback}
@@ -354,7 +458,9 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           <div className="space-y-2">
             {submitted.map((d) => (
               <div key={d.id} className="clay-inset rounded-2xl p-4">
-                <p className="text-sm text-foreground line-clamp-2">{d.body}</p>
+                <div className="max-h-20 overflow-hidden">
+                  <QuestionContentRenderer content={d.body} />
+                </div>
               </div>
             ))}
           </div>
@@ -369,14 +475,18 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           </h3>
           <div className="space-y-2">
             {approved.map((d) => (
-              <div key={d.id} className="clay-inset flex items-center gap-2 rounded-2xl p-4">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                <p className="text-sm text-foreground line-clamp-2">{d.body}</p>
+              <div key={d.id} className="clay-inset flex items-start gap-2 rounded-2xl p-4">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                <div className="max-h-20 flex-1 overflow-hidden">
+                  <QuestionContentRenderer content={d.body} />
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {tour.active && <OnboardingTour steps={WORKSPACE_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

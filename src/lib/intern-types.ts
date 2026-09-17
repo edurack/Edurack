@@ -64,6 +64,12 @@ export type InternTask = {
   subject: string;
   targetCount: number;
   instructions: string;
+  // Source material the intern should be transcribing/adapting from —
+  // a PDF, Drive link, or any URL the admin pastes in (same "paste a
+  // link" pattern as TestCore.referencePdfUrl / SoldTest.referencePdfUrl
+  // elsewhere in admin-types.ts). Null when the task is self-explanatory
+  // from instructions alone.
+  referencePdfUrl: string | null;
   dueDate: string | null;
   status: InternTaskStatus;
   assignedAt: string | null;
@@ -76,6 +82,7 @@ export type InternTaskInput = {
   subject: string;
   targetCount: number;
   instructions: string;
+  referencePdfUrl: string | null;
   dueDate: string | null;
 };
 

@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { IconMail as Mail } from "@tabler/icons-react";
 import { createTrialAssignment, listTrialAssignments, reviewTrialAssignment } from "@/server-functions/intern-trial";
 import { createInternInvite } from "@/server-functions/intern-auth";
+import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
@@ -16,10 +18,12 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
   const [subjectLabel, setSubjectLabel] = useState("");
   const [instructions, setInstructions] = useState("");
   const [sampleCount, setSampleCount] = useState("5");
-  const [lastLink, setLastLink] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<{ emailSent: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [scoreDraft, setScoreDraft] = useState<Record<string, { score: string; notes: string }>>({});
+  const [convertedIds, setConvertedIds] = useState<Set<string>>(new Set());
+  const [convertMessage, setConvertMessage] = useState<Record<string, string>>({});
 
   async function refresh() {
     const token = await adminUser.getIdToken();
@@ -43,7 +47,7 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
           assignment: { candidateName: name, candidateEmail: email, subjectLabel, instructions, sampleCount: Number(sampleCount) },
         },
       });
-      setLastLink(`${window.location.origin}/intern/trial/${res.code}`);
+      setLastResult({ emailSent: res.emailSent });
       setName("");
       setEmail("");
       setSubjectLabel("");
@@ -65,10 +69,16 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
     await refresh();
   }
 
-  async function handleConvertToInvite(candidateName: string, candidateEmail: string) {
+  async function handleConvertToInvite(assignmentId: string, candidateName: string, candidateEmail: string) {
     const token = await adminUser.getIdToken();
     const res = await createInternInvite({ data: { token, invite: { name: candidateName, email: candidateEmail } } });
-    window.alert(`Invite code for ${candidateName}: ${res.secretCode}`);
+    setConvertedIds((prev) => new Set(prev).add(assignmentId));
+    setConvertMessage((prev) => ({
+      ...prev,
+      [assignmentId]: res.emailSent
+        ? `Invite emailed to ${candidateEmail}.`
+        : `Invite created but the email failed — share this code directly: ${res.secretCode}`,
+    }));
   }
 
   return (
@@ -107,13 +117,23 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
           className={inputClass + " h-auto resize-none py-3"}
         />
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-        {lastLink && (
-          <p className="clay-inset break-all rounded-2xl px-4 py-3 text-sm text-foreground">
-            Send this link to the candidate: <span className="font-mono">{lastLink}</span>
+        {lastResult && (
+          <p
+            className={`flex items-center gap-1.5 text-xs font-medium ${
+              lastResult.emailSent ? "text-emerald-600" : "text-amber-600"
+            }`}
+          >
+            {lastResult.emailSent ? (
+              <>
+                <Mail className="h-3.5 w-3.5" /> Sample task emailed to the candidate.
+              </>
+            ) : (
+              "The task was created, but the email failed to send — check their address."
+            )}
           </p>
         )}
         <button type="submit" className="clay-btn rounded-full px-6 py-2.5 text-sm font-semibold text-white">
-          Create trial link
+          Send sample task
         </button>
       </form>
 
@@ -136,18 +156,20 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
               <div className="mt-4 space-y-3">
                 {a.answers.map((ans, i) => (
                   <div key={i} className="clay-inset rounded-2xl p-4">
-                    <p className="text-sm text-foreground">{ans.body}</p>
+                    <QuestionContentRenderer content={ans.body} />
                     {ans.type === "mcq" && ans.options && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-foreground/60">
+                      <ul className="mt-1.5 space-y-1">
                         {(["A", "B", "C", "D"] as const).map((k) => (
-                          <li key={k} className={ans.correctOption === k ? "font-semibold text-emerald-600" : ""}>
-                            {k}. {ans.options![k]}
+                          <li key={k} className={`flex gap-2 text-xs ${ans.correctOption === k ? "text-emerald-600 font-semibold" : "text-foreground/60"}`}>
+                            <span className="shrink-0">{k}.</span>
+                            <QuestionContentRenderer content={ans.options![k]} className="text-xs" />
                           </li>
                         ))}
                       </ul>
                     )}
                     {ans.type === "integer" && <p className="mt-1 text-xs text-foreground/60">Answer: {ans.correctAnswer}</p>}
-                    <p className="mt-1 text-xs text-foreground/50">Solution: {ans.solution}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-foreground/40">Solution</p>
+                    <QuestionContentRenderer content={ans.solution} className="text-xs text-foreground/60" />
                   </div>
                 ))}
                 <div className="flex items-center gap-2">
@@ -183,13 +205,18 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
               <div className="mt-3 text-sm text-foreground/70">
                 Score: {a.reviewScore}/5 · {a.reviewDecision === "advance" ? "Advancing" : "Rejected"}
                 {a.reviewNotes && ` — ${a.reviewNotes}`}
-                {a.reviewDecision === "advance" && (
+                {a.reviewDecision === "advance" && !convertedIds.has(a.id) && (
                   <button
-                    onClick={() => handleConvertToInvite(a.candidateName, a.candidateEmail)}
+                    onClick={() => handleConvertToInvite(a.id, a.candidateName, a.candidateEmail)}
                     className="clay-chip ml-3 rounded-xl px-3 py-1.5 text-xs font-semibold"
                   >
                     Send real intern invite
                   </button>
+                )}
+                {convertedIds.has(a.id) && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                    <Mail className="h-3.5 w-3.5" /> {convertMessage[a.id]}
+                  </p>
                 )}
               </div>
             )}

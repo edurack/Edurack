@@ -6,6 +6,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { InternTaskInput } from "@/lib/intern-types";
+import { sendMail } from "@/lib/mailer";
+import { internTaskAssignedEmailHtml } from "@/lib/intern-email-templates";
 
 async function requireSuperAdmin(token: string) {
   const decoded = await adminAuth.verifyIdToken(token);
@@ -16,6 +18,11 @@ async function requireSuperAdmin(token: string) {
 }
 
 // ─── Assign a task ────────────────────────────────────────────────────────
+// Emails the intern immediately with the subject, instructions, target
+// count, and (if provided) a link to the reference document — same
+// best-effort pattern as approveCreatorApplication in admin.ts: the task
+// row is already saved above, so a mail failure never rolls it back, it's
+// just logged.
 export const assignInternTask = createServerFn({ method: "POST" })
   .validator((data: { token: string; task: InternTaskInput }) => data)
   .handler(async ({ data }) => {
@@ -23,7 +30,7 @@ export const assignInternTask = createServerFn({ method: "POST" })
     const db = await getDb();
     const { ObjectId } = await import("mongodb");
 
-    const { internId, bundleId, testId, subject, targetCount, instructions, dueDate } = data.task;
+    const { internId, bundleId, testId, subject, targetCount, instructions, referencePdfUrl, dueDate } = data.task;
     if (!internId) throw new Error("Select an intern.");
     if (!bundleId || !testId || !subject) throw new Error("Select a bundle, test, and subject.");
     if (!targetCount || targetCount < 1) throw new Error("Enter a target question count of at least 1.");
@@ -38,12 +45,38 @@ export const assignInternTask = createServerFn({ method: "POST" })
       subject,
       targetCount,
       instructions: instructions.trim(),
+      referencePdfUrl: referencePdfUrl?.trim() || null,
       dueDate: dueDate ?? null,
       status: "assigned",
       assignedAt: new Date(),
     });
 
-    return { ok: true, taskId: String(result.insertedId) };
+    let emailSent = false;
+    if (intern.email) {
+      const appUrl = process.env.APP_URL;
+      const dashboardUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/dashboard` : "";
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: `New task: ${subject}`,
+          html: internTaskAssignedEmailHtml({
+            internName: intern.name as string,
+            subject,
+            targetCount,
+            instructions: instructions.trim(),
+            referencePdfUrl: referencePdfUrl?.trim() || null,
+            dashboardUrl,
+          }),
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error(`[assignInternTask] email failed for internId=${internId}:`, err);
+      }
+    } else {
+      console.warn(`[assignInternTask] no email on file for internId=${internId}, skipping notification`);
+    }
+
+    return { ok: true, taskId: String(result.insertedId), emailSent };
   });
 
 export const listTasksForIntern = createServerFn({ method: "POST" })

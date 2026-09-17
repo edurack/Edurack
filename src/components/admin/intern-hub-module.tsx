@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconX as XIcon } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconX as XIcon, IconMail as Mail } from "@tabler/icons-react";
 import { listBundles, listTestCoresForBundle } from "@/server-functions/admin";
 import { createInternInvite, listInterns, setInternStatus } from "@/server-functions/intern-auth";
 import { assignInternTask, listSubmittedDrafts, approveDraft, rejectDraft } from "@/server-functions/admin-interns";
+import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 type Tab = "interns" | "assign" | "review";
@@ -46,7 +47,7 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
   const [interns, setInterns] = useState<Awaited<ReturnType<typeof listInterns>>["interns"] | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [lastCode, setLastCode] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<{ code: string; emailSent: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +69,7 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
     try {
       const token = await adminUser.getIdToken();
       const res = await createInternInvite({ data: { token, invite: { name, email } } });
-      setLastCode(res.secretCode);
+      setLastResult({ code: res.secretCode, emailSent: res.emailSent });
       setName("");
       setEmail("");
       await refresh();
@@ -94,10 +95,24 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={inputClass} />
         </div>
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-        {lastCode && (
-          <p className="clay-inset rounded-2xl px-4 py-3 text-sm text-foreground">
-            Invite code: <span className="font-mono font-bold">{lastCode}</span> — share this with the candidate along
-            with the sign-up link (/intern/auth).
+        {lastResult && (
+          <p
+            className={`clay-inset flex items-start gap-2 rounded-2xl px-4 py-3 text-sm text-foreground ${
+              lastResult.emailSent ? "bg-[var(--mint-soft)]/40" : "bg-[var(--coral-soft)]/40"
+            }`}
+          >
+            {lastResult.emailSent ? (
+              <>
+                <Mail className="mt-0.5 h-4 w-4 shrink-0" />
+                Invite emailed to the candidate. Their code is{" "}
+                <span className="font-mono font-bold">{lastResult.code}</span> in case they need it again.
+              </>
+            ) : (
+              <>
+                The invite was created, but the email failed to send. Share this code with them directly:{" "}
+                <span className="font-mono font-bold">{lastResult.code}</span>
+              </>
+            )}
           </p>
         )}
         <button
@@ -105,7 +120,7 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
           disabled={saving}
           className="clay-btn flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-70"
         >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create invite"}
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send invite"}
         </button>
       </form>
 
@@ -170,9 +185,10 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
   const [subject, setSubject] = useState("");
   const [targetCount, setTargetCount] = useState("10");
   const [instructions, setInstructions] = useState("");
+  const [referencePdfUrl, setReferencePdfUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [successState, setSuccessState] = useState<{ emailSent: boolean } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -208,18 +224,28 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
   async function handleAssign(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
+    setSuccessState(null);
     setSaving(true);
     try {
       const token = await adminUser.getIdToken();
-      await assignInternTask({
+      const res = await assignInternTask({
         data: {
           token,
-          task: { internId, bundleId, testId, subject, targetCount: Number(targetCount), instructions, dueDate: null },
+          task: {
+            internId,
+            bundleId,
+            testId,
+            subject,
+            targetCount: Number(targetCount),
+            instructions,
+            referencePdfUrl: referencePdfUrl.trim() || null,
+            dueDate: null,
+          },
         },
       });
-      setSuccess(true);
+      setSuccessState({ emailSent: res.emailSent });
       setInstructions("");
+      setReferencePdfUrl("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't assign the task.");
     } finally {
@@ -280,6 +306,7 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
           ))}
         </select>
       </div>
+
       <textarea
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
@@ -287,8 +314,30 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
         placeholder="Instructions for the intern (style, difficulty mix, sources to use, etc.)"
         className={inputClass + " h-auto resize-none py-3"}
       />
+
+      <input
+        value={referencePdfUrl}
+        onChange={(e) => setReferencePdfUrl(e.target.value)}
+        placeholder="Reference document link (PDF, Drive, etc.) — the source material to transcribe from, optional"
+        className={inputClass}
+      />
+
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-      {success && <p className="text-xs font-medium text-emerald-600">Task assigned.</p>}
+      {successState && (
+        <p
+          className={`flex items-center gap-1.5 text-xs font-medium ${
+            successState.emailSent ? "text-emerald-600" : "text-amber-600"
+          }`}
+        >
+          {successState.emailSent ? (
+            <>
+              <Mail className="h-3.5 w-3.5" /> Task assigned and emailed to the intern.
+            </>
+          ) : (
+            "Task assigned, but the notification email failed to send — check their address on file."
+          )}
+        </p>
+      )}
       <button
         type="submit"
         disabled={saving || !internId || !bundleId || !testId || !subject || !targetCount}
@@ -350,13 +399,14 @@ function ReviewTab({ adminUser }: { adminUser: AdminUser }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">
             {d.internName} · {d.bundleTitle} · {d.testName} · {d.subject}
           </p>
-          <p className="mt-2 text-sm text-foreground">{d.body}</p>
+          <p className="mt-2"><QuestionContentRenderer content={d.body} /></p>
 
           {d.type === "mcq" && d.options && (
-            <ul className="mt-2 space-y-1 text-sm text-foreground/70">
+            <ul className="mt-2 space-y-1.5">
               {(["A", "B", "C", "D"] as const).map((k) => (
-                <li key={k} className={d.correctOption === k ? "font-semibold text-emerald-600" : ""}>
-                  {k}. {d.options![k]}
+                <li key={k} className={`flex gap-2 ${d.correctOption === k ? "text-emerald-600" : "text-foreground/70"}`}>
+                  <span className="shrink-0 font-semibold">{k}.</span>
+                  <QuestionContentRenderer content={d.options![k]} />
                 </li>
               ))}
             </ul>
@@ -364,7 +414,7 @@ function ReviewTab({ adminUser }: { adminUser: AdminUser }) {
           {d.type === "integer" && <p className="mt-2 text-sm text-foreground/70">Answer: {d.correctAnswer}</p>}
 
           <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">Solution</p>
-          <p className="text-sm text-foreground/70">{d.solution}</p>
+          <QuestionContentRenderer content={d.solution} className="text-foreground/70" />
 
           <textarea
             value={feedback[d.id] ?? ""}

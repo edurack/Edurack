@@ -49,6 +49,7 @@ export const getMyTasks = createServerFn({ method: "POST" })
         subject: t.subject as string,
         targetCount: t.targetCount as number,
         instructions: (t.instructions as string) ?? "",
+        referencePdfUrl: (t.referencePdfUrl as string | null) ?? null,
         dueDate: (t.dueDate as string | null) ?? null,
         status: (t.status as string) ?? "assigned",
         assignedAt: t.assignedAt instanceof Date ? t.assignedAt.toISOString() : null,

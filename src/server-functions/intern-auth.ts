@@ -14,6 +14,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { InternSignUpInput } from "@/lib/intern-types";
+import { sendMail } from "@/lib/mailer";
+import { internInviteEmailHtml } from "@/lib/intern-email-templates";
 
 async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const { scryptSync, randomBytes } = await import("node:crypto");
@@ -105,10 +107,13 @@ async function requireSuperAdmin(token: string) {
 }
 
 // ─── Admin: issue an invite ─────────────────────────────────────────────
-// Creates an "invited" intern record with a generated secret code the
-// admin hands to the candidate out-of-band (email/WhatsApp/etc). Nothing
-// else about the account exists yet — username/password are chosen by
-// the candidate at signup.
+// Creates an "invited" intern record with a generated secret code, then
+// emails the candidate the code and the signup link directly — same
+// best-effort pattern as approveCreatorApplication in admin.ts: the
+// invite row is already saved, so a mail failure never rolls it back,
+// it's just logged and reported back via emailSent so the admin UI can
+// show a fallback ("copy the code yourself") only when it's actually
+// needed.
 export const createInternInvite = createServerFn({ method: "POST" })
   .validator((data: { token: string; invite: { name: string; email: string } }) => data)
   .handler(async ({ data }) => {
@@ -133,7 +138,21 @@ export const createInternInvite = createServerFn({ method: "POST" })
       claimedAt: null,
     });
 
-    return { ok: true, internId: String(result.insertedId), secretCode: code };
+    let emailSent = false;
+    const appUrl = process.env.APP_URL;
+    const signupUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/auth` : "";
+    try {
+      await sendMail({
+        to: email,
+        subject: "You're invited to join Edurack as an intern",
+        html: internInviteEmailHtml({ candidateName: name, secretCode: code, signupUrl }),
+      });
+      emailSent = true;
+    } catch (err) {
+      console.error(`[createInternInvite] invite email failed for internId=${String(result.insertedId)}:`, err);
+    }
+
+    return { ok: true, internId: String(result.insertedId), secretCode: code, emailSent };
   });
 
 // ─── Sign up (claims an invite) ─────────────────────────────────────────

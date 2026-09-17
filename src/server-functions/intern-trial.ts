@@ -10,6 +10,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { TrialAssignmentInput, TrialQuestionAnswer, TrialReviewInput } from "@/lib/intern-types";
+import { sendMail } from "@/lib/mailer";
+import { internTrialInviteEmailHtml } from "@/lib/intern-email-templates";
 
 async function requireSuperAdmin(token: string) {
   const decoded = await adminAuth.verifyIdToken(token);
@@ -72,7 +74,25 @@ export const createTrialAssignment = createServerFn({ method: "POST" })
       createdAt: new Date(),
     });
 
-    return { ok: true, assignmentId: String(result.insertedId), code };
+    let emailSent = false;
+    const appUrl = process.env.APP_URL;
+    const taskUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/trial/${code}` : "";
+    try {
+      await sendMail({
+        to: candidateEmail.trim(),
+        subject: "Your Edurack sample task",
+        html: internTrialInviteEmailHtml({
+          candidateName: candidateName.trim(),
+          subjectLabel: subjectLabel.trim(),
+          taskUrl,
+        }),
+      });
+      emailSent = true;
+    } catch (err) {
+      console.error(`[createTrialAssignment] invite email failed for assignmentId=${String(result.insertedId)}:`, err);
+    }
+
+    return { ok: true, assignmentId: String(result.insertedId), code, emailSent };
   });
 
 export const listTrialAssignments = createServerFn({ method: "POST" })
