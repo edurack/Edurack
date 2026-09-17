@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { IconLoader2 as Loader2, IconChevronRight as ChevronRight, IconClipboardList as ClipboardList, IconTrash as Trash2, IconPencil as Pencil, IconCheck as Check, IconX as X, IconSearch as Search } from "@tabler/icons-react";
 import { Package } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { TestSeriesBundle, TestCore, Question } from "@/lib/admin-types";
+import { ImageInsertField } from "@/components/admin/image-insert-field";
 import {
   listBundles,
   updateBundle,
@@ -653,10 +654,10 @@ function EditableQuestionCard({
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <QuickField label="Option A" value={optionA} onChange={setOptionA} />
-            <QuickField label="Option B" value={optionB} onChange={setOptionB} />
-            <QuickField label="Option C" value={optionC} onChange={setOptionC} />
-            <QuickField label="Option D" value={optionD} onChange={setOptionD} />
+            <QuickField label="Option A" value={optionA} onChange={setOptionA} compact />
+            <QuickField label="Option B" value={optionB} onChange={setOptionB} compact />
+            <QuickField label="Option C" value={optionC} onChange={setOptionC} compact />
+            <QuickField label="Option D" value={optionD} onChange={setOptionD} compact />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Correct:</span>
@@ -727,11 +728,35 @@ function QuickField({
   label,
   value,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  compact?: boolean;
 }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-foreground/50">
+        {label}
+      </span>
+      <ImageInsertField
+        value={value}
+        onChange={onChange}
+        rows={2}
+        className={inputClass}
+        compact={compact}
+      />
+      {value.trim() && (
+        <div className="clay-inset mt-1 rounded-xl px-3 py-2">
+          <SmartContent value={value} className="text-sm text-foreground" />
+        </div>
+      )}
+    </label>
+  );
+}
+
+function PlainField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block">
       <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-foreground/50">
