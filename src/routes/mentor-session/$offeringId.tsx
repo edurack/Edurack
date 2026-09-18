@@ -10,6 +10,7 @@ import {
   IconCalendarTime as CalendarTime,
   IconSparkles as Sparkles,
   IconArrowRight as ArrowRight,
+  IconLogin as LogIn,
 } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { getMentorSessionOfferingDetail } from "@/server-functions/student-sessions";
@@ -32,6 +33,21 @@ type DetailData = {
   otherOfferings: OtherOfferingSummary[];
 };
 
+// This page is intentionally public — a logged-out visitor (from the
+// landing page, or a shared link) can read the full offering, the
+// mentor's bio, and every open slot without signing in. Only clicking
+// "Book" is gated behind auth (see handleBookClick below), since booking
+// itself needs a Firebase token (payments.ts).
+//
+// INTEGRATION NOTE: the redirect-back-after-login below sends the visitor
+// to `/auth?redirect=/mentor-session/<id>`. This only actually returns
+// them here if auth.tsx reads that `redirect` search param after a
+// successful sign-in and navigates there — if your /auth route doesn't
+// already support a redirect param, it'll just land them on your default
+// post-login page, and they'll need to click into this session again.
+// Wire that up: after firebaseSignIn/firebaseSignUp/googleAuth resolves,
+// use the `redirect` search param instead of the current
+// navigate({ to: "/dashboard" }) fallback when it's present.
 function MentorSessionDetailPage() {
   const { offeringId } = Route.useParams();
   const { user, loading } = useAuth();
@@ -41,15 +57,10 @@ function MentorSessionDetailPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [booking, setBooking] = useState<OpenSlot | null>(null);
 
-  useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
-  }, [loading, user, navigate]);
-
   async function load() {
-    if (!user) return;
     setStatus("loading");
     try {
-      const token = await user.getIdToken();
+      const token = user ? await user.getIdToken() : undefined;
       const result = await getMentorSessionOfferingDetail({ data: { token, offeringId } });
       setData(result as DetailData);
       setStatus("ready");
@@ -59,9 +70,10 @@ function MentorSessionDetailPage() {
   }
 
   useEffect(() => {
+    if (loading) return; // wait for auth to resolve once, so the first load already knows if there's a user
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, offeringId]);
+  }, [loading, user, offeringId]);
 
   const dateGroups = useMemo(() => {
     if (!data) return [];
@@ -78,7 +90,15 @@ function MentorSessionDetailPage() {
     if (dateGroups.length > 0 && !selectedDate) setSelectedDate(dateGroups[0][0]);
   }, [dateGroups, selectedDate]);
 
-  if (loading || !user) {
+  function handleBookClick(slot: OpenSlot) {
+    if (!user) {
+      navigate({ to: "/auth", search: { redirect: `/mentor-session/${offeringId}` } as any });
+      return;
+    }
+    setBooking(slot);
+  }
+
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
@@ -88,11 +108,11 @@ function MentorSessionDetailPage() {
 
   return (
     <div className="min-h-screen">
-      <AppHeader user={user} />
+      {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} />}
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        <Link to="/dashboard" className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/60 hover:text-foreground">
+        <Link to={user ? "/dashboard" : "/"} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/60 hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
-          Back to dashboard
+          {user ? "Back to dashboard" : "Back to home"}
         </Link>
 
         {status === "loading" ? (
@@ -109,12 +129,13 @@ function MentorSessionDetailPage() {
             dateGroups={dateGroups}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onPickSlot={setBooking}
+            onPickSlot={handleBookClick}
+            isSignedIn={Boolean(user)}
           />
         )}
       </main>
 
-      {data && booking && (
+      {user && data && booking && (
         <BookingDialog
           offering={data.offering}
           slot={booking}
@@ -130,18 +151,42 @@ function MentorSessionDetailPage() {
   );
 }
 
+// Minimal fallback header for logged-out visitors — doesn't assume
+// AppHeader gracefully handles a null user (it may require one). Swap
+// this for whatever your actual public/marketing header component is if
+// you already have one, rather than keeping this bare-bones version.
+function PublicHeader({ offeringId }: { offeringId: string }) {
+  return (
+    <header className="clay-sm sticky top-0 z-20 mx-3 mt-3 flex items-center justify-between px-4 py-3 sm:mx-6">
+      <Link to="/" className="font-display text-sm font-bold text-foreground">
+        Edurack
+      </Link>
+      <Link
+        to="/auth"
+        search={{ redirect: `/mentor-session/${offeringId}` } as any}
+        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-white"
+      >
+        <LogIn className="h-3.5 w-3.5" />
+        Sign in
+      </Link>
+    </header>
+  );
+}
+
 function SessionDetail({
   data,
   dateGroups,
   selectedDate,
   onSelectDate,
   onPickSlot,
+  isSignedIn,
 }: {
   data: DetailData;
   dateGroups: [string, OpenSlot[]][];
   selectedDate: string | null;
   onSelectDate: (d: string) => void;
   onPickSlot: (s: OpenSlot) => void;
+  isSignedIn: boolean;
 }) {
   const { offering, mentorBio, otherOfferings } = data;
   const isGroup = offering.capacity > 1;
@@ -221,6 +266,11 @@ function SessionDetail({
             <CalendarTime className="h-5 w-5 text-foreground/40" />
             Choose a time
           </h2>
+          {!isSignedIn && (
+            <p className="mb-4 rounded-2xl bg-[var(--sky-soft)] px-4 py-2.5 text-xs font-semibold text-foreground/70">
+              Sign in to book — picking a time below will take you to a quick sign-in first.
+            </p>
+          )}
           {dateGroups.length === 0 ? (
             <p className="text-sm text-foreground/60">No open slots right now — check back soon.</p>
           ) : (
@@ -305,7 +355,9 @@ function SessionDetail({
             <p className="mt-4 rounded-2xl bg-foreground/5 px-4 py-3 text-center text-xs text-foreground/50">No open slots right now</p>
           )}
 
-          <p className="mt-3 text-center text-[11px] text-foreground/40">Pick your exact time above — this books the first open slot for a quick start.</p>
+          <p className="mt-3 text-center text-[11px] text-foreground/40">
+            {isSignedIn ? "Pick your exact time above — this books the first open slot for a quick start." : "You'll sign in first, then land right back here to finish booking."}
+          </p>
         </div>
       </div>
     </div>

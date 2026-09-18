@@ -13,10 +13,44 @@ import {
 } from "@tabler/icons-react";
 import { ImageInsertField } from "@/components/admin/image-insert-field";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
+import { useTour, OnboardingTour, type TourStep } from "@/components/intern/onboarding-tour";
 
 export const Route = createFileRoute("/intern/trial/$code")({
   component: TrialPage,
 });
+
+const TRIAL_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="task-brief"]',
+    title: "Your sample task",
+    description:
+      "This is the subject and instructions your admin set for you, plus any reference material to work from. Re-read this before you start writing.",
+  },
+  {
+    selector: '[data-tour="question-type"]',
+    title: "Pick a question type",
+    description:
+      "MCQ — one correct option out of four, with three genuinely plausible wrong ones. Integer — a plain numerical answer, no options. Pick whichever fits each question.",
+  },
+  {
+    selector: '[data-tour="question-editor"]',
+    title: "Write & format",
+    description:
+      "Wrap math in $…$ (inline) or $$…$$ (standalone). Paste an image directly into any box, or click the image icon — it uploads and inserts automatically. Write a full step-by-step solution, not just a final answer.",
+  },
+  {
+    selector: '[data-tour="preview"]',
+    title: "Check the preview",
+    description:
+      "This is exactly how a reviewer will see it — LaTeX and images rendered. Always glance here before moving to the next question.",
+  },
+  {
+    selector: '[data-tour="submit"]',
+    title: "Submit when ready",
+    description:
+      "Once every question has a clear body, an honest difficulty rating, and a full solution, you're good to submit. You can't edit after this, so give the preview one last check.",
+  },
+];
 
 type OptionKey = "A" | "B" | "C" | "D";
 type QuestionType = "mcq" | "integer";
@@ -45,6 +79,8 @@ function TrialPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  const tour = useTour("internTourTrialSeen");
 
   useEffect(() => {
     (async () => {
@@ -139,8 +175,18 @@ function TrialPage() {
   return (
     <div className="min-h-screen bg-background px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-3xl">
-        <div className="clay mb-6 p-5 sm:p-6">
-          <h1 className="font-display text-xl font-bold text-foreground">Edurack Question-Writing Sample Task</h1>
+        <div data-tour="task-brief" className="clay mb-6 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-display text-xl font-bold text-foreground">Edurack Question-Writing Sample Task</h1>
+            <button
+              type="button"
+              onClick={tour.start}
+              className="clay-btn-ghost flex shrink-0 items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/60"
+            >
+              <InfoCircle className="h-3.5 w-3.5" />
+              Help
+            </button>
+          </div>
           <p className="mt-1 text-sm text-foreground/60">
             Hi {assignment.candidateName}, welcome — here's your sample task. This is the exact same editor Edurack
             interns use for real question ingestion, so it's a fair preview of the actual work.
@@ -171,7 +217,7 @@ function TrialPage() {
           {answers.map((a, i) => (
             <div key={i} className="clay space-y-3 p-5 sm:p-6">
               <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Question {i + 1}</p>
-              <div className="flex gap-2">
+              <div data-tour={i === 0 ? "question-type" : undefined} className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => updateAnswer(i, { type: "mcq" })}
@@ -192,13 +238,15 @@ function TrialPage() {
                 </button>
               </div>
 
-              <ImageInsertField
-                value={a.body}
-                onChange={(v: string) => updateAnswer(i, { body: v })}
-                rows={3}
-                className={textareaClass}
-                placeholder="Question body — text, LaTeX $…$/$$…$$, or insert an image"
-              />
+              <div data-tour={i === 0 ? "question-editor" : undefined}>
+                <ImageInsertField
+                  value={a.body}
+                  onChange={(v: string) => updateAnswer(i, { body: v })}
+                  rows={3}
+                  className={textareaClass}
+                  placeholder="Question body — text, LaTeX $…$/$$…$$, or insert an image"
+                />
+              </div>
 
               {a.type === "mcq" ? (
                 <div className="space-y-2">
@@ -244,7 +292,7 @@ function TrialPage() {
               {/* ── Live preview — same idea as the real intern workspace:
                    images and LaTeX rendered, so mistakes get caught here
                    instead of after submitting. ────────────────────────── */}
-              <div className="clay-inset rounded-2xl p-4">
+              <div data-tour={i === 0 ? "preview" : undefined} className="clay-inset rounded-2xl p-4">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">
                   Preview — this is how it'll look to the reviewer
                 </p>
@@ -277,12 +325,15 @@ function TrialPage() {
           <button
             type="submit"
             disabled={submitting}
+            data-tour="submit"
             className="clay-btn w-full rounded-full px-6 py-3 text-sm font-semibold text-white disabled:opacity-70"
           >
             {submitting ? "Submitting…" : "Submit sample task"}
           </button>
         </form>
       </div>
+
+      {tour.active && <OnboardingTour steps={TRIAL_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

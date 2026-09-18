@@ -131,10 +131,22 @@ export const listMyBookedSessions = createServerFn({ method: "GET" })
 // same "locked profile" fields shown on /mentor-profile/$mentorId), the
 // FULL slot window (not the 4-slot preview used on cards), and a few of
 // the mentor's other active offerings for "more with this mentor".
+// Public — no token required. Offering/mentor-bio/seat-count data here
+// isn't student-identifying, so this is safe to expose to logged-out
+// visitors (landing page, shared links). If a token IS supplied (a
+// logged-in student opened this via an in-app link) it's verified but
+// failures are swallowed rather than failing the whole page — a stale
+// token shouldn't turn a public page into an error page.
 export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
-  .validator((d: { token: string; offeringId: string }) => d)
+  .validator((d: { token?: string; offeringId: string }) => d)
   .handler(async ({ data }) => {
-    await verifyFirebaseToken(data.token);
+    if (data.token) {
+      try {
+        await verifyFirebaseToken(data.token);
+      } catch {
+        // ignore — treat as an anonymous view rather than erroring
+      }
+    }
 
     const { data: row, error } = await supabase
       .from("mentor_session_offerings")
@@ -198,4 +210,60 @@ export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
     const publicOffering: PublicMentorOffering = { ...offering, mentorName: mentorBio.name, mentorPhotoUrl: mentorBio.photoUrl };
 
     return { offering: publicOffering, mentorBio, slots, otherOfferings };
+  });
+
+// ─── Public landing-page listing ────────────────────────────────────────
+// No token required — this is what the marketing landing page shows
+// logged-out visitors as a platform USP. Returns only free offerings with
+// at least one open slot, soonest-first, capped to a handful so it reads
+// as a curated showcase rather than a full catalog dump. Booking itself
+// still requires signing in (payments.ts's claimFreeItem needs a Firebase
+// token) — this only powers discovery, not the transaction.
+export const listPublicFreeMentorSessions = createServerFn({ method: "GET" })
+  .validator((d: { limit?: number }) => d)
+  .handler(async ({ data }) => {
+    const cap = Math.min(data.limit ?? 6, 12);
+
+    const { data: offeringRows, error } = await supabase
+      .from("mentor_session_offerings")
+      .select("*")
+      .eq("active", true)
+      .eq("is_free", true);
+    if (error) throw new Error(error.message);
+
+    const offerings = (offeringRows ?? []).map(rowToOffering);
+    if (offerings.length === 0) return { sessions: [] as (PublicMentorOffering & { nextSlot: OpenSlot })[] };
+
+    const offeringIds = offerings.map((o) => o.id);
+    const { data: bookingRows, error: bErr } = await supabase
+      .from("mentor_session_bookings")
+      .select("offering_id, session_date, start_time")
+      .in("offering_id", offeringIds)
+      .neq("status", "cancelled");
+    if (bErr) throw new Error(bErr.message);
+
+    const seatCounts = new Map<string, number>();
+    for (const b of bookingRows ?? []) {
+      const key = `${b.offering_id}:${b.session_date}:${b.start_time}`;
+      seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
+    }
+
+    const mentorIds = Array.from(new Set(offerings.map((o) => o.mentorId)));
+    const mentorInfo = await lookupMentorPublicInfo(mentorIds);
+
+    const withNextSlot: (PublicMentorOffering & { nextSlot: OpenSlot })[] = [];
+    for (const o of offerings) {
+      const slots = expandOfferingToSlots(o, seatCounts, 21);
+      if (slots.length === 0) continue;
+      withNextSlot.push({
+        ...o,
+        mentorName: mentorInfo[o.mentorId]?.name ?? "Mentor",
+        mentorPhotoUrl: mentorInfo[o.mentorId]?.photoUrl ?? null,
+        nextSlot: slots[0],
+      });
+    }
+
+    withNextSlot.sort((a, b) => (a.nextSlot.date + a.nextSlot.startTime).localeCompare(b.nextSlot.date + b.nextSlot.startTime));
+
+    return { sessions: withNextSlot.slice(0, cap) };
   });
