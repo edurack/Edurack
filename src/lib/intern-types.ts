@@ -26,6 +26,41 @@ export type Intern = {
   status: InternStatus;
   createdAt: string | null; // invite creation time
   claimedAt: string | null; // signup time
+  // ─── Internship dates — admin-set, shown on the intern's Profile page ──
+  internshipStartDate: string | null;
+  internshipEndDate: string | null;
+  // ─── Offer letter — a PDF admin uploads for this specific intern ───────
+  offerLetterUrl: string | null;
+  offerLetterUploadedAt: string | null;
+  // ─── Certificate — admin uploads the finished PDF whenever it's ready;
+  // it only becomes downloadable once certificateUnlockDate has passed.
+  // Defaults to internshipEndDate if admin never sets an explicit
+  // unlock date of their own (see setInternshipDates/setCertificate in
+  // intern-auth.ts for exactly how the default is applied).
+  certificateUrl: string | null;
+  certificateUnlockDate: string | null;
+  certificateUploadedAt: string | null;
+};
+
+export type InternshipDatesInput = {
+  internId: string;
+  internshipStartDate: string;
+  internshipEndDate: string;
+  // Optional override — if omitted, unlock date defaults to internshipEndDate.
+  certificateUnlockDate: string | null;
+};
+
+export type SetOfferLetterInput = {
+  internId: string;
+  offerLetterUrl: string;
+};
+
+export type SetCertificateInput = {
+  internId: string;
+  certificateUrl: string;
+  // Optional — if omitted, keeps whatever unlock date is already set
+  // (internshipEndDate by default, or an earlier admin override).
+  certificateUnlockDate: string | null;
 };
 
 export type InternInviteInput = {
@@ -113,6 +148,11 @@ export type InternQuestionDraft = {
   pyqYear?: string;
   status: InternDraftStatus;
   adminFeedback: string | null;
+  // How many times THIS draft has been rejected, ever — kept even after
+  // the intern fixes it and it's later approved, so accuracy reporting
+  // reflects real mistakes made, not just the current status. Incremented
+  // in rejectDraft (admin-interns.ts), never reset by resubmission.
+  rejectionCount: number;
   reviewedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -176,6 +216,11 @@ export type TrialAssignment = {
   subjectLabel: string;      // e.g. "Physics — Kinematics (Class 11)"
   instructions: string;
   sampleCount: number;       // how many sample questions they're asked to write
+  // Source material for the sample task — same idea as InternTask's
+  // referencePdfUrl, just for a pre-hire candidate instead of a real
+  // intern. A plain URL (admin can paste a link or upload a PDF to
+  // INTERN_DOCUMENTS_BUCKET and use the resulting link either way).
+  referenceMaterialUrl: string | null;
   status: TrialAssignmentStatus;
   answers: TrialQuestionAnswer[];
   reviewScore: number | null;    // 1-5, admin's call
@@ -192,10 +237,55 @@ export type TrialAssignmentInput = {
   subjectLabel: string;
   instructions: string;
   sampleCount: number;
+  referenceMaterialUrl: string | null;
 };
 
 export type TrialReviewInput = {
   reviewScore: number;
   reviewNotes: string;
   reviewDecision: "advance" | "reject";
+};
+
+// ─── Profile / report (intern-facing) ────────────────────────────────────
+// Everything the intern's own Profile page shows in one call — dates,
+// offer letter, certificate lock state, and a performance report built
+// from the immutable internReviewEvents log (see intern-portal.ts), never
+// from mutable draft documents, so a draft being edited/deleted after
+// review can't quietly change someone's historical accuracy numbers.
+export type InternTaskReportRow = {
+  taskId: string;
+  bundleTitle: string;
+  testName: string;
+  subject: string;
+  targetCount: number;
+  approvedCount: number;
+  rejectionCount: number;
+  completed: boolean;
+};
+
+export type InternProfileReport = {
+  profile: {
+    name: string;
+    username: string;
+    email: string;
+    profilePictureUrl: string | null;
+    internshipStartDate: string | null;
+    internshipEndDate: string | null;
+  };
+  offerLetter: { url: string; uploadedAt: string | null } | null;
+  certificate: {
+    uploaded: boolean; // admin has uploaded a file, regardless of unlock state
+    unlocked: boolean; // uploaded AND unlock date has passed
+    unlockDate: string | null;
+    daysRemaining: number | null; // null once unlocked or if no unlock date set
+    url: string | null; // only populated when unlocked
+  };
+  stats: {
+    tasksAssigned: number;
+    tasksCompleted: number; // approvedCount >= targetCount for that task
+    totalApproved: number;
+    totalMistakes: number; // sum of rejection events, ever
+    accuracyPercent: number | null; // null until at least one review has happened
+  };
+  taskBreakdown: InternTaskReportRow[];
 };

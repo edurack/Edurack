@@ -7,7 +7,11 @@ import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { InternTaskInput } from "@/lib/intern-types";
 import { sendMail } from "@/lib/mailer";
-import { internTaskAssignedEmailHtml } from "@/lib/intern-email-templates";
+import {
+  internTaskAssignedEmailHtml,
+  internDraftApprovedEmailHtml,
+  internDraftRejectedEmailHtml,
+} from "@/lib/intern-email-templates";
 
 async function requireSuperAdmin(token: string) {
   const decoded = await adminAuth.verifyIdToken(token);
@@ -220,6 +224,39 @@ export const approveDraft = createServerFn({ method: "POST" })
       },
     );
 
+    // Immutable audit trail for the intern's Profile report — inserted
+    // regardless of whatever later happens to the draft document itself
+    // (it could theoretically be deleted downstream), so lifetime stats
+    // never silently drift. See getMyProfileReport in intern-portal.ts.
+    await db.collection("internReviewEvents").insertOne({
+      internId: draft.internId,
+      taskId: draft.taskId,
+      draftId: data.draftId,
+      decision: "approved",
+      subject: draft.subject,
+      createdAt: new Date(),
+    });
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(draft.internId as string) });
+    if (intern?.email) {
+      const appUrl = process.env.APP_URL;
+      const dashboardUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/dashboard` : "";
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: `Approved: your ${draft.subject as string} question is live`,
+          html: internDraftApprovedEmailHtml({
+            internName: intern.name as string,
+            subject: draft.subject as string,
+            questionNo,
+            dashboardUrl,
+          }),
+        });
+      } catch (err) {
+        console.error(`[approveDraft] email failed for internId=${String(draft.internId)}:`, err);
+      }
+    }
+
     return { ok: true, questionNo };
   });
 
@@ -246,7 +283,41 @@ export const rejectDraft = createServerFn({ method: "POST" })
           adminFeedback: data.adminFeedback.trim(),
           reviewedAt: new Date(),
         },
+        $inc: { rejectionCount: 1 },
       },
     );
+
+    // Same immutable audit trail as approveDraft above — a rejection
+    // counts as a "mistake" for the intern's report forever, even if they
+    // later fix and resubmit the same draft to a successful approval.
+    await db.collection("internReviewEvents").insertOne({
+      internId: draft.internId,
+      taskId: draft.taskId,
+      draftId: data.draftId,
+      decision: "rejected",
+      subject: draft.subject,
+      createdAt: new Date(),
+    });
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(draft.internId as string) });
+    if (intern?.email) {
+      const appUrl = process.env.APP_URL;
+      const dashboardUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/dashboard` : "";
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: `Feedback on your ${draft.subject as string} question`,
+          html: internDraftRejectedEmailHtml({
+            internName: intern.name as string,
+            subject: draft.subject as string,
+            feedback: data.adminFeedback.trim(),
+            dashboardUrl,
+          }),
+        });
+      } catch (err) {
+        console.error(`[rejectDraft] email failed for internId=${String(draft.internId)}:`, err);
+      }
+    }
+
     return { ok: true };
   });

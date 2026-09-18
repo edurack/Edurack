@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { getTrialAssignmentByCode, submitTrialAssignment } from "@/server-functions/intern-trial";
+import { IconFileText as FileText, IconCircleCheck as CheckCircle2 } from "@tabler/icons-react";
+import { ImageInsertField } from "@/components/admin/image-insert-field";
+import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
 
 export const Route = createFileRoute("/intern/trial/$code")({
   component: TrialPage,
@@ -130,13 +133,26 @@ function TrialPage() {
         <div className="clay mb-6 p-5 sm:p-6">
           <h1 className="font-display text-xl font-bold text-foreground">Edurack Question-Writing Sample Task</h1>
           <p className="mt-1 text-sm text-foreground/60">
-            Hi {assignment.candidateName}, welcome — here's your sample task.
+            Hi {assignment.candidateName}, welcome — here's your sample task. This is the exact same editor Edurack
+            interns use for real question ingestion, so it's a fair preview of the actual work.
           </p>
           <p className="mt-3 text-sm font-semibold text-foreground">{assignment.subjectLabel}</p>
           <p className="mt-1 text-sm text-foreground/70">{assignment.instructions}</p>
+          {assignment.referenceMaterialUrl && (
+            <a
+              href={assignment.referenceMaterialUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="clay-inset mt-3 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-[var(--sky-deep)] transition-colors hover:bg-foreground/5"
+            >
+              <FileText className="h-4 w-4 shrink-0" />
+              Open reference material — the source questions for this task
+            </a>
+          )}
           <p className="mt-2 text-xs text-foreground/50">
             Write {assignment.sampleCount} sample question{assignment.sampleCount > 1 ? "s" : ""} in the same format
-            Edurack uses — this is purely for evaluation, not a real bundle or test.
+            Edurack uses — this is purely for evaluation, not a real bundle or test. Paste an image or click the
+            small image icon in any text box to insert a diagram; LaTeX ($…$/$$…$$) is supported everywhere too.
           </p>
         </div>
 
@@ -164,13 +180,15 @@ function TrialPage() {
                   Integer
                 </button>
               </div>
-              <textarea
+
+              <ImageInsertField
                 value={a.body}
-                onChange={(e) => updateAnswer(i, { body: e.target.value })}
+                onChange={(v: string) => updateAnswer(i, { body: v })}
                 rows={3}
-                placeholder="Question body"
                 className={textareaClass}
+                placeholder="Question body — text, LaTeX $…$/$$…$$, or insert an image"
               />
+
               {a.type === "mcq" ? (
                 <div className="space-y-2">
                   {(["A", "B", "C", "D"] as const).map((k) => (
@@ -178,17 +196,18 @@ function TrialPage() {
                       <button
                         type="button"
                         onClick={() => updateAnswer(i, { correctOption: k })}
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold transition-all ${
                           a.correctOption === k ? "clay-btn text-white" : "clay-btn-ghost text-foreground/50"
                         }`}
                       >
-                        {k}
+                        {a.correctOption === k ? <CheckCircle2 className="h-4 w-4" /> : k}
                       </button>
-                      <input
+                      <ImageInsertField
                         value={a.options?.[k] ?? ""}
-                        onChange={(e) => updateAnswer(i, { options: { ...a.options!, [k]: e.target.value } })}
+                        onChange={(v: string) => updateAnswer(i, { options: { ...a.options!, [k]: v } })}
                         placeholder={`Option ${k}`}
-                        className={inputClass + " flex-1"}
+                        className={inputClass}
+                        compact
                       />
                     </div>
                   ))}
@@ -202,13 +221,43 @@ function TrialPage() {
                   className={inputClass}
                 />
               )}
-              <textarea
+
+              <ImageInsertField
                 value={a.solution}
-                onChange={(e) => updateAnswer(i, { solution: e.target.value })}
+                onChange={(v: string) => updateAnswer(i, { solution: v })}
                 rows={3}
-                placeholder="Step-by-step solution"
                 className={textareaClass}
+                placeholder="Step-by-step solution"
               />
+
+              {/* ── Live preview — same idea as the real intern workspace:
+                   images and LaTeX rendered, so mistakes get caught here
+                   instead of after submitting. ────────────────────────── */}
+              <div className="clay-inset rounded-2xl p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                  Preview — this is how it'll look to the reviewer
+                </p>
+                <QuestionContentRenderer content={a.body} />
+                {a.type === "mcq" ? (
+                  <ul className="mt-3 space-y-1.5">
+                    {(["A", "B", "C", "D"] as const).map((k) => (
+                      <li
+                        key={k}
+                        className={`flex gap-2 ${a.correctOption === k ? "text-emerald-600" : "text-foreground/70"}`}
+                      >
+                        <span className="shrink-0 font-semibold">{k}.</span>
+                        <QuestionContentRenderer content={a.options?.[k] ?? ""} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  a.correctAnswer !== undefined && (
+                    <p className="mt-3 text-sm text-foreground/70">Answer: {a.correctAnswer}</p>
+                  )
+                )}
+                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">Solution</p>
+                <QuestionContentRenderer content={a.solution} className="text-foreground/70" />
+              </div>
             </div>
           ))}
 

@@ -25,13 +25,17 @@ import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as InternAuthRouteImport } from './routes/intern/auth'
+import { Route as InternCertificateRouteImport } from './routes/intern/certificate'
 import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
+import { Route as InternOfferLetterRouteImport } from './routes/intern/offer-letter'
+import { Route as InternProfileRouteImport } from './routes/intern/profile'
 import { Route as LectureSessionIdRouteImport } from './routes/lecture.$sessionId'
 import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
 import { Route as LegalRefundRouteImport } from './routes/legal/refund'
 import { Route as LegalTermsRouteImport } from './routes/legal/terms'
 import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/mentor-onboarding/$applicationId'
 import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
+import { Route as MentorSessionOfferingIdRouteImport } from './routes/mentor-session/$offeringId'
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
 import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
@@ -123,9 +127,24 @@ const InternAuthRoute = InternAuthRouteImport.update({
   path: '/intern/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InternCertificateRoute = InternCertificateRouteImport.update({
+  id: '/intern/certificate',
+  path: '/intern/certificate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InternDashboardRoute = InternDashboardRouteImport.update({
   id: '/intern/dashboard',
   path: '/intern/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternOfferLetterRoute = InternOfferLetterRouteImport.update({
+  id: '/intern/offer-letter',
+  path: '/intern/offer-letter',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InternProfileRoute = InternProfileRouteImport.update({
+  id: '/intern/profile',
+  path: '/intern/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LectureSessionIdRoute = LectureSessionIdRouteImport.update({
@@ -157,6 +176,11 @@ const MentorOnboardingApplicationIdRoute =
 const MentorProfileMentorIdRoute = MentorProfileMentorIdRouteImport.update({
   id: '/mentor-profile/$mentorId',
   path: '/mentor-profile/$mentorId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MentorSessionOfferingIdRoute = MentorSessionOfferingIdRouteImport.update({
+  id: '/mentor-session/$offeringId',
+  path: '/mentor-session/$offeringId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MentorDashboardRoute = MentorDashboardRouteImport.update({
@@ -227,13 +251,17 @@ export interface FileRoutesByFullPath {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
+  '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
+  '/intern/offer-letter': typeof InternOfferLetterRoute
+  '/intern/profile': typeof InternProfileRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
+  '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
@@ -262,13 +290,17 @@ export interface FileRoutesByTo {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
+  '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
+  '/intern/offer-letter': typeof InternOfferLetterRoute
+  '/intern/profile': typeof InternProfileRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
+  '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
@@ -298,13 +330,17 @@ export interface FileRoutesById {
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
+  '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
+  '/intern/offer-letter': typeof InternOfferLetterRoute
+  '/intern/profile': typeof InternProfileRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
   '/legal/terms': typeof LegalTermsRoute
   '/mentor-onboarding/$applicationId': typeof MentorOnboardingApplicationIdRoute
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
+  '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
@@ -335,13 +371,17 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
+    | '/intern/certificate'
     | '/intern/dashboard'
+    | '/intern/offer-letter'
+    | '/intern/profile'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
+    | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
@@ -370,13 +410,17 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
+    | '/intern/certificate'
     | '/intern/dashboard'
+    | '/intern/offer-letter'
+    | '/intern/profile'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
+    | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
@@ -405,13 +449,17 @@ export interface FileRouteTypes {
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
+    | '/intern/certificate'
     | '/intern/dashboard'
+    | '/intern/offer-letter'
+    | '/intern/profile'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
     | '/legal/terms'
     | '/mentor-onboarding/$applicationId'
     | '/mentor-profile/$mentorId'
+    | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
@@ -441,13 +489,17 @@ export interface RootRouteChildren {
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   InternAuthRoute: typeof InternAuthRoute
+  InternCertificateRoute: typeof InternCertificateRoute
   InternDashboardRoute: typeof InternDashboardRoute
+  InternOfferLetterRoute: typeof InternOfferLetterRoute
+  InternProfileRoute: typeof InternProfileRoute
   LectureSessionIdRoute: typeof LectureSessionIdRoute
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalRefundRoute: typeof LegalRefundRoute
   LegalTermsRoute: typeof LegalTermsRoute
   MentorOnboardingApplicationIdRoute: typeof MentorOnboardingApplicationIdRoute
   MentorProfileMentorIdRoute: typeof MentorProfileMentorIdRoute
+  MentorSessionOfferingIdRoute: typeof MentorSessionOfferingIdRoute
   MentorDashboardRoute: typeof MentorDashboardRoute
   PromoterAuthRoute: typeof PromoterAuthRoute
   PromoterDashboardRoute: typeof PromoterDashboardRoute
@@ -574,11 +626,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InternAuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/intern/certificate': {
+      id: '/intern/certificate'
+      path: '/intern/certificate'
+      fullPath: '/intern/certificate'
+      preLoaderRoute: typeof InternCertificateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/intern/dashboard': {
       id: '/intern/dashboard'
       path: '/intern/dashboard'
       fullPath: '/intern/dashboard'
       preLoaderRoute: typeof InternDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intern/offer-letter': {
+      id: '/intern/offer-letter'
+      path: '/intern/offer-letter'
+      fullPath: '/intern/offer-letter'
+      preLoaderRoute: typeof InternOfferLetterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/intern/profile': {
+      id: '/intern/profile'
+      path: '/intern/profile'
+      fullPath: '/intern/profile'
+      preLoaderRoute: typeof InternProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lecture/$sessionId': {
@@ -621,6 +694,13 @@ declare module '@tanstack/react-router' {
       path: '/mentor-profile/$mentorId'
       fullPath: '/mentor-profile/$mentorId'
       preLoaderRoute: typeof MentorProfileMentorIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentor-session/$offeringId': {
+      id: '/mentor-session/$offeringId'
+      path: '/mentor-session/$offeringId'
+      fullPath: '/mentor-session/$offeringId'
+      preLoaderRoute: typeof MentorSessionOfferingIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mentor/dashboard': {
@@ -713,13 +793,17 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   InternAuthRoute: InternAuthRoute,
+  InternCertificateRoute: InternCertificateRoute,
   InternDashboardRoute: InternDashboardRoute,
+  InternOfferLetterRoute: InternOfferLetterRoute,
+  InternProfileRoute: InternProfileRoute,
   LectureSessionIdRoute: LectureSessionIdRoute,
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalRefundRoute: LegalRefundRoute,
   LegalTermsRoute: LegalTermsRoute,
   MentorOnboardingApplicationIdRoute: MentorOnboardingApplicationIdRoute,
   MentorProfileMentorIdRoute: MentorProfileMentorIdRoute,
+  MentorSessionOfferingIdRoute: MentorSessionOfferingIdRoute,
   MentorDashboardRoute: MentorDashboardRoute,
   PromoterAuthRoute: PromoterAuthRoute,
   PromoterDashboardRoute: PromoterDashboardRoute,

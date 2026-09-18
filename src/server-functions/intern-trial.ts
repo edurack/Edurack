@@ -30,6 +30,7 @@ function toView(t: any) {
     subjectLabel: t.subjectLabel as string,
     instructions: t.instructions as string,
     sampleCount: t.sampleCount as number,
+    referenceMaterialUrl: (t.referenceMaterialUrl as string | null) ?? null,
     status: t.status as string,
     answers: (t.answers as TrialQuestionAnswer[]) ?? [],
     reviewScore: (t.reviewScore as number | null) ?? null,
@@ -49,7 +50,7 @@ export const createTrialAssignment = createServerFn({ method: "POST" })
     const { randomBytes } = await import("node:crypto");
     const db = await getDb();
 
-    const { candidateName, candidateEmail, subjectLabel, instructions, sampleCount } = data.assignment;
+    const { candidateName, candidateEmail, subjectLabel, instructions, sampleCount, referenceMaterialUrl } = data.assignment;
     if (!candidateName.trim()) throw new Error("Enter the candidate's name.");
     if (!candidateEmail.includes("@")) throw new Error("Enter a valid email address.");
     if (!subjectLabel.trim()) throw new Error("Enter the sample subject/topic.");
@@ -64,6 +65,7 @@ export const createTrialAssignment = createServerFn({ method: "POST" })
       subjectLabel: subjectLabel.trim(),
       instructions: instructions.trim(),
       sampleCount,
+      referenceMaterialUrl: referenceMaterialUrl?.trim() || null,
       status: "open",
       answers: [],
       reviewScore: null,
@@ -85,6 +87,7 @@ export const createTrialAssignment = createServerFn({ method: "POST" })
           candidateName: candidateName.trim(),
           subjectLabel: subjectLabel.trim(),
           taskUrl,
+          referenceMaterialUrl: referenceMaterialUrl?.trim() || null,
         }),
       });
       emailSent = true;

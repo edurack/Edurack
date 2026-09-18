@@ -82,6 +82,7 @@ export function internTrialInviteEmailHtml(params: {
   candidateName: string;
   subjectLabel: string;
   taskUrl: string;
+  referenceMaterialUrl: string | null;
 }): string {
   const body = `
     ${emailBadge("Sample task")}
@@ -95,6 +96,18 @@ export function internTrialInviteEmailHtml(params: {
     <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.text}; font-weight: 700;">
       ${params.subjectLabel}
     </p>
+    ${
+      params.referenceMaterialUrl
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${BRAND.border}; border-radius: 18px; margin-bottom: 16px; background-color: ${BRAND.bg};">
+             <tr>
+               <td style="padding: 14px 18px;">
+                 <p style="margin: 0 0 4px 0; font-family: ${FONT_STACK}; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${BRAND.muted};">Reference material</p>
+                 <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px;"><a href="${params.referenceMaterialUrl}" style="color: #4F8FE0; font-weight: 700;">Open the source material</a></p>
+               </td>
+             </tr>
+           </table>`
+        : ""
+    }
     ${params.taskUrl ? emailButton(params.taskUrl, "Start the sample task") : ""}
     <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
       No account or password needed — the link above is all you need. Take your time, but the sooner
@@ -142,4 +155,131 @@ export function internTaskAssignedEmailHtml(params: {
     ${params.dashboardUrl ? emailButton(params.dashboardUrl, "Open your dashboard") : ""}
   `;
   return emailLayout({ previewText: `New task: ${params.subject}`, bodyHtml: body });
+}
+
+// ─── Draft approved ───────────────────────────────────────────────────────
+export function internDraftApprovedEmailHtml(params: {
+  internName: string;
+  subject: string;
+  questionNo: number;
+  dashboardUrl: string;
+}): string {
+  const body = `
+    ${emailBadge("Question approved", BRAND.mintSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      Nice work, ${params.internName}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Your question for <strong style="color: ${BRAND.text};">${params.subject}</strong> was approved and is now
+      live as question ${params.questionNo}.
+    </p>
+    ${params.dashboardUrl ? emailButton(params.dashboardUrl, "Keep going") : ""}
+  `;
+  return emailLayout({ previewText: `Approved: your ${params.subject} question is live`, bodyHtml: body });
+}
+
+// ─── Draft rejected ───────────────────────────────────────────────────────
+export function internDraftRejectedEmailHtml(params: {
+  internName: string;
+  subject: string;
+  feedback: string;
+  dashboardUrl: string;
+}): string {
+  const body = `
+    ${emailBadge("Needs a fix", BRAND.lemonSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      One of your ${params.subject} questions needs a revision
+    </h1>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${BRAND.border}; border-radius: 18px; margin-bottom: 16px; background-color: ${BRAND.bg};">
+      <tr>
+        <td style="padding: 14px 18px;">
+          <p style="margin: 0 0 4px 0; font-family: ${FONT_STACK}; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${BRAND.muted};">Reviewer feedback</p>
+          <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.text};">${params.feedback}</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin: 0 0 16px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Hi ${params.internName}, open the task, fix it up, and resubmit whenever you're ready — nothing else is
+      affected.
+    </p>
+    ${params.dashboardUrl ? emailButton(params.dashboardUrl, "Fix and resubmit") : ""}
+  `;
+  return emailLayout({ previewText: `Feedback on your ${params.subject} question`, bodyHtml: body });
+}
+
+// ─── Internship dates confirmed ───────────────────────────────────────────
+export function internDatesConfirmedEmailHtml(params: {
+  internName: string;
+  startDate: string;
+  endDate: string;
+  dashboardUrl: string;
+}): string {
+  const body = `
+    ${emailBadge("Internship confirmed")}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      Your internship dates are set, ${params.internName}
+    </h1>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${BRAND.border}; border-radius: 18px; overflow: hidden; background-color: ${BRAND.bg}; margin-bottom: 16px;">
+      <tr>
+        <td style="padding: 14px 18px; border-bottom: 1px solid ${BRAND.border}; font-family: ${FONT_STACK}; font-size: 14px; color: ${BRAND.muted};">Start date</td>
+        <td style="padding: 14px 18px; border-bottom: 1px solid ${BRAND.border}; font-family: ${FONT_STACK}; font-size: 14px; color: ${BRAND.text}; text-align: right; font-weight: 700;">${params.startDate}</td>
+      </tr>
+      <tr>
+        <td style="padding: 14px 18px; font-family: ${FONT_STACK}; font-size: 14px; color: ${BRAND.muted};">End date</td>
+        <td style="padding: 14px 18px; font-family: ${FONT_STACK}; font-size: 14px; color: ${BRAND.text}; text-align: right; font-weight: 700;">${params.endDate}</td>
+      </tr>
+    </table>
+    <p style="margin: 0 0 16px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      You can see these any time, along with your task progress and accuracy, on your Profile page.
+    </p>
+    ${params.dashboardUrl ? emailButton(params.dashboardUrl, "View your profile") : ""}
+  `;
+  return emailLayout({ previewText: `Your internship: ${params.startDate} – ${params.endDate}`, bodyHtml: body });
+}
+
+// ─── Offer letter uploaded ────────────────────────────────────────────────
+export function internOfferLetterEmailHtml(params: { internName: string; offerLetterUrl: string }): string {
+  const body = `
+    ${emailBadge("Offer letter", BRAND.mintSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      Your Edurack offer letter is ready, ${params.internName}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Welcome to the team — your offer letter is attached below and always available from your intern portal.
+    </p>
+    ${emailButton(params.offerLetterUrl, "View offer letter")}
+  `;
+  return emailLayout({ previewText: "Your Edurack offer letter is ready", bodyHtml: body });
+}
+
+// ─── Certificate uploaded (message adapts to lock state) ─────────────────
+export function internCertificateEmailHtml(params: {
+  internName: string;
+  unlocked: boolean;
+  unlockDate: string | null;
+  certificateUrl: string | null;
+  profileUrl: string;
+}): string {
+  const body = `
+    ${emailBadge("Certificate", BRAND.lemonSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      ${params.unlocked ? `Your certificate is ready, ${params.internName}` : `Your certificate is on its way, ${params.internName}`}
+    </h1>
+    <p style="margin: 0 0 20px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      ${
+        params.unlocked
+          ? "It's ready to download from your intern portal right now."
+          : `It's prepared and waiting — it'll unlock for download on <strong style="color: ${BRAND.text};">${params.unlockDate}</strong>.`
+      }
+    </p>
+    ${
+      params.unlocked && params.certificateUrl
+        ? emailButton(params.certificateUrl, "Download certificate")
+        : emailButton(params.profileUrl, "View your profile")
+    }
+  `;
+  return emailLayout({
+    previewText: params.unlocked ? "Your certificate is ready to download" : "Your certificate is on its way",
+    bodyHtml: body,
+  });
 }

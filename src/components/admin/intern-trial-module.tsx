@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { IconMail as Mail } from "@tabler/icons-react";
+import { IconMail as Mail, IconUpload as Upload, IconFileText as FileText, IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { createTrialAssignment, listTrialAssignments, reviewTrialAssignment } from "@/server-functions/intern-trial";
 import { createInternInvite } from "@/server-functions/intern-auth";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
+import { uploadToSupabase, INTERN_DOCUMENTS_BUCKET, MAX_INTERN_DOCUMENT_BYTES } from "@/lib/supabase";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
@@ -18,6 +19,9 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
   const [subjectLabel, setSubjectLabel] = useState("");
   const [instructions, setInstructions] = useState("");
   const [sampleCount, setSampleCount] = useState("5");
+  const [referenceMaterialUrl, setReferenceMaterialUrl] = useState("");
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const [refUploadError, setRefUploadError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{ emailSent: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +40,26 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function handleUploadReference(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setRefUploadError(null);
+    if (file.size > MAX_INTERN_DOCUMENT_BYTES) {
+      setRefUploadError(`File too large — max ${Math.round(MAX_INTERN_DOCUMENT_BYTES / (1024 * 1024))}MB.`);
+      return;
+    }
+    setUploadingRef(true);
+    try {
+      const url = await uploadToSupabase(INTERN_DOCUMENTS_BUCKET, file);
+      setReferenceMaterialUrl(url);
+    } catch (err) {
+      setRefUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingRef(false);
+    }
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -44,7 +68,14 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
       const res = await createTrialAssignment({
         data: {
           token,
-          assignment: { candidateName: name, candidateEmail: email, subjectLabel, instructions, sampleCount: Number(sampleCount) },
+          assignment: {
+            candidateName: name,
+            candidateEmail: email,
+            subjectLabel,
+            instructions,
+            sampleCount: Number(sampleCount),
+            referenceMaterialUrl: referenceMaterialUrl.trim() || null,
+          },
         },
       });
       setLastResult({ emailSent: res.emailSent });
@@ -52,6 +83,7 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
       setEmail("");
       setSubjectLabel("");
       setInstructions("");
+      setReferenceMaterialUrl("");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't create the trial link.");
@@ -116,6 +148,36 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
           placeholder="Instructions shown to the candidate"
           className={inputClass + " h-auto resize-none py-3"}
         />
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            Reference material (optional) — sample source questions for them to work from
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={referenceMaterialUrl}
+              onChange={(e) => setReferenceMaterialUrl(e.target.value)}
+              placeholder="Paste a link (Drive, S3, etc.)…"
+              className={inputClass + " flex-1"}
+            />
+            <label className="clay-btn-ghost flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-xs font-semibold text-foreground/70">
+              {uploadingRef ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploadingRef ? "Uploading…" : "…or upload a PDF"}
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleUploadReference}
+                className="hidden"
+                disabled={uploadingRef}
+              />
+            </label>
+          </div>
+          {refUploadError && <p className="mt-1 text-xs font-medium text-rose-600">{refUploadError}</p>}
+          {referenceMaterialUrl && !uploadingRef && (
+            <p className="mt-1 truncate text-xs text-emerald-600">Attached: {referenceMaterialUrl}</p>
+          )}
+        </div>
+
         {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
         {lastResult && (
           <p
@@ -151,6 +213,18 @@ export function InternTrialModule({ adminUser }: { adminUser: AdminUser }) {
                 {a.status}
               </span>
             </div>
+
+            {a.referenceMaterialUrl && (
+              <a
+                href={a.referenceMaterialUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Reference material attached
+              </a>
+            )}
 
             {a.status === "submitted" && (
               <div className="mt-4 space-y-3">

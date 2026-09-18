@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { IconLoader2 as Loader2, IconClock as Clock, IconX as X } from "@tabler/icons-react";
+import { Link } from "@tanstack/react-router";
+import { IconLoader2 as Loader2, IconClock as Clock, IconX as X, IconUsers as Users } from "@tabler/icons-react";
 import { listOpenMentorSessions } from "@/server-functions/student-sessions";
 import { createRazorpayOrder, verifyRazorpayPayment, claimFreeItem } from "@/server-functions/payments";
 import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
@@ -8,9 +9,6 @@ const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "
 
 type PriceFilter = "all" | "free" | "paid";
 
-// Same Razorpay checkout-script loader your bundle/mentorship purchase flow
-// already uses — reuse that helper instead of this inline copy if you have
-// a shared one.
 function loadRazorpayScript() {
   return new Promise<void>((resolve, reject) => {
     if ((window as any).Razorpay) return resolve();
@@ -22,11 +20,11 @@ function loadRazorpayScript() {
   });
 }
 
-export function StudentOpenSessionsModule({ getToken }: { getToken: () => Promise<string> }) {
+export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToken: () => Promise<string>; subjectFilter?: string }) {
   const [offerings, setOfferings] = useState<PublicMentorOffering[] | null>(null);
   const [slotsByOffering, setSlotsByOffering] = useState<Record<string, OpenSlot[]>>({});
   const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(subjectFilter ?? "");
   const [booking, setBooking] = useState<{ offering: PublicMentorOffering; slot: OpenSlot } | null>(null);
 
   async function load() {
@@ -48,7 +46,7 @@ export function StudentOpenSessionsModule({ getToken }: { getToken: () => Promis
       if (priceFilter === "free" && !o.isFree) return false;
       if (priceFilter === "paid" && o.isFree) return false;
       if ((slotsByOffering[o.id] ?? []).length === 0) return false;
-      if (q && !`${o.title} ${o.mentorName} ${o.description}`.toLowerCase().includes(q)) return false;
+      if (q && !`${o.title} ${o.mentorName} ${o.description} ${o.subject ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [offerings, priceFilter, query, slotsByOffering]);
@@ -59,7 +57,7 @@ export function StudentOpenSessionsModule({ getToken }: { getToken: () => Promis
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search mentors or topics…"
+          placeholder="Search mentors, topics, or subjects…"
           className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none sm:max-w-xs"
         />
         <div className="flex gap-1.5">
@@ -107,21 +105,33 @@ export function StudentOpenSessionsModule({ getToken }: { getToken: () => Promis
 
 function OfferingCard({ offering, slots, onPick }: { offering: PublicMentorOffering; slots: OpenSlot[]; onPick: (slot: OpenSlot) => void }) {
   const preview = slots.slice(0, 4);
+  const isGroup = offering.capacity > 1;
   return (
     <div className="clay flex flex-col overflow-hidden p-3">
-      <div className="flex h-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)]">
+      <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)]">
         {offering.thumbnailUrl ? (
           <img src={offering.thumbnailUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           <Clock className="h-9 w-9 text-[var(--pink-deep,#BE185D)] opacity-50" strokeWidth={1.5} />
+        )}
+        {isGroup && (
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold text-foreground/70 shadow-sm">
+            <Users className="h-3 w-3" />
+            Group
+          </span>
         )}
       </div>
       <div className="p-3 pt-4">
         <div className="mb-1 flex items-center gap-2">
           {offering.mentorPhotoUrl && <img src={offering.mentorPhotoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />}
           <p className="truncate text-xs font-semibold text-foreground/60">{offering.mentorName}</p>
+          {offering.subject && (
+            <span className="shrink-0 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--sky-deep)]">{offering.subject}</span>
+          )}
         </div>
-        <h3 className="font-display text-base font-bold text-foreground">{offering.title}</h3>
+        <Link to="/mentor-session/$offeringId" params={{ offeringId: offering.id }} className="block font-display text-base font-bold text-foreground hover:underline">
+          {offering.title}
+        </Link>
         <p className="mt-1 text-sm font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -129,9 +139,12 @@ function OfferingCard({ offering, slots, onPick }: { offering: PublicMentorOffer
             <button
               key={`${s.date}-${s.startTime}`}
               onClick={() => onPick(s)}
-              className="clay-chip rounded-full px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
+              className="clay-chip flex flex-col items-start rounded-2xl px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
             >
-              {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {s.startTime}
+              <span>
+                {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {s.startTime}
+              </span>
+              {isGroup && <span className="text-[10px] font-normal text-foreground/40">{s.seatsRemaining} seats left</span>}
             </button>
           ))}
           {slots.length > preview.length && <span className="self-center text-[11px] text-foreground/40">+{slots.length - preview.length} more</span>}
@@ -141,7 +154,10 @@ function OfferingCard({ offering, slots, onPick }: { offering: PublicMentorOffer
   );
 }
 
-function BookingDialog({
+// Exported so other pages (the dashboard's free-sessions banner, the
+// future premium session detail page) can open the exact same booking
+// flow without duplicating the Razorpay/claimFreeItem logic.
+export function BookingDialog({
   offering,
   slot,
   getToken,
@@ -164,8 +180,6 @@ function BookingDialog({
     try {
       const token = await getToken();
 
-      // Free offerings skip Razorpay entirely — same claimFreeItem path a
-      // ₹0 bundle/mentorship batch uses, just with itemType "mentorSession".
       if (offering.isFree) {
         await claimFreeItem({
           data: { token, itemType: "mentorSession", itemId: offering.id, sessionDate: slot.date, sessionStartTime: slot.startTime, studentNote: note },
@@ -211,12 +225,14 @@ function BookingDialog({
         },
       });
       rzp.open();
-      return; // submitting stays true until the Razorpay handler/ondismiss above resolves it
+      return;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not book this session.");
       setSubmitting(false);
     }
   }
+
+  const isGroup = offering.capacity > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -233,6 +249,12 @@ function BookingDialog({
           <p className="mt-1 text-sm text-foreground/60">
             {new Date(slot.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })} · {slot.startTime} · {slot.durationMinutes} min
           </p>
+          {isGroup && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-foreground/50">
+              <Users className="h-3.5 w-3.5" />
+              Group session — {slot.seatsRemaining} of {slot.capacity} seats left
+            </p>
+          )}
           <p className="mt-2 font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
         </div>
         <textarea

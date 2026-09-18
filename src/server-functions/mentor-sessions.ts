@@ -6,17 +6,13 @@
 // own comment on requireSuperAdmin for why cross-importing between
 // server-functions files is avoided here).
 //
-// IMPORTANT: node:crypto is NEVER imported statically at module top level
-// in this file — every function that needs it does
-// `const { x } = await import("node:crypto")` locally instead. This is
-// not stylistic: a static top-level import of a Node-only module gets
-// pulled into the client bundle once this file is reachable from a client
-// component (mentor-sessions-module.tsx imports from it), which is
-// exactly what broke mentor-auth.ts (see its own updated comment).
+// node:crypto is never imported statically at module top level — every
+// function that needs it does `await import("node:crypto")` locally
+// instead (see mentor-auth.ts's comment on why this matters).
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
-import { DURATION_OPTIONS, type DayOfWeek, type MentorSessionOffering, type MentorSessionBooking } from "@/lib/session-types";
+import { DURATION_OPTIONS, MAX_SESSION_CAPACITY, type DayOfWeek, type MentorSessionOffering, type MentorSessionBooking } from "@/lib/session-types";
 
 function getSessionSecret(): string {
   const secret = process.env.MENTOR_SESSION_SECRET;
@@ -44,9 +40,6 @@ async function verifyMentorToken(token: string): Promise<{ mentorId: string } | 
   return { mentorId };
 }
 
-// Same behavior as mentor-auth.ts's requireMentor: verify the signed
-// token, then check the mentor hasn't been terminated since it was
-// issued (tokens are otherwise valid for up to 7 days).
 async function requireMentor(token: string): Promise<string> {
   const verified = await verifyMentorToken(token);
   if (!verified) throw new Error("Session expired. Please sign in again.");
@@ -75,6 +68,8 @@ function rowToOffering(row: any): MentorSessionOffering {
     dateRangeEnd: row.date_range_end,
     isOngoing: row.is_ongoing,
     active: row.active,
+    capacity: row.capacity ?? 1,
+    subject: row.subject ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -135,6 +130,8 @@ export const createOffering = createServerFn({ method: "POST" })
       dateRangeStart: string | null;
       dateRangeEnd: string | null;
       isOngoing: boolean;
+      capacity: number;
+      subject: string | null;
     }) => d,
   )
   .handler(async ({ data }) => {
@@ -145,6 +142,9 @@ export const createOffering = createServerFn({ method: "POST" })
     if (data.startTimes.length === 0) throw new Error("Add at least one time slot.");
     if (!data.isFree && (!data.price || data.price <= 0)) throw new Error("Set a price, or mark this session free.");
     if (!data.isOngoing && !data.dateRangeEnd) throw new Error("Set an end date, or mark this session ongoing.");
+    if (!Number.isInteger(data.capacity) || data.capacity < 1 || data.capacity > MAX_SESSION_CAPACITY) {
+      throw new Error(`Capacity must be between 1 and ${MAX_SESSION_CAPACITY}.`);
+    }
 
     const sb = supabase;
     const { data: row, error } = await sb
@@ -162,6 +162,8 @@ export const createOffering = createServerFn({ method: "POST" })
         date_range_start: data.dateRangeStart,
         date_range_end: data.isOngoing ? null : data.dateRangeEnd,
         is_ongoing: data.isOngoing,
+        capacity: data.capacity,
+        subject: data.subject?.trim() || null,
         active: true,
       })
       .select()
@@ -213,7 +215,10 @@ export const deleteOffering = createServerFn({ method: "POST" })
   });
 
 // Bookings the mentor has received, most recent first, with offering title
-// joined in so the UI doesn't need a second round trip.
+// joined in so the UI doesn't need a second round trip. The component
+// groups these into per-session rosters (see groupBookingsIntoRosters in
+// lib/session-types.ts) — this stays flat since that's the simpler shape
+// to page/filter/search over.
 export const listMyBookings = createServerFn({ method: "GET" })
   .validator((d: { token: string }) => d)
   .handler(async ({ data }) => {
@@ -241,6 +246,25 @@ export const setMeetingLink = createServerFn({ method: "POST" })
       .update({ meeting_link: data.meetingLink.trim() })
       .eq("id", data.bookingId)
       .eq("mentor_id", mentorId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// Sets the meeting link for every booking in one session instance at once
+// (same offering + date + start time) — since a group session has one
+// meeting link shared by the whole roster, not one per student.
+export const setMeetingLinkForSession = createServerFn({ method: "POST" })
+  .validator((d: { token: string; offeringId: string; sessionDate: string; startTime: string; meetingLink: string }) => d)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const sb = supabase;
+    const { error } = await sb
+      .from("mentor_session_bookings")
+      .update({ meeting_link: data.meetingLink.trim() })
+      .eq("mentor_id", mentorId)
+      .eq("offering_id", data.offeringId)
+      .eq("session_date", data.sessionDate)
+      .eq("start_time", data.startTime);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -1,7 +1,5 @@
 // Student-side: browse open mentor slots. Booking itself (both free and
-// paid) goes through server-functions/payments.ts — claimFreeItem for
-// free offerings, createRazorpayOrder + verifyRazorpayPayment (itemType:
-// "mentorSession") for paid ones — so this file has no payment logic.
+// paid) goes through server-functions/payments.ts.
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
@@ -29,16 +27,13 @@ function rowToOffering(row: any): MentorSessionOffering {
     dateRangeEnd: row.date_range_end,
     isOngoing: row.is_ongoing,
     active: row.active,
+    capacity: row.capacity ?? 1,
+    subject: row.subject ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-// Real lookup now (was a stub returning {}). Mirrors payments.ts's
-// lookupMentorPublicInfo but batched (one query for N mentor ids) since
-// this runs once per offerings list rather than once per booking. Any
-// mentorId that isn't a valid ObjectId or doesn't resolve is simply
-// skipped — the caller falls back to "Mentor" / no photo per-offering.
 async function lookupMentorPublicInfo(mentorIds: string[]): Promise<Record<string, { name: string; photoUrl: string | null }>> {
   if (mentorIds.length === 0) return {};
   const { ObjectId } = await import("mongodb");
@@ -67,7 +62,7 @@ async function lookupMentorPublicInfo(mentorIds: string[]): Promise<Record<strin
 }
 
 // Lists every mentor's active offerings plus, for each, its next open
-// slots (21-day window).
+// slots (21-day window) with seats-remaining counts for group sessions.
 export const listOpenMentorSessions = createServerFn({ method: "GET" })
   .validator((d: { token: string }) => d)
   .handler(async ({ data }) => {
@@ -90,7 +85,14 @@ export const listOpenMentorSessions = createServerFn({ method: "GET" })
       .neq("status", "cancelled");
     if (bErr) throw new Error(bErr.message);
 
-    const bookedKeys = new Set((bookingRows ?? []).map((b: any) => `${b.offering_id}:${b.session_date}:${b.start_time}`));
+    // Count bookings per slot instead of a boolean "is it taken" set — a
+    // group offering (capacity > 1) can have several non-cancelled
+    // bookings for the same slot and still have seats left.
+    const seatCounts = new Map<string, number>();
+    for (const b of bookingRows ?? []) {
+      const key = `${b.offering_id}:${b.session_date}:${b.start_time}`;
+      seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
+    }
 
     const mentorIds = Array.from(new Set(offerings.map((o) => o.mentorId)));
     const mentorInfo = await lookupMentorPublicInfo(mentorIds);
@@ -103,7 +105,7 @@ export const listOpenMentorSessions = createServerFn({ method: "GET" })
 
     const slotsByOffering: Record<string, OpenSlot[]> = {};
     for (const o of offerings) {
-      slotsByOffering[o.id] = expandOfferingToSlots(o, bookedKeys);
+      slotsByOffering[o.id] = expandOfferingToSlots(o, seatCounts);
     }
 
     return { offerings: publicOfferings, slotsByOffering };
@@ -121,4 +123,79 @@ export const listMyBookedSessions = createServerFn({ method: "GET" })
       .order("start_time", { ascending: true });
     if (error) throw new Error(error.message);
     return { bookings: rows ?? [] };
+  });
+
+// ─── Premium session detail page ────────────────────────────────────────
+// Everything one offering's own page needs in a single round trip: the
+// offering itself, the mentor's full public bio (not just name/photo —
+// same "locked profile" fields shown on /mentor-profile/$mentorId), the
+// FULL slot window (not the 4-slot preview used on cards), and a few of
+// the mentor's other active offerings for "more with this mentor".
+export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
+  .validator((d: { token: string; offeringId: string }) => d)
+  .handler(async ({ data }) => {
+    await verifyFirebaseToken(data.token);
+
+    const { data: row, error } = await supabase
+      .from("mentor_session_offerings")
+      .select("*")
+      .eq("id", data.offeringId)
+      .eq("active", true)
+      .single();
+    if (error || !row) throw new Error("This session isn't available anymore.");
+    const offering = rowToOffering(row);
+
+    const { data: bookingRows, error: bErr } = await supabase
+      .from("mentor_session_bookings")
+      .select("session_date, start_time")
+      .eq("offering_id", offering.id)
+      .neq("status", "cancelled");
+    if (bErr) throw new Error(bErr.message);
+
+    const seatCounts = new Map<string, number>();
+    for (const b of bookingRows ?? []) {
+      const key = `${offering.id}:${b.session_date}:${b.start_time}`;
+      seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
+    }
+    const slots = expandOfferingToSlots(offering, seatCounts);
+
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const mentorDoc = ObjectId.isValid(offering.mentorId)
+      ? await db.collection("mentors").findOne({ _id: new ObjectId(offering.mentorId) })
+      : null;
+
+    const mentorBio = {
+      name: (mentorDoc?.name as string) ?? "Mentor",
+      photoUrl: (mentorDoc?.profilePictureUrl as string | null) ?? null,
+      aboutText: (mentorDoc?.aboutText as string) ?? "",
+      yearOfStudy: (mentorDoc?.yearOfStudy as string) ?? "",
+      aiimsIitRank: (mentorDoc?.aiimsIitRank as string) ?? "",
+      enrolledCollege: (mentorDoc?.enrolledCollege as string) ?? "",
+      pursuedCourse: (mentorDoc?.pursuedCourse as string) ?? "",
+      expertAt: (mentorDoc?.expertAt as string) ?? "",
+      whyExpertAt: (mentorDoc?.whyExpertAt as string) ?? "",
+      scoreType: (mentorDoc?.scoreType as "rank" | "percentile" | "score" | null) ?? null,
+      scoreValue: (mentorDoc?.scoreValue as string) ?? "",
+    };
+
+    const { data: otherRows } = await supabase
+      .from("mentor_session_offerings")
+      .select("id, title, is_free, price, duration_minutes")
+      .eq("mentor_id", offering.mentorId)
+      .eq("active", true)
+      .neq("id", offering.id)
+      .limit(3);
+
+    const otherOfferings = (otherRows ?? []).map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      isFree: r.is_free,
+      price: Number(r.price),
+      durationMinutes: r.duration_minutes,
+    }));
+
+    const publicOffering: PublicMentorOffering = { ...offering, mentorName: mentorBio.name, mentorPhotoUrl: mentorBio.photoUrl };
+
+    return { offering: publicOffering, mentorBio, slots, otherOfferings };
   });

@@ -2,13 +2,15 @@ import type { MentorSessionOffering, OpenSlot } from "./session-types";
 
 /**
  * Expands a recurring offering into concrete open slots over the next
- * `windowDays`, then removes any (date, startTime) already taken by a
- * non-cancelled booking. Kept pure/sync so it can be unit tested and reused
- * server-side without touching Supabase directly.
+ * `windowDays`, then attaches how many seats are already taken in each
+ * slot (from `seatCounts`) and excludes any slot that's completely full.
+ * A 1:1 offering (capacity 1) behaves exactly as before — the slot
+ * disappears the moment it has one booking. A group offering keeps
+ * showing up, with seatsRemaining ticking down, until capacity is hit.
  */
 export function expandOfferingToSlots(
   offering: MentorSessionOffering,
-  bookedKeys: Set<string>, // `${offeringId}:${date}:${startTime}`
+  seatCounts: Map<string, number>, // key: `${offeringId}:${date}:${startTime}` → non-cancelled booking count
   windowDays = 21,
   now: Date = new Date(),
 ): OpenSlot[] {
@@ -34,13 +36,18 @@ export function expandOfferingToSlots(
       if (i === 0 && isPast(day, startTime, now)) continue;
 
       const key = `${offering.id}:${dateStr}:${startTime}`;
-      if (bookedKeys.has(key)) continue;
+      const seatsTaken = seatCounts.get(key) ?? 0;
+      const seatsRemaining = offering.capacity - seatsTaken;
+      if (seatsRemaining <= 0) continue; // full — same as "already booked" for a 1:1 offering
 
       slots.push({
         offeringId: offering.id,
         date: dateStr,
         startTime,
         durationMinutes: offering.durationMinutes,
+        capacity: offering.capacity,
+        seatsTaken,
+        seatsRemaining,
       });
     }
   }

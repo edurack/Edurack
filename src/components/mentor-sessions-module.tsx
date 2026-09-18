@@ -14,10 +14,20 @@ import {
   setOfferingActive,
   deleteOffering,
   listMyBookings,
-  setMeetingLink,
+  setMeetingLinkForSession,
 } from "@/server-functions/mentor-sessions";
 import { listEnabledSessionTemplates } from "@/server-functions/session-templates-admin";
-import { DAY_LABELS, DURATION_OPTIONS, type DayOfWeek, type MentorSessionOffering, type MentorSessionBooking, type SessionTemplate } from "@/lib/session-types";
+import {
+  DAY_LABELS,
+  DURATION_OPTIONS,
+  MAX_SESSION_CAPACITY,
+  groupBookingsIntoRosters,
+  type DayOfWeek,
+  type MentorSessionOffering,
+  type MentorSessionBooking,
+  type SessionRoster,
+  type SessionTemplate,
+} from "@/lib/session-types";
 
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
@@ -42,11 +52,28 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Capacity per offering, so the roster view can show "6 of 10 seats" —
+  // listMyBookings doesn't carry capacity itself (it's a flat booking
+  // list), so this looks it up from the offerings already loaded above.
+  const capacityByOffering = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const o of offerings ?? []) m.set(o.id, o.capacity);
+    return m;
+  }, [offerings]);
+
+  const rosters = useMemo(() => {
+    if (!bookings) return null;
+    const grouped = groupBookingsIntoRosters(bookings);
+    return grouped.map((r) => ({ ...r, capacity: capacityByOffering.get(r.offeringId) ?? r.students.length }));
+  }, [bookings, capacityByOffering]);
+
+  const studentCount = bookings?.length ?? 0;
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Sessions</h1>
-        <p className="mt-1 text-sm text-foreground/60">Publish open slots for students to book, and manage upcoming sessions.</p>
+        <p className="mt-1 text-sm text-foreground/60">Publish open slots — 1:1 or group — for students to book, and manage upcoming sessions.</p>
       </div>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -61,7 +88,7 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
             onClick={() => setTab("bookings")}
             className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === "bookings" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
           >
-            Bookings {bookings ? `(${bookings.length})` : ""}
+            Sessions & students {rosters ? `(${rosters.length} · ${studentCount} students)` : ""}
           </button>
         </div>
         {tab === "offerings" && (
@@ -89,10 +116,10 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
           }}
         />
       ) : (
-        <BookingsList
-          bookings={bookings}
-          onSetLink={async (id, link) => {
-            await setMeetingLink({ data: { token: mentorToken, bookingId: id, meetingLink: link } });
+        <RosterList
+          rosters={rosters}
+          onSetLink={async (offeringId, sessionDate, startTime, link) => {
+            await setMeetingLinkForSession({ data: { token: mentorToken, offeringId, sessionDate, startTime, meetingLink: link } });
             loadBookings();
           }}
         />
@@ -140,6 +167,7 @@ function OfferingsList({
               <p className="truncate font-display text-base font-bold text-foreground">{o.title}</p>
               <p className="text-xs text-foreground/50">
                 {o.durationMinutes} min · {o.isFree ? "Free" : currency.format(o.price)}
+                {o.capacity > 1 ? ` · up to ${o.capacity} students` : " · 1:1"}
               </p>
             </div>
             <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${o.active ? "bg-[var(--mint-soft)] text-foreground" : "bg-foreground/10 text-foreground/50"}`}>
@@ -154,6 +182,7 @@ function OfferingsList({
               .join(", ")}{" "}
             · {o.startTimes.join(", ")}
           </p>
+          {o.subject && <p className="text-[11px] font-semibold text-[var(--sky-deep)]">Subject: {o.subject}</p>}
           {!o.isOngoing && o.dateRangeEnd && (
             <p className="text-[11px] text-foreground/40">Ends {new Date(o.dateRangeEnd).toLocaleDateString("en-IN")}</p>
           )}
@@ -175,79 +204,108 @@ function OfferingsList({
   );
 }
 
-function BookingsList({
-  bookings,
+// Groups bookings into one card per session instance — for a 1:1 offering
+// that's one student; for a group offering it's the whole roster, with one
+// shared meeting-link field for everyone in that session.
+function RosterList({
+  rosters,
   onSetLink,
 }: {
-  bookings: MentorSessionBooking[] | null;
-  onSetLink: (id: string, link: string) => void;
+  rosters: (SessionRoster & { capacity: number })[] | null;
+  onSetLink: (offeringId: string, sessionDate: string, startTime: string, link: string) => void;
 }) {
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
-  if (bookings === null) {
+  if (rosters === null) {
     return (
       <div className="flex justify-center py-10">
         <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
       </div>
     );
   }
-  if (bookings.length === 0) {
+  if (rosters.length === 0) {
     return <div className="clay p-8 text-center text-sm text-foreground/60">No bookings yet.</div>;
   }
+
   return (
-    <ul className="space-y-2">
-      {bookings.map((b) => (
-        <li key={b.id} className="clay-inset flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <Users className="h-3.5 w-3.5 text-foreground/40" />
-              {b.studentName} — {b.offeringTitle}
-            </p>
-            <p className="text-xs text-foreground/50">
-              {new Date(b.sessionDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {b.startTime} ·{" "}
-              {b.isFree ? "Free" : currency.format(b.price)} ·{" "}
-              <span className={b.paymentStatus === "paid" || b.paymentStatus === "free" ? "text-[var(--sky-deep)]" : ""}>{b.paymentStatus}</span>
-            </p>
-            {b.studentNote && <p className="mt-0.5 text-xs italic text-foreground/50">"{b.studentNote}"</p>}
-          </div>
-          {editingId === b.id ? (
-            <div className="flex items-center gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Meeting link"
-                className="clay-inset rounded-xl px-3 py-1.5 text-xs focus:outline-none"
-              />
-              <button
-                onClick={() => {
-                  onSetLink(b.id, draft);
-                  setEditingId(null);
-                }}
-                className="clay-btn rounded-full px-3 py-1.5 text-xs font-semibold"
-              >
-                Save
-              </button>
+    <div className="space-y-3">
+      {rosters.map((r) => {
+        const key = `${r.offeringId}:${r.sessionDate}:${r.startTime}`;
+        const existingLink = r.students.find((s) => s.meetingLink)?.meetingLink ?? null;
+        const isGroup = r.capacity > 1;
+        return (
+          <div key={key} className="clay p-4">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-1.5 font-display text-base font-bold text-foreground">
+                  <Users className="h-4 w-4 text-foreground/40" />
+                  {r.offeringTitle}
+                  {isGroup && (
+                    <span className="rounded-full bg-[var(--purple-soft,#EDE9FE)] px-2 py-0.5 text-[10px] font-bold text-[var(--purple-deep,#6D28D9)]">
+                      {r.students.length}/{r.capacity} seats
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-foreground/50">
+                  {new Date(r.sessionDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })} · {r.startTime} ·{" "}
+                  {r.durationMinutes} min
+                </p>
+              </div>
+
+              {editingKey === key ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Meeting link"
+                    className="clay-inset rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      onSetLink(r.offeringId, r.sessionDate, r.startTime, draft);
+                      setEditingKey(null);
+                    }}
+                    className="clay-btn rounded-full px-3 py-1.5 text-xs font-semibold"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : existingLink ? (
+                <a href={existingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
+                  <LinkIcon className="h-3.5 w-3.5" />
+                  Meeting link
+                </a>
+              ) : (
+                <button
+                  onClick={() => {
+                    setEditingKey(key);
+                    setDraft("");
+                  }}
+                  className="clay-btn-ghost shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+                >
+                  Add meeting link
+                </button>
+              )}
             </div>
-          ) : b.meetingLink ? (
-            <a href={b.meetingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
-              <LinkIcon className="h-3.5 w-3.5" />
-              Meeting link
-            </a>
-          ) : (
-            <button
-              onClick={() => {
-                setEditingId(b.id);
-                setDraft("");
-              }}
-              className="clay-btn-ghost shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Add meeting link
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
+
+            <ul className="space-y-1.5">
+              {r.students.map((s) => (
+                <li key={s.id} className="clay-inset flex items-center justify-between gap-3 rounded-xl px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{s.studentName}</p>
+                    {s.studentNote && <p className="truncate text-xs italic text-foreground/50">"{s.studentNote}"</p>}
+                  </div>
+                  <span className={`shrink-0 text-xs font-bold ${s.paymentStatus === "paid" || s.paymentStatus === "free" ? "text-[var(--sky-deep)]" : "text-foreground/50"}`}>
+                    {s.isFree ? "Free" : currency.format(s.price)} · {s.paymentStatus}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -269,6 +327,9 @@ function CreateOfferingDialog({
   const [times, setTimes] = useState<string[]>(["17:00"]);
   const [ongoing, setOngoing] = useState(true);
   const [endDate, setEndDate] = useState("");
+  const [isGroup, setIsGroup] = useState(false);
+  const [capacity, setCapacity] = useState("10");
+  const [subject, setSubject] = useState("");
   const [templates, setTemplates] = useState<SessionTemplate[] | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -292,6 +353,7 @@ function CreateOfferingDialog({
     setError(null);
     setSubmitting(true);
     try {
+      const cap = isGroup ? Math.max(2, Math.min(MAX_SESSION_CAPACITY, Number(capacity) || 2)) : 1;
       await createOffering({
         data: {
           token: mentorToken,
@@ -306,6 +368,8 @@ function CreateOfferingDialog({
           dateRangeStart: null,
           dateRangeEnd: ongoing ? null : endDate || null,
           isOngoing: ongoing,
+          capacity: cap,
+          subject: subject.trim() || null,
         },
       });
       onCreated();
@@ -335,6 +399,10 @@ function CreateOfferingDialog({
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none" />
           </Field>
 
+          <Field label="Subject (optional — powers student recommendations, e.g. after a low test score in this subject)">
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Maths, Physics, Organic Chemistry" className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none" />
+          </Field>
+
           <Field label="Duration">
             <div className="flex flex-wrap gap-1.5">
               {DURATION_OPTIONS.map((d) => (
@@ -343,6 +411,36 @@ function CreateOfferingDialog({
                 </button>
               ))}
             </div>
+          </Field>
+
+          <Field label="Format">
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsGroup(false)}
+                className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold ${!isGroup ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
+              >
+                1:1 — one student per slot
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsGroup(true)}
+                className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold ${isGroup ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
+              >
+                Group — many students per slot
+              </button>
+            </div>
+            {isGroup && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-foreground/60">Max students per slot</span>
+                <input
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  inputMode="numeric"
+                  className="clay-inset w-20 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+                />
+              </div>
+            )}
           </Field>
 
           <Field label="Price">
@@ -356,12 +454,12 @@ function CreateOfferingDialog({
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   inputMode="numeric"
-                  placeholder="₹ amount"
+                  placeholder={isGroup ? "₹ per student" : "₹ amount"}
                   className="clay-inset flex-1 rounded-2xl px-4 py-2 text-sm focus:outline-none"
                 />
               )}
             </div>
-            {!isFree && price && <p className="mt-1 text-[11px] text-foreground/40">You'll receive {currency.format(Math.round(Number(price) * 0.95))} after platform commission (5%).</p>}
+            {!isFree && price && <p className="mt-1 text-[11px] text-foreground/40">You'll receive {currency.format(Math.round(Number(price) * 0.95))} per student after platform commission (5%).</p>}
           </Field>
 
           <Field label="Days available">

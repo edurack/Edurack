@@ -2,11 +2,9 @@
 // never trusted from the client), signature verification, and the actual
 // `purchases` collection write that unlocks paywalled content elsewhere.
 //
-// node:crypto is imported dynamically (inside verifySignature below), never
-// statically at module top level — a static import broke mentor-auth.ts
-// once it became reachable from a client component; this file is reachable
-// from client components too (bundle/mentorship purchase flow, and now
-// the mentor-session booking dialog), so it follows the same safe pattern.
+// node:crypto is imported dynamically (inside computeRazorpaySignature),
+// never statically at module top level — see mentor-auth.ts's comment on
+// why that matters for any file reachable from a client component.
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
@@ -46,12 +44,6 @@ async function computeRazorpaySignature(orderId: string, paymentId: string, secr
 // student-sessions.ts). itemId for this type is the offering id.
 type ItemType = "bundle" | "mentorship" | "mentorTest" | "mentorSession";
 
-// Looks up a mentor's public name/photo and (best-effort) email. Email
-// isn't stored on the mentor document directly — it only exists on the
-// creatorApplications document behind mentorOnboardingDetails, same
-// resolution admin.ts's getAdminMentorFullDetail uses. Returns null name
-// fields gracefully rather than throwing, since this is only used for a
-// best-effort notification email.
 async function lookupMentorPublicInfo(mentorId: string): Promise<{ name: string; photoUrl: string | null; email: string | null } | null> {
   const { ObjectId } = await import("mongodb");
   const db = await getDb();
@@ -95,10 +87,6 @@ async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
     return { sellingPrice: test.price as number, title: test.name as string };
   }
 
-  // Standalone Sell Tests — extra safety check beyond the old testCores
-  // flow: status "live" only means admin approved a price, it says
-  // nothing about whether Edurack has actually finished ingesting every
-  // question yet. Count the real rows rather than trusting the flag.
   const soldTest = await db.collection("soldTests").findOne({ _id: new ObjectId(itemId) });
   if (!soldTest) throw new Error("Test not found");
   if (soldTest.status !== "live" || !soldTest.approvedPrice) {
@@ -123,11 +111,6 @@ async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
   };
 }
 
-// Whether the mentor assigned to a mentorship batch currently has
-// test-series access — mirrors requireTestSeriesAccess in
-// mentor-test-series.ts, duplicated here (no shared mentor-session context
-// in this file) rather than imported, matching this codebase's existing
-// convention for cross-file session/access checks.
 async function mentorHasTestSeriesAccess(mentorId: string): Promise<boolean> {
   const db = await getDb();
   const [onboarding, request] = await Promise.all([
@@ -137,12 +120,6 @@ async function mentorHasTestSeriesAccess(mentorId: string): Promise<boolean> {
   return Boolean(onboarding?.wantsToSellTestSeries) || Boolean(request?.adminGranted);
 }
 
-// The commission percent taken from a purchase — snapshotted into the
-// Razorpay order's notes at creation time so it can never drift if the
-// mentor's access status changes between order creation and payment
-// verification (or afterward). Bundles are unaffected (100% platform,
-// unchanged) — mentorship batches and standalone mentorTest sales carry a
-// mentor split, and mentorSession is a flat 5% platform commission.
 async function resolveCommissionPercent(itemType: ItemType, itemId: string): Promise<number | null> {
   if (itemType === "mentorSession") return SESSION_PLATFORM_COMMISSION_PERCENT;
   if (itemType === "mentorTest") return MENTOR_TEST_STANDALONE_COMMISSION_PERCENT;
@@ -155,13 +132,9 @@ async function resolveCommissionPercent(itemType: ItemType, itemId: string): Pro
     const hasAccess = await mentorHasTestSeriesAccess(mentorId);
     return hasAccess ? PLATFORM_COMMISSION_PERCENT + QUESTION_INGESTION_FEE_PERCENT : PLATFORM_COMMISSION_PERCENT;
   }
-  return null; // bundle — ledger already treats this as 100% platform
+  return null;
 }
 
-// ─── Promoter coupon integration ────────────────────────────────────────────
-// Coupons only ever apply to mentorship batches — promoters never promote
-// bundles, standalone tests, or sessions (see promoter-portal.ts:
-// listPromotableBatches only reads mentorshipBatches).
 type ResolvedCoupon = {
   promoterId: string;
   couponCode: string;
@@ -197,26 +170,34 @@ function applyCouponDiscount(sellingPrice: number, coupon: ResolvedCoupon) {
 }
 
 // ─── Session slot helpers ────────────────────────────────────────────────
-// The unique index on mentor_session_bookings(offering_id, session_date,
-// start_time) is the real race-safe guard (enforced at insert time below).
-// This is just a fast, friendly pre-check so a student doesn't pay for a
-// slot that's obviously already gone before Razorpay is even involved.
-async function assertSessionSlotOpen(offeringId: string, date: string, startTime: string) {
-  const { data: existing } = await supabase
+// Fast, friendly pre-check before a Razorpay order is even created — the
+// real, race-safe guard is the `enforce_session_capacity` Postgres trigger
+// (see sql/002_session_capacity.sql), which runs atomically at insert time
+// in createSessionBookingRecord below. This just avoids sending someone to
+// checkout for a slot that's obviously already full.
+async function assertSeatAvailable(offeringId: string, date: string, startTime: string) {
+  const { data: offering, error: offeringErr } = await supabase
+    .from("mentor_session_offerings")
+    .select("capacity")
+    .eq("id", offeringId)
+    .single();
+  if (offeringErr || !offering) throw new Error("This session is no longer available.");
+
+  const { count, error } = await supabase
     .from("mentor_session_bookings")
-    .select("id")
+    .select("id", { count: "exact", head: true })
     .eq("offering_id", offeringId)
     .eq("session_date", date)
     .eq("start_time", startTime)
-    .neq("status", "cancelled")
-    .maybeSingle();
-  if (existing) throw new Error("Sorry, that slot has already been booked.");
+    .neq("status", "cancelled");
+  if (error) throw new Error(error.message);
+
+  if ((count ?? 0) >= offering.capacity) throw new Error("Sorry, that slot is full.");
 }
 
 // Shared by verifyRazorpayPayment's mentorSession branch (paid) and
 // claimFreeItem's mentorSession branch (free) — inserts the booking row
-// and best-effort sends the two session emails. Never touches Mongo except
-// to look up the mentor's public info for the notification email.
+// and best-effort sends the two session emails.
 async function createSessionBookingRecord(params: {
   offeringId: string;
   date: string;
@@ -235,8 +216,6 @@ async function createSessionBookingRecord(params: {
     .eq("id", params.offeringId)
     .single();
   if (offeringErr || !offering) throw new Error("This session is no longer available.");
-
-  await assertSessionSlotOpen(params.offeringId, params.date, params.startTime);
 
   const { platformAmount, mentorNetAmount } =
     params.paymentStatus === "free" ? { platformAmount: 0, mentorNetAmount: 0 } : splitSessionPrice(Number(offering.price));
@@ -265,7 +244,9 @@ async function createSessionBookingRecord(params: {
     .select()
     .single();
   if (insertErr) {
-    if (insertErr.code === "23505") throw new Error("Sorry, that slot was just booked by someone else.");
+    // Raised by the enforce_session_capacity trigger (sql/002) when the
+    // slot filled up between the pre-check above and this insert.
+    if (insertErr.message?.includes("slot is full")) throw new Error("Sorry, that slot just filled up.");
     throw new Error(insertErr.message);
   }
 
@@ -308,7 +289,6 @@ async function createSessionBookingRecord(params: {
   return { bookingId: booking.id as string, mentorId: offering.mentor_id as string };
 }
 
-// ─── Preview a coupon (no Razorpay order created) ──────────────────────────
 export const previewCoupon = createServerFn({ method: "POST" })
   .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => data)
   .handler(async ({ data }) => {
@@ -326,7 +306,6 @@ export const previewCoupon = createServerFn({ method: "POST" })
     };
   });
 
-// ─── Create order ──────────────────────────────────────────────────────────
 export const createRazorpayOrder = createServerFn({ method: "POST" })
   .validator(
     (data: {
@@ -334,10 +313,6 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
       itemType: ItemType;
       itemId: string;
       couponCode?: string;
-      // Only used (and required) when itemType === "mentorSession" — which
-      // slot on the offering is being booked. Round-tripped through the
-      // Razorpay order's notes so verifyRazorpayPayment reads them back
-      // from Razorpay itself rather than trusting the client a second time.
       sessionDate?: string;
       sessionStartTime?: string;
     }) => data,
@@ -350,7 +325,7 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     if (data.itemType === "mentorSession") {
       if (!data.sessionDate || !data.sessionStartTime) throw new Error("Missing session date/time.");
       if (sellingPrice <= 0) throw new Error("This session is free — use claimFreeItem instead.");
-      await assertSessionSlotOpen(data.itemId, data.sessionDate, data.sessionStartTime);
+      await assertSeatAvailable(data.itemId, data.sessionDate, data.sessionStartTime);
     }
 
     let amountToCharge = sellingPrice;
@@ -374,8 +349,6 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     const order = await razorpay.orders.create({
       amount: amountPaise,
       currency: "INR",
-      // Razorpay caps `receipt` at 40 characters — 1-letter type code + last
-      // 12 chars of the id keeps this well under the limit for all types.
       receipt: `${receiptPrefix}_${data.itemId.slice(-12)}_${Date.now()}`,
       notes: {
         uid: decoded.uid,
@@ -406,7 +379,6 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     };
   });
 
-// ─── Verify payment + write purchase record ────────────────────────────────
 export const verifyRazorpayPayment = createServerFn({ method: "POST" })
   .validator(
     (data: {
@@ -416,27 +388,24 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
       razorpayOrderId: string;
       razorpayPaymentId: string;
       razorpaySignature: string;
-      // Only used when itemType === "mentorSession".
       studentNote?: string;
     }) => data,
   )
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
-    const { keySecret } = getRazorpayCredentials();
+    const { keyId, keySecret } = getRazorpayCredentials();
 
     const expectedSignature = await computeRazorpaySignature(data.razorpayOrderId, data.razorpayPaymentId, keySecret);
     if (expectedSignature !== data.razorpaySignature) {
       throw new Error("Payment verification failed — signature mismatch.");
     }
 
-    const { keyId } = getRazorpayCredentials();
     const { default: Razorpay } = await import("razorpay");
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
     const order = await razorpay.orders.fetch(data.razorpayOrderId);
     const notes = (order.notes ?? {}) as Record<string, string>;
     const amountCharged = Number(order.amount) / 100;
 
-    // ── Session bookings: separate path, never touches Mongo `purchases` ──
     if (data.itemType === "mentorSession") {
       if (!notes.sessionDate || !notes.sessionStartTime) throw new Error("Session date/time missing from order.");
       const { bookingId } = await createSessionBookingRecord({
@@ -522,7 +491,7 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
           subject: `Payment successful — ${title}`,
           html: purchaseConfirmationEmailHtml({
             itemTitle: title,
-            itemType: data.itemType === "mentorTest" ? "bundle" : data.itemType, // template only distinguishes bundle/mentorship copy
+            itemType: data.itemType === "mentorTest" ? "bundle" : data.itemType,
             amount: amountCharged,
           }),
         });
@@ -536,24 +505,12 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-  // ─── Claim a free item (selling price is literally 0) ──────────────────────
-// Some bundles/mentorship batches are published at ₹0 (promos, giveaways),
-// and mentor sessions can be marked free by the mentor. Razorpay can't
-// create a ₹0 order, so this bypasses the payment gateway entirely — but it
-// re-checks the price server-side via lookupItemPriceAndTitle before
-// writing anything, so a client can't spoof "this is free" to grab a paid
-// item for nothing. For bundle/mentorship/mentorTest, writes the exact same
-// `purchases` shape verifyRazorpayPayment does, with a synthetic
-// "free_..." id in place of a real Razorpay payment id. For mentorSession,
-// writes a booking to Supabase instead (see createSessionBookingRecord) —
-// same branch structure as verifyRazorpayPayment above.
 export const claimFreeItem = createServerFn({ method: "POST" })
   .validator(
     (data: {
       token: string;
       itemType: ItemType;
       itemId: string;
-      // Only used when itemType === "mentorSession".
       sessionDate?: string;
       sessionStartTime?: string;
       studentNote?: string;
@@ -569,6 +526,7 @@ export const claimFreeItem = createServerFn({ method: "POST" })
 
     if (data.itemType === "mentorSession") {
       if (!data.sessionDate || !data.sessionStartTime) throw new Error("Missing session date/time.");
+      await assertSeatAvailable(data.itemId, data.sessionDate, data.sessionStartTime);
       const { bookingId } = await createSessionBookingRecord({
         offeringId: data.itemId,
         date: data.sessionDate,

@@ -1,12 +1,14 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconSparkles as Sparkles } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconSparkles as Sparkles, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";
 import { getMyPurchases } from "@/server-functions/student-data";
-import { StudentOpenSessionsModule } from "@/components/student-open-sessions-module";
+import { listOpenMentorSessions } from "@/server-functions/student-sessions";
+import { StudentOpenSessionsModule, BookingDialog } from "@/components/student-open-sessions-module";
 import { AppHeader } from "@/components/app-header";
+import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -24,11 +26,6 @@ const EXAM_LABELS: Record<ExamKey, string> = {
   ipmat: "IPMAT",
 };
 
-// Each exam gets its own color so the same badge is recognizable at a
-// glance across every card, search row, and filter chip. Fallback hex
-// values are baked in so this renders correctly even before your global
-// CSS defines the --pink/--amber/--purple/--teal-deep variables — once
-// you do add them (see notes at the end), these just pick them up.
 const EXAM_COLORS: Record<ExamKey, { soft: string; deep: string }> = {
   neet: { soft: "var(--teal-soft, #E1F5EE)", deep: "var(--teal-deep, #0F6E56)" },
   jee: { soft: "var(--sky-soft)", deep: "var(--sky-deep)" },
@@ -45,6 +42,8 @@ const PURPLE_SOFT = "var(--purple-soft, #EDE9FE)";
 const PURPLE_DEEP = "var(--purple-deep, #6D28D9)";
 const AMBER_SOFT = "var(--amber-soft, #FEF3C7)";
 const AMBER_DEEP = "var(--amber-deep, #B45309)";
+const PINK_SOFT = "var(--pink-soft, #FCE7F3)";
+const PINK_DEEP = "var(--pink-deep, #BE185D)";
 
 function resolveExamKey(targetExam: string): ExamKey | null {
   const t = targetExam.toLowerCase();
@@ -99,10 +98,6 @@ type MentorDirectoryEntry = {
   searchText: string;
 };
 
-// Standalone Sold Tests — deliberately NOT folded into the Listing type
-// below. Listing assumes every entry has a Track and an ExamKey for
-// filtering/recommending, and Sold Tests have neither. They get their
-// own type and their own tab.
 type SoldTestEntry = {
   id: string;
   name: string;
@@ -188,7 +183,14 @@ function batchToListing(b: MentorshipBatch, purchasedKeys: Set<string>): Listing
 const TRACK_FILTERS: TrackFilter[] = ["All", "Dropper", "11th", "12th"];
 const EXAM_FILTERS: ExamFilter[] = ["All", "neet", "jee", "cuet", "ipmat"];
 
-type MainTab = "forYou" | "series" | "mentorship" | "tests" | "mentors" | "sessions";
+// "sessions" moved to the #2 slot (right after the personalized "For you"
+// tab, or first if the student has no track set yet) — it was previously
+// last, after four other tabs, which buried the platform's clearest
+// engagement hook (book a real mentor, often for free) behind everything
+// else. The free-sessions banner below covers the "always visible, no
+// tab-click required" half of that; this covers "when they do explore
+// tabs, it's not the last thing they'd ever find."
+type MainTab = "forYou" | "sessions" | "series" | "mentorship" | "tests" | "mentors";
 
 function DashboardPage() {
   const { user, loading } = useAuth();
@@ -199,6 +201,8 @@ function DashboardPage() {
   const [mentors, setMentors] = useState<MentorDirectoryEntry[] | null>(null);
   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [purchasedKeys, setPurchasedKeys] = useState<Set<string> | null>(null);
+  const [sessionOfferings, setSessionOfferings] = useState<PublicMentorOffering[] | null>(null);
+  const [sessionSlots, setSessionSlots] = useState<Record<string, OpenSlot[]>>({});
   const [trackFilter, setTrackFilter] = useState<TrackFilter>("All");
   const [examFilter, setExamFilter] = useState<ExamFilter>("All");
   const [query, setQuery] = useState("");
@@ -211,6 +215,14 @@ function DashboardPage() {
     }
   }, [loading, user, navigate]);
 
+  async function loadSessions() {
+    if (!user) return;
+    const token = await user.getIdToken();
+    const { offerings, slotsByOffering } = await listOpenMentorSessions({ data: { token } });
+    setSessionOfferings(offerings as PublicMentorOffering[]);
+    setSessionSlots(slotsByOffering as Record<string, OpenSlot[]>);
+  }
+
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -222,6 +234,7 @@ function DashboardPage() {
         { mentors: mentorRows },
         { tests: soldTestRows },
         { purchases },
+        { offerings: sessionRows, slotsByOffering },
       ] = await Promise.all([
         getProfile({ data: { token } }),
         listPublicBundles({ data: { token } }),
@@ -229,6 +242,7 @@ function DashboardPage() {
         listPublicMentors({ data: { token } }),
         listPublicSoldTests({ data: { token } }),
         getMyPurchases({ data: { token } }),
+        listOpenMentorSessions({ data: { token } }),
       ]);
       if (p) {
         setProfile({
@@ -243,6 +257,8 @@ function DashboardPage() {
       const purchasedSet = new Set(purchases.map((pu) => `${pu.itemType}:${pu.itemId}`));
       setPurchasedKeys(purchasedSet);
       setSoldTests((soldTestRows as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
+      setSessionOfferings(sessionRows as PublicMentorOffering[]);
+      setSessionSlots(slotsByOffering as Record<string, OpenSlot[]>);
     })();
   }, [user]);
 
@@ -259,8 +275,6 @@ function DashboardPage() {
   const firstName = profile?.fullName?.split(" ")[0] || user?.displayName?.split(" ")[0] || "";
   const ownedCount = purchasedKeys?.size ?? 0;
 
-  // Land the student on "For You" the first time we learn their track,
-  // without yanking them back there if they've already picked a tab.
   useEffect(() => {
     if (track && !didDefaultToForYou.current) {
       setTab("forYou");
@@ -286,6 +300,22 @@ function DashboardPage() {
       (l) => l.kind === "Mentorship" && (trackFilter === "All" || l.track === trackFilter) && (examFilter === "All" || l.exam === examFilter),
     );
   }, [allListings, trackFilter, examFilter]);
+
+  // Nearest 1-2 open slots per free offering, flattened and sorted by
+  // soonest first — what the always-visible banner actually shows. Capped
+  // at 6 cards so the strip stays scannable rather than becoming its own
+  // wall of content.
+  const featuredFreeSlots = useMemo(() => {
+    if (!sessionOfferings) return [];
+    const out: { offering: PublicMentorOffering; slot: OpenSlot }[] = [];
+    for (const o of sessionOfferings) {
+      if (!o.isFree) continue;
+      const slots = sessionSlots[o.id] ?? [];
+      if (slots.length === 0) continue;
+      out.push({ offering: o, slot: slots[0] });
+    }
+    return out.sort((a, b) => (a.slot.date + a.slot.startTime).localeCompare(b.slot.date + b.slot.startTime)).slice(0, 6);
+  }, [sessionOfferings, sessionSlots]);
 
   const q = query.trim().toLowerCase();
   const hasQuery = q.length > 0;
@@ -313,17 +343,18 @@ function DashboardPage() {
     );
   }
 
-  const tabs: { key: MainTab; label: string; color?: string }[] = [
+  const freeSessionCount = featuredFreeSlots.length;
+
+  const tabs: { key: MainTab; label: string; color?: string; badge?: number }[] = [
     ...(track ? [{ key: "forYou" as const, label: "For you" }] : []),
+    { key: "sessions", label: "Sessions", color: PINK_DEEP, badge: freeSessionCount > 0 ? freeSessionCount : undefined },
     { key: "series", label: "Test series", color: KIND_COLORS["Test Series"].deep },
     { key: "mentorship", label: "Mentorships", color: KIND_COLORS["Mentorship"].deep },
     { key: "tests", label: "Tests", color: AMBER_DEEP },
     { key: "mentors", label: "Mentors", color: PURPLE_DEEP },
-    { key: "sessions", label: "Book a session" },
   ];
 
   const showFilters = tab === "series" || tab === "mentorship";
-
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -377,6 +408,15 @@ function DashboardPage() {
           </div>
         </div>
 
+        {/* Free sessions banner — always visible regardless of which tab
+            is active, so "book a free mentor session" never depends on a
+            student happening to click into the Sessions tab. Hides itself
+            entirely once there's nothing free open, rather than showing
+            an empty/stale strip. */}
+        {featuredFreeSlots.length > 0 && (
+          <FreeSessionsBanner slots={featuredFreeSlots} getToken={() => user.getIdToken()} onBooked={loadSessions} />
+        )}
+
         {/* Search */}
         <div className="clay-inset flex items-center gap-3 rounded-2xl px-5 py-3.5">
           <Search className="h-4 w-4 shrink-0 text-foreground/40" />
@@ -403,7 +443,6 @@ function DashboardPage() {
           />
         ) : (
           <>
-            {/* Tab bar — horizontal scroll instead of wrap, each tab tinted to its category color */}
             <div className="mt-6 flex gap-1.5 overflow-x-auto border-b border-foreground/10 pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {tabs.map((t) => {
                 const active = tab === t.key;
@@ -414,12 +453,23 @@ function DashboardPage() {
                     onClick={() => setTab(t.key)}
                     className={
                       active
-                        ? "shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold text-white transition-all duration-200"
-                        : "clay-chip shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold text-foreground/70 transition-all duration-200"
+                        ? "relative shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold text-white transition-all duration-200"
+                        : "clay-chip relative shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold text-foreground/70 transition-all duration-200"
                     }
                     style={active ? { background: t.color ?? "var(--sky-deep)" } : undefined}
                   >
                     {t.label}
+                    {t.badge != null && (
+                      <span
+                        className={
+                          active
+                            ? "ml-1.5 rounded-full bg-white/25 px-1.5 py-0.5 text-[10px] font-bold"
+                            : "ml-1.5 rounded-full bg-[var(--pink-deep,#BE185D)] px-1.5 py-0.5 text-[10px] font-bold text-white"
+                        }
+                      >
+                        {t.badge} free
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -482,6 +532,83 @@ function DashboardPage() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// ─── Free sessions banner ───────────────────────────────────────────────
+// Horizontal-scroll strip, always visible above the tabs. Booking happens
+// inline via the shared BookingDialog — a student never has to leave the
+// dashboard's top section to claim a free slot, which is the whole point.
+function FreeSessionsBanner({
+  slots,
+  getToken,
+  onBooked,
+}: {
+  slots: { offering: PublicMentorOffering; slot: OpenSlot }[];
+  getToken: () => Promise<string>;
+  onBooked: () => void;
+}) {
+  const [booking, setBooking] = useState<{ offering: PublicMentorOffering; slot: OpenSlot } | null>(null);
+
+  return (
+    <div className="clay mb-5 overflow-hidden p-4" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, transparent)` }}>
+      <div className="mb-3 flex items-center gap-2">
+        <Gift className="h-4 w-4" style={{ color: PINK_DEEP }} />
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: PINK_DEEP }}>
+          Free mentor sessions open right now
+        </span>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {slots.map(({ offering, slot }) => (
+          <button
+            key={offering.id}
+            onClick={() => setBooking({ offering, slot })}
+            className="clay-inset flex w-64 shrink-0 flex-col gap-1.5 rounded-2xl p-3.5 text-left transition-transform duration-200 hover:-translate-y-0.5"
+          >
+            <div className="flex items-center gap-2">
+              {offering.mentorPhotoUrl ? (
+                <img src={offering.mentorPhotoUrl} alt="" className="h-7 w-7 shrink-0 rounded-full object-cover" />
+              ) : (
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: PINK_SOFT, color: PINK_DEEP }}>
+                  {offering.mentorName.charAt(0)}
+                </div>
+              )}
+              <p className="truncate text-xs font-semibold text-foreground/70">{offering.mentorName}</p>
+              {offering.capacity > 1 && (
+                <span className="ml-auto flex shrink-0 items-center gap-0.5 text-[10px] text-foreground/40">
+                  <UsersGroupIcon className="h-3 w-3" />
+                  {slot.seatsRemaining} left
+                </span>
+              )}
+            </div>
+            <p className="truncate text-sm font-bold text-foreground">{offering.title}</p>
+            <p className="flex items-center gap-1 text-[11px] text-foreground/50">
+              <Clock className="h-3 w-3" />
+              {new Date(slot.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {slot.startTime}
+            </p>
+            <span
+              className="mt-1 inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-bold text-white"
+              style={{ background: PINK_DEEP }}
+            >
+              Book free session
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {booking && (
+        <BookingDialog
+          offering={booking.offering}
+          slot={booking.slot}
+          getToken={getToken}
+          onClose={() => setBooking(null)}
+          onBooked={() => {
+            setBooking(null);
+            onBooked();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,12 +1,30 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconX as XIcon, IconMail as Mail } from "@tabler/icons-react";
+import {
+  IconLoader2 as Loader2,
+  IconCircleCheck as CheckCircle2,
+  IconX as XIcon,
+  IconMail as Mail,
+  IconChevronDown as ChevronDown,
+  IconUpload as Upload,
+  IconFileText as FileText,
+  IconCertificate as CertificateIcon,
+} from "@tabler/icons-react";
 import { listBundles, listTestCoresForBundle } from "@/server-functions/admin";
-import { createInternInvite, listInterns, setInternStatus } from "@/server-functions/intern-auth";
+import {
+  createInternInvite,
+  listInterns,
+  setInternStatus,
+  setInternshipDates,
+  setOfferLetter,
+  setCertificate,
+} from "@/server-functions/intern-auth";
 import { assignInternTask, listSubmittedDrafts, approveDraft, rejectDraft } from "@/server-functions/admin-interns";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
+import { uploadToSupabase, INTERN_DOCUMENTS_BUCKET, MAX_INTERN_DOCUMENT_BYTES } from "@/lib/supabase";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 type Tab = "interns" | "assign" | "review";
+type InternRow = Awaited<ReturnType<typeof listInterns>>["interns"][number];
 
 const inputClass =
   "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
@@ -42,14 +60,15 @@ export function InternHubModule({ adminUser }: { adminUser: AdminUser }) {
   );
 }
 
-// ─── Interns tab: invite + status management ───────────────────────────
+// ─── Interns tab: invite + status + per-intern management ───────────────
 function InternsTab({ adminUser }: { adminUser: AdminUser }) {
-  const [interns, setInterns] = useState<Awaited<ReturnType<typeof listInterns>>["interns"] | null>(null);
+  const [interns, setInterns] = useState<InternRow[] | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [lastResult, setLastResult] = useState<{ code: string; emailSent: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [managingId, setManagingId] = useState<string | null>(null);
 
   async function refresh() {
     const token = await adminUser.getIdToken();
@@ -128,45 +147,249 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">All interns</h2>
         <div className="space-y-2">
           {interns === null && <p className="text-sm text-foreground/50">Loading…</p>}
-          {interns?.map((i) => (
-            <div key={i.id} className="clay-inset flex items-center justify-between rounded-2xl p-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground">{i.name}</p>
-                <p className="text-xs text-foreground/50">
-                  {i.email} {i.username ? `· @${i.username}` : "· invite not claimed yet"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-                    i.status === "active"
-                      ? "bg-[var(--mint-soft)] text-foreground"
-                      : i.status === "suspended"
-                        ? "bg-[var(--coral-soft)] text-foreground"
-                        : "bg-[var(--sky-soft)] text-foreground"
-                  }`}
-                >
-                  {i.status}
-                </span>
-                {i.status === "active" && (
-                  <button
-                    onClick={() => toggleStatus(i.id, "suspended")}
-                    className="clay-chip rounded-xl px-3 py-1.5 text-xs font-semibold"
-                  >
-                    Suspend
-                  </button>
+          {interns?.map((i) => {
+            const expanded = managingId === i.id;
+            return (
+              <div key={i.id} className="clay-inset rounded-2xl">
+                <div className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{i.name}</p>
+                    <p className="text-xs text-foreground/50">
+                      {i.email} {i.username ? `· @${i.username}` : "· invite not claimed yet"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                        i.status === "active"
+                          ? "bg-[var(--mint-soft)] text-foreground"
+                          : i.status === "suspended"
+                            ? "bg-[var(--coral-soft)] text-foreground"
+                            : "bg-[var(--sky-soft)] text-foreground"
+                      }`}
+                    >
+                      {i.status}
+                    </span>
+                    {i.status === "active" && (
+                      <button
+                        onClick={() => toggleStatus(i.id, "suspended")}
+                        className="clay-chip rounded-xl px-3 py-1.5 text-xs font-semibold"
+                      >
+                        Suspend
+                      </button>
+                    )}
+                    {i.status === "suspended" && (
+                      <button
+                        onClick={() => toggleStatus(i.id, "active")}
+                        className="clay-chip rounded-xl px-3 py-1.5 text-xs font-semibold"
+                      >
+                        Reactivate
+                      </button>
+                    )}
+                    {i.status !== "invited" && (
+                      <button
+                        onClick={() => setManagingId(expanded ? null : i.id)}
+                        className="clay-btn-ghost flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground/60"
+                      >
+                        Manage
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {expanded && (
+                  <InternManagePanel adminUser={adminUser} intern={i} onUpdated={refresh} />
                 )}
-                {i.status === "suspended" && (
-                  <button
-                    onClick={() => toggleStatus(i.id, "active")}
-                    className="clay-chip rounded-xl px-3 py-1.5 text-xs font-semibold"
-                  >
-                    Reactivate
-                  </button>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Per-intern management: internship dates, offer letter, certificate ──
+function InternManagePanel({
+  adminUser,
+  intern,
+  onUpdated,
+}: {
+  adminUser: AdminUser;
+  intern: InternRow;
+  onUpdated: () => void;
+}) {
+  const [startDate, setStartDate] = useState(intern.internshipStartDate ?? "");
+  const [endDate, setEndDate] = useState(intern.internshipEndDate ?? "");
+  const [unlockDate, setUnlockDate] = useState(intern.certificateUnlockDate ?? "");
+  const [savingDates, setSavingDates] = useState(false);
+  const [datesMsg, setDatesMsg] = useState<string | null>(null);
+  const [datesError, setDatesError] = useState<string | null>(null);
+
+  const [uploadingOffer, setUploadingOffer] = useState(false);
+  const [offerMsg, setOfferMsg] = useState<string | null>(null);
+
+  const [uploadingCert, setUploadingCert] = useState(false);
+  const [certMsg, setCertMsg] = useState<string | null>(null);
+
+  async function handleSaveDates(e: FormEvent) {
+    e.preventDefault();
+    setDatesError(null);
+    setDatesMsg(null);
+    setSavingDates(true);
+    try {
+      const token = await adminUser.getIdToken();
+      const res = await setInternshipDates({
+        data: {
+          token,
+          dates: {
+            internId: intern.id,
+            internshipStartDate: startDate,
+            internshipEndDate: endDate,
+            certificateUnlockDate: unlockDate || null,
+          },
+        },
+      });
+      setDatesMsg(res.emailSent ? "Saved and emailed to the intern." : "Saved (email notification failed).");
+      onUpdated();
+    } catch (err) {
+      setDatesError(err instanceof Error ? err.message : "Couldn't save dates.");
+    } finally {
+      setSavingDates(false);
+    }
+  }
+
+  async function handleUploadOfferLetter(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_INTERN_DOCUMENT_BYTES) {
+      setOfferMsg(`File too large — max ${Math.round(MAX_INTERN_DOCUMENT_BYTES / (1024 * 1024))}MB.`);
+      return;
+    }
+    setUploadingOffer(true);
+    setOfferMsg(null);
+    try {
+      const url = await uploadToSupabase(INTERN_DOCUMENTS_BUCKET, file);
+      const token = await adminUser.getIdToken();
+      const res = await setOfferLetter({ data: { token, offerLetter: { internId: intern.id, offerLetterUrl: url } } });
+      setOfferMsg(res.emailSent ? "Uploaded and emailed to the intern." : "Uploaded (email notification failed).");
+      onUpdated();
+    } catch (err) {
+      setOfferMsg(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingOffer(false);
+    }
+  }
+
+  async function handleUploadCertificate(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_INTERN_DOCUMENT_BYTES) {
+      setCertMsg(`File too large — max ${Math.round(MAX_INTERN_DOCUMENT_BYTES / (1024 * 1024))}MB.`);
+      return;
+    }
+    setUploadingCert(true);
+    setCertMsg(null);
+    try {
+      const url = await uploadToSupabase(INTERN_DOCUMENTS_BUCKET, file);
+      const token = await adminUser.getIdToken();
+      const res = await setCertificate({
+        data: { token, certificate: { internId: intern.id, certificateUrl: url, certificateUnlockDate: unlockDate || null } },
+      });
+      setCertMsg(
+        res.emailSent
+          ? res.unlocked
+            ? "Uploaded — already unlocked, and the intern's been emailed."
+            : "Uploaded — will unlock on the date above. Intern's been emailed."
+          : "Uploaded (email notification failed).",
+      );
+      onUpdated();
+    } catch (err) {
+      setCertMsg(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingCert(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 border-t border-foreground/10 p-4">
+      <form onSubmit={handleSaveDates} className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Internship dates</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground/40">Start</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground/40">End</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+              Certificate unlocks (optional — defaults to end date)
+            </span>
+            <input type="date" value={unlockDate} onChange={(e) => setUnlockDate(e.target.value)} className={inputClass} />
+          </label>
+        </div>
+        {datesError && <p className="text-xs font-medium text-rose-600">{datesError}</p>}
+        {datesMsg && <p className="text-xs font-medium text-emerald-600">{datesMsg}</p>}
+        <button
+          type="submit"
+          disabled={savingDates || !startDate || !endDate}
+          className="clay-btn rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-60"
+        >
+          {savingDates ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save dates"}
+        </button>
+      </form>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="clay-inset rounded-2xl p-4">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            <FileText className="h-3.5 w-3.5" /> Offer letter
+          </p>
+          {intern.offerLetterUrl && (
+            <a
+              href={intern.offerLetterUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 block truncate text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+            >
+              View current file
+            </a>
+          )}
+          <label className="clay-btn-ghost flex cursor-pointer items-center justify-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/70">
+            {uploadingOffer ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploadingOffer ? "Uploading…" : intern.offerLetterUrl ? "Replace PDF" : "Upload PDF"}
+            <input type="file" accept="application/pdf" onChange={handleUploadOfferLetter} className="hidden" disabled={uploadingOffer} />
+          </label>
+          {offerMsg && <p className="mt-2 text-xs font-medium text-foreground/60">{offerMsg}</p>}
+        </div>
+
+        <div className="clay-inset rounded-2xl p-4">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            <CertificateIcon className="h-3.5 w-3.5" /> Certificate
+          </p>
+          {intern.certificateUrl && (
+            <a
+              href={intern.certificateUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mb-2 block truncate text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+            >
+              View current file
+            </a>
+          )}
+          <label className="clay-btn-ghost flex cursor-pointer items-center justify-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/70">
+            {uploadingCert ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploadingCert ? "Uploading…" : intern.certificateUrl ? "Replace PDF" : "Upload PDF"}
+            <input type="file" accept="application/pdf" onChange={handleUploadCertificate} className="hidden" disabled={uploadingCert} />
+          </label>
+          {certMsg && <p className="mt-2 text-xs font-medium text-foreground/60">{certMsg}</p>}
+          <p className="mt-2 text-[11px] text-foreground/40">
+            Unlocks on {unlockDate || endDate || "the internship end date (set that above first)"}.
+          </p>
         </div>
       </div>
     </div>
@@ -175,7 +398,7 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
 
 // ─── Assign task tab ─────────────────────────────────────────────────────
 function AssignTab({ adminUser }: { adminUser: AdminUser }) {
-  const [interns, setInterns] = useState<Awaited<ReturnType<typeof listInterns>>["interns"] | null>(null);
+  const [interns, setInterns] = useState<InternRow[] | null>(null);
   const [bundles, setBundles] = useState<{ id: string; title: string }[] | null>(null);
   const [tests, setTests] = useState<{ id: string; name: string; subjects: string[] }[] | null>(null);
 
@@ -186,6 +409,8 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
   const [targetCount, setTargetCount] = useState("10");
   const [instructions, setInstructions] = useState("");
   const [referencePdfUrl, setReferencePdfUrl] = useState("");
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const [refUploadError, setRefUploadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successState, setSuccessState] = useState<{ emailSent: boolean } | null>(null);
@@ -220,6 +445,26 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
   }, [bundleId]);
 
   const selectedTest = tests?.find((t) => t.id === testId) ?? null;
+
+  async function handleUploadReference(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setRefUploadError(null);
+    if (file.size > MAX_INTERN_DOCUMENT_BYTES) {
+      setRefUploadError(`File too large — max ${Math.round(MAX_INTERN_DOCUMENT_BYTES / (1024 * 1024))}MB.`);
+      return;
+    }
+    setUploadingRef(true);
+    try {
+      const url = await uploadToSupabase(INTERN_DOCUMENTS_BUCKET, file);
+      setReferencePdfUrl(url);
+    } catch (err) {
+      setRefUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingRef(false);
+    }
+  }
 
   async function handleAssign(e: FormEvent) {
     e.preventDefault();
@@ -315,12 +560,28 @@ function AssignTab({ adminUser }: { adminUser: AdminUser }) {
         className={inputClass + " h-auto resize-none py-3"}
       />
 
-      <input
-        value={referencePdfUrl}
-        onChange={(e) => setReferencePdfUrl(e.target.value)}
-        placeholder="Reference document link (PDF, Drive, etc.) — the source material to transcribe from, optional"
-        className={inputClass}
-      />
+      <div>
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+          Reference material (optional) — the source questions to transcribe from
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={referencePdfUrl}
+            onChange={(e) => setReferencePdfUrl(e.target.value)}
+            placeholder="Paste a link (Drive, S3, etc.)…"
+            className={inputClass + " flex-1"}
+          />
+          <label className="clay-btn-ghost flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-xs font-semibold text-foreground/70">
+            {uploadingRef ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploadingRef ? "Uploading…" : "…or upload a PDF"}
+            <input type="file" accept="application/pdf" onChange={handleUploadReference} className="hidden" disabled={uploadingRef} />
+          </label>
+        </div>
+        {refUploadError && <p className="mt-1 text-xs font-medium text-rose-600">{refUploadError}</p>}
+        {referencePdfUrl && !uploadingRef && (
+          <p className="mt-1 truncate text-xs text-emerald-600">Attached: {referencePdfUrl}</p>
+        )}
+      </div>
 
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
       {successState && (

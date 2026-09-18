@@ -165,6 +165,7 @@ export const createDraft = createServerFn({ method: "POST" })
       ...data.draft,
       status: "draft",
       adminFeedback: null,
+      rejectionCount: 0,
       reviewedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -244,4 +245,118 @@ export const submitDrafts = createServerFn({ method: "POST" })
     );
 
     return { ok: true, submittedCount: result.modifiedCount };
+  });
+// ─── Profile & report ─────────────────────────────────────────────────────
+// Everything the intern's Profile page needs in one round trip: identity +
+// internship dates, offer letter, certificate lock state, and a
+// performance report built entirely from the immutable internReviewEvents
+// log (written once per decision in admin-interns.ts, never mutated) —
+// not from the live internTasks/internQuestionDrafts documents, so a task
+// or draft changing later can't quietly rewrite someone's history.
+export const getMyProfileReport = createServerFn({ method: "POST" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    const internId = await requireIntern(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(internId) });
+    if (!intern) throw new Error("Intern account not found.");
+
+    const [tasks, events] = await Promise.all([
+      db.collection("internTasks").find({ internId }).sort({ assignedAt: -1 }).toArray(),
+      db.collection("internReviewEvents").find({ internId }).toArray(),
+    ]);
+
+    const bundleIds = [...new Set(tasks.map((t) => String(t.bundleId)))];
+    const testIds = [...new Set(tasks.map((t) => String(t.testId)))];
+    const [bundles, testCores] = await Promise.all([
+      bundleIds.length
+        ? db.collection("bundles").find({ _id: { $in: bundleIds.map((id) => new ObjectId(id)) } }).toArray()
+        : [],
+      testIds.length
+        ? db.collection("testCores").find({ _id: { $in: testIds.map((id) => new ObjectId(id)) } }).toArray()
+        : [],
+    ]);
+    const bundleTitleById = new Map(bundles.map((b) => [String(b._id), b.title as string]));
+    const testNameById = new Map(testCores.map((t) => [String(t._id), t.name as string]));
+
+    const approvedByTask = new Map<string, number>();
+    const rejectedByTask = new Map<string, number>();
+    let totalApproved = 0;
+    let totalMistakes = 0;
+    for (const e of events) {
+      const taskId = e.taskId as string;
+      if (e.decision === "approved") {
+        approvedByTask.set(taskId, (approvedByTask.get(taskId) ?? 0) + 1);
+        totalApproved++;
+      } else {
+        rejectedByTask.set(taskId, (rejectedByTask.get(taskId) ?? 0) + 1);
+        totalMistakes++;
+      }
+    }
+
+    const taskBreakdown = tasks.map((t) => {
+      const taskId = String(t._id);
+      const approvedCount = approvedByTask.get(taskId) ?? 0;
+      const rejectionCount = rejectedByTask.get(taskId) ?? 0;
+      return {
+        taskId,
+        bundleTitle: bundleTitleById.get(String(t.bundleId)) ?? "Unknown bundle",
+        testName: testNameById.get(String(t.testId)) ?? "Unknown test",
+        subject: t.subject as string,
+        targetCount: t.targetCount as number,
+        approvedCount,
+        rejectionCount,
+        completed: approvedCount >= (t.targetCount as number),
+      };
+    });
+
+    const tasksCompleted = taskBreakdown.filter((t) => t.completed).length;
+    const totalReviewed = totalApproved + totalMistakes;
+    const accuracyPercent = totalReviewed > 0 ? Math.round((totalApproved / totalReviewed) * 100) : null;
+
+    // ─── Certificate lock state ──────────────────────────────────────────
+    const certificateUrl = (intern.certificateUrl as string | null) ?? null;
+    const unlockDate = (intern.certificateUnlockDate as string | null) ?? null;
+    const now = new Date();
+    const unlocked = Boolean(certificateUrl) && Boolean(unlockDate) && new Date(unlockDate!) <= now;
+    const daysRemaining =
+      certificateUrl && unlockDate && !unlocked
+        ? Math.max(0, Math.ceil((new Date(unlockDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+        : null;
+
+    return {
+      report: {
+        profile: {
+          name: intern.name as string,
+          username: intern.username as string,
+          email: intern.email as string,
+          profilePictureUrl: (intern.profilePictureUrl as string | null) ?? null,
+          internshipStartDate: (intern.internshipStartDate as string | null) ?? null,
+          internshipEndDate: (intern.internshipEndDate as string | null) ?? null,
+        },
+        offerLetter: intern.offerLetterUrl
+          ? {
+              url: intern.offerLetterUrl as string,
+              uploadedAt: intern.offerLetterUploadedAt instanceof Date ? intern.offerLetterUploadedAt.toISOString() : null,
+            }
+          : null,
+        certificate: {
+          uploaded: Boolean(certificateUrl),
+          unlocked,
+          unlockDate,
+          daysRemaining,
+          url: unlocked ? certificateUrl : null,
+        },
+        stats: {
+          tasksAssigned: tasks.length,
+          tasksCompleted,
+          totalApproved,
+          totalMistakes,
+          accuracyPercent,
+        },
+        taskBreakdown,
+      },
+    };
   });

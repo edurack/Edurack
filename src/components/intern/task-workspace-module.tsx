@@ -199,7 +199,13 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">{task.subject}</h2>
-            {task.instructions && <p className="mt-2 text-sm text-foreground/70">{task.instructions}</p>}
+            {task.instructions ? (
+              <p className="mt-2 text-sm text-foreground/70">{task.instructions}</p>
+            ) : (
+              <p className="mt-2 text-sm text-foreground/40 italic">
+                No extra instructions from your admin — follow the standard steps below.
+              </p>
+            )}
           </div>
           <button
             onClick={tour.start}
@@ -210,7 +216,7 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
           </button>
         </div>
 
-        {task.referencePdfUrl && (
+        {task.referencePdfUrl ? (
           <a
             data-tour="reference-doc"
             href={task.referencePdfUrl}
@@ -219,8 +225,13 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
             className="clay-inset mt-4 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-[var(--sky-deep)] transition-colors hover:bg-foreground/5"
           >
             <FileText className="h-4 w-4 shrink-0" />
-            Open reference document
+            Open reference document — the source material for these questions
           </a>
+        ) : (
+          <p data-tour="reference-doc" className="clay-inset mt-4 rounded-2xl px-4 py-3 text-xs text-foreground/40">
+            No reference document was attached to this task — write questions per the subject and instructions
+            above, in your own words.
+          </p>
         )}
 
         {progress && (
@@ -231,8 +242,40 @@ export function TaskWorkspaceModule({ token, task }: { token: string; task: Task
         )}
       </div>
 
+      {/* ── Persistent step-by-step guide — always visible, unlike the
+           dismissible tour, so "how do I do this" is never more than a
+           scroll away. ────────────────────────────────────────────── */}
+      <div className="clay-inset rounded-2xl p-4 sm:p-5">
+        <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-foreground/50">How this works</p>
+        <ol className="space-y-1.5 text-sm text-foreground/70">
+          <li>
+            <strong className="text-foreground">1.</strong> Open the reference document above (if there is one) —
+            it has the exact source material to work from.
+          </li>
+          <li>
+            <strong className="text-foreground">2.</strong> Fill in the form below: question, options (or the
+            numeric answer), and a full solution. Paste an image or click the small image icon to insert a
+            diagram — it uploads automatically.
+          </li>
+          <li>
+            <strong className="text-foreground">3.</strong> Check the Preview panel — it shows exactly what your
+            reviewer will see, images and equations rendered.
+          </li>
+          <li>
+            <strong className="text-foreground">4.</strong> Click "Add to drafts". Repeat until you've got a
+            batch ready, then select them and hit "Submit for review".
+          </li>
+          <li>
+            <strong className="text-foreground">5.</strong> You'll get an email the moment it's approved or sent
+            back with feedback — check your <span className="font-semibold text-foreground">Profile</span> tab any
+            time to see your accuracy and progress.
+          </li>
+        </ol>
+      </div>
+
       {/* ── Form: add / edit a question ─────────────────────────────── */}
       <form onSubmit={handleSave} data-tour="question-form" className="clay space-y-4 p-5 sm:p-6">
+
         <h3 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
           {editingId ? "Edit question" : "Add a question"}
         </h3>

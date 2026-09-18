@@ -15,7 +15,13 @@ import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { InternSignUpInput } from "@/lib/intern-types";
 import { sendMail } from "@/lib/mailer";
-import { internInviteEmailHtml } from "@/lib/intern-email-templates";
+import {
+  internInviteEmailHtml,
+  internDatesConfirmedEmailHtml,
+  internOfferLetterEmailHtml,
+  internCertificateEmailHtml,
+} from "@/lib/intern-email-templates";
+import type { InternshipDatesInput, SetOfferLetterInput, SetCertificateInput } from "@/lib/intern-types";
 
 async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const { scryptSync, randomBytes } = await import("node:crypto");
@@ -265,6 +271,13 @@ export const listInterns = createServerFn({ method: "POST" })
         status: i.status as "invited" | "active" | "suspended",
         createdAt: i.createdAt instanceof Date ? i.createdAt.toISOString() : null,
         claimedAt: i.claimedAt instanceof Date ? i.claimedAt.toISOString() : null,
+        internshipStartDate: (i.internshipStartDate as string | null) ?? null,
+        internshipEndDate: (i.internshipEndDate as string | null) ?? null,
+        offerLetterUrl: (i.offerLetterUrl as string | null) ?? null,
+        offerLetterUploadedAt: i.offerLetterUploadedAt instanceof Date ? i.offerLetterUploadedAt.toISOString() : null,
+        certificateUrl: (i.certificateUrl as string | null) ?? null,
+        certificateUnlockDate: (i.certificateUnlockDate as string | null) ?? null,
+        certificateUploadedAt: i.certificateUploadedAt instanceof Date ? i.certificateUploadedAt.toISOString() : null,
       })),
     };
   });
@@ -280,4 +293,160 @@ export const setInternStatus = createServerFn({ method: "POST" })
       .updateOne({ _id: new ObjectId(data.internId) }, { $set: { status: data.status } });
     if (result.matchedCount === 0) throw new Error("Intern not found.");
     return { ok: true };
+  });
+// ─── Admin: set/confirm internship dates ──────────────────────────────────
+// certificateUnlockDate defaults to internshipEndDate whenever the admin
+// doesn't explicitly pass a different one — so setting dates "just works"
+// for the common case, and admin only has to think about the unlock date
+// separately if they actually want a grace period before/after the
+// official end date.
+export const setInternshipDates = createServerFn({ method: "POST" })
+  .validator((data: { token: string; dates: InternshipDatesInput }) => data)
+  .handler(async ({ data }) => {
+    await requireSuperAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const { internId, internshipStartDate, internshipEndDate, certificateUnlockDate } = data.dates;
+    if (!internshipStartDate || !internshipEndDate) throw new Error("Enter both a start and end date.");
+    if (new Date(internshipEndDate) < new Date(internshipStartDate)) {
+      throw new Error("End date can't be before the start date.");
+    }
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(internId) });
+    if (!intern) throw new Error("Intern not found.");
+
+    await db.collection("interns").updateOne(
+      { _id: new ObjectId(internId) },
+      {
+        $set: {
+          internshipStartDate,
+          internshipEndDate,
+          certificateUnlockDate: certificateUnlockDate || internshipEndDate,
+        },
+      },
+    );
+
+    let emailSent = false;
+    if (intern.email) {
+      const appUrl = process.env.APP_URL;
+      const dashboardUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/profile` : "";
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: "Your Edurack internship dates are confirmed",
+          html: internDatesConfirmedEmailHtml({
+            internName: intern.name as string,
+            startDate: internshipStartDate,
+            endDate: internshipEndDate,
+            dashboardUrl,
+          }),
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error(`[setInternshipDates] email failed for internId=${internId}:`, err);
+      }
+    }
+
+    return { ok: true, emailSent };
+  });
+
+// ─── Admin: upload/replace the offer letter ──────────────────────────────
+// The file itself is uploaded client-side straight to Supabase (same
+// uploadToSupabase() pattern as every other document upload in this app —
+// see bundle-modules.tsx) before this is ever called; this just records
+// the resulting public URL against the intern and emails them.
+export const setOfferLetter = createServerFn({ method: "POST" })
+  .validator((data: { token: string; offerLetter: SetOfferLetterInput }) => data)
+  .handler(async ({ data }) => {
+    await requireSuperAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const { internId, offerLetterUrl } = data.offerLetter;
+    if (!offerLetterUrl.trim()) throw new Error("Upload a file first.");
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(internId) });
+    if (!intern) throw new Error("Intern not found.");
+
+    await db.collection("interns").updateOne(
+      { _id: new ObjectId(internId) },
+      { $set: { offerLetterUrl: offerLetterUrl.trim(), offerLetterUploadedAt: new Date() } },
+    );
+
+    let emailSent = false;
+    if (intern.email) {
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: "Your Edurack offer letter is ready",
+          html: internOfferLetterEmailHtml({ internName: intern.name as string, offerLetterUrl: offerLetterUrl.trim() }),
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error(`[setOfferLetter] email failed for internId=${internId}:`, err);
+      }
+    }
+
+    return { ok: true, emailSent };
+  });
+
+// ─── Admin: upload/replace the certificate ────────────────────────────────
+// Admin can upload this at any point during (or even before the end of)
+// the internship — the file is stored immediately, but getMyProfileReport
+// in intern-portal.ts only ever returns the URL to the intern once
+// certificateUnlockDate has actually passed. The email sent here adapts
+// its wording to whichever state applies at the moment of upload.
+export const setCertificate = createServerFn({ method: "POST" })
+  .validator((data: { token: string; certificate: SetCertificateInput }) => data)
+  .handler(async ({ data }) => {
+    await requireSuperAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const { internId, certificateUrl, certificateUnlockDate } = data.certificate;
+    if (!certificateUrl.trim()) throw new Error("Upload a file first.");
+
+    const intern = await db.collection("interns").findOne({ _id: new ObjectId(internId) });
+    if (!intern) throw new Error("Intern not found.");
+
+    const resolvedUnlockDate =
+      certificateUnlockDate || (intern.certificateUnlockDate as string | null) || (intern.internshipEndDate as string | null);
+
+    await db.collection("interns").updateOne(
+      { _id: new ObjectId(internId) },
+      {
+        $set: {
+          certificateUrl: certificateUrl.trim(),
+          certificateUnlockDate: resolvedUnlockDate,
+          certificateUploadedAt: new Date(),
+        },
+      },
+    );
+
+    const unlocked = Boolean(resolvedUnlockDate) && new Date(resolvedUnlockDate!) <= new Date();
+
+    let emailSent = false;
+    if (intern.email) {
+      const appUrl = process.env.APP_URL;
+      const profileUrl = appUrl ? `${appUrl.replace(/\/$/, "")}/intern/certificate` : "";
+      try {
+        await sendMail({
+          to: intern.email as string,
+          subject: unlocked ? "Your Edurack certificate is ready" : "Your Edurack certificate is on its way",
+          html: internCertificateEmailHtml({
+            internName: intern.name as string,
+            unlocked,
+            unlockDate: resolvedUnlockDate,
+            certificateUrl: unlocked ? certificateUrl.trim() : null,
+            profileUrl,
+          }),
+        });
+        emailSent = true;
+      } catch (err) {
+        console.error(`[setCertificate] email failed for internId=${internId}:`, err);
+      }
+    }
+
+    return { ok: true, emailSent, unlocked };
   });

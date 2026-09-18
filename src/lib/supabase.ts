@@ -29,6 +29,7 @@
 //   • bundle-thumbnails  (bundle cover images)            — cap 20MB
 //   • bundle-documents   (syllabus/planner PDFs)          — cap 50MB
 //   • promoter-uploads   (NEW — promoter profile photos)  — cap 20MB
+//   • intern-documents   (NEW — offer letters, certificates, task refs) — cap 50MB
 //
 // Policies — same open-write-scoped-by-bucket pattern as mentor-uploads,
 // since neither admins nor promoters have a Supabase-side user to scope
@@ -50,6 +51,11 @@
 //   on storage.objects for insert
 //   to anon
 //   with check (bucket_id = 'promoter-uploads');
+//
+//   create policy "Admins can upload to intern-documents"
+//   on storage.objects for insert
+//   to anon
+//   with check (bucket_id = 'intern-documents');
 //
 // (repeat the pattern for mentor-images / mentor-files / mentor-lectures
 // if those policies don't already exist from earlier work)
@@ -91,6 +97,14 @@ export const MAX_SESSION_TEMPLATE_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB
 
 export const QUESTION_ASSETS_BUCKET = "question-assets";
 export const MAX_QUESTION_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB pre-compression
+
+// ─── NEW: Intern program documents (offer letters, certificates, and the
+// reference PDFs admin attaches to a task) ────────────────────────────────
+// One bucket for all three — they're all "a PDF admin hands to one
+// specific intern (or task)", same trust boundary, no reason to split
+// into three buckets/policies.
+export const INTERN_DOCUMENTS_BUCKET = "intern-documents";
+export const MAX_INTERN_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
 
 
 // Shared helper — uploads a single File to the given bucket under a
