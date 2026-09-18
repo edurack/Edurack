@@ -27,6 +27,16 @@ import {
   StatChip,
   inputClass,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const TEST_SERIES_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="testseries-tests"]',
+    title: "Your tests",
+    description:
+      "Every test appended to this batch. Hit \"New test\" to add one — give it a name, schedule, and a PDF; Edurack ingests the questions and it goes live automatically at the scheduled time.",
+  },
+];
 
 function parseSubjectTags(raw: string): string[] {
   const seen = new Set<string>();
@@ -64,6 +74,7 @@ const REFRESH_INTERVAL_MS = 15000;
 export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string }) {
   const [status, setStatus] = useState<TestSeriesAccessStatus | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const tour = useTour("mentorTourTestSeriesSeen");
 
   async function refreshStatus() {
     const { status: s } = await getTestSeriesAccessStatus({ data: { token: mentorToken } });
@@ -90,6 +101,7 @@ export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string })
       <ModuleHeader
         title="Test Series"
         subtitle="Offer tests to your own batch's students, free with the batch. Edurack ingests the questions from your PDF, and the test goes live automatically at its scheduled time — no publishing step needed."
+        onHelp={tour.start}
       />
 
       {status === null ? (
@@ -120,6 +132,8 @@ export function MentorTestSeriesModule({ mentorToken }: { mentorToken: string })
       ) : (
         <BatchSeriesScreen mentorToken={mentorToken} />
       )}
+
+      {tour.active && <OnboardingTour steps={TEST_SERIES_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }
@@ -223,6 +237,7 @@ function TestsForBatch({ mentorToken, batchId, batchName }: { mentorToken: strin
         />
       )}
 
+      <div data-tour="testseries-tests">
       <Panel
         icon={ListChecks}
         title={`Tests for ${batchName}`}
@@ -262,6 +277,7 @@ function TestsForBatch({ mentorToken, batchId, batchName }: { mentorToken: strin
           </ul>
         )}
       </Panel>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { IconHelpCircle as HelpCircle, IconFileText as FileText, IconInbox as Inbox } from "@tabler/icons-react";
 import { getMyTasks, getTaskProgress } from "@/server-functions/intern-portal";
 import { TaskWorkspaceModule } from "@/components/intern/task-workspace-module";
-import { useTour, OnboardingTour, type TourStep } from "@/components/intern/onboarding-tour";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
 import { useInternSession } from "@/components/intern/use-intern-session";
 import { InternShell } from "@/components/intern/intern-shell";
 

@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { ImageInsertField } from "@/components/admin/image-insert-field";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
-import { useTour, OnboardingTour, type TourStep } from "@/components/intern/onboarding-tour";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
 
 export const Route = createFileRoute("/intern/trial/$code")({
   component: TrialPage,

@@ -4,6 +4,16 @@ import { MessageCircle } from "lucide-react"; // TODO: no Tabler mapping found y
 import type { TicketCategory, MentorSupportTicket } from "@/lib/admin-types";
 import { submitMentorTicket, listMyMentorTickets } from "@/server-functions/mentor-portal";
 import { ModuleHeader, ClayField, Panel, LoadingBlock, EmptyState, ErrorBanner, SuccessBanner, inputClass, textareaClass } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const SUPPORT_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="support-log"]',
+    title: "Raise & track tickets",
+    description:
+      "Use \"Raise a ticket\" up top for any issue — technical, batch/student errors, payouts, or general doubts. Every ticket you've filed, its status, and Team Edurack's reply live here.",
+  },
+];
 
 const CATEGORIES: TicketCategory[] = ["Technical Issue", "Batch/Student Error", "Payout Queries", "General Doubts"];
 
@@ -22,12 +32,14 @@ export function MentorSupportModule({ mentorToken }: { mentorToken: string }) {
   }, [mentorToken]);
 
   const openCount = tickets?.filter((t) => t.status !== "Resolved").length ?? 0;
+  const tour = useTour("mentorTourSupportSeen");
 
   return (
     <div>
       <ModuleHeader
         title="Internal Operations Help Desk"
         subtitle="Raise an issue with Team Edurack and track its resolution here."
+        onHelp={tour.start}
       />
 
       {tickets && openCount > 0 && !showForm && (
@@ -50,19 +62,23 @@ export function MentorSupportModule({ mentorToken }: { mentorToken: string }) {
         />
       )}
 
-      <TicketTimeline
-        tickets={tickets}
-        action={
-          !showForm && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
-            >
-              <Plus className="h-3.5 w-3.5" /> Raise a ticket
-            </button>
-          )
-        }
-      />
+      <div data-tour="support-log">
+        <TicketTimeline
+          tickets={tickets}
+          action={
+            !showForm && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+              >
+                <Plus className="h-3.5 w-3.5" /> Raise a ticket
+              </button>
+            )
+          }
+        />
+      </div>
+
+      {tour.active && <OnboardingTour steps={SUPPORT_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   inputClass,
   LectureUploadField,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
 
 type Batch = { id: string; name: string; track: string };
 type TabKey = "OneOnOne" | "BatchMeet" | "AsyncLecture";
@@ -33,10 +34,26 @@ const TABS: { key: TabKey; label: string; icon: typeof Users2 }[] = [
   { key: "AsyncLecture", label: "Lecture Hub", icon: PlayCircle },
 ];
 
+const SCHEDULER_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="scheduler-controls"]',
+    title: "Batch & track",
+    description:
+      "Pick a batch, then switch between 1:1 Mentorship, Batch Meet, and Lecture Hub — each has its own scheduling flow below.",
+  },
+  {
+    selector: '[data-tour="scheduler-track"]',
+    title: "The active track",
+    description:
+      "This area changes with the tab above: book 1:1 slots with a student, schedule a batch-wide meet, or upload an async lecture with student comments.",
+  },
+];
+
 export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [batchId, setBatchId] = useState("");
   const [tab, setTab] = useState<TabKey>("OneOnOne");
+  const tour = useTour("mentorTourSchedulerSeen");
 
   useEffect(() => {
     (async () => {
@@ -52,6 +69,7 @@ export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) 
       <ModuleHeader
         title="Smart Live Session Scheduler"
         subtitle="Run 1:1 mentorship, batch meets, and async lecture ingestion — all scoped to your assigned batch."
+        onHelp={tour.start}
       />
 
       {batches === null ? (
@@ -60,7 +78,7 @@ export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) 
         <EmptyState icon={CalendarClock} message="No mentorship batches are assigned to you yet." />
       ) : (
         <>
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div data-tour="scheduler-controls" className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex-1">
               <ClayField label="Batch">
                 <select
@@ -96,11 +114,15 @@ export function MentorSchedulerModule({ mentorToken }: { mentorToken: string }) 
             </div>
           </div>
 
-          {batchId && tab === "OneOnOne" && <TrackOneOnOne mentorToken={mentorToken} batchId={batchId} />}
-          {batchId && tab === "BatchMeet" && <TrackBatchMeet mentorToken={mentorToken} batchId={batchId} />}
-          {batchId && tab === "AsyncLecture" && <TrackAsyncLecture mentorToken={mentorToken} batchId={batchId} />}
+          <div data-tour="scheduler-track">
+            {batchId && tab === "OneOnOne" && <TrackOneOnOne mentorToken={mentorToken} batchId={batchId} />}
+            {batchId && tab === "BatchMeet" && <TrackBatchMeet mentorToken={mentorToken} batchId={batchId} />}
+            {batchId && tab === "AsyncLecture" && <TrackAsyncLecture mentorToken={mentorToken} batchId={batchId} />}
+          </div>
         </>
       )}
+
+      {tour.active && <OnboardingTour steps={SCHEDULER_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   IconUsers as Users,
   IconLink as LinkIcon,
   IconX as X,
+  IconHelpCircle as HelpCircle,
 } from "@tabler/icons-react";
 import {
   listMyOfferings,
@@ -28,6 +29,22 @@ import {
   type SessionRoster,
   type SessionTemplate,
 } from "@/lib/session-types";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const SESSIONS_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="sessions-tabs"]',
+    title: "Offerings vs. bookings",
+    description:
+      "\"My offerings\" is where you publish open slots — 1:1 or group — for students to book. \"Sessions & students\" shows who actually booked, grouped into rosters.",
+  },
+  {
+    selector: '[data-tour="sessions-content"]',
+    title: "Manage what's here",
+    description:
+      "Toggle an offering active/inactive or delete it, or — on the bookings tab — set the meeting link for an upcoming session.",
+  },
+];
 
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
@@ -68,15 +85,26 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
   }, [bookings, capacityByOffering]);
 
   const studentCount = bookings?.length ?? 0;
+  const tour = useTour("mentorTourSessionsSeen");
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Sessions</h1>
-        <p className="mt-1 text-sm text-foreground/60">Publish open slots — 1:1 or group — for students to book, and manage upcoming sessions.</p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Sessions</h1>
+          <p className="mt-1 text-sm text-foreground/60">Publish open slots — 1:1 or group — for students to book, and manage upcoming sessions.</p>
+        </div>
+        <button
+          type="button"
+          onClick={tour.start}
+          className="clay-btn-ghost flex shrink-0 items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/60"
+        >
+          <HelpCircle className="h-3.5 w-3.5" />
+          Help
+        </button>
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="sessions-tabs" className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
           <button
             onClick={() => setTab("offerings")}
@@ -103,6 +131,7 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
       </div>
 
       {tab === "offerings" ? (
+        <div data-tour="sessions-content">
         <OfferingsList
           offerings={offerings}
           onToggleActive={async (id, active) => {
@@ -115,7 +144,9 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
             loadOfferings();
           }}
         />
+        </div>
       ) : (
+        <div data-tour="sessions-content">
         <RosterList
           rosters={rosters}
           onSetLink={async (offeringId, sessionDate, startTime, link) => {
@@ -123,6 +154,7 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
             loadBookings();
           }}
         />
+        </div>
       )}
 
       {showCreate && (
@@ -135,6 +167,8 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
           }}
         />
       )}
+
+      {tour.active && <OnboardingTour steps={SESSIONS_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

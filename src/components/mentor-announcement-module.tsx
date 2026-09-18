@@ -13,6 +13,21 @@ import {
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const ANNOUNCEMENT_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="announce-batch-select"]',
+    title: "Pick a batch",
+    description: "Announcements are per-batch — pick which one you're broadcasting to before drafting or reviewing history.",
+  },
+  {
+    selector: '[data-tour="announce-log"]',
+    title: "History & new broadcast",
+    description:
+      "Every announcement sent to this batch, whether it emailed students, and its send status. Use \"New announcement\" up top to draft one — you can optionally email every enrolled student at the same time.",
+  },
+];
 
 type Batch = { id: string; name: string; track: string };
 
@@ -21,6 +36,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
   const [selectedBatchId, setSelectedBatchId] = useState<string>("");
   const [announcements, setAnnouncements] = useState<MentorAnnouncement[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const tour = useTour("mentorTourAnnouncementsSeen");
 
   useEffect(() => {
     (async () => {
@@ -47,6 +63,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
       <ModuleHeader
         title="Targeted Batch Announcement Engine"
         subtitle="Broadcast a message to your allocated mentorship batch, with an optional email trigger."
+        onHelp={tour.start}
       />
 
       {batches === null ? (
@@ -60,6 +77,7 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
               value={selectedBatchId}
               onChange={(e) => setSelectedBatchId(e.target.value)}
               className={inputClass + " appearance-none"}
+              data-tour="announce-batch-select"
             >
               {batches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -81,21 +99,25 @@ export function MentorAnnouncementModule({ mentorToken }: { mentorToken: string 
             />
           )}
 
-          <AnnouncementLog
-            announcements={announcements}
-            action={
-              !showForm && (
-                <button
-                  onClick={() => setShowForm(true)}
-                  className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
-                >
-                  <Plus className="h-3.5 w-3.5" /> New announcement
-                </button>
-              )
-            }
-          />
+          <div data-tour="announce-log">
+            <AnnouncementLog
+              announcements={announcements}
+              action={
+                !showForm && (
+                  <button
+                    onClick={() => setShowForm(true)}
+                    className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> New announcement
+                  </button>
+                )
+              }
+            />
+          </div>
         </div>
       )}
+
+      {tour.active && <OnboardingTour steps={ANNOUNCEMENT_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

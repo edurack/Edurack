@@ -11,6 +11,25 @@ import {
   listLectureWatchAlerts,
 } from "@/server-functions/mentor-portal";
 import { ModuleHeader, StatChip, LoadingBlock, EmptyState, ErrorBanner } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const LIBRARY_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="library-card"]',
+    title: "Your lectures",
+    description: "Every lecture you've ingested, with live viewer, completion, comment, and rating stats right on the card.",
+  },
+  {
+    selector: '[data-tour="library-notify"]',
+    title: "Notify stragglers",
+    description: "Send a nudge to students who haven't watched yet — no need to chase them manually.",
+  },
+  {
+    selector: '[data-tour="library-details"]',
+    title: "Student progress & comments",
+    description: "Expand a lecture to see who's watched how much, and moderate (show/hide) student comments.",
+  },
+];
 
 type Lecture = {
   id: string;
@@ -33,6 +52,7 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [tabBySession, setTabBySession] = useState<Record<string, ViewTab>>({});
   const [alertSessionId, setAlertSessionId] = useState<string | null>(null);
+  const tour = useTour("mentorTourLibrarySeen");
 
   async function refreshLibrary() {
     const { lectures: rows } = await listMyLectureLibrary({ data: { token: mentorToken } });
@@ -53,6 +73,7 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
       <ModuleHeader
         title="Lecture Library"
         subtitle="Every lecture you've uploaded, with who's watched, ratings, comment moderation, and a way to nudge stragglers."
+        onHelp={tour.start}
       />
 
       {lectures === null ? (
@@ -61,8 +82,8 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
         <EmptyState icon={PlayCircle} message="You haven't ingested any lectures yet — do that from the Live Sessions tab." />
       ) : (
         <div className="space-y-3">
-          {lectures.map((l) => (
-            <div key={l.id} className="clay p-5 sm:p-6">
+          {lectures.map((l, i) => (
+            <div key={l.id} data-tour={i === 0 ? "library-card" : undefined} className="clay p-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <div className="clay-inset flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl">
@@ -77,6 +98,7 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <button
+                    data-tour={i === 0 ? "library-notify" : undefined}
                     onClick={() => setAlertSessionId(l.id)}
                     className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
                   >
@@ -84,6 +106,7 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
                     Notify students
                   </button>
                   <button
+                    data-tour={i === 0 ? "library-details" : undefined}
                     onClick={() => setExpandedId(expandedId === l.id ? null : l.id)}
                     className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
                   >
@@ -142,6 +165,8 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
           onClose={() => setAlertSessionId(null)}
         />
       )}
+
+      {tour.active && <OnboardingTour steps={LIBRARY_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

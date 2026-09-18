@@ -17,6 +17,30 @@ import {
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const PROFILE_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="profile-editable"]',
+    title: "What you can edit",
+    description: "Your photo, name, About section, and year of study — this is what students see on your mentorship page.",
+  },
+  {
+    selector: '[data-tour="profile-intro-video"]',
+    title: "Self-introduction video",
+    description: "Upload your intro video to the shared Drive folder, then check this box once it's done.",
+  },
+  {
+    selector: '[data-tour="profile-promotion"]',
+    title: "Batch promotion boost",
+    description: "Raise the commission promoters earn on your batch if it isn't getting picked up — comes out of your share, not the platform's.",
+  },
+  {
+    selector: '[data-tour="profile-locked"]',
+    title: "System-locked indices",
+    description: "Your rank, college, and course — set only by the Super Admin and shown here for reference, not editable from this portal.",
+  },
+];
 
 const YEAR_OPTIONS: YearOfStudy[] = [
   "1st Year",
@@ -31,6 +55,7 @@ const YEAR_OPTIONS: YearOfStudy[] = [
 export function MentorProfileModule({ mentorToken }: { mentorToken: string }) {
   const [profile, setProfile] = useState<MentorProfileExtended | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const tour = useTour("mentorTourProfileSeen");
 
   async function refresh() {
     try {
@@ -51,6 +76,7 @@ export function MentorProfileModule({ mentorToken }: { mentorToken: string }) {
       <ModuleHeader
         title="Mentor Profile Control"
         subtitle="Update the details students see on your mentorship page, and manage your batch promotion settings."
+        onHelp={tour.start}
       />
 
       {loadError && (
@@ -64,15 +90,23 @@ export function MentorProfileModule({ mentorToken }: { mentorToken: string }) {
       ) : profile ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            <EditableProfileForm profile={profile} mentorToken={mentorToken} onSaved={refresh} />
-            <IntroVideoDriveLinkPanel mentorToken={mentorToken} />
-            <BatchPromotionPanel mentorToken={mentorToken} />
+            <div data-tour="profile-editable">
+              <EditableProfileForm profile={profile} mentorToken={mentorToken} onSaved={refresh} />
+            </div>
+            <div data-tour="profile-intro-video">
+              <IntroVideoDriveLinkPanel mentorToken={mentorToken} />
+            </div>
+            <div data-tour="profile-promotion">
+              <BatchPromotionPanel mentorToken={mentorToken} />
+            </div>
           </div>
-          <div className="sticky top-6 lg:col-span-1">
+          <div data-tour="profile-locked" className="sticky top-6 lg:col-span-1">
             <LockedInfoPanel profile={profile} />
           </div>
         </div>
       ) : null}
+
+      {tour.active && <OnboardingTour steps={PROFILE_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

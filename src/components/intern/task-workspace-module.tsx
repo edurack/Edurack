@@ -18,7 +18,7 @@ import {
 } from "@/server-functions/intern-portal";
 import { ImageInsertField } from "@/components/admin/image-insert-field";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
-import { useTour, OnboardingTour, type TourStep } from "./onboarding-tour";
+import { useTour, OnboardingTour, type TourStep } from "../shared/onboarding-tour";
 
 type OptionKey = "A" | "B" | "C" | "D";
 type QuestionType = "mcq" | "integer";

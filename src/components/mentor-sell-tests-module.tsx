@@ -24,6 +24,16 @@ import {
   FileUploadField,
   inputClass,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const SELL_TESTS_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="selltests-list"]',
+    title: "Your standalone tests",
+    description:
+      "Tests you're selling individually — anyone can buy one without purchasing your batch. Hit \"New test\" to submit one; Edurack adds the questions, you review the content, then it goes live once admin approves the price.",
+  },
+];
 
 function parseSubjectTags(raw: string): string[] {
   const seen = new Set<string>();
@@ -68,6 +78,7 @@ const STATUS_META: Record<SoldTestRow["status"], { label: string; tone: string }
 export function MentorSellTestsModule({ mentorToken }: { mentorToken: string; mentorEmail?: string | null }) {
   const [status, setStatus] = useState<SellTestsAccessStatus | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const tour = useTour("mentorTourSellTestsSeen");
 
   async function refreshStatus() {
     const { status: s } = await getSellTestsAccessStatus({ data: { token: mentorToken } });
@@ -94,6 +105,7 @@ export function MentorSellTestsModule({ mentorToken }: { mentorToken: string; me
       <ModuleHeader
         title="Sell Tests"
         subtitle="Sell individual tests on their own — to anyone, whether or not they've purchased your batch or test series. Submit your test for Edurack to add the questions, review the content once it's added, and go live once admin approves the price."
+        onHelp={tour.start}
       />
 
       {status === null ? (
@@ -124,6 +136,8 @@ export function MentorSellTestsModule({ mentorToken }: { mentorToken: string; me
       ) : (
         <SoldTestsScreen mentorToken={mentorToken} />
       )}
+
+      {tour.active && <OnboardingTour steps={SELL_TESTS_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }
@@ -178,6 +192,7 @@ function SoldTestsScreen({ mentorToken }: { mentorToken: string }) {
         />
       )}
 
+      <div data-tour="selltests-list">
       <Panel
         icon={Tag}
         title="Your standalone tests"
@@ -210,6 +225,7 @@ function SoldTestsScreen({ mentorToken }: { mentorToken: string }) {
           </ul>
         )}
       </Panel>
+      </div>
     </div>
   );
 }

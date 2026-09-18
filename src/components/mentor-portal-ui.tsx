@@ -10,7 +10,7 @@
 // inventing new ones — nothing here requires a global CSS change.
 import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video } from "@tabler/icons-react";
+import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video, IconHelpCircle as HelpCircle } from "@tabler/icons-react";
 import { Inbox, Camera } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { uploadMentorImage, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
 
@@ -21,16 +21,21 @@ export const inputClass =
 export const textareaClass =
   "clay-inset w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
 
-// ─── Page header — now supports an optional right-side action so a module
-// can put e.g. a "New" button up top instead of burying it in a form. ────
+// ─── Page header — supports an optional right-side action (e.g. a "New"
+// button) and an optional `onHelp` (replays that module's onboarding tour
+// — see components/shared/onboarding-tour.tsx). One button here instead
+// of every module hand-rolling its own, same reasoning as everything else
+// in this file. ──────────────────────────────────────────────────────────
 export function ModuleHeader({
   title,
   subtitle,
   action,
+  onHelp,
 }: {
   title: string;
   subtitle: string;
   action?: React.ReactNode;
+  onHelp?: () => void;
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
@@ -38,7 +43,19 @@ export function ModuleHeader({
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
         <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      <div className="flex shrink-0 items-center gap-2">
+        {onHelp && (
+          <button
+            type="button"
+            onClick={onHelp}
+            className="clay-btn-ghost flex items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/60"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            Help
+          </button>
+        )}
+        {action}
+      </div>
     </div>
   );
 }

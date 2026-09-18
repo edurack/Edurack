@@ -18,6 +18,31 @@ import {
 } from "@/server-functions/mentor-earnings";
 import { PLATFORM_COMMISSION_PERCENT, type MentorEarningsOverview, type TestSeriesAccessStatus } from "@/lib/admin-types";
 import { ModuleHeader, Panel, StatChip, LoadingBlock, EmptyState } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+
+const OVERVIEW_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="overview-stats"]',
+    title: "Your numbers at a glance",
+    description:
+      "Assigned batches, today's sessions, open support tickets, and profile completeness — the four things worth checking first.",
+  },
+  {
+    selector: '[data-tour="overview-schedule"]',
+    title: "Schedule",
+    description: "Today's and upcoming sessions across every batch you mentor. Tap \"Open scheduler\" to manage them.",
+  },
+  {
+    selector: '[data-tour="overview-earnings"]',
+    title: "Earnings & payments",
+    description: "Total net earnings, platform commission, and every purchase behind those numbers — updated live.",
+  },
+  {
+    selector: '[data-tour="overview-quick-actions"]',
+    title: "Quick actions",
+    description: "Shortcuts to Help Desk, Lecture Library, Announcements, and your Profile — the tabs you'll open most.",
+  },
+];
 
 type ModuleKey = "overview" | "profile" | "announcements" | "scheduler" | "chat" | "support" | "library" | "testSeries";
 
@@ -68,6 +93,7 @@ export function MentorOverviewModule({
   onNavigate: (key: ModuleKey) => void;
 }) {
   const [data, setData] = useState<OverviewData | null>(null);
+  const tour = useTour("mentorTourOverviewSeen");
 
   useEffect(() => {
     (async () => {
@@ -122,14 +148,18 @@ export function MentorOverviewModule({
 
   return (
     <div>
-      <ModuleHeader title={`Welcome back, ${mentorName.split(" ")[0]}`} subtitle="Here's what's happening across your batches." />
+      <ModuleHeader
+        title={`Welcome back, ${mentorName.split(" ")[0]}`}
+        subtitle="Here's what's happening across your batches."
+        onHelp={tour.start}
+      />
 
       {!data ? (
         <LoadingBlock />
       ) : (
         <div className="space-y-6">
           {/* ── Top-line stats ─────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div data-tour="overview-stats" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatChip icon={Layers3} label="Assigned batches" value={data.batchCount} tone="sky" />
             <StatChip
               icon={CalendarClock}
@@ -171,6 +201,7 @@ export function MentorOverviewModule({
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* ── Today / upcoming sessions ────────────────────────── */}
+            <div data-tour="overview-schedule">
             <Panel
               icon={CalendarClock}
               title="Schedule"
@@ -214,6 +245,7 @@ export function MentorOverviewModule({
                 </div>
               )}
             </Panel>
+            </div>
 
             {/* ── Recent messages ───────────────────────────────────── */}
             <Panel
@@ -250,13 +282,15 @@ export function MentorOverviewModule({
           </div>
 
           {/* ── Earnings ───────────────────────────────────────────── */}
-          <EarningsSection mentorToken={mentorToken} />
+          <div data-tour="overview-earnings">
+            <EarningsSection mentorToken={mentorToken} />
+          </div>
 
           {/* ── Test Series access ────────────────────────────────── */}
           <TestSeriesAccessSection mentorToken={mentorToken} onNavigate={onNavigate} />
 
           {/* ── Quick actions ──────────────────────────────────────── */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div data-tour="overview-quick-actions" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <QuickAction icon={LifeBuoy} label="Help Desk" onClick={() => onNavigate("support")} />
             <QuickAction icon={PlayCircle} label="Lecture Library" onClick={() => onNavigate("library")} />
             <QuickAction icon={MessageSquare} label="Announcements" onClick={() => onNavigate("announcements")} />
@@ -264,6 +298,8 @@ export function MentorOverviewModule({
           </div>
         </div>
       )}
+
+      {tour.active && <OnboardingTour steps={OVERVIEW_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
   inputClass,
   textareaClass,
 } from "@/components/mentor-portal-ui";
+import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
 
 type Batch = { id: string; name: string; track: string };
 type Thread = {
@@ -38,9 +39,28 @@ type Student = { uid: string; fullName: string; email: string | null };
 type LectureOption = { id: string; lectureTitle: string };
 type Note = { id: string; fileName: string; fileUrl: string; lectureSessionId: string | null; createdAt: string | null };
 
+const CHAT_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="chat-canvas"]',
+    title: "Split-pane chat",
+    description: "Every student thread on the left, the conversation on the right. Use \"New message\" to start a DM with anyone in the batch.",
+  },
+  {
+    selector: '[data-tour="chat-lock"]',
+    title: "Daily messaging window",
+    description: "Lock chat to a specific window each day if you don't want students messaging around the clock.",
+  },
+  {
+    selector: '[data-tour="chat-notes"]',
+    title: "Notes",
+    description: "Upload a file scoped to the whole batch or to a single lecture — students see it attached to the right place.",
+  },
+];
+
 export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [batchId, setBatchId] = useState("");
+  const tour = useTour("mentorTourChatSeen");
 
   useEffect(() => {
     (async () => {
@@ -56,6 +76,7 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
       <ModuleHeader
         title="Student Chat Desk"
         subtitle="Split-pane DM canvas with a lockable daily messaging window, plus notes you can attach to the whole batch or a single lecture."
+        onHelp={tour.start}
       />
 
       {batches === null ? (
@@ -78,13 +99,21 @@ export function MentorChatModule({ mentorToken }: { mentorToken: string }) {
 
           {batchId && (
             <div className="space-y-6">
-              <ChatCanvas mentorToken={mentorToken} batchId={batchId} />
-              <ChatLockControl mentorToken={mentorToken} batchId={batchId} />
-              <NoteUploadGate mentorToken={mentorToken} batchId={batchId} />
+              <div data-tour="chat-canvas">
+                <ChatCanvas mentorToken={mentorToken} batchId={batchId} />
+              </div>
+              <div data-tour="chat-lock">
+                <ChatLockControl mentorToken={mentorToken} batchId={batchId} />
+              </div>
+              <div data-tour="chat-notes">
+                <NoteUploadGate mentorToken={mentorToken} batchId={batchId} />
+              </div>
             </div>
           )}
         </>
       )}
+
+      {tour.active && <OnboardingTour steps={CHAT_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
 }
