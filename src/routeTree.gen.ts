@@ -15,6 +15,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as HelpRouteImport } from './routes/help'
+import { Route as JoinInternRouteImport } from './routes/join-intern'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MySessionsRouteImport } from './routes/my-sessions'
@@ -75,6 +76,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const HelpRoute = HelpRouteImport.update({
   id: '/help',
   path: '/help',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinInternRoute = JoinInternRouteImport.update({
+  id: '/join-intern',
+  path: '/join-intern',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinMentorRoute = JoinMentorRouteImport.update({
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
+  '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -280,6 +287,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
+  '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -320,6 +328,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/help': typeof HelpRoute
+  '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -361,6 +370,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/forgot-password'
     | '/help'
+    | '/join-intern'
     | '/join-mentor'
     | '/login'
     | '/my-sessions'
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/forgot-password'
     | '/help'
+    | '/join-intern'
     | '/join-mentor'
     | '/login'
     | '/my-sessions'
@@ -439,6 +450,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/forgot-password'
     | '/help'
+    | '/join-intern'
     | '/join-mentor'
     | '/login'
     | '/my-sessions'
@@ -479,6 +491,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   HelpRoute: typeof HelpRoute
+  JoinInternRoute: typeof JoinInternRoute
   JoinMentorRoute: typeof JoinMentorRoute
   LoginRoute: typeof LoginRoute
   MySessionsRoute: typeof MySessionsRoute
@@ -554,6 +567,13 @@ declare module '@tanstack/react-router' {
       path: '/help'
       fullPath: '/help'
       preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join-intern': {
+      id: '/join-intern'
+      path: '/join-intern'
+      fullPath: '/join-intern'
+      preLoaderRoute: typeof JoinInternRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-mentor': {
@@ -783,6 +803,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   HelpRoute: HelpRoute,
+  JoinInternRoute: JoinInternRoute,
   JoinMentorRoute: JoinMentorRoute,
   LoginRoute: LoginRoute,
   MySessionsRoute: MySessionsRoute,

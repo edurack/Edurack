@@ -19,11 +19,12 @@ import {
   setCertificate,
 } from "@/server-functions/intern-auth";
 import { assignInternTask, listSubmittedDrafts, approveDraft, rejectDraft } from "@/server-functions/admin-interns";
+import { listInternApplications, updateInternApplicationStatus, advanceInternApplication, rejectInternApplication } from "@/server-functions/intern-applications";
 import { QuestionContentRenderer } from "@/components/shared/question-content-renderer";
 import { uploadToSupabase, INTERN_DOCUMENTS_BUCKET, MAX_INTERN_DOCUMENT_BYTES } from "@/lib/supabase";
 
 type AdminUser = { getIdToken: () => Promise<string> };
-type Tab = "interns" | "assign" | "review";
+type Tab = "interns" | "applications" | "assign" | "review";
 type InternRow = Awaited<ReturnType<typeof listInterns>>["interns"][number];
 
 const inputClass =
@@ -40,7 +41,7 @@ export function InternHubModule({ adminUser }: { adminUser: AdminUser }) {
       </div>
 
       <div className="mb-6 flex gap-2">
-        {(["interns", "assign", "review"] as Tab[]).map((t) => (
+        {(["interns", "applications", "assign", "review"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -48,12 +49,19 @@ export function InternHubModule({ adminUser }: { adminUser: AdminUser }) {
               tab === t ? "clay-btn text-white" : "clay-chip text-foreground/70"
             }`}
           >
-            {t === "interns" ? "Interns" : t === "assign" ? "Assign task" : "Review queue"}
+            {t === "interns"
+              ? "Interns"
+              : t === "applications"
+                ? "Applications"
+                : t === "assign"
+                  ? "Assign task"
+                  : "Review queue"}
           </button>
         ))}
       </div>
 
       {tab === "interns" && <InternsTab adminUser={adminUser} />}
+      {tab === "applications" && <ApplicationsTab adminUser={adminUser} />}
       {tab === "assign" && <AssignTab adminUser={adminUser} />}
       {tab === "review" && <ReviewTab adminUser={adminUser} />}
     </div>
@@ -204,6 +212,265 @@ function InternsTab({ adminUser }: { adminUser: AdminUser }) {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Applications tab: public /join-intern submissions ──────────────────
+type ApplicationRow = Awaited<ReturnType<typeof listInternApplications>>["applications"][number];
+type AppStatus = ApplicationRow["status"];
+
+const APP_STATUS_LABEL: Record<AppStatus, string> = {
+  pending: "Pending",
+  reviewing: "Reviewing",
+  invited_to_trial: "Invited to trial",
+  rejected: "Rejected",
+};
+
+const APP_STATUS_BG: Record<AppStatus, string> = {
+  pending: "bg-[var(--sky-soft)] text-foreground",
+  reviewing: "bg-[var(--lemon-soft)] text-foreground",
+  invited_to_trial: "bg-[var(--mint-soft)] text-foreground",
+  rejected: "bg-[var(--coral-soft)] text-foreground",
+};
+
+// ─── Default rejection templates — click to fill the reason box below,
+// still editable before sending. Keeps the wording consistent and saves
+// re-typing the common cases every time. ──────────────────────────────────
+const REJECTION_TEMPLATES: { label: string; text: string }[] = [
+  {
+    label: "Not a fit right now",
+    text: "After reviewing your application, we've decided not to move forward at this time. This isn't a reflection of your ability — we simply have limited openings for this round.",
+  },
+  {
+    label: "Experience doesn't match",
+    text: "We're looking for candidates with stronger hands-on experience in the specific subjects we're hiring for right now, so we won't be moving forward with your application at this time.",
+  },
+  {
+    label: "Incomplete application",
+    text: "Your application was missing details we need to properly evaluate a candidate (e.g. relevant coursework, subject strengths, or a resume/portfolio). Feel free to reapply with more detail.",
+  },
+  {
+    label: "Position filled",
+    text: "We've filled the openings we had for this round. We'd encourage you to apply again the next time we're hiring interns.",
+  },
+];
+
+function ApplicationsTab({ adminUser }: { adminUser: AdminUser }) {
+  const [applications, setApplications] = useState<ApplicationRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  async function refresh() {
+    const token = await adminUser.getIdToken();
+    const { applications: rows } = await listInternApplications({ data: { token } });
+    setApplications(rows);
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function markStatus(applicationId: string, status: "pending" | "reviewing") {
+    setError(null);
+    setUpdatingId(applicationId);
+    try {
+      const token = await adminUser.getIdToken();
+      await updateInternApplicationStatus({ data: { token, applicationId, status } });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't update that application.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function advance(applicationId: string) {
+    setError(null);
+    setUpdatingId(applicationId);
+    try {
+      const token = await adminUser.getIdToken();
+      const res = await advanceInternApplication({ data: { token, applicationId } });
+      if (!res.emailSent) setError("Marked as advanced, but the notification email failed to send.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't advance that application.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function confirmReject(applicationId: string) {
+    if (!rejectReason.trim()) {
+      setError("A rejection reason is required.");
+      return;
+    }
+    setError(null);
+    setUpdatingId(applicationId);
+    try {
+      const token = await adminUser.getIdToken();
+      const res = await rejectInternApplication({ data: { token, applicationId, reason: rejectReason } });
+      if (!res.emailSent) setError("Rejected, but the notification email failed to send.");
+      setRejectingId(null);
+      setRejectReason("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't reject that application.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  return (
+    <div className="clay p-5 sm:p-6">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
+        Applications from /join-intern
+      </h2>
+      {error && <p className="mb-3 text-xs font-medium text-rose-600">{error}</p>}
+      <div className="space-y-2">
+        {applications === null && <p className="text-sm text-foreground/50">Loading…</p>}
+        {applications?.length === 0 && (
+          <p className="text-sm text-foreground/50">No applications yet.</p>
+        )}
+        {applications?.map((a) => (
+          <div key={a.id} className="clay-inset space-y-3 rounded-2xl p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">{a.fullName}</p>
+                <p className="text-xs text-foreground/50">
+                  {a.email}
+                  {a.phone ? ` · ${a.phone}` : ""}
+                  {a.submittedAt ? ` · ${new Date(a.submittedAt).toLocaleDateString()}` : ""}
+                </p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${APP_STATUS_BG[a.status]}`}>
+                {APP_STATUS_LABEL[a.status]}
+              </span>
+            </div>
+
+            <p className="text-sm text-foreground/80">{a.experience}</p>
+            {a.status === "rejected" && a.rejectionReason && (
+              <p className="text-xs italic text-foreground/50">Reason sent: "{a.rejectionReason}"</p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {a.resumeUrl && (
+                <a
+                  href={a.resumeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="clay-chip inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Resume
+                </a>
+              )}
+              {a.portfolioUrl && (
+                <a
+                  href={a.portfolioUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="clay-chip inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold"
+                >
+                  Portfolio
+                </a>
+              )}
+            </div>
+
+            {rejectingId === a.id ? (
+              <div className="space-y-2 border-t border-border pt-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {REJECTION_TEMPLATES.map((t) => (
+                    <button
+                      key={t.label}
+                      type="button"
+                      onClick={() => setRejectReason(t.text)}
+                      className="clay-chip rounded-lg px-2.5 py-1 text-[11px] font-semibold text-foreground/70"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Reason — included in the email sent to the candidate"
+                  rows={2}
+                  className={`${inputClass} resize-none`}
+                />
+                <div className="flex gap-2">
+                  <button
+                    disabled={updatingId === a.id}
+                    onClick={() => confirmReject(a.id)}
+                    className="clay-btn rounded-xl px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Send rejection
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRejectingId(null);
+                      setRejectReason("");
+                    }}
+                    className="clay-btn-ghost rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground/60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                {a.status !== "pending" && (
+                  <button
+                    disabled={updatingId === a.id}
+                    onClick={() => markStatus(a.id, "pending")}
+                    className="clay-btn-ghost rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground/60 disabled:opacity-50"
+                  >
+                    Mark Pending
+                  </button>
+                )}
+                {a.status !== "reviewing" && (
+                  <button
+                    disabled={updatingId === a.id}
+                    onClick={() => markStatus(a.id, "reviewing")}
+                    className="clay-btn-ghost rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground/60 disabled:opacity-50"
+                  >
+                    Mark Reviewing
+                  </button>
+                )}
+                {a.status !== "invited_to_trial" && (
+                  <button
+                    disabled={updatingId === a.id}
+                    onClick={() => advance(a.id)}
+                    className="clay-chip rounded-xl px-3 py-1.5 text-xs font-semibold"
+                  >
+                    Advance to Trial (emails candidate)
+                  </button>
+                )}
+                {a.status !== "rejected" && (
+                  <button
+                    disabled={updatingId === a.id}
+                    onClick={() => {
+                      setRejectingId(a.id);
+                      setRejectReason("");
+                    }}
+                    className="clay-btn-ghost rounded-xl px-3 py-1.5 text-xs font-semibold text-rose-600 disabled:opacity-50"
+                  >
+                    Reject (emails candidate)
+                  </button>
+                )}
+              </div>
+            )}
+            {a.status === "invited_to_trial" && (
+              <p className="text-xs text-foreground/50">
+                Next: send their sample task from the "Intern Trials" section using this name and email.
+              </p>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

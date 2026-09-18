@@ -21,7 +21,7 @@
 
 const BRAND = {
   name: "Edurack",
-  logoUrl: "https://i.postimg.cc/4NvD69v0/image-removebg-preview.png",
+  logoUrl: "https://www.edurack.in/edurack-logo.webp",
 
   // ── Hex approximations of styles.css's oklch() theme tokens ──────────
   // (light mode values — email clients don't support prefers-color-scheme

@@ -20,6 +20,7 @@ const BRAND = {
   mintSoft: "#CDF0DD",
   skySoft: "#DCEAFB",
   lemonSoft: "#F7ECC4",
+  coralSoft: "#F9D9D3",
 };
 
 const FONT_STACK =
@@ -282,4 +283,64 @@ export function internCertificateEmailHtml(params: {
     previewText: params.unlocked ? "Your certificate is ready to download" : "Your certificate is on its way",
     bodyHtml: body,
   });
+}
+
+// ─── Public application received (candidate submits /join-intern form) ───
+// Just a "we got it" receipt — no next-step link, since the next step
+// (a sample-task invite) is entirely admin-initiated from here, same as
+// creatorApplications on the mentor side.
+export function internApplicationReceivedEmailHtml(params: { candidateName: string }): string {
+  const body = `
+    ${emailBadge("Application received", BRAND.lemonSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      Thanks for applying, ${params.candidateName}
+    </h1>
+    <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      We've received your application for the Edurack internship program. Our team reviews every
+      application by hand — if yours looks like a fit, we'll email you a short sample task as the
+      next step. No action is needed from you right now.
+    </p>
+  `;
+  return emailLayout({ previewText: "We've received your Edurack internship application", bodyHtml: body });
+}
+
+// ─── Public application: advanced to sample task ─────────────────────────
+export function internApplicationAdvancedEmailHtml(params: { candidateName: string }): string {
+  const body = `
+    ${emailBadge("Application update", BRAND.mintSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      🎉 Good news, ${params.candidateName}
+    </h1>
+    <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Your internship application stood out — we're moving you forward to the next step. You'll
+      receive a short sample task by email shortly; no account needed, just a one-time link.
+    </p>
+  `;
+  return emailLayout({ previewText: "You're moving forward in the Edurack internship process", bodyHtml: body });
+}
+
+// ─── Public application: rejected ─────────────────────────────────────────
+export function internApplicationRejectedEmailHtml(params: { candidateName: string; reason: string }): string {
+  const body = `
+    ${emailBadge("Application update", BRAND.coralSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      Hi ${params.candidateName}
+    </h1>
+    <p style="margin: 0 0 16px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Thanks for applying to intern with ${BRAND.name}. After review, we're not able to move forward
+      with your application at this time.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid ${BRAND.border}; border-radius: 18px; margin-bottom: 16px; background-color: ${BRAND.bg};">
+      <tr>
+        <td style="padding: 14px 18px;">
+          <p style="margin: 0 0 4px 0; font-family: ${FONT_STACK}; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ${BRAND.muted};">Reason</p>
+          <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.text};">${params.reason}</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin: 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      You're welcome to apply again in the future.
+    </p>
+  `;
+  return emailLayout({ previewText: "An update on your Edurack internship application", bodyHtml: body });
 }

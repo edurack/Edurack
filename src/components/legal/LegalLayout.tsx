@@ -25,7 +25,7 @@ export function LegalLayout({ icon: Icon, eyebrow, title, lastUpdated, children 
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
             <img
-              src="https://i.postimg.cc/4NvD69v0/image-removebg-preview.png"
+              src="https://www.edurack.in/edurack-logo.webp"
               alt="EDURACK"
               className="h-10 w-auto shrink-0 object-contain sm:h-12"
             />

@@ -30,6 +30,7 @@ import {
   // extra module (and its own tree-shaking boundary) to the bundle for a
   // single glyph. Tabler ships an equivalent "school" icon, so we use that
   // instead and drop the lucide-react dependency from this file entirely.
+  IconBriefcase as Briefcase,
 } from "@tabler/icons-react";
 import { listMentorsForLanding } from "@/server-functions/catalog";
 
@@ -326,6 +327,7 @@ function Index() {
         <FeaturesGrid />
         <WhyEdurackSection />
         <MarketplaceBanner />
+        <CareersSection />
         <SocialLinksSection />
       </main>
       <Footer />
@@ -1255,6 +1257,63 @@ function MarketplaceBanner() {
   );
 }
 
+function CareersSection() {
+  return (
+    <section id="careers" className="px-4 py-16 sm:px-6 lg:py-24">
+      <Reveal className="mx-auto max-w-6xl">
+        <div className="clay relative overflow-hidden p-8 md:p-14">
+          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+
+          <div className="relative z-10 flex flex-col gap-10 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-xl">
+              <div className="clay-chip inline-flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-primary">
+                <Briefcase className="h-3.5 w-3.5" />
+                Careers at EDURACK
+              </div>
+              <h2 className="fluid-h2 mt-4 font-display font-extrabold tracking-tight text-foreground">
+                Build the Question Bank Behind EDURACK
+              </h2>
+              <p className="fluid-body mt-4 text-muted-foreground">
+                We're hiring interns to help write and review the questions NEET, JEE, CUET, and
+                IPMAT aspirants prep from. No account needed to apply — start with a short sample
+                task and go from there.
+              </p>
+
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="clay-inset px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Role</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">Question Ingestion Intern</p>
+                </div>
+                <div className="clay-inset px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Format</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">Remote, flexible hours</p>
+                </div>
+                <div className="clay-inset px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">You get</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">Offer letter + certificate</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col items-start gap-3 md:items-end">
+              <Link
+                to="/join-intern"
+                preload="viewport"
+                className="clay-btn inline-flex items-center gap-2 px-8 py-4 text-sm font-bold"
+              >
+                Apply to Intern <ArrowRight className="h-4 w-4" />
+              </Link>
+              <p className="text-xs text-muted-foreground md:text-right">
+                Takes two minutes — resume optional.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
 // ---------------------------------------------
 // Footer
 // ---------------------------------------------
@@ -1270,6 +1329,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Syllabus Trackers", type: "route", to: "/dashboard" },
       { label: "Analytics", type: "route", to: "/dashboard" },
       { label: "Mentors", type: "route", to: "/join-mentor" },
+      { label: "Internships", type: "route", to: "/join-intern" },
     ],
   },
   {

@@ -30,6 +30,7 @@
 //   • bundle-documents   (syllabus/planner PDFs)          — cap 50MB
 //   • promoter-uploads   (NEW — promoter profile photos)  — cap 20MB
 //   • intern-documents   (NEW — offer letters, certificates, task refs) — cap 50MB
+//   • intern-applications (NEW — resume/portfolio from /join-intern)    — cap 10MB
 //
 // Policies — same open-write-scoped-by-bucket pattern as mentor-uploads,
 // since neither admins nor promoters have a Supabase-side user to scope
@@ -56,6 +57,11 @@
 //   on storage.objects for insert
 //   to anon
 //   with check (bucket_id = 'intern-documents');
+//
+//   create policy "Applicants can upload to intern-applications"
+//   on storage.objects for insert
+//   to anon
+//   with check (bucket_id = 'intern-applications');
 //
 // (repeat the pattern for mentor-images / mentor-files / mentor-lectures
 // if those policies don't already exist from earlier work)
@@ -105,6 +111,16 @@ export const MAX_QUESTION_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB pre-compressio
 // into three buckets/policies.
 export const INTERN_DOCUMENTS_BUCKET = "intern-documents";
 export const MAX_INTERN_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
+
+// ─── NEW: Public internship-application uploads (resume/portfolio) ───────
+// Deliberately its own bucket, not INTERN_DOCUMENTS_BUCKET above — that one
+// holds admin-issued documents (offer letters, certificates, task refs);
+// this one holds files an anonymous, not-yet-vetted applicant uploads
+// straight from the public /join-intern form. Same open-write-to-anon
+// policy pattern as the other public-facing buckets (mentor-uploads,
+// promoter-uploads) — applicants have no Supabase-side identity either.
+export const INTERN_APPLICATIONS_BUCKET = "intern-applications";
+export const MAX_INTERN_APPLICATION_FILE_BYTES = 10 * 1024 * 1024; // 10MB — resumes/portfolios are small
 
 
 // Shared helper — uploads a single File to the given bucket under a
