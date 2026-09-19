@@ -23,6 +23,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TicketsRouteImport } from './routes/tickets'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as InternAuthRouteImport } from './routes/intern/auth'
@@ -45,6 +46,7 @@ import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
 import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
 import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
+import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certificateId'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 
@@ -116,6 +118,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const TicketsRoute = TicketsRouteImport.update({
   id: '/tickets',
   path: '/tickets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminAuthRoute = AdminAuthRouteImport.update({
@@ -229,6 +236,11 @@ const TestTestIdRoute = TestTestIdRouteImport.update({
   path: '/test/$testId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VerifyCertificateIdRoute = VerifyCertificateIdRouteImport.update({
+  id: '/$certificateId',
+  path: '/$certificateId',
+  getParentRoute: () => VerifyRoute,
+} as any)
 const CourseKindIdRoute = CourseKindIdRouteImport.update({
   id: '/course/$kind/$id',
   path: '/course/$kind/$id',
@@ -255,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
@@ -277,6 +290,7 @@ export interface FileRoutesByFullPath {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -295,6 +309,7 @@ export interface FileRoutesByTo {
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
@@ -317,6 +332,7 @@ export interface FileRoutesByTo {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -336,6 +352,7 @@ export interface FileRoutesById {
   '/purchases': typeof PurchasesRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/intern/auth': typeof InternAuthRoute
@@ -358,6 +375,7 @@ export interface FileRoutesById {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -378,6 +396,7 @@ export interface FileRouteTypes {
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
+    | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
@@ -400,6 +419,7 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/verify/$certificateId'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   fileRoutesByTo: FileRoutesByTo
@@ -418,6 +438,7 @@ export interface FileRouteTypes {
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
+    | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
@@ -440,6 +461,7 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/verify/$certificateId'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   id:
@@ -458,6 +480,7 @@ export interface FileRouteTypes {
     | '/purchases'
     | '/sitemap.xml'
     | '/tickets'
+    | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/intern/auth'
@@ -480,6 +503,7 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/verify/$certificateId'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   fileRoutesById: FileRoutesById
@@ -499,6 +523,7 @@ export interface RootRouteChildren {
   PurchasesRoute: typeof PurchasesRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
+  VerifyRoute: typeof VerifyRouteWithChildren
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   InternAuthRoute: typeof InternAuthRoute
@@ -623,6 +648,13 @@ declare module '@tanstack/react-router' {
       path: '/tickets'
       fullPath: '/tickets'
       preLoaderRoute: typeof TicketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/auth': {
@@ -779,6 +811,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TestTestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/verify/$certificateId': {
+      id: '/verify/$certificateId'
+      path: '/$certificateId'
+      fullPath: '/verify/$certificateId'
+      preLoaderRoute: typeof VerifyCertificateIdRouteImport
+      parentRoute: typeof VerifyRoute
+    }
     '/course/$kind/$id': {
       id: '/course/$kind/$id'
       path: '/course/$kind/$id'
@@ -796,6 +835,17 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface VerifyRouteChildren {
+  VerifyCertificateIdRoute: typeof VerifyCertificateIdRoute
+}
+
+const VerifyRouteChildren: VerifyRouteChildren = {
+  VerifyCertificateIdRoute: VerifyCertificateIdRoute,
+}
+
+const VerifyRouteWithChildren =
+  VerifyRoute._addFileChildren(VerifyRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
@@ -811,6 +861,7 @@ const rootRouteChildren: RootRouteChildren = {
   PurchasesRoute: PurchasesRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,
+  VerifyRoute: VerifyRouteWithChildren,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   InternAuthRoute: InternAuthRoute,
