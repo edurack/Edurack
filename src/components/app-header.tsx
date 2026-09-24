@@ -30,7 +30,7 @@ export function AppHeader({ user, displayName }: { user: User | null; displayNam
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-foreground/5 bg-background/70 px-4 py-3 backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-30 border-b border-border bg-background/80 px-4 py-2.5 backdrop-blur-xl sm:px-6">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
         
         {/* Left: Branding & Navigation Group */}
@@ -44,7 +44,7 @@ export function AppHeader({ user, displayName }: { user: User | null; displayNam
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
-            <span className="text-xl tracking-tight">EDURACK</span>
+            <span className="font-display text-xl font-extrabold tracking-tight">edurack</span>
           </div>
 
           {/* Home button: only meaningful for a signed-in user with a dashboard to go to. */}
@@ -65,13 +65,15 @@ export function AppHeader({ user, displayName }: { user: User | null; displayNam
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <Link
               to="/auth"
-              className="clay-btn-ghost px-4 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 sm:px-5"
+              search={{ tab: "signin" }}
+              className="clay-btn-ghost inline-flex min-h-11 items-center px-4 text-sm sm:px-5"
             >
               Login
             </Link>
             <Link
               to="/auth"
-              className="clay-btn px-4 py-2 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 sm:px-5"
+              search={{ tab: "signup" }}
+              className="clay-btn inline-flex min-h-11 items-center px-4 text-sm sm:px-5"
             >
               Sign Up
             </Link>
@@ -104,7 +106,7 @@ export function AppHeader({ user, displayName }: { user: User | null; displayNam
               </button>
 
               {menuOpen && (
-                <div className="clay absolute right-0 top-[calc(100%+0.5rem)] w-56 p-2">
+                <div className="clay shadow-float absolute right-0 top-[calc(100%+0.5rem)] w-56 p-2">
                   <div className="px-3 py-2">
                     <p className="truncate text-sm font-semibold text-foreground">
                       {displayName || user.displayName || "Student"}

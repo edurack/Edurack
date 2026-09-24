@@ -66,10 +66,6 @@ function AdminAuthPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--admin-bg,inherit)]">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-60 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--mint-soft)] opacity-50 blur-3xl" />
-      </div>
 
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-10">
         <div className="mb-6 flex flex-col items-center gap-3">

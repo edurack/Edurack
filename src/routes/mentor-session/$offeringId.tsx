@@ -345,7 +345,7 @@ function SessionDetail({
           {dateGroups.length > 0 ? (
             <button
               onClick={() => onPickSlot(dateGroups.find(([d]) => d === selectedDate)?.[1][0] ?? dateGroups[0][1][0])}
-              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-3 text-sm font-bold text-white transition-transform hover:-translate-y-0.5"
+              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-3 text-sm font-bold text-white transition-transform"
               style={{ background: PINK_DEEP }}
             >
               {offering.isFree ? "Book free session" : "Book now"}

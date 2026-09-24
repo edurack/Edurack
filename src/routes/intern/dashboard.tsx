@@ -108,7 +108,7 @@ function InternDashboardPage() {
               <button
                 key={t.id}
                 onClick={() => setActiveTaskId(t.id)}
-                className="clay p-5 text-left transition-transform hover:-translate-y-0.5"
+                className="clay p-5 text-left transition-transform hover:border-primary/60"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">

@@ -536,7 +536,7 @@ function QuickAction({
   return (
     <button
       onClick={onClick}
-      className="clay flex flex-col items-center gap-2 p-4 text-center transition-transform duration-200 hover:-translate-y-0.5"
+      className="clay flex flex-col items-center gap-2 p-4 text-center transition-transform duration-200 hover:border-primary/60"
     >
       <div className="clay-inset flex h-9 w-9 items-center justify-center rounded-2xl">
         <Icon className="h-4 w-4 text-foreground/60" />

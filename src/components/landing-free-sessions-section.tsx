@@ -58,7 +58,7 @@ export function LandingFreeSessionsSection() {
               key={s.id}
               to="/mentor-session/$offeringId"
               params={{ offeringId: s.id }}
-              className="clay flex flex-col overflow-hidden p-3 transition-transform duration-200 hover:-translate-y-1"
+              className="clay flex flex-col overflow-hidden p-3 transition-transform duration-200 hover:border-primary/60"
             >
               <div className="relative flex h-24 items-center justify-center overflow-hidden rounded-2xl" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}>
                 {s.thumbnailUrl ? (

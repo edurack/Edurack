@@ -71,6 +71,7 @@
     "katex": "^0.17.0",
     "lucide-react": "^0.575.0",
     "mongodb": "^7.4.0",
+    "motion": "^13.4.2",
     "pdf-lib": "^1.17.1",
     "razorpay": "^2.9.6",
     "react": "^19.2.0",

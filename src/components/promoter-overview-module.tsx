@@ -30,7 +30,7 @@ function MetricCard({
 }) {
   const accentVar = { sky: "var(--sky-soft)", mint: "var(--mint-soft)", coral: "var(--coral-soft)" }[accent];
   return (
-    <div className="clay p-5 transition-transform duration-300 hover:-translate-y-1">
+    <div className="clay p-5 transition-transform duration-300 hover:border-primary/60">
       <div
         className="clay-inset mb-3 flex h-10 w-10 items-center justify-center rounded-2xl"
         style={{ background: accentVar }}

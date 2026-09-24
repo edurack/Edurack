@@ -11,6 +11,9 @@ import { recordSession } from "@/server-functions/sessions";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup" } => ({
+    tab: search.tab === "signup" ? "signup" : search.tab === "signin" ? "signin" : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Sign in · Edurack" },
@@ -67,7 +70,8 @@ async function completeLogin(user: FirebaseUser, provider: "password" | "google.
 
 function AuthPage() {
   const { user, loading } = useAuth();
-  const [tab, setTab] = useState<Tab>("signin");
+  const initialTab = Route.useSearch().tab;
+  const [tab, setTab] = useState<Tab>(initialTab ?? "signin");
   const [stage, setStage] = useState<Stage>("checking");
   const [pendingEmail, setPendingEmail] = useState("");
   const navigate = useNavigate();
@@ -156,12 +160,25 @@ function AuthPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-70 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-70 blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-[var(--mint-soft)] opacity-60 blur-3xl" />
-      </div>
+    <div className="grid min-h-screen lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+      <aside className="ink-section hidden flex-col justify-between p-12 lg:flex">
+        <Link to="/" className="flex items-center gap-2">
+          <img src="/edurack-logo.webp" alt="Edurack" width={62} height={70} className="h-10 w-auto object-contain" />
+          <span className="font-display text-xl font-extrabold tracking-tight">edurack</span>
+        </Link>
+        <div>
+          <h2 className="font-display text-5xl leading-[1.05] tracking-tight">
+            <span className="block font-light">Take the mock.</span>
+            <span className="block font-extrabold">Fix what costs you marks.</span>
+          </h2>
+          <ul className="mt-8 space-y-3 text-white/70">
+            <li>Exam-format mocks for NEET, JEE, CUET and IPMAT</li>
+            <li>Accuracy, speed and concept gaps after every test</li>
+            <li>Mentors who have cleared the same exam</li>
+          </ul>
+        </div>
+        <p className="text-sm text-white/40">edurack.in</p>
+      </aside>
 
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
         <div className="mb-6 w-full max-w-xl">
@@ -175,7 +192,7 @@ function AuthPage() {
         </div>
 
         <div className="animate-in fade-in zoom-in-95 mb-6 flex flex-col items-center gap-3 duration-500">
-          <div className="clay flex h-12 w-auto items-center justify-center p-2 sm:h-14">
+          <div className="flex h-12 w-auto items-center justify-center sm:h-14 lg:hidden">
             {/*
               PERF (Lighthouse: ~141 KiB image savings + CLS risk):
               - width/height added below so the browser can reserve space
@@ -199,14 +216,12 @@ function AuthPage() {
               }}
             />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/60">
-            Edurack
-          </p>
+          <p className="font-display text-lg font-extrabold tracking-tight text-foreground lg:hidden">edurack</p>
         </div>
 
         {/* Main card — key={stage} forces a remount so each stage change
             plays its own fade/slide-in rather than snapping instantly. */}
-        <div key={stage} className="clay animate-in fade-in slide-in-from-bottom-3 w-full max-w-xl p-5 duration-300 sm:p-8">
+        <div key={stage} className="animate-in fade-in slide-in-from-bottom-3 w-full max-w-md rounded-3xl border border-border bg-card p-5 duration-300 sm:p-8">
           {stage === "auth" && (
             <AuthCard
               tab={tab}
@@ -341,7 +356,7 @@ function ClayInput({
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { icon?: ReactNode }) {
   return (
-    <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:ring-2 focus-within:ring-[var(--sky-deep)]/40">
+    <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
       {icon && <span className="text-foreground/50">{icon}</span>}
       <input
         {...props}
@@ -357,7 +372,7 @@ function ClaySelect({
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement> & { icon?: ReactNode }) {
   return (
-    <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:ring-2 focus-within:ring-[var(--sky-deep)]/40">
+    <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
       {icon && <span className="text-foreground/50">{icon}</span>}
       <select
         {...props}
@@ -494,7 +509,7 @@ function SignInForm({
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:ring-2 focus-within:ring-[var(--sky-deep)]/40">
+        <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
           <Lock className="h-4 w-4 text-foreground/50" />
           <input
             type={show ? "text" : "password"}
@@ -615,7 +630,7 @@ function SignUpForm({
           required
         />
         <div>
-          <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:ring-2 focus-within:ring-[var(--sky-deep)]/40">
+          <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
             <Lock className="h-4 w-4 text-foreground/50" />
             <input
               type={show ? "text" : "password"}
@@ -776,7 +791,7 @@ function EmailVerificationCard({
       </div>
 
       <div
-        className={`clay-inset flex items-center gap-3 px-4 py-3.5 transition-shadow duration-200 focus-within:ring-2 focus-within:ring-[var(--sky-deep)]/40 ${
+        className={`clay-inset flex items-center gap-3 px-4 py-3.5 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
           shake ? "animate-shake" : ""
         }`}
       >

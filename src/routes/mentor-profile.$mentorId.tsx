@@ -141,10 +141,6 @@ function MentorProfilePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-60 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-60 blur-3xl" />
-      </div>
 
       {/* AppHeader renders its own login/signup CTAs when user is null, and
           the normal account menu when signed in — pass the real value,
@@ -171,7 +167,7 @@ function MentorProfilePage() {
             </p>
             <button
               onClick={() => navigate({ to: user ? "/dashboard" : "/" })}
-              className="clay-btn mt-6 rounded-full px-6 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+              className="clay-btn mt-6 rounded-full px-6 py-2.5 text-sm font-semibold transition-transform duration-200"
             >
               {user ? "Go to dashboard" : "Back to home"}
             </button>
@@ -191,7 +187,7 @@ function MentorProfilePage() {
           <div className="space-y-6">
             <div className="clay overflow-hidden p-0">
               {/* Banner strip */}
-              <div className="h-20 bg-gradient-to-br from-[var(--sky-soft)] to-[var(--teal-soft)] sm:h-24" />
+              <div className="h-20 ink-section sm:h-24" />
 
               <div className="px-5 pb-5 sm:px-6 sm:pb-6">
                 <div className="flex items-end justify-between">
@@ -320,7 +316,7 @@ function MentorProfilePage() {
                       key={b.id}
                       to="/course/$kind/$id"
                       params={{ kind: "mentorship", id: b.id }}
-                      className="clay-inset group flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                      className="clay-inset group flex items-center gap-3 rounded-2xl px-4 py-3 transition-colors duration-200 hover:border-primary"
                     >
                       <div className="clay flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
                         {b.thumbnailUrl ? (
@@ -373,7 +369,7 @@ function MentorProfilePage() {
                       key={t.id}
                       to="/sold-test/$id"
                       params={{ id: t.id }}
-                      className="clay-inset group flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                      className="clay-inset group flex items-center gap-3 rounded-2xl px-4 py-3 transition-colors duration-200 hover:border-primary"
                     >
                       <div className="clay flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
                         <ClipboardList className="h-4 w-4 text-foreground/40" />

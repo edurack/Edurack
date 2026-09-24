@@ -473,10 +473,6 @@ function CourseHubPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-60 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-60 blur-3xl" />
-      </div>
 
       <AppHeader user={user} />
 
@@ -1169,7 +1165,7 @@ function TestsTab({
 
         return (
           <LockGate key={t.id} locked={!isPurchased}>
-            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:border-primary/60 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="min-w-0">
                 <p className="truncate font-semibold text-foreground">{t.name}</p>
                 <p className="text-xs text-foreground/50">
@@ -1356,7 +1352,7 @@ function SessionsTab({
 
         return (
           <LockGate key={s.id} locked={!isPurchased}>
-            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:border-primary/60 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="flex items-start gap-3">
                 <div className="clay-inset flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl sm:h-10 sm:w-10">
                   <Icon className="h-4 w-4 text-foreground/50" />
@@ -1631,7 +1627,7 @@ function BatchSeriesTestsTab({
 
         return (
           <LockGate key={t.id} locked={locked} label={lockLabel}>
-            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="clay flex flex-col gap-3 p-4 transition-transform hover:border-primary/60 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
                   <span className="truncate">{t.name}</span>
@@ -1869,7 +1865,7 @@ function AssetsTab({
             <button
               disabled={!isPurchased}
               onClick={() => onOpenPdf(n.fileUrl, n.fileName)}
-              className="clay flex w-full items-center gap-3 p-4 text-left transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              className="clay flex w-full items-center gap-3 p-4 text-left transition-transform hover:border-primary/60 disabled:cursor-not-allowed"
             >
               <div className="clay-inset flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                 <FileText className="h-4 w-4 text-foreground/50" />
@@ -1911,7 +1907,7 @@ function AssetsTab({
           <button
             disabled={!isPurchased}
             onClick={() => onOpenPdf(a.url, a.label)}
-            className="clay flex w-full items-center gap-3 p-4 text-left transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+            className="clay flex w-full items-center gap-3 p-4 text-left transition-transform hover:border-primary/60 disabled:cursor-not-allowed"
           >
             <div className="clay-inset flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
               <FileText className="h-4 w-4 text-foreground/50" />
@@ -1949,7 +1945,7 @@ function AnnouncementsTab({
     <div className="space-y-3">
       {announcements.map((a) => (
         <LockGate key={a.id} locked={!isPurchased}>
-          <div className="clay flex gap-3 p-4 transition-transform hover:-translate-y-0.5">
+          <div className="clay flex gap-3 p-4 transition-transform hover:border-primary/60">
             {a.thumbnailUrl && <img src={a.thumbnailUrl} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />}
             <div className="min-w-0">
               {a.title && <p className="text-sm font-semibold text-foreground">{a.title}</p>}

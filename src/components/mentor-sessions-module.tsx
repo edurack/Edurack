@@ -122,7 +122,7 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
         {tab === "offerings" && (
           <button
             onClick={() => setShowCreate(true)}
-            className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold transition-transform hover:-translate-y-0.5"
+            className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold transition-transform"
           >
             <Plus className="h-4 w-4" />
             New session offering
@@ -226,7 +226,7 @@ function OfferingsList({
             </button>
             <button
               onClick={() => onDelete(o.id)}
-              className="clay-btn-ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--coral-soft)]"
+              className="clay-btn-ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-destructive"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete
@@ -562,7 +562,7 @@ function CreateOfferingDialog({
           <button
             onClick={handleSubmit}
             disabled={submitting || !title.trim() || days.size === 0}
-            className="clay-btn mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+            className="clay-btn mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold transition-transform disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarTime className="h-4 w-4" />}
             Publish offering

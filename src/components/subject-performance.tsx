@@ -64,7 +64,7 @@ export function SubjectBreakdownAccordion({ subjects }: { subjects: SubjectPerfo
               <div className="border-t border-foreground/10 px-4 py-3">
                 <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                   <MiniStat label="Correct" value={s.correct} color="text-[var(--mint-soft)]" />
-                  <MiniStat label="Incorrect" value={s.incorrect} color="text-[var(--coral-soft)]" />
+                  <MiniStat label="Incorrect" value={s.incorrect} color="text-destructive" />
                   <MiniStat label="Unattempted" value={s.unanswered} color="text-foreground/40" />
                   <MiniStat label="Accuracy" value={`${accuracyPct}%`} color="text-foreground" />
                 </div>

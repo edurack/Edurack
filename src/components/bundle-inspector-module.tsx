@@ -610,7 +610,7 @@ function EditableQuestionCard({
             <button
               onClick={remove}
               disabled={deleting}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--coral-soft)] hover:underline disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive hover:underline disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" /> Delete
             </button>

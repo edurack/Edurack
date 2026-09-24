@@ -656,7 +656,7 @@ function MentorDetailDrawer({
                 onClick={handleTerminateToggle}
                 disabled={terminating}
                 className={`clay-btn-ghost flex w-full items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-60 ${
-                  data.status === "terminated" ? "" : "text-[var(--coral-soft)]"
+                  data.status === "terminated" ? "" : "text-destructive"
                 }`}
               >
                 {terminating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}

@@ -193,13 +193,9 @@ function AdminDashboardPage() {
 
   return (
     <div className="relative min-h-screen">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-40 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--mint-soft)] opacity-30 blur-3xl" />
-      </div>
 
       <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-foreground/5 bg-background/70 py-5 backdrop-blur-md md:flex">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background py-5 md:flex">
           <SidebarContent
             activeModule={activeModule}
             onSelect={setActiveModule}
@@ -400,7 +396,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
       <p className="max-w-sm text-sm text-foreground/60">{message}</p>
       <button
         onClick={onRetry}
-        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200"
       >
         <RefreshCw className="h-3.5 w-3.5" />
         Try again
@@ -952,7 +948,7 @@ function MetricCard({
   }[accent];
 
   return (
-    <div className="clay p-5 transition-transform duration-300 hover:-translate-y-1">
+    <div className="clay p-5 transition-transform duration-300 hover:border-primary/60">
       <div
         className="clay-inset mb-3 flex h-10 w-10 items-center justify-center rounded-2xl"
         style={{ background: accentVar }}
@@ -1248,7 +1244,7 @@ function StudentProfileDrawer({
                       <button
                         onClick={() => handleTerminateDevice(d.deviceId)}
                         disabled={terminatingDeviceId === d.deviceId}
-                        className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--coral-soft)] disabled:opacity-50"
+                        className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-destructive disabled:opacity-50"
                       >
                         {terminatingDeviceId === d.deviceId ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2129,7 +2125,7 @@ function OnboardingDetailsDrawer({
                   <button
                     onClick={handleCreateProfile}
                     disabled={!details.meetingRequest || creatingProfile}
-                    className="clay-btn inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="clay-btn inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {creatingProfile ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2256,7 +2252,7 @@ function OnboardingDetailsDrawer({
                     <button
                       onClick={handlePublishBatch}
                       disabled={publishingBatch}
-                      className="clay-btn mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                      className="clay-btn mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-transform duration-200 disabled:opacity-50"
                     >
                       {publishingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers3 className="h-4 w-4" />}
                       Publish Batch
@@ -2300,7 +2296,7 @@ function CopyLinkButton({ applicationId }: { applicationId: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+      className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200"
     >
       {copied ? (
         <>
@@ -2582,7 +2578,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       <button
                         onClick={() => handleReject(app.id)}
                         disabled={busyId === app.id || !rejectReason.trim()}
-                        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 disabled:opacity-50"
                       >
                         {busyId === app.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsDown className="h-3.5 w-3.5" />}
                         Confirm rejection
@@ -2604,7 +2600,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       <button
                         onClick={() => handleApprove(app.id)}
                         disabled={busyId === app.id}
-                        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 disabled:opacity-50"
                       >
                         {busyId === app.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
                         Approve
@@ -2614,7 +2610,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       <button
                         onClick={() => setRejectingId(app.id)}
                         disabled={busyId === app.id}
-                        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 disabled:opacity-50"
                       >
                         <ThumbsDown className="h-3.5 w-3.5" />
                         Reject
@@ -2624,7 +2620,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                       <button
                         onClick={() => handleReopen(app.id)}
                         disabled={busyId === app.id}
-                        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                        className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 disabled:opacity-50"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                         Reopen
@@ -2635,7 +2631,7 @@ function ApplicationsModule({ adminUser }: { adminUser: { getIdToken: () => Prom
                         <CopyLinkButton applicationId={app.id} />
                         <button
                           onClick={() => setOnboardingApp(app)}
-                          className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+                          className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200"
                         >
                           <FileText className="h-3.5 w-3.5" />
                           View onboarding details
@@ -3091,7 +3087,7 @@ function AdminTicketCard({
             <button
               onClick={sendReply}
               disabled={sending || !replyDraft.trim()}
-              className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+              className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 disabled:opacity-50"
             >
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Send reply & resolve
@@ -3104,7 +3100,7 @@ function AdminTicketCard({
       ) : (
         <button
           onClick={() => setShowReplyBox(true)}
-          className="clay-btn-ghost mt-3 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200 hover:-translate-y-0.5"
+          className="clay-btn-ghost mt-3 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-transform duration-200"
         >
           <MessageSquareText className="h-3.5 w-3.5" />
           Reply to student
@@ -3743,7 +3739,7 @@ function DangerZoneModule({ adminUser }: { adminUser: { getIdToken: () => Promis
                   </div>
                   <button
                     onClick={() => setTarget({ kind: "bundle", id: b.id, label: b.title })}
-                    className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-[var(--coral-soft)] transition-transform duration-200 hover:-translate-y-0.5"
+                    className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-destructive transition-transform duration-200"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
@@ -3767,7 +3763,7 @@ function DangerZoneModule({ adminUser }: { adminUser: { getIdToken: () => Promis
                 </div>
                 <button
                   onClick={() => setTarget({ kind: "test", id: t.id, label: t.name })}
-                  className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-[var(--coral-soft)] transition-transform duration-200 hover:-translate-y-0.5"
+                  className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-destructive transition-transform duration-200"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
@@ -3845,7 +3841,7 @@ function ConfirmDeleteDialog({
           <button
             onClick={handleConfirm}
             disabled={!matches || deleting}
-            className="clay-btn inline-flex items-center gap-1.5 rounded-full bg-[var(--coral-soft)] px-5 py-2.5 text-sm font-semibold text-foreground transition-transform duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+            className="clay-btn inline-flex items-center gap-1.5 rounded-full bg-destructive! px-5 py-2.5 text-sm font-semibold text-white! transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             Delete permanently

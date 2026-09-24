@@ -123,7 +123,7 @@ export function SessionTemplatesAdminModule({ adminUser }: { adminUser: { getIdT
                       await deleteSessionTemplate({ data: { token, templateId: t.id } });
                       load();
                     }}
-                    className="text-foreground/40 hover:text-[var(--coral-soft)]"
+                    className="text-foreground/40 hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

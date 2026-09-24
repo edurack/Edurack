@@ -113,10 +113,6 @@ function LecturePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-60 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-60 blur-3xl" />
-      </div>
 
       <AppHeader user={user} />
 
@@ -202,7 +198,7 @@ function LecturePage() {
                       <button
                         key={n.id}
                         onClick={() => setPdfModal({ url: n.fileUrl, name: n.fileName })}
-                        className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/5"
+                        className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-all duration-200 hover:border-primary/60 hover:bg-foreground/5"
                       >
                         <div className="clay flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
                           <FileText className="h-4 w-4 text-[var(--sky-deep)]" />

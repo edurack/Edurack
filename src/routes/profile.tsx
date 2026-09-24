@@ -189,18 +189,13 @@ function ProfilePage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-70 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--teal-soft)] opacity-70 blur-3xl" />
-        <div className="absolute -bottom-24 left-1/3 h-96 w-96 rounded-full bg-[var(--mint-soft)] opacity-60 blur-3xl" />
-      </div>
 
       <AppHeader user={user} displayName={profile?.fullName} />
 
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         {/* ── Identity banner ────────────────────────────────────────────── */}
         <div className="clay overflow-hidden p-0">
-          <div className="h-16 bg-gradient-to-br from-[var(--sky-soft)] to-[var(--teal-soft)] sm:h-20" />
+          <div className="h-16 ink-section sm:h-20" />
           <div className="px-5 pb-5 sm:px-6 sm:pb-6">
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-end">
               <div className="clay-inset -mt-10 flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full ring-4 ring-background sm:-mt-12 sm:h-24 sm:w-24">
@@ -310,7 +305,7 @@ function ProfilePage() {
                   <button
                     onClick={() => handleForget(s.deviceId)}
                     disabled={busyId === s.deviceId}
-                    className="clay-btn-ghost shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold text-foreground/70 transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50"
+                    className="clay-btn-ghost shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold text-foreground/70 transition-transform duration-200 disabled:opacity-50"
                   >
                     {busyId === s.deviceId ? "Removing…" : "Remove"}
                   </button>
@@ -329,7 +324,7 @@ function ProfilePage() {
 
           <button
             onClick={handleSignOutEverywhere}
-            className="clay-btn-ghost mt-4 w-full rounded-full px-4 py-2.5 text-sm font-semibold text-foreground transition-transform duration-200 hover:-translate-y-0.5"
+            className="clay-btn-ghost mt-4 w-full rounded-full px-4 py-2.5 text-sm font-semibold text-foreground transition-transform duration-200"
           >
             Sign out of all devices
           </button>
@@ -570,7 +565,7 @@ function EditableField({
               <X className="h-4 w-4" />
             </button>
           </div>
-          {error && <p className="mt-1 text-xs font-medium text-[var(--coral-soft)]">{error}</p>}
+          {error && <p className="mt-1 text-xs font-medium text-destructive">{error}</p>}
         </div>
       ) : (
         <button

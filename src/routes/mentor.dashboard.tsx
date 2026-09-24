@@ -114,14 +114,10 @@ function MentorDashboardPage() {
 
   return (
     <div className="relative min-h-screen">
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute -top-32 -left-20 h-96 w-96 rounded-full bg-[var(--sky-soft)] opacity-40 blur-3xl" />
-        <div className="absolute top-1/3 -right-24 h-[28rem] w-[28rem] rounded-full bg-[var(--mint-soft)] opacity-30 blur-3xl" />
-      </div>
 
       <div className="flex min-h-screen">
         {/* ── Desktop sidebar ──────────────────────────────────────── */}
-        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-foreground/5 bg-background/70 px-3 py-5 backdrop-blur-md sm:flex">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background px-3 py-5 sm:flex">
           <SidebarContent
             activeModule={activeModule}
             onSelect={setActiveModule}
