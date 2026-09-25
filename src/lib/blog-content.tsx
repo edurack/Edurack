@@ -1,20 +1,8 @@
 // src/lib/blog-content.tsx
 //
-// A deliberately hand-rolled markdown → HTML renderer, not a new npm
-// dependency (react-markdown, remark, etc). This mirrors the project's
-// existing pattern in smart-content.tsx: escape all raw text first, then
-// build up ONLY the HTML this parser itself generates. Since only admins
-// can author blog posts today, this is already safe — but "only admins
-// can post" is a fact about today, not a guarantee, and this renderer
-// costs nothing extra to keep safe regardless of who ends up writing
-// posts later.
-//
-// Supports: # / ## / ### headings, **bold**, *italic*, `inline code`,
-// [text](url) links, ![alt](url) images (same convention as
-// blog-image-insert-field.tsx / the existing ImageInsertField), > blockquotes,
-// - / * unordered lists, 1. ordered lists, ``` fenced code blocks, --- rules,
-// and paragraphs. Anything it doesn't recognize is rendered as an escaped
-// paragraph rather than silently dropped.
+// A hand-rolled markdown → HTML renderer for EduRack.
+// Safe HTML output with support for headings, lists, code blocks, quotes,
+// images, links, custom inline CTA buttons, and responsive text wrapping.
 
 function escapeHtml(str: string): string {
   return str
@@ -24,9 +12,6 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// A safe-ish URL check — blocks javascript:/data: schemes in an authored
-// link or image src so a compromised admin session can't turn a blog post
-// into a stored-XSS vector via markdown link syntax.
 function isSafeUrl(url: string): boolean {
   const trimmed = url.trim();
   if (trimmed.startsWith("/") || trimmed.startsWith("#")) return true;
@@ -45,23 +30,32 @@ function renderInline(text: string): string {
       if (image) {
         const [, alt, url] = image;
         if (!isSafeUrl(url)) return escapeHtml(part);
-        return `<img src="${escapeHtml(url.trim())}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" class="blog-inline-image" />`;
+        return `<img src="${escapeHtml(url.trim())}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" class="blog-inline-image rounded-xl max-w-full h-auto my-4" />`;
       }
 
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
       if (link) {
         const [, label, url] = link;
         if (!isSafeUrl(url)) return escapeHtml(part);
+
+        // Custom CTA Button Syntax: [button:Button Label](https://...)
+        if (label.startsWith("button:")) {
+          const buttonText = label.replace(/^button:/, "").trim();
+          const external = /^https?:\/\//i.test(url.trim());
+          const relAttr = external ? ' target="_blank" rel="noopener noreferrer"' : "";
+          return `<span class="my-6 block text-center"><a href="${escapeHtml(url.trim())}"${relAttr} class="inline-flex items-center justify-center rounded-xl bg-foreground px-6 py-3 text-sm font-bold text-background shadow-md transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]">${escapeHtml(buttonText)} →</a></span>`;
+        }
+
         const external = /^https?:\/\//i.test(url.trim());
         const relAttr = external ? ' target="_blank" rel="noopener noreferrer"' : "";
-        return `<a href="${escapeHtml(url.trim())}"${relAttr}>${escapeHtml(label)}</a>`;
+        return `<a href="${escapeHtml(url.trim())}"${relAttr} class="font-medium text-primary underline underline-offset-4 break-all">${escapeHtml(label)}</a>`;
       }
 
       if (part.startsWith("**") && part.endsWith("**") && part.length > 3) {
         return `<strong>${escapeHtml(part.slice(2, -2))}</strong>`;
       }
       if (part.startsWith("`") && part.endsWith("`") && part.length > 1) {
-        return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+        return `<code class="rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-mono">${escapeHtml(part.slice(1, -1))}</code>`;
       }
       if (part.startsWith("*") && part.endsWith("*") && part.length > 1) {
         return `<em>${escapeHtml(part.slice(1, -1))}</em>`;
@@ -77,7 +71,7 @@ type ListState = { kind: "ul" | "ol"; items: string[] } | null;
 function flushList(state: ListState, out: string[]) {
   if (!state || state.items.length === 0) return;
   const tag = state.kind;
-  out.push(`<${tag} class="blog-list">${state.items.map((i) => `<li>${renderInline(i)}</li>`).join("")}</${tag}>`);
+  out.push(`<${tag} class="blog-list my-4 ml-6 ${tag === "ul" ? "list-disc" : "list-decimal"} space-y-2 break-words [overflow-wrap:anywhere]">${state.items.map((i) => `<li>${renderInline(i)}</li>`).join("")}</${tag}>`);
 }
 
 export function renderBlogMarkdownToHtml(markdown: string): string {
@@ -90,7 +84,7 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
 
   function flushParagraph() {
     if (paragraph.length === 0) return;
-    out.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+    out.push(`<p class="my-4 leading-relaxed break-words [overflow-wrap:anywhere]">${renderInline(paragraph.join(" "))}</p>`);
     paragraph = [];
   }
 
@@ -99,7 +93,7 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
 
     if (line.trim().startsWith("```")) {
       if (inCodeFence) {
-        out.push(`<pre class="blog-code-block"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        out.push(`<pre class="blog-code-block my-6 overflow-x-auto rounded-xl bg-foreground/5 p-4 text-xs font-mono"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
         codeLines = [];
         inCodeFence = false;
       } else {
@@ -129,8 +123,9 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushParagraph();
       flushList(list, out);
       list = null;
-      const level = heading[1].length + 1; // markdown h1 stays out (post title IS the h1) — body headings start at h2
-      out.push(`<h${level} class="blog-heading">${renderInline(heading[2])}</h${level}>`);
+      const level = heading[1].length + 1; // Markdown h1 maps to h2
+      const headingClasses = level === 2 ? "text-xl sm:text-2xl font-bold mt-8 mb-4" : "text-lg sm:text-xl font-bold mt-6 mb-3";
+      out.push(`<h${level} class="blog-heading ${headingClasses} tracking-tight break-words [overflow-wrap:anywhere]">${renderInline(heading[2])}</h${level}>`);
       continue;
     }
 
@@ -138,7 +133,7 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushParagraph();
       flushList(list, out);
       list = null;
-      out.push('<hr class="blog-rule" />');
+      out.push('<hr class="blog-rule my-8 border-foreground/10" />');
       continue;
     }
 
@@ -147,7 +142,7 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushParagraph();
       flushList(list, out);
       list = null;
-      out.push(`<blockquote class="blog-quote">${renderInline(quote[1])}</blockquote>`);
+      out.push(`<blockquote class="blog-quote my-6 border-l-4 border-foreground/20 pl-4 italic text-foreground/80 break-words [overflow-wrap:anywhere]">${renderInline(quote[1])}</blockquote>`);
       continue;
     }
 
@@ -156,7 +151,7 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushParagraph();
       flushList(list, out);
       list = null;
-      out.push(`<figure class="blog-figure">${renderInline(trimmed)}</figure>`);
+      out.push(`<figure class="blog-figure my-6">${renderInline(trimmed)}</figure>`);
       continue;
     }
 
@@ -186,15 +181,12 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
   flushParagraph();
   flushList(list, out);
   if (inCodeFence && codeLines.length > 0) {
-    out.push(`<pre class="blog-code-block"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    out.push(`<pre class="blog-code-block my-6 overflow-x-auto rounded-xl bg-foreground/5 p-4 text-xs font-mono"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
   }
 
   return out.join("\n");
 }
 
-// Used both server-side (blog-admin.ts, at save time — cached onto the
-// post rather than recomputed on every render) and client-side (live word
-// count in the editor). Pure string math, no DOM dependency either side.
 const WORDS_PER_MINUTE = 200;
 
 export function estimateReadingTimeMinutes(markdown: string): number {
@@ -202,10 +194,6 @@ export function estimateReadingTimeMinutes(markdown: string): number {
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 
-// Plain-text approximation of the body, used for the JSON-LD wordCount
-// field and anywhere a markdown-free preview snippet is useful (never for
-// the excerpt shown to readers — that should always be hand-written, see
-// blog-types.ts).
 export function stripMarkdownToText(markdown: string): string {
   return markdown
     .replace(/```[\s\S]*?```/g, " ")
@@ -218,5 +206,10 @@ export function stripMarkdownToText(markdown: string): string {
 
 export function BlogBody({ markdown, className }: { markdown: string; className?: string }) {
   const html = renderBlogMarkdownToHtml(markdown);
-  return <div className={`blog-body ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className={`blog-body max-w-full break-words [overflow-wrap:anywhere] ${className ?? ""}`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
