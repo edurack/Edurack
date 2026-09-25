@@ -21,6 +21,7 @@ import {
 import { submitInternApplication } from "@/server-functions/intern-applications";
 import { uploadInternApplicationFile, formatBytes } from "@/lib/intern-application-upload";
 import { MAX_INTERN_APPLICATION_FILE_BYTES } from "@/lib/supabase";
+import { SiteHeader, SiteFooter, WRAP, INK, Rise } from "@/components/landing/site-chrome";
 
 export const Route = createFileRoute("/join-intern")({
   component: JoinInternPage,
@@ -179,27 +180,70 @@ function JoinInternPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-10 sm:px-6 lg:py-16">
-      <div className="mx-auto max-w-3xl">
-        <BrandHeader />
+    <div className="min-h-screen bg-background">
+      <SiteHeader />
 
-        <div className="mt-8 text-center">
-          <div className="clay-chip mx-auto inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
-            <Sparkles className="h-4 w-4" />
-            Internship Program
+      <main>
+        {/* Hero — same light/bold headline pairing + scroll-reveal as the homepage */}
+        <section className="py-14 sm:py-20">
+          <div className={WRAP}>
+            <Rise className="mx-auto max-w-2xl text-center">
+              <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
+                <Sparkles className="h-4 w-4" />
+                Internship Program
+              </div>
+              <h1 className="mt-6 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl">
+                <span className="block font-light">Intern</span>
+                <span className="block font-extrabold">at EDURACK.</span>
+              </h1>
+              <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                Help build the question bank NEET, JEE, CUET, and IPMAT aspirants prep from. Apply below
+                — it takes two minutes, and a resume or portfolio link is optional.
+              </p>
+            </Rise>
           </div>
-          <h1 className="fluid-h2 mt-4 font-display font-extrabold tracking-tight text-foreground">
-            Intern at EDURACK
-          </h1>
-          <p className="fluid-body mx-auto mt-3 max-w-xl text-muted-foreground">
-            Help build the question bank NEET, JEE, CUET, and IPMAT aspirants prep from. Apply below
-            — it takes two minutes, and a resume or portfolio link is optional.
-          </p>
-        </div>
+        </section>
 
-        <ProcessSteps />
+        {/* What the internship gives back — same ink banner pattern as the homepage careers strip */}
+        <section className={`${INK} py-16 sm:py-20`}>
+          <div className={WRAP}>
+            <Rise>
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3.5 py-1.5 text-sm font-semibold text-[#7ba4f0]">
+                <Briefcase className="h-4 w-4" /> Why intern with us
+              </p>
+              <h2 className="mt-5 font-display text-3xl leading-[1.05] tracking-tight sm:text-4xl">
+                <span className="block font-light">Real work,</span>
+                <span className="block font-extrabold">real proof you did it.</span>
+              </h2>
+            </Rise>
+            <Rise
+              delay={0.1}
+              className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-white/15 bg-white/15 sm:grid-cols-2"
+            >
+              {[
+                ["Fully remote", "Flexible hours"],
+                ["Real tasks", "Reviewed by our team"],
+                ["Offer letter", "Once you start"],
+                ["Certificate", "Once you complete it"],
+              ].map(([a, b]) => (
+                <div key={a} className="bg-[#141b2b] p-5">
+                  <p className="font-display font-bold">{a}</p>
+                  <p className="mt-1 text-sm text-white/50">{b}</p>
+                </div>
+              ))}
+            </Rise>
+          </div>
+        </section>
 
-        <form onSubmit={handleSubmit} noValidate className="clay mt-10 p-6 sm:p-10">
+        {/* Process steps + application form */}
+        <section className="py-16 sm:py-20">
+          <div className={WRAP}>
+            <Rise className="mx-auto max-w-3xl">
+              <ProcessSteps />
+            </Rise>
+
+            <Rise delay={0.1} className="mx-auto max-w-3xl">
+              <form onSubmit={handleSubmit} noValidate className="clay mt-10 p-6 sm:p-10">
           <FormSection icon={User} title="Your Details" subtitle="Just the basics — no account needed to apply.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <TextField
@@ -309,10 +353,15 @@ function JoinInternPage() {
               ) : (
                 "Submit Application"
               )}
-            </button>
+                </button>
+              </div>
+            </form>
+            </Rise>
           </div>
-        </form>
-      </div>
+        </section>
+      </main>
+
+      <SiteFooter />
     </div>
   );
 }
@@ -320,19 +369,6 @@ function JoinInternPage() {
 // ---------------------------------------------
 // Sub-components
 // ---------------------------------------------
-
-function BrandHeader() {
-  return (
-    <Link to="/" className="flex items-center justify-center gap-3">
-      <img
-        src="/edurack-logo.webp"
-        alt="EDURACK"
-        className="h-10 w-auto shrink-0 object-contain sm:h-12"
-      />
-      <span className="font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
-    </Link>
-  );
-}
 
 function ProcessSteps() {
   return (
@@ -433,25 +469,29 @@ function TextField({
 
 function SuccessState({ onReset }: { onReset: () => void }) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="clay mx-auto max-w-md p-10 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent">
-          <CheckCircle2 className="h-8 w-8 text-accent-foreground" />
-        </div>
-        <h2 className="mt-5 font-display text-xl font-bold text-foreground">Application Received</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Thanks for applying to intern at EDURACK. If your profile looks like a fit, we'll email you
-          a short sample task as the next step.
-        </p>
-        <div className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
-          <button onClick={onReset} className="clay-btn-ghost px-6 py-3 text-sm font-semibold">
-            Submit Another Application
-          </button>
-          <Link to="/" className="clay-btn px-6 py-3 text-sm font-semibold">
-            Back to Home
-          </Link>
-        </div>
-      </div>
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader />
+      <main className="flex flex-1 items-center justify-center px-4 py-16">
+        <Rise className="clay mx-auto max-w-md p-10 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent">
+            <CheckCircle2 className="h-8 w-8 text-accent-foreground" />
+          </div>
+          <h2 className="mt-5 font-display text-xl font-bold text-foreground">Application Received</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Thanks for applying to intern at EDURACK. If your profile looks like a fit, we'll email you
+            a short sample task as the next step.
+          </p>
+          <div className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
+            <button onClick={onReset} className="clay-btn-ghost px-6 py-3 text-sm font-semibold">
+              Submit Another Application
+            </button>
+            <Link to="/" className="clay-btn px-6 py-3 text-sm font-semibold">
+              Back to Home
+            </Link>
+          </div>
+        </Rise>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

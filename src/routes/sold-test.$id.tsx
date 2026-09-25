@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { IconLoader2 as Loader2, IconUsersGroup as Users2, IconRosetteDiscountCheck as BadgeCheck, IconClipboardList as ClipboardList, IconPlayerPlayFilled as PlayCircle, IconTag as Tag, IconFileText as FileText } from "@tabler/icons-react";
 import { Timer, BarChart3 } from "lucide-react"; // TODO: no Tabler mapping found yet
@@ -108,7 +108,7 @@ function SoldTestDetailPage() {
         name: "Edurack",
         description: order.itemTitle,
         prefill: { email: user.email ?? undefined },
-        theme: { color: "#0284c7" },
+        theme: { color: "#2b4ea8" },
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
             const freshToken = await user.getIdToken();
@@ -152,159 +152,121 @@ function SoldTestDetailPage() {
     ? attempts.reduce((max, a) => (a.score > max.score ? a : max), attempts[0])
     : null;
 
+  const pct = (a: AttemptSummary) => (a.totalMarks > 0 ? Math.round((a.score / a.totalMarks) * 100) : 0);
+  const hasAttempts = !!attempts && attempts.length > 0;
+  const start = () => navigate({ to: "/test/$testId", params: { testId: id } });
+
+  const action = purchased ? (
+    <div className="space-y-3">
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400"><BadgeCheck className="h-3.5 w-3.5" />You own this test</span>
+      {bestAttempt && <p className="text-sm text-muted-foreground">Best so far: <b className="text-foreground">{bestAttempt.score}/{bestAttempt.totalMarks}</b></p>}
+      <button onClick={start} className="clay-btn inline-flex min-h-12 w-full items-center justify-center gap-2 px-6 text-[15px]"><PlayCircle className="h-4 w-4" />{hasAttempts ? "Retake test" : "Start test"}</button>
+    </div>
+  ) : (
+    <div className="space-y-3">
+      <p className="font-display text-4xl font-extrabold tracking-tight">₹{test.price.toLocaleString()}</p>
+      <p className="text-sm text-muted-foreground">One-time payment. The test unlocks right after payment.</p>
+      <button onClick={handlePurchase} disabled={purchasing} className="clay-btn inline-flex min-h-12 w-full items-center justify-center gap-2 px-6 text-[15px]">
+        {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${test.price.toLocaleString()}`}
+      </button>
+    </div>
+  );
+
+  const mobileAction = purchased ? (
+    <div className="flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold">You own this test</p>
+        {bestAttempt && <p className="text-xs text-muted-foreground">Best {bestAttempt.score}/{bestAttempt.totalMarks}</p>}
+      </div>
+      <button onClick={start} className="clay-btn inline-flex min-h-12 shrink-0 items-center gap-2 px-6 text-[15px]"><PlayCircle className="h-4 w-4" />{hasAttempts ? "Retake" : "Start test"}</button>
+    </div>
+  ) : (
+    <div className="flex items-center gap-3">
+      <p className="font-display text-2xl font-extrabold tracking-tight">₹{test.price.toLocaleString()}</p>
+      <button onClick={handlePurchase} disabled={purchasing} className="clay-btn ml-auto inline-flex min-h-12 items-center gap-2 px-8 text-[15px]">{purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buy now"}</button>
+    </div>
+  );
+
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="min-h-screen bg-background">
       <AppHeader user={user} />
+      <main className="mx-auto max-w-5xl px-4 pb-32 pt-4 sm:px-6 lg:pb-14">
+        <Link to="/dashboard" className="inline-flex min-h-11 items-center text-sm font-semibold text-muted-foreground hover:text-foreground">← Dashboard</Link>
 
-      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-        {/* ── Header card ─────────────────────────────────────────────── */}
-        <div className="clay p-5 sm:p-6">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="clay-inset flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--mint-soft)]">
-              <Tag className="h-5 w-5 text-foreground/50" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/50">Individual Test</p>
-              <h1 className="truncate font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-                {test.name}
-              </h1>
-            </div>
-          </div>
-          <p className="flex items-center gap-1.5 text-sm text-foreground/60">
-            <Users2 className="h-3.5 w-3.5" /> By {test.mentorName}
-          </p>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div className="clay-inset px-3.5 py-3">
-              <p className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
-                <ClipboardList className="h-3 w-3" /> Questions
-              </p>
-              <p className="text-sm font-semibold text-foreground">{test.totalQuestions}</p>
-            </div>
-            <div className="clay-inset px-3.5 py-3">
-              <p className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
-                <Timer className="h-3 w-3" /> Duration
-              </p>
-              <p className="text-sm font-semibold text-foreground">{test.durationMinutes} min</p>
-            </div>
-            <div className="clay-inset px-3.5 py-3 sm:col-span-1 col-span-2">
-              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">Subjects</p>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {test.subjects.map((s) => (
-                  <span
-                    key={s}
-                    className="clay-chip rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/70"
-                  >
-                    {s}
-                  </span>
+        <div className="mt-2 grid gap-5 lg:grid-cols-[1fr_20rem]">
+          <div className="space-y-5">
+            {/* Hero */}
+            <section className="ink-section rounded-3xl p-6 sm:p-8">
+              <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Individual test</p>
+              <h1 className="mt-2 font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl">{test.name}</h1>
+              <p className="mt-3 flex items-center gap-1.5 text-white/70"><Users2 className="h-4 w-4" />By {test.mentorName}</p>
+              <dl className="mt-7 grid grid-cols-3 divide-x divide-white/15 rounded-2xl border border-white/15">
+                {[[<ClipboardList key="q" className="h-3.5 w-3.5" />, "Questions", test.totalQuestions], [<Timer key="t" className="h-3.5 w-3.5" />, "Minutes", test.durationMinutes], [<Tag key="s" className="h-3.5 w-3.5" />, "Subjects", test.subjects.length]].map(([icon, label, v]) => (
+                  <div key={label as string} className="px-3 py-4 sm:px-5">
+                    <dd className="font-display text-2xl font-extrabold sm:text-3xl">{v as number}</dd>
+                    <dt className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-white/60 sm:text-xs">{icon}{label as string}</dt>
+                  </div>
                 ))}
+              </dl>
+            </section>
+
+            {/* What's inside */}
+            <section className="rounded-3xl border border-border bg-card p-5 sm:p-6">
+              <h2 className="font-display text-base font-extrabold">What's inside</h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {test.subjects.map((s) => <span key={s} className="rounded-full border border-border px-3 py-1 text-xs font-bold uppercase tracking-wide">{s}</span>)}
               </div>
-            </div>
-          </div>
-
-          {test.instructions.trim() && (
-            <div className="clay-inset mt-4 flex items-start gap-2 rounded-2xl px-4 py-3">
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-foreground/40" />
-              <div className="min-w-0">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-foreground/40">Instructions</p>
-                <p className="whitespace-pre-line text-sm text-foreground/70">{test.instructions}</p>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="clay-inset mt-4 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-center text-xs font-medium text-foreground">
-              {error}
-            </div>
-          )}
-
-          {!purchased && (
-            <div className="mt-6 flex items-center justify-between gap-3">
-              <span className="font-display text-xl font-bold text-foreground">₹{test.price.toLocaleString()}</span>
-              <button
-                onClick={handlePurchase}
-                disabled={purchasing}
-                className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold disabled:opacity-70"
-              >
-                {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : `Buy for ₹${test.price}`}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Attempts / Start-Retake/Analysis — only once purchased ───── */}
-        {purchased && (
-          <div className="clay mt-5 p-5 sm:p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-foreground/60" />
-                <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">Your attempts</h2>
-              </div>
-              {attempts && attempts.length > 0 && bestAttempt && (
-                <span className="rounded-full bg-[var(--mint-soft)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                  Attempted {attempts.length}x · Best {bestAttempt.score}/{bestAttempt.totalMarks}
-                </span>
-              )}
-            </div>
-
-            {attempts === null ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-              </div>
-            ) : attempts.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <p className="text-sm text-foreground/60">You haven't attempted this test yet.</p>
-                <button
-                  onClick={() => navigate({ to: "/test/$testId", params: { testId: id } })}
-                  className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold"
-                >
-                  <PlayCircle className="h-4 w-4" />
-                  Start Test
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <ul className="space-y-2">
-                  {attempts.map((a) => (
-                    <li key={a.id} className="clay-inset flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">
-                          Attempt {a.attemptNumber}
-                          {bestAttempt?.id === a.id && (
-                            <span className="ml-2 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                              Best
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-foreground/50">
-                          {a.score}/{a.totalMarks} · {a.timeTakenMinutes} min
-                          {a.submittedAt ? ` · ${new Date(a.submittedAt).toLocaleString()}` : ""}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => navigate({ to: "/test-result/$attemptId", params: { attemptId: a.id } })}
-                        className="clay-btn-ghost inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-foreground/70"
-                      >
-                        <BarChart3 className="h-3.5 w-3.5" /> Analysis
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    onClick={() => navigate({ to: "/test/$testId", params: { testId: id } })}
-                    className="clay-btn inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold"
-                  >
-                    <PlayCircle className="h-4 w-4" />
-                    Retake Test
-                  </button>
+              {test.instructions.trim() && (
+                <div className="mt-5 border-t border-border pt-5">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground"><FileText className="h-3.5 w-3.5" />Instructions</p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/80">{test.instructions}</p>
                 </div>
-              </div>
+              )}
+            </section>
+
+            {error && <div className="rounded-2xl border border-destructive/30 px-4 py-3 text-center text-sm font-medium">{error}</div>}
+
+            {/* Attempts */}
+            {purchased && (
+              <section className="rounded-3xl border border-border bg-card p-5 sm:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="flex items-center gap-2 whitespace-nowrap font-display text-base font-extrabold"><BarChart3 className="h-4 w-4" />Your attempts</h2>
+                  {hasAttempts && bestAttempt && <span className="whitespace-nowrap rounded-full border border-border px-3 py-1 text-xs font-bold">{attempts!.length} attempt{attempts!.length === 1 ? "" : "s"} · best {pct(bestAttempt)}%</span>}
+                </div>
+                {attempts === null ? (
+                  <div className="h-24 animate-pulse rounded-2xl bg-secondary" />
+                ) : !hasAttempts ? (
+                  <p className="py-4 text-sm text-muted-foreground">You haven't attempted this test yet. Your score and analysis will show up here.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {attempts.map((a) => (
+                      <li key={a.id} className="py-4 first:pt-0 last:pb-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 text-sm font-bold">Attempt {a.attemptNumber}{bestAttempt?.id === a.id && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">Best</span>}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">{a.score}/{a.totalMarks} · {a.timeTakenMinutes} min{a.submittedAt ? ` · ${new Date(a.submittedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</p>
+                          </div>
+                          <span className="font-display text-2xl font-extrabold leading-none">{pct(a)}%</span>
+                        </div>
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${pct(a)}%` }} /></div>
+                        <button onClick={() => navigate({ to: "/test-result/$attemptId", params: { attemptId: a.id } })} className="clay-btn-ghost mt-3 inline-flex min-h-10 items-center gap-1.5 px-4 text-sm"><BarChart3 className="h-4 w-4" />View analysis</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             )}
           </div>
-        )}
+
+          {/* Desktop action card */}
+          <aside className="hidden lg:block"><div className="sticky top-24 rounded-3xl border border-border bg-card p-6">{action}</div></aside>
+        </div>
       </main>
+
+      {/* Mobile action bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-3 backdrop-blur-xl lg:hidden" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+        <div className="mx-auto max-w-md">{mobileAction}</div>
+      </div>
     </div>
   );
 }

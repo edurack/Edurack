@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { IconSchool as GraduationCap, IconUser as User, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconAward as Award, IconBook2 as BookOpen, IconTag as Tag, IconCurrencyRupee as IndianRupee, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2, IconSparkles as Sparkles, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSend as Send, IconPlus as Plus, IconTrash as Trash2, IconCheck as Check, IconClipboardCheck as ClipboardCheck, IconRocket as Rocket, IconVideo as Video, IconArrowRight as ArrowRight, IconLink as LinkIcon } from "@tabler/icons-react";
 import { EXAM_KEYS, EXAM_LABELS, type ExamKey } from "@/lib/admin-types";
 import { submitCreatorApplication } from "@/server-functions/mentor-applications";
+import { SiteHeader, SiteFooter, WRAP, INK, Rise } from "@/components/landing/site-chrome";
 
 export const Route = createFileRoute("/join-mentor")({
   component: JoinMentorPage,
@@ -232,34 +233,77 @@ function JoinMentorPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-10 sm:px-6 lg:py-16">
-      <div className="mx-auto max-w-3xl">
-        <BrandHeader />
+    <div className="min-h-screen bg-background">
+      <SiteHeader />
 
-        <div className="mt-8 text-center">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <div className="clay-chip inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
-              <Sparkles className="h-4 w-4" />
-              Creator Application
-            </div>
-            <div className="clay-chip inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-foreground sm:text-sm">
-              <span className="h-2 w-2 rounded-full bg-primary" />
-              EDURACK is Live
-            </div>
+      <main>
+        {/* Hero — same light/bold headline pairing + scroll-reveal as the homepage */}
+        <section className="py-14 sm:py-20">
+          <div className={WRAP}>
+            <Rise className="mx-auto max-w-2xl text-center">
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
+                  <Sparkles className="h-4 w-4" />
+                  Creator Application
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-semibold text-foreground sm:text-sm">
+                  <span className="h-2 w-2 rounded-full bg-primary" />
+                  EDURACK is live
+                </span>
+              </div>
+              <h1 className="mt-6 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl">
+                <span className="block font-light">Join EDURACK</span>
+                <span className="block font-extrabold">as a mentor.</span>
+              </h1>
+              <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                EDURACK is live now, helping NEET, JEE, CUET, and IPMAT aspirants prep smarter. Tell us
+                about your background and the batch you'd like to run — our team reviews every
+                application before your mentor space goes live.
+              </p>
+            </Rise>
           </div>
-          <h1 className="fluid-h2 mt-4 font-display font-extrabold tracking-tight text-foreground">
-            Join EDURACK as a Mentor
-          </h1>
-          <p className="fluid-body mx-auto mt-3 max-w-xl text-muted-foreground">
-            EDURACK is live now, helping NEET, JEE, CUET, and IPMAT aspirants prep smarter. Tell us
-            about your background and the batch you'd like to run — our team reviews every
-            application before your mentor space goes live.
-          </p>
-        </div>
+        </section>
 
-        <OnboardingSteps />
+        {/* What running a batch on EDURACK looks like — same ink banner pattern as the homepage marketplace section */}
+        <section className={`${INK} py-16 sm:py-20`}>
+          <div className={WRAP}>
+            <Rise>
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3.5 py-1.5 text-sm font-semibold text-[#7ba4f0]">
+                <Rocket className="h-4 w-4" /> How it works once you're live
+              </p>
+              <h2 className="mt-5 font-display text-3xl leading-[1.05] tracking-tight sm:text-4xl">
+                <span className="block font-light">You run the batch.</span>
+                <span className="block font-extrabold">EDURACK runs the platform.</span>
+              </h2>
+            </Rise>
+            <Rise
+              delay={0.1}
+              className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-3xl border border-white/15 bg-white/15 sm:grid-cols-2"
+            >
+              {[
+                ["Your batch, your syllabus", "You decide"],
+                ["Your price, your pace", "You decide"],
+                ["Enrolment and payments", "Edurack handles"],
+                ["Discovery and promotion", "Edurack handles"],
+              ].map(([a, b]) => (
+                <div key={a} className="bg-[#141b2b] p-5">
+                  <p className="font-display font-bold">{a}</p>
+                  <p className="mt-1 text-sm text-white/50">{b}</p>
+                </div>
+              ))}
+            </Rise>
+          </div>
+        </section>
 
-        <form onSubmit={handleSubmit} noValidate className="clay mt-10 p-6 sm:p-10">
+        {/* Onboarding steps + application form */}
+        <section className="py-16 sm:py-20">
+          <div className={WRAP}>
+            <Rise className="mx-auto max-w-3xl">
+              <OnboardingSteps />
+            </Rise>
+
+            <Rise delay={0.1} className="mx-auto max-w-3xl">
+              <form onSubmit={handleSubmit} noValidate className="clay mt-10 p-6 sm:p-10">
           <FormSection icon={User} title="Personal Details" subtitle="How students and our team can reach you.">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <TextField
@@ -522,12 +566,17 @@ function JoinMentorPage() {
               ) : (
                 "Submit Application"
               )}
-            </button>
-          </div>
-        </form>
+                </button>
+              </div>
+            </form>
 
-        <ContactCallout />
-      </div>
+              <ContactCallout />
+            </Rise>
+          </div>
+        </section>
+      </main>
+
+      <SiteFooter />
     </div>
   );
 }
@@ -535,19 +584,6 @@ function JoinMentorPage() {
 // ---------------------------------------------
 // Sub-components
 // ---------------------------------------------
-
-function BrandHeader() {
-  return (
-    <Link to="/" className="flex items-center justify-center gap-3">
-      <img
-        src="https://www.edurack.in/edurack-logo.webp"
-        alt="EDURACK"
-        className="h-10 w-auto shrink-0 object-contain sm:h-12"
-      />
-      <span className="font-display text-xl font-bold tracking-tight text-foreground">EDURACK</span>
-    </Link>
-  );
-}
 
 function OnboardingSteps() {
   return (
@@ -691,25 +727,29 @@ function TextField({
 
 function SuccessState({ onReset }: { onReset: () => void }) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="clay mx-auto max-w-md p-10 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent">
-          <CheckCircle2 className="h-8 w-8 text-accent-foreground" />
-        </div>
-        <h2 className="mt-5 font-display text-xl font-bold text-foreground">Application Received</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Thanks for applying to mentor on EDURACK. Our team will review your details and get back
-          to you at the email you provided.
-        </p>
-        <div className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
-          <button onClick={onReset} className="clay-btn-ghost px-6 py-3 text-sm font-semibold">
-            Submit Another Application
-          </button>
-          <Link to="/" className="clay-btn px-6 py-3 text-sm font-semibold">
-            Back to Home
-          </Link>
-        </div>
-      </div>
+    <div className="flex min-h-screen flex-col bg-background">
+      <SiteHeader />
+      <main className="flex flex-1 items-center justify-center px-4 py-16">
+        <Rise className="clay mx-auto max-w-md p-10 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent">
+            <CheckCircle2 className="h-8 w-8 text-accent-foreground" />
+          </div>
+          <h2 className="mt-5 font-display text-xl font-bold text-foreground">Application Received</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Thanks for applying to mentor on EDURACK. Our team will review your details and get back
+            to you at the email you provided.
+          </p>
+          <div className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center sm:gap-3">
+            <button onClick={onReset} className="clay-btn-ghost px-6 py-3 text-sm font-semibold">
+              Submit Another Application
+            </button>
+            <Link to="/" className="clay-btn px-6 py-3 text-sm font-semibold">
+              Back to Home
+            </Link>
+          </div>
+        </Rise>
+      </main>
+      <SiteFooter />
     </div>
   );
 }

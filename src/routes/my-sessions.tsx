@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { IconLoader2 as Loader2, IconLink as LinkIcon } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
@@ -23,6 +23,9 @@ type Row = {
   mentor_session_offerings?: { title: string };
 };
 
+const when = (r: Row) => new Date(`${r.session_date}T${r.start_time}:00`);
+const STATUS_LABEL: Record<Row["status"], string> = { upcoming: "Upcoming", completed: "Completed", cancelled: "Cancelled", no_show: "Missed" };
+
 function MySessionsPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -42,65 +45,83 @@ function MySessionsPage() {
     })();
   }, [user]);
 
-  const filtered = useMemo(() => {
-    if (!rows) return [];
+  const { upcoming, past } = useMemo(() => {
     const now = new Date();
-    return rows.filter((r) => {
-      const isPast = new Date(`${r.session_date}T${r.start_time}:00`) < now || r.status !== "upcoming";
-      return tab === "upcoming" ? !isPast : isPast;
-    });
-  }, [rows, tab]);
+    const list = rows ?? [];
+    const isPast = (r: Row) => when(r) < now || r.status !== "upcoming";
+    return {
+      upcoming: list.filter((r) => !isPast(r)).sort((a, b) => when(a).getTime() - when(b).getTime()),
+      past: list.filter(isPast).sort((a, b) => when(b).getTime() - when(a).getTime()),
+    };
+  }, [rows]);
 
   if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen">
-      <AppHeader user={user} />
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <h1 className="mb-4 font-display text-2xl font-bold tracking-tight text-foreground">My Sessions</h1>
+  const shown = tab === "upcoming" ? upcoming : past;
 
-        <div className="mb-5 flex gap-2">
-          <button onClick={() => setTab("upcoming")} className={`rounded-full px-4 py-2 text-xs font-bold ${tab === "upcoming" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}>
-            Upcoming
-          </button>
-          <button onClick={() => setTab("past")} className={`rounded-full px-4 py-2 text-xs font-bold ${tab === "past" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}>
-            Past
-          </button>
+  return (
+    <div className="min-h-screen bg-background">
+      <AppHeader user={user} />
+      <main className="mx-auto max-w-3xl px-4 pb-16 pt-4 sm:px-6">
+        <Link to="/dashboard" className="inline-flex min-h-11 items-center text-sm font-semibold text-muted-foreground hover:text-foreground">← Dashboard</Link>
+        <h1 className="mt-2 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl">
+          <span className="block font-light">Your</span>
+          <span className="block font-extrabold">sessions</span>
+        </h1>
+
+        <div className="mt-6 inline-flex rounded-full border border-border p-1">
+          {([["upcoming", "Upcoming", upcoming.length], ["past", "Past", past.length]] as const).map(([k, label, n]) => (
+            <button key={k} onClick={() => setTab(k)} className={`min-h-10 rounded-full px-5 text-sm font-bold transition-colors ${tab === k ? "bg-foreground text-background" : "text-foreground/70"}`}>
+              {label}{rows && n > 0 ? ` · ${n}` : ""}
+            </button>
+          ))}
         </div>
 
-        {rows === null ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="clay p-8 text-center text-sm text-foreground/60">{tab === "upcoming" ? "No upcoming sessions." : "No past sessions yet."}</div>
-        ) : (
-          <ul className="space-y-2">
-            {filtered.map((r) => (
-              <li key={r.id} className="clay-inset flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-foreground">{r.mentor_session_offerings?.title ?? "Session"}</p>
-                  <p className="text-xs text-foreground/50">
-                    {new Date(r.session_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {r.start_time} ·{" "}
-                    {r.is_free ? "Free" : currency.format(r.price)} · {r.status}
-                  </p>
-                </div>
-                {r.meeting_link && r.status === "upcoming" && (
-                  <a href={r.meeting_link} target="_blank" rel="noreferrer" className="clay-btn-ghost inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--sky-deep)]">
-                    <LinkIcon className="h-3.5 w-3.5" />
-                    Join
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="mt-6">
+          {rows === null ? (
+            <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-24 animate-pulse rounded-3xl bg-secondary" />)}</div>
+          ) : shown.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-border p-10 text-center">
+              <p className="text-sm text-muted-foreground">{tab === "upcoming" ? "No upcoming sessions." : "No past sessions yet."}</p>
+              {tab === "upcoming" && <Link to="/dashboard" className="clay-btn mt-4 inline-flex min-h-11 items-center px-6 text-sm">Browse sessions</Link>}
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {shown.map((r) => {
+                const d = when(r);
+                const live = tab === "upcoming";
+                return (
+                  <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-3xl border border-border bg-card p-4">
+                    <div className={`grid h-16 w-16 shrink-0 place-items-center rounded-2xl text-center ${live ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>
+                      <div>
+                        <p className="font-display text-2xl font-extrabold leading-none">{d.getDate()}</p>
+                        <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide opacity-80">{d.toLocaleDateString("en-IN", { month: "short" })}</p>
+                      </div>
+                    </div>
+                    <div className="min-w-0 flex-1 basis-40">
+                      <p className="font-display text-base font-bold leading-snug">{r.mentor_session_offerings?.title ?? "Mentor session"}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {r.start_time} · {r.duration_minutes} min · {r.is_free ? "Free" : currency.format(r.price)}
+                        {!live && <span className="ml-2 rounded-full border border-border px-2 py-0.5 font-bold">{STATUS_LABEL[r.status]}</span>}
+                      </p>
+                    </div>
+                    {live && r.meeting_link && (
+                      <a href={r.meeting_link} target="_blank" rel="noreferrer" className="clay-btn inline-flex min-h-11 w-full items-center justify-center gap-1.5 px-4 text-sm sm:w-auto">
+                        <LinkIcon className="h-4 w-4" />Join
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </main>
     </div>
   );

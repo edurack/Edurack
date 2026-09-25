@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { listAttachedSoldTestsForStudent } from "@/server-functions/batch-hub";
 import { IconLoader2 as Loader2, IconLayoutDashboard as LayoutDashboard, IconClipboardList as ClipboardList, IconSpeakerphone as Megaphone, IconLifebuoy as LifeBuoy, IconLock as Lock, IconPlayerPlayFilled as PlayCircle, IconFileText as FileText, IconChevronDown as ChevronDown, IconX as X, IconUsersGroup as Users2, IconBook2 as BookOpen, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconVideo as Video, IconCalendarClock as CalendarClock, IconDotsVertical as MoreVertical, IconCircleCheck as CheckCircle2, IconMessageCircle as MessageSquare, IconSend as Send, IconRosetteDiscountCheck as BadgeCheck, IconExternalLink as ExternalLink, IconDownload as Download, IconChevronRight as ChevronRight, IconTag as Tag, IconCircleX as XCircle, IconLogin as LogIn } from "@tabler/icons-react";
@@ -74,12 +75,13 @@ type TabKey = "overview" | "tests" | "seriesTests" | "assets" | "announcements" 
 // it. Mentor-specific elements use purple, echoing the dashboard's Mentors
 // tab. Fallback hex is baked into every value so nothing goes invisible if
 // these CSS variables aren't defined yet in globals.css.
-const TEAL = { soft: "var(--teal-soft, #E1F5EE)", deep: "var(--teal-deep, #0F6E56)" };
-const PINK = { soft: "var(--pink-soft, #FCE7F3)", deep: "var(--pink-deep, #BE185D)" };
-const PURPLE = { soft: "var(--purple-soft, #EDE9FE)", deep: "var(--purple-deep, #6D28D9)" };
-const AMBER = { soft: "var(--amber-soft, #FEF3C7)", deep: "var(--amber-deep, #B45309)" };
-const CORAL = { soft: "var(--coral-soft, #FDE2DA)", deep: "var(--coral-deep, #B3441F)" };
-const LEMON = { soft: "var(--lemon-soft, #FBF3C7)", deep: "var(--lemon-deep, #8A6D0B)" };
+const SAPPHIRE = { soft: "color-mix(in oklab, var(--primary) 10%, transparent)", deep: "var(--primary)" };
+const TEAL = SAPPHIRE;
+const PINK = SAPPHIRE;
+const PURPLE = SAPPHIRE;
+const AMBER = { soft: "color-mix(in oklab, #f59e0b 14%, transparent)", deep: "#b45309" };
+const CORAL = { soft: "color-mix(in oklab, var(--destructive) 12%, transparent)", deep: "var(--destructive)" };
+const LEMON = { soft: "color-mix(in oklab, #eab308 14%, transparent)", deep: "#854d0e" };
 const DESTRUCTIVE = "var(--destructive, #DC2626)";
 
 const KIND_ACCENT: Record<Kind, { soft: string; deep: string }> = {
@@ -434,7 +436,7 @@ function CourseHubPage() {
         name: "Edurack",
         description: order.itemTitle,
         prefill: { email: user.email ?? undefined },
-        theme: { color: "#0284c7" },
+        theme: { color: "#2b4ea8" },
         handler: async (response: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
@@ -471,9 +473,10 @@ function CourseHubPage() {
     }
   }
 
-  return (
-    <div className="relative min-h-screen overflow-hidden">
+  const thumbUrl = kind === "bundle" ? bundle?.thumbnailUrl : mentorship?.thumbnailUrl;
 
+  return (
+    <div className="min-h-screen bg-background">
       <AppHeader user={user} />
 
       <div
@@ -482,7 +485,8 @@ function CourseHubPage() {
         }`}
       >
         {/* ── Desktop sidebar ─────────────────────────────────────────── */}
-        <aside className="sticky top-20 hidden h-fit w-52 shrink-0 flex-col gap-1 md:flex">
+        <aside className="sticky top-24 hidden h-fit w-56 shrink-0 flex-col gap-1 md:flex">
+          <Link to="/dashboard" className="mb-3 inline-flex min-h-10 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">← Dashboard</Link>
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = activeTab === t.key;
@@ -490,12 +494,9 @@ function CourseHubPage() {
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
-                className={`flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                  active ? "text-white" : "text-foreground/70 hover:translate-x-0.5 hover:bg-foreground/5"
-                }`}
-                style={active ? { background: accent.deep } : undefined}
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${active ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-secondary"}`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-[18px] w-[18px]" />
                 {t.label}
               </button>
             );
@@ -503,29 +504,21 @@ function CourseHubPage() {
         </aside>
 
         <main className="min-w-0 flex-1">
-          <div className="clay mb-5 flex items-center gap-4 p-4 sm:mb-6 sm:p-6">
-            <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl sm:h-14 sm:w-14"
-              style={{ background: accent.soft }}
-            >
-              {kind === "bundle" ? (
-                <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: accent.deep }} />
-              ) : (
-                <Users2 className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: accent.deep }} />
-              )}
+          <Link to="/dashboard" className="mb-1 inline-flex min-h-11 items-center text-sm font-semibold text-muted-foreground hover:text-foreground md:hidden">← Dashboard</Link>
+          <section className="mb-6 overflow-hidden rounded-3xl border border-border bg-card">
+            <div className="ink-section relative flex min-h-32 items-end sm:min-h-36">
+              {thumbUrl && <img src={thumbUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
+              <div className="relative w-full p-5 sm:p-7">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">{kind === "bundle" ? "Test series" : "Mentorship"}</p>
+                <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl">{title ?? "…"}</h1>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p
-                className="text-[10px] font-bold uppercase tracking-wide sm:text-xs"
-                style={{ color: accent.deep }}
-              >
-                {kind === "bundle" ? "Test Series" : "Mentorship"}
-              </p>
-              <h1 className="truncate font-display text-lg font-bold tracking-tight text-foreground sm:text-2xl">
-                {title ?? "…"}
-              </h1>
+            <div className="flex flex-wrap items-center gap-2 p-4 sm:px-7">
+              {(kind === "bundle" ? bundle?.track : mentorship?.track) ? <span className="rounded-full border border-border px-3 py-1 text-xs font-bold">{kind === "bundle" ? bundle?.track : mentorship?.track}</span> : null}
+              {kind === "mentorship" && mentorship?.mentor && <span className="inline-flex items-center gap-2 rounded-full border border-border py-1 pl-1 pr-3 text-xs font-bold">{mentorship.mentor.profilePictureUrl ? <img src={mentorship.mentor.profilePictureUrl} alt="" className="h-6 w-6 rounded-full object-cover" /> : <span className="grid h-6 w-6 place-items-center rounded-full bg-primary/10 text-primary">{mentorship.mentor.name.charAt(0)}</span>}{mentorship.mentor.name}</span>}
+              {isPurchased && <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">You're enrolled</span>}
             </div>
-          </div>
+          </section>
 
           <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
             {activeTab === "overview" && (
@@ -579,9 +572,8 @@ function CourseHubPage() {
           horizontally instead, matching how most native Android app bars
           handle more items than fit. */}
       <nav
-        className={`clay fixed inset-x-3 z-30 flex items-center gap-1 overflow-x-auto rounded-3xl p-1.5 transition-all duration-300 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden ${
-          showPurchaseBar ? "bottom-[8.5rem]" : "bottom-3"
-        }`}
+        className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-border bg-background/95 backdrop-blur-xl [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -590,12 +582,10 @@ function CourseHubPage() {
             <button
               key={t.key}
               onClick={() => setActiveTab(t.key)}
-              className={`flex shrink-0 flex-col items-center gap-0.5 rounded-2xl px-4 py-2 text-[9px] font-semibold transition-all duration-200 ${
-                active ? "text-white" : "text-foreground/60"
-              }`}
-              style={active ? { background: accent.deep } : undefined}
+              className={`relative flex min-h-16 min-w-[4.75rem] flex-1 shrink-0 flex-col items-center justify-center gap-1 whitespace-nowrap px-3 text-[11px] font-bold transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
             >
-              <Icon className="h-4 w-4" />
+              {active && <motion.span layoutId="course-tab" className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-primary" />}
+              <Icon className="h-5 w-5" />
               {t.label}
             </button>
           );
@@ -604,8 +594,8 @@ function CourseHubPage() {
 
       {/* ── Sticky purchase bar ─────────────────────────────────────────── */}
       {showPurchaseBar && (
-        <div className="fixed inset-x-0 bottom-3 z-20 px-3">
-          <div className="clay mx-auto max-w-xl p-4 sm:p-5">
+        <div className="fixed inset-x-0 bottom-16 z-20 md:inset-x-auto md:bottom-6 md:right-8 md:w-[26rem]" style={{ marginBottom: "env(safe-area-inset-bottom)" }}>
+          <div className="border-y border-border bg-card p-3 sm:p-4 md:rounded-2xl md:border md:p-5 md:shadow-float">
             {/* Coupon apply row — mentorship batches only, promoters never
                 promote bundles (see promoter-portal.ts).
                 CHANGED: the input used to always render, which — stacked on
@@ -700,17 +690,13 @@ function CourseHubPage() {
 
                 </div>
                 <p className="truncate text-xs text-foreground/50">
-                  {user ? (isFreeItem ? "Claim this for free" : "Purchase to unlock everything") : "Log in to unlock everything"}
-                </p>
-                <p className="truncate text-xs text-foreground/50">
                   {user ? "Purchase to unlock everything" : "Log in to purchase and unlock everything"}
                 </p>
               </div>
               <button
                 onClick={handlePurchase}
                 disabled={purchasing}
-                className="flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold text-white transition-transform hover:scale-105 disabled:opacity-70 disabled:hover:scale-100"
-                style={{ background: accent.deep }}
+                className="clay-btn inline-flex min-h-12 shrink-0 items-center gap-2 px-6 text-sm"
               >
               {purchasing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -723,7 +709,7 @@ function CourseHubPage() {
           </div>
           {purchaseError && (
             <div
-              className="clay-inset mx-auto mt-2 max-w-xl rounded-2xl px-4 py-2 text-center text-xs font-medium text-foreground"
+              className="mx-auto mt-2 max-w-xl rounded-2xl border border-destructive/30 px-4 py-2 text-center text-xs font-medium text-foreground"
               style={{ background: CORAL.soft }}
             >
               {purchaseError}
@@ -1552,7 +1538,7 @@ function BatchSeriesTestsTab({
         name: "Edurack",
         description: order.itemTitle,
         prefill: { email: user.email ?? undefined },
-        theme: { color: "#0284c7" },
+        theme: { color: "#2b4ea8" },
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           try {
             const freshToken = await user.getIdToken();

@@ -618,7 +618,7 @@ function MentorBanner() {
           <p className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3.5 py-1.5 text-sm font-semibold text-[#7ba4f0]"><UserCheck className="h-4 w-4" /> Founding 25 mentors</p>
           <h2 className="mt-5 font-display text-4xl leading-[1.05] tracking-tight sm:text-5xl"><span className="block font-light">You cleared the exam.</span><span className="block font-extrabold">Help someone clear it.</span></h2>
           <p className="mt-5 max-w-md text-white/60">Create your own batch, set your price and teach your way. Edurack handles the platform, enrolment and payments.</p>
-          <Link to="/join-mentor" preload="viewport" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full bg-white px-6 text-[15px] font-bold text-[#141b2b] transition-transform active:scale-[.97] hover:-translate-y-0.5">Become a founding mentor <ArrowRight className="h-4 w-4" /></Link>
+          <Link to="/join-mentor" preload="viewport" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#ffffff] px-6 text-[15px] font-bold text-[#141b2b] transition-transform active:scale-[.97] hover:-translate-y-0.5">Become a founding mentor <ArrowRight className="h-4 w-4" /></Link>
         </Rise>
         <Rise delay={0.1} className="grid grid-cols-2 gap-px overflow-hidden rounded-3xl border border-white/15 bg-white/15">
           {[["Your batch", "You decide"], ["Your price", "You decide"], ["Enrolment and payments", "Edurack handles"], ["Discovery and promotion", "Edurack handles"]].map(([a, b]) => (

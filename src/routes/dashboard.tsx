@@ -223,8 +223,8 @@ function DashboardPage() {
     if (!user) return;
     (async () => {
       const token = await user.getIdToken();
-      listMyBookedSessions({ data: { token } }).then((r) => setBookings(r.bookings as BookingRow[])).catch(() => setBookings([]));
-      getMyBatchPerformance({ data: { token } }).then((r) => setPerf(r.batches as BatchPerf[])).catch(() => setPerf([]));
+      listMyBookedSessions({ data: { token } }).then((r: { bookings: unknown }) => setBookings(r.bookings as BookingRow[])).catch(() => setBookings([]));
+      getMyBatchPerformance({ data: { token } }).then((r: { batches: unknown }) => setPerf(r.batches as BatchPerf[])).catch(() => setPerf([]));
     })();
   }, [user]);
 
@@ -412,7 +412,7 @@ function DashboardPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               {view === "home" && <p className="text-sm font-semibold text-muted-foreground">{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>}
-              <h1 className="truncate font-display text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">{title}</h1>
+              <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">{title}</h1>
             </div>
             <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-border bg-card px-4 transition-colors focus-within:border-primary sm:max-w-xs">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -451,7 +451,13 @@ function DashboardPage() {
                 </div>
               </>
             ) : view === "sessions" ? (
-              <StudentOpenSessionsModule getToken={() => user.getIdToken()} />
+              <div>
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">Free and paid sessions open for booking right now.</p>
+                  <Link to="/my-sessions" className={linkAction}>My booked sessions</Link>
+                </div>
+                <StudentOpenSessionsModule getToken={() => user.getIdToken()} />
+              </div>
             ) : view === "tests" ? (
               <SoldTestGrid tests={soldTests} />
             ) : (
@@ -478,7 +484,7 @@ function DashboardPage() {
 // ─── Overview (the actual dashboard) ────────────────────────────────────
 function Panel({ title, action, children, className = "" }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`rounded-3xl border border-border bg-card p-5 sm:p-6 ${className}`}>
+    <section className={`min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-display text-base font-extrabold tracking-tight">{title}</h2>
         {action}
@@ -504,13 +510,13 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
   ];
-  const tile = "group flex min-h-20 items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary";
+  const tile = "group flex min-h-24 min-w-0 flex-col items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary sm:min-h-20 sm:flex-row sm:items-center";
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Up next */}
-        <section className="ink-section flex flex-col justify-between rounded-3xl p-6 lg:col-span-3">
+        <section className="ink-section flex min-w-0 flex-col justify-between rounded-3xl p-6 lg:col-span-3">
           <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Up next</p>
           {next ? (
             <>
@@ -520,7 +526,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
                 <p className="mt-3 truncate font-display text-lg font-bold">{next.mentor_session_offerings?.title ?? "Mentor session"}</p>
               </div>
               <div className="mt-6 flex flex-wrap gap-2">
-                {next.meeting_link && <a href={next.meeting_link} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#141b2b]"><LinkIcon className="h-4 w-4" />Join session</a>}
+                {next.meeting_link && <a href={next.meeting_link} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#ffffff] px-5 text-sm font-bold text-[#141b2b]"><LinkIcon className="h-4 w-4" />Join session</a>}
                 <Link to="/my-sessions" className="inline-flex min-h-11 items-center rounded-full border border-white/25 px-5 text-sm font-semibold text-white hover:border-white/60">{upcoming.length > 1 ? `All ${upcoming.length} sessions` : "My sessions"}</Link>
               </div>
             </>
@@ -530,7 +536,10 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
                 <p className="font-display text-3xl font-extrabold tracking-tight">{bookingsLoaded ? "Nothing booked yet" : "Checking your calendar…"}</p>
                 <p className="mt-2 max-w-sm text-white/65">{freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam."}</p>
               </div>
-              <button type="button" onClick={() => go("sessions")} className="mt-6 inline-flex min-h-11 w-fit items-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#141b2b]">Browse sessions <ArrowRight className="h-4 w-4" /></button>
+              <div className="mt-6 flex flex-wrap items-center gap-4">
+                <button type="button" onClick={() => go("sessions")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#ffffff] px-5 text-sm font-bold text-[#141b2b]">Browse sessions <ArrowRight className="h-4 w-4" /></button>
+                <Link to="/my-sessions" className="inline-flex min-h-11 items-center text-sm font-semibold text-white/70 hover:text-white">My sessions</Link>
+              </div>
             </>
           )}
         </section>
@@ -566,12 +575,12 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
       {/* Quick actions */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {actions.map((a) => {
-          const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="truncate text-sm font-bold">{a.label}</p><p className="truncate text-xs text-muted-foreground">{a.sub}</p></div></>);
+          const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
           return a.to ? <Link key={a.label} to={a.to} className={tile}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={tile}>{inner}</button>;
         })}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
           {continueCount === 0 ? (
             <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
