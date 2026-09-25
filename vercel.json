@@ -18,9 +18,6 @@
         }
       ]
     }
-  ],
-  "crons": [
-    { "path": "/cron/blog-publish", "schedule": "*/5 * * * *" }
   ]
 }
 
