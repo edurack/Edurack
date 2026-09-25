@@ -5,6 +5,7 @@ import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/
 import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps, IconUserCheck as UserCheck, IconFlask as FlaskConical } from "@tabler/icons-react";
 import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, CalendarClock } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
+import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
   listAllPurchasesAdmin, 
@@ -64,6 +65,7 @@ type ModuleKey =
   | "sessionTemplates"
   | "mentors"
   | "promoters"
+  | "blogs" 
   | "interns"
   | "internTrials"
   | "dangerZone"
@@ -87,6 +89,8 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "sessionTemplates", label: "Session Templates", icon: CalendarClock as any },
+      { key: "blogs", label: "Blog", icon: FileText },
+
 
 
     ],
@@ -363,8 +367,8 @@ function ModuleRouter({
       return <MentorHubModule adminUser={adminUser} />;
     case "promoters":
       return <PromoterHubModule adminUser={adminUser} />;
-    case "promoters":
-      return <PromoterHubModule adminUser={adminUser} />;
+    case "blogs":
+      return <BlogHubModule adminUser={adminUser} />;
     case "interns":
       return <InternHubModule adminUser={adminUser} />;
     case "internTrials":

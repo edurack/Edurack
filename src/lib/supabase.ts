@@ -122,6 +122,9 @@ export const MAX_INTERN_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
 export const INTERN_APPLICATIONS_BUCKET = "intern-applications";
 export const MAX_INTERN_APPLICATION_FILE_BYTES = 10 * 1024 * 1024; // 10MB — resumes/portfolios are small
 
+export const BLOG_ASSETS_BUCKET = "blog-assets";
+export const MAX_BLOG_IMAGE_BYTES = 20 * 1024 * 1024;
+
 
 // Shared helper — uploads a single File to the given bucket under a
 // collision-proof generated name, and returns its public URL. Every

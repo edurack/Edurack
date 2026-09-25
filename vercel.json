@@ -8,6 +8,19 @@
           "value": "same-origin-allow-popups"
         }
       ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
     }
+  ],
+  "crons": [
+    { "path": "/cron/blog-publish", "schedule": "*/5 * * * *" }
   ]
 }
+

@@ -26,6 +26,9 @@ import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as BlogIndexRouteImport } from './routes/blog/index'
+import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
+import { Route as CronBlogPublishRouteImport } from './routes/cron.blog-publish'
 import { Route as InternAuthRouteImport } from './routes/intern/auth'
 import { Route as InternCertificateRouteImport } from './routes/intern/certificate'
 import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
@@ -133,6 +136,21 @@ const AdminAuthRoute = AdminAuthRouteImport.update({
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/admin/dashboard',
   path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/blog/',
+  path: '/blog/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/blog/$slug',
+  path: '/blog/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronBlogPublishRoute = CronBlogPublishRouteImport.update({
+  id: '/cron/blog-publish',
+  path: '/cron/blog-publish',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InternAuthRoute = InternAuthRouteImport.update({
@@ -270,6 +288,8 @@ export interface FileRoutesByFullPath {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/cron/blog-publish': typeof CronBlogPublishRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -291,6 +311,7 @@ export interface FileRoutesByFullPath {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/blog/': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -312,6 +333,8 @@ export interface FileRoutesByTo {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/cron/blog-publish': typeof CronBlogPublishRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -333,6 +356,7 @@ export interface FileRoutesByTo {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/blog': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -355,6 +379,8 @@ export interface FileRoutesById {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/cron/blog-publish': typeof CronBlogPublishRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -376,6 +402,7 @@ export interface FileRoutesById {
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/blog/': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
 }
@@ -399,6 +426,8 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/blog/$slug'
+    | '/cron/blog-publish'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -420,6 +449,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/verify/$certificateId'
+    | '/blog/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   fileRoutesByTo: FileRoutesByTo
@@ -441,6 +471,8 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/blog/$slug'
+    | '/cron/blog-publish'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -462,6 +494,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/verify/$certificateId'
+    | '/blog'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   id:
@@ -483,6 +516,8 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/blog/$slug'
+    | '/cron/blog-publish'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -504,6 +539,7 @@ export interface FileRouteTypes {
     | '/test-result/$attemptId'
     | '/test/$testId'
     | '/verify/$certificateId'
+    | '/blog/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
   fileRoutesById: FileRoutesById
@@ -526,6 +562,8 @@ export interface RootRouteChildren {
   VerifyRoute: typeof VerifyRouteWithChildren
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  BlogSlugRoute: typeof BlogSlugRoute
+  CronBlogPublishRoute: typeof CronBlogPublishRoute
   InternAuthRoute: typeof InternAuthRoute
   InternCertificateRoute: typeof InternCertificateRoute
   InternDashboardRoute: typeof InternDashboardRoute
@@ -546,6 +584,7 @@ export interface RootRouteChildren {
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
   TestTestIdRoute: typeof TestTestIdRoute
+  BlogIndexRoute: typeof BlogIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
 }
@@ -669,6 +708,27 @@ declare module '@tanstack/react-router' {
       path: '/admin/dashboard'
       fullPath: '/admin/dashboard'
       preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/blog-publish': {
+      id: '/cron/blog-publish'
+      path: '/cron/blog-publish'
+      fullPath: '/cron/blog-publish'
+      preLoaderRoute: typeof CronBlogPublishRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/intern/auth': {
@@ -864,6 +924,8 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyRoute: VerifyRouteWithChildren,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  BlogSlugRoute: BlogSlugRoute,
+  CronBlogPublishRoute: CronBlogPublishRoute,
   InternAuthRoute: InternAuthRoute,
   InternCertificateRoute: InternCertificateRoute,
   InternDashboardRoute: InternDashboardRoute,
@@ -884,6 +946,7 @@ const rootRouteChildren: RootRouteChildren = {
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,
   TestTestIdRoute: TestTestIdRoute,
+  BlogIndexRoute: BlogIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
 }

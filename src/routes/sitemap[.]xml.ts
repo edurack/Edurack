@@ -1,27 +1,6 @@
 // src/routes/sitemap[.]xml.ts
 //
 // TanStack Start Server Route — serves GET /sitemap.xml.
-//
-// File-naming note: the brackets around the dot (`sitemap[.]xml.ts`) are
-// TanStack Router's escape syntax so the router treats `.xml` as a literal
-// part of the URL path instead of a route-segment separator. This produces
-// a route at exactly `/sitemap.xml` — see the "Server Routes" guide's file
-// naming table (`my-script[.]js.ts` → `/my-script.js`).
-//
-// WHY a server route instead of a static file in /public:
-//   Your mentor-profile pages (/mentor-profile/$mentorId) are created the
-//   moment an admin assigns a mentor to a batch — no deploy happens in
-//   between. A static sitemap.xml would go stale the first time that
-//   happens. This queries Mongo on each request via the same `getDb()`
-//   helper your other server functions already use, so the sitemap is
-//   always exactly as current as your database — and because it's a
-//   TanStack Start server route, it goes through the same Nitro/Vercel
-//   build as the rest of your app, no separate deploy config needed.
-//
-// CACHING: the Cache-Control header below tells Vercel's edge network to
-// cache the response for 1 hour and serve stale content instantly for up
-// to a day while regenerating in the background, so crawlers get a fast
-// response and Mongo isn't hit on every single crawl.
 
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/mongo";
@@ -34,6 +13,7 @@ const SITE_URL = "https://www.edurack.in";
 // the field for your whole site).
 const staticRoutes: { path: string; lastmod: string; priority: number; changefreq?: string }[] = [
   { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
+  { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
   { path: "/contact", lastmod: "2026-09-11", priority: 0.5 },
@@ -87,26 +67,28 @@ export const Route = createFileRoute("/sitemap.xml")({
         try {
           const db = await getDb();
 
-          // Only genuinely live, publicly-reachable mentor profiles belong
-          // in the sitemap — same eligibility rule used in
-          // listMentorsForLanding (status not "terminated", must have a
-          // name). Submitting a URL crawlers land on and immediately see
-          // as incomplete/removed hurts crawl trust site-wide.
+          // Only genuinely live, publicly-reachable mentor profiles belong in the sitemap
           const mentors = await db
             .collection("mentors")
             .find(
-              { status: { $ne: "terminated" }, name: { $exists: true, $ne: "" } },
+              { status: { $ne: "terminated" }, name: { $exists: true,$ne: "" } },
               { projection: { updatedAt: 1, createdAt: 1 } },
             )
             .toArray();
 
-          // Mentorship course pages at /course/mentorship/$id, backed by
-          // getPublicMentorshipBatch — now genuinely public (no auth
-          // required), so they're real, crawlable, content-bearing pages
-          // and belong in the sitemap the same way mentor profiles do.
+          // Mentorship course pages at /course/mentorship/$id
           const mentorshipBatches = await db
             .collection("mentorshipBatches")
             .find({}, { projection: { updatedAt: 1, createdAt: 1 } })
+            .toArray();
+
+          // Published blog posts — live query pattern
+          const blogPosts = await db
+            .collection("blogPosts")
+            .find(
+              { status: "published", deletedAt: null },
+              { projection: { slug: 1, updatedAt: 1, publishedAt: 1 } },
+            )
             .toArray();
 
           const staticEntries = staticRoutes.map((r) =>
@@ -131,12 +113,22 @@ export const Route = createFileRoute("/sitemap.xml")({
             ),
           );
 
+          const blogEntries = blogPosts.map((p) =>
+            urlEntry(
+              `${SITE_URL}/blog/${p.slug}`,
+              toIsoDate(p.updatedAt ?? p.publishedAt),
+              0.6,
+              "weekly",
+            ),
+          );
+
           const xml = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
             ...staticEntries,
             ...mentorEntries,
             ...mentorshipBatchEntries,
+            ...blogEntries,
             "</urlset>",
           ].join("\n");
 
@@ -149,10 +141,6 @@ export const Route = createFileRoute("/sitemap.xml")({
           });
         } catch (err) {
           console.error("[sitemap] failed to generate:", err);
-          // Fail safe: still return a valid (if minimal) sitemap rather
-          // than a 500, so a transient DB hiccup never takes the sitemap
-          // offline for a crawler that happens to hit it at the wrong
-          // moment.
           return new Response(buildStaticOnlyXml(), {
             status: 200,
             headers: {

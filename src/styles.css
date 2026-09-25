@@ -354,3 +354,34 @@
     --tw-gradient-to: var(--color-background) var(--tw-gradient-to-position);
   }
 }
+
+.blog-body { font-size: 1rem; line-height: 1.75; }
+.blog-body p { margin: 0 0 1.1em; }
+.blog-heading { font-weight: 700; margin: 1.6em 0 0.6em; }
+h2.blog-heading { font-size: 1.4em; }
+h3.blog-heading { font-size: 1.2em; }
+h4.blog-heading { font-size: 1.05em; }
+.blog-list { margin: 0 0 1.1em; padding-left: 1.4em; }
+.blog-list li { margin-bottom: 0.35em; }
+.blog-quote {
+  border-left: 3px solid var(--foreground, #1c1b19);
+  opacity: 0.85;
+  padding: 0.2em 0 0.2em 1em;
+  margin: 1.2em 0;
+  font-style: italic;
+}
+.blog-code-block {
+  background: rgba(0,0,0,0.05);
+  border-radius: 10px;
+  padding: 1em 1.2em;
+  overflow-x: auto;
+  margin: 1.2em 0;
+  font-size: 0.85em;
+}
+.blog-rule { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2em 0; }
+.blog-figure { margin: 1.6em 0; }
+.blog-inline-image, .blog-figure img {
+  width: 100%;
+  border-radius: 14px;
+  object-fit: cover;
+}
