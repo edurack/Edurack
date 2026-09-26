@@ -372,10 +372,22 @@ function Header() {
         <nav className="hidden items-center lg:flex">
           {shownNav.map((l) => <NavItem key={l.label} link={l} />)}
         </nav>
-        <div className="flex items-center gap-1">
-          <Link to="/auth" search={{ tab: "signin" }} className="inline-flex min-h-11 items-center rounded-full px-3.5 text-sm font-bold text-foreground/80 hover:text-foreground">Log in</Link>
-          <Link to="/auth" search={{ tab: "signup" }} className={`${PREMIUM_BTN} !min-h-11 !px-5 text-sm`}>Sign up</Link>
-          <button className="grid h-11 w-11 place-items-center rounded-full active:scale-90 lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
+        <div className="flex shrink-0 items-center gap-1">
+          <Link
+            to="/auth"
+            search={{ tab: "signin" }}
+            className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-sm font-bold text-foreground/80 hover:text-foreground max-[360px]:hidden sm:px-3.5"
+          >
+            Log in
+          </Link>
+          <Link
+            to="/auth"
+            search={{ tab: "signup" }}
+            className={`${PREMIUM_BTN} !min-h-11 !shrink-0 whitespace-nowrap !px-4 text-sm sm:!px-5`}
+          >
+            Sign up
+          </Link>
+          <button className="grid h-11 w-11 shrink-0 place-items-center rounded-full active:scale-90 lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>

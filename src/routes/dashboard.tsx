@@ -301,24 +301,39 @@ function DashboardPage() {
     }
   }, [track]);
 
+  // A listing's track can be "11th", "12th", "Dropper", or "All" (an admin
+  // choice meaning open to every track) — "All" must match everyone, not
+  // just students who literally have "All" as their own track.
+  const matchesTrack = (listingTrack: string, wanted: string) => wanted === "All" || listingTrack === wanted || listingTrack === "All";
+
   const recommended = useMemo(() => {
     if (!allListings || !track) return [];
-    return allListings.filter((l) => l.track === track && (!examKey || l.exam === examKey));
+    return allListings.filter((l) => matchesTrack(l.track, track) && (!examKey || l.exam === examKey));
   }, [allListings, track, examKey]);
 
   const seriesListings = useMemo(() => {
     if (!allListings) return [];
     return allListings.filter(
-      (l) => l.kind === "Test Series" && (trackFilter === "All" || l.track === trackFilter) && (examFilter === "All" || l.exam === examFilter),
+      (l) => l.kind === "Test Series" && matchesTrack(l.track, trackFilter) && (examFilter === "All" || l.exam === examFilter),
     );
   }, [allListings, trackFilter, examFilter]);
 
   const mentorshipListings = useMemo(() => {
     if (!allListings) return [];
     return allListings.filter(
-      (l) => l.kind === "Mentorship" && (trackFilter === "All" || l.track === trackFilter) && (examFilter === "All" || l.exam === examFilter),
+      (l) => l.kind === "Mentorship" && matchesTrack(l.track, trackFilter) && (examFilter === "All" || l.exam === examFilter),
     );
   }, [allListings, trackFilter, examFilter]);
+
+  // The Tests view's "For you" shelf: test-series bundles (not mentorships)
+  // that fit the student's track/exam, same "All" rule as above. Falls back
+  // to exam-only matching when the student hasn't set a track yet.
+  const testSeriesForYou = useMemo(() => {
+    if (!allListings) return [];
+    return allListings.filter(
+      (l) => l.kind === "Test Series" && (!track || matchesTrack(l.track, track)) && (!examKey || l.exam === examKey),
+    );
+  }, [allListings, track, examKey]);
 
   // Nearest 1-2 open slots per free offering, flattened and sorted by
   // soonest first — what the always-visible banner actually shows. Capped
@@ -459,7 +474,24 @@ function DashboardPage() {
                 <StudentOpenSessionsModule getToken={() => user.getIdToken()} />
               </div>
             ) : view === "tests" ? (
-              <SoldTestGrid tests={soldTests} />
+              <div className="space-y-10">
+                <div>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="font-display text-xl font-extrabold tracking-tight">Test series</h2>
+                    <button type="button" onClick={() => { setView("explore"); setTab("series"); }} className={linkAction}>Browse all</button>
+                  </div>
+                  <ListingGrid
+                    listings={testSeriesForYou}
+                    loading={allListings === null}
+                    emptyText={`No test series published for ${track || "your track"}${examKey ? ` · ${EXAM_LABELS[examKey]}` : ""} yet.`}
+                    showKindBadge
+                  />
+                </div>
+                <div>
+                  <h2 className="mb-4 font-display text-xl font-extrabold tracking-tight">Individual tests</h2>
+                  <SoldTestGrid tests={soldTests} />
+                </div>
+              </div>
             ) : (
               <MentorGrid mentors={mentors} />
             )}

@@ -1,10 +1,12 @@
 // src/routes/blog/$slug.tsx
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getPublishedPostBySlug, incrementBlogViewCount, listRelatedPosts } from "@/server-functions/blog-public";
-import { BlogBody, estimateReadingTimeMinutes } from "@/lib/blog-content";
+import { BlogBody, estimateReadingTimeMinutes, extractHeadings } from "@/lib/blog-content";
 import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
 import type { PublicBlogPostSummary } from "@/lib/blog-types";
+import { MobileTableOfContents, TableOfContentsSidebar } from "@/components/blog/table-of-contents";
+import { BlogBreadcrumbs, buildBreadcrumbJsonLd, buildPostBreadcrumbs } from "@/components/blog/blog-breadcrumbs";
 import { IconClock as Clock, IconLink as LinkIcon, IconBrandWhatsapp as WhatsApp } from "@tabler/icons-react";
 
 const SITE_URL = "https://www.edurack.in";
@@ -33,6 +35,7 @@ export const Route = createFileRoute("/blog/$slug")({
       publisher: { "@type": "Organization", name: "Edurack" },
       mainEntityOfPage: url,
     };
+    const breadcrumbJsonLd = buildBreadcrumbJsonLd(buildPostBreadcrumbs(post));
     return {
       meta: [
         { title: `${post.seoTitle} · Edurack Blog` },
@@ -45,7 +48,10 @@ export const Route = createFileRoute("/blog/$slug")({
         { name: "twitter:card", content: "summary_large_image" },
       ],
       links: [{ rel: "canonical", href: url }],
-      scripts: [{ type: "application/ld+json", children: JSON.stringify(jsonLd) }],
+      scripts: [
+        { type: "application/ld+json", children: JSON.stringify(jsonLd) },
+        { type: "application/ld+json", children: JSON.stringify(breadcrumbJsonLd) },
+      ],
     };
   },
   notFoundComponent: BlogPostNotFound,
@@ -78,87 +84,117 @@ function BlogPostPage() {
 
   const shareUrl = `${SITE_URL}/blog/${post.slug}`;
   const readingTime = post.readingTimeMinutes || estimateReadingTimeMinutes(post.bodyMarkdown);
+  const headings = useMemo(() => extractHeadings(post.bodyMarkdown), [post.bodyMarkdown]);
+  const breadcrumbs = useMemo(() => buildPostBreadcrumbs(post), [post]);
 
   return (
-    <article className="mx-auto max-w-3xl px-4 py-10 sm:py-14 break-words [overflow-wrap:anywhere]">
-      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground/50">
-        <span className="clay-chip rounded-full px-3 py-1">{BLOG_CATEGORY_LABELS[post.category]}</span>
-        <span className="flex items-center gap-1">
-          <Clock className="h-3.5 w-3.5" />
-          {readingTime} min read
-        </span>
-      </div>
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
+      {/* Skip link: the very first focusable element on the page, visually
+          hidden until it receives keyboard focus. Lets keyboard and
+          screen-reader users bypass the breadcrumb/header chrome and land
+          straight on the article body. */}
+      <a
+        href="#post-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-foreground focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-background"
+      >
+        Skip to article content
+      </a>
 
-      <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-4xl">{post.title}</h1>
+      <BlogBreadcrumbs crumbs={breadcrumbs} />
 
-      <div className="mt-4 flex items-center gap-3">
-        {post.author.photoUrl && <img src={post.author.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover shrink-0" />}
-        <div>
-          <p className="text-sm font-semibold text-foreground">{post.author.name}</p>
-          <p className="text-xs text-foreground/50">
-            {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : ""}
-            {post.substantiveUpdate && post.updatedAt ? ` · Updated ${new Date(post.updatedAt).toLocaleDateString()}` : ""}
-          </p>
-        </div>
-      </div>
-
-      {post.coverImageUrl && (
-        <img src={post.coverImageUrl} alt={post.coverImageAlt} className="mt-6 aspect-video w-full rounded-2xl object-cover" />
-      )}
-
-      <BlogBody markdown={post.bodyMarkdown} className="mt-8 max-w-full overflow-hidden" />
-
-      <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-5">
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(shareUrl);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
-          className="clay-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/60"
-        >
-          <LinkIcon className="h-3.5 w-3.5" />
-          {copied ? "Copied!" : "Copy link"}
-        </button>
-        <a
-          href={`https://wa.me/?text=${encodeURIComponent(`${post.title} —${shareUrl}`)}`}
-          target="_blank"
-          rel="noreferrer"
-          className="clay-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/60"
-        >
-          <WhatsApp className="h-3.5 w-3.5" />
-          Share
-        </a>
-      </div>
-
-      {(post.relatedBundleId || post.relatedBatchId) && (
-        <div className="clay mt-8 p-5 text-center">
-          <p className="text-sm font-semibold text-foreground">Ready to put this into practice?</p>
-          <Link
-            to="/course/$kind/$id"
-            params={{ kind: post.relatedBundleId ? "bundle" : "mentorship", id: (post.relatedBundleId ?? post.relatedBatchId)! }}
-            className="mt-3 inline-block rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity"
-          >
-            View on Edurack
-          </Link>
-        </div>
-      )}
-
-      {related.length > 0 && (
-        <div className="mt-14 border-t border-foreground/10 pt-8">
-          <p className="mb-4 text-xs font-bold uppercase tracking-wide text-foreground/50">Related posts</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {related.map((r) => (
-              <Link key={r.id} to="/blog/$slug" params={{ slug: r.slug }} className="clay overflow-hidden">
-                {r.coverImageUrl && <img src={r.coverImageUrl} alt={r.coverImageAlt} className="h-32 w-full object-cover" />}
-                <div className="p-3">
-                  <p className="line-clamp-2 text-sm font-semibold text-foreground">{r.title}</p>
-                </div>
-              </Link>
-            ))}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start lg:gap-10">
+        <article id="post-content" tabIndex={-1} className="min-w-0 break-words [overflow-wrap:anywhere] focus:outline-none">
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-foreground/50">
+            <span className="clay-chip rounded-full px-3 py-1">{BLOG_CATEGORY_LABELS[post.category]}</span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              {readingTime} min read
+            </span>
           </div>
-        </div>
-      )}
-    </article>
+
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-4xl">{post.title}</h1>
+
+          <div className="mt-4 flex items-center gap-3">
+            {post.author.photoUrl && <img src={post.author.photoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />}
+            <div>
+              <p className="text-sm font-semibold text-foreground">{post.author.name}</p>
+              <p className="text-xs text-foreground/50">
+                {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : ""}
+                {post.substantiveUpdate && post.updatedAt ? ` · Updated ${new Date(post.updatedAt).toLocaleDateString()}` : ""}
+              </p>
+            </div>
+          </div>
+
+          {post.coverImageUrl && (
+            <img src={post.coverImageUrl} alt={post.coverImageAlt} className="mt-6 aspect-video w-full rounded-2xl object-cover" />
+          )}
+
+          {/* Mobile-only: collapsed by default, sits inline in the reading
+              flow right where a reader would look for it. The sidebar
+              equivalent renders in the second grid column below. */}
+          <MobileTableOfContents headings={headings} className="mt-6 lg:hidden" />
+
+          <BlogBody markdown={post.bodyMarkdown} className="mt-8 max-w-full overflow-hidden" />
+
+          <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-foreground/10 pt-5">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(shareUrl);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="clay-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/60"
+            >
+              <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+              <span aria-live="polite">{copied ? "Copied!" : "Copy link"}</span>
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(`${post.title} —${shareUrl}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="clay-chip flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/60"
+            >
+              <WhatsApp className="h-3.5 w-3.5" aria-hidden="true" />
+              Share on WhatsApp
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </div>
+
+          {(post.relatedBundleId || post.relatedBatchId) && (
+            <div className="clay mt-8 p-5 text-center">
+              <p className="text-sm font-semibold text-foreground">Ready to put this into practice?</p>
+              <Link
+                to="/course/$kind/$id"
+                params={{ kind: post.relatedBundleId ? "bundle" : "mentorship", id: (post.relatedBundleId ?? post.relatedBatchId)! }}
+                className="mt-3 inline-block rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity"
+              >
+                View on Edurack
+              </Link>
+            </div>
+          )}
+
+          {related.length > 0 && (
+            <nav aria-label="Related posts" className="mt-14 border-t border-foreground/10 pt-8">
+              <p className="mb-4 text-xs font-bold uppercase tracking-wide text-foreground/50">Related posts</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {related.map((r) => (
+                  <Link key={r.id} to="/blog/$slug" params={{ slug: r.slug }} className="clay overflow-hidden">
+                    {r.coverImageUrl && <img src={r.coverImageUrl} alt={r.coverImageAlt} className="h-32 w-full object-cover" />}
+                    <div className="p-3">
+                      <p className="line-clamp-2 text-sm font-semibold text-foreground">{r.title}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </nav>
+          )}
+        </article>
+
+        {/* Desktop-only: sticky sidebar, kept in view while scrolling the
+            article. Hidden below lg — the mobile disclosure above covers
+            that case instead. */}
+        <TableOfContentsSidebar headings={headings} className="hidden lg:block" />
+      </div>
+    </div>
   );
 }

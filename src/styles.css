@@ -385,3 +385,76 @@ h4.blog-heading { font-size: 1.05em; }
   border-radius: 14px;
   object-fit: cover;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   ACCESSIBILITY: FOCUS VISIBILITY
+   No component in this codebase previously set an explicit focus style,
+   which means keyboard users were relying entirely on whatever the
+   browser's UA default happened to be (invisible in some Chromium
+   builds once a custom `outline` reset is anywhere in the cascade).
+   One rule, applied everywhere, using :focus-visible so mouse/touch
+   users never see a ring they didn't ask for.
+   ──────────────────────────────────────────────────────────────────── */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   BLOG: TABLES
+   ──────────────────────────────────────────────────────────────────── */
+.blog-table-wrap:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+.blog-table th,
+.blog-table td {
+  border-right: 1px solid var(--color-border);
+}
+.blog-table th:last-child,
+.blog-table td:last-child {
+  border-right: none;
+}
+.blog-table thead th {
+  background: var(--color-secondary);
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   BLOG: FAQ ACCORDION
+   Native <details>/<summary> — no JS needed for open/close, and every
+   browser exposes the expanded/collapsed state to screen readers
+   automatically. The two rules below just neutralise each browser
+   engine's own disclosure-triangle glyph so our "+" icon is the only
+   one shown (Chromium/Safari use ::-webkit-details-marker; Firefox and
+   newer Chromium use ::marker — Tailwind's `marker:content-none`
+   utility already handles the second one inline).
+   ──────────────────────────────────────────────────────────────────── */
+.blog-faq-question::-webkit-details-marker {
+  display: none;
+}
+.blog-faq-question {
+  -webkit-tap-highlight-color: transparent;
+}
+.blog-faq-answer {
+  padding-bottom: 0.25rem;
+}
+
+/* Same two engine-specific rules for the Table of Contents disclosure
+   on mobile, which uses the same native <details> pattern. */
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blog-faq-icon {
+    transition: none !important;
+  }
+}
+

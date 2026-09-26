@@ -94,6 +94,37 @@ export const updateBasicInfo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Lets a student change their academic placement after onboarding (class
+// moved up a year, board changed, or track corrected) without touching
+// name/contact fields. Kept separate from updateBasicInfo for the same
+// clobbering-avoidance reason documented above.
+export const updateAcademicInfo = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      token: string;
+      currentClass: string;
+      board: string;
+      track: "Dropper" | "11th" | "12th" | "";
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const decoded = await adminAuth.verifyIdToken(data.token);
+    const db = await getDb();
+    await db.collection("profiles").updateOne(
+      { uid: decoded.uid },
+      {
+        $set: {
+          currentClass: data.currentClass,
+          board: data.board,
+          track: data.track,
+          updatedAt: new Date(),
+        },
+      },
+      { upsert: true },
+    );
+    return { ok: true };
+  });
+
 export const getProfile = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {

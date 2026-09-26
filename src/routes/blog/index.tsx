@@ -56,24 +56,28 @@ function BlogIndexPage() {
         <p className="mt-1 text-sm text-foreground/60">Exam strategy, mentor stories, and what's new on the platform.</p>
       </div>
 
-      <div className="mb-8 flex flex-wrap items-center gap-2">
-        <FilterChip active={!search.category} onClick={() => setFilter({ category: undefined })}>
-          All
-        </FilterChip>
-        {BLOG_CATEGORIES.map((c) => (
-          <FilterChip key={c} active={search.category === c} onClick={() => setFilter({ category: c })}>
-            {BLOG_CATEGORY_LABELS[c]}
+      <div className="mb-8 flex flex-wrap items-center gap-4">
+        <div role="group" aria-label="Filter by category" className="flex flex-wrap items-center gap-2">
+          <FilterChip active={!search.category} onClick={() => setFilter({ category: undefined })}>
+            All
           </FilterChip>
-        ))}
-        <span className="mx-1 h-4 w-px bg-foreground/10" />
-        <FilterChip active={!search.examKey} onClick={() => setFilter({ examKey: undefined })}>
-          Any exam
-        </FilterChip>
-        {EXAM_KEYS.map((k) => (
-          <FilterChip key={k} active={search.examKey === k} onClick={() => setFilter({ examKey: k })}>
-            {EXAM_LABELS[k]}
+          {BLOG_CATEGORIES.map((c) => (
+            <FilterChip key={c} active={search.category === c} onClick={() => setFilter({ category: c })}>
+              {BLOG_CATEGORY_LABELS[c]}
+            </FilterChip>
+          ))}
+        </div>
+        <span className="hidden h-4 w-px bg-foreground/10 sm:block" aria-hidden="true" />
+        <div role="group" aria-label="Filter by exam" className="flex flex-wrap items-center gap-2">
+          <FilterChip active={!search.examKey} onClick={() => setFilter({ examKey: undefined })}>
+            Any exam
           </FilterChip>
-        ))}
+          {EXAM_KEYS.map((k) => (
+            <FilterChip key={k} active={search.examKey === k} onClick={() => setFilter({ examKey: k })}>
+              {EXAM_LABELS[k]}
+            </FilterChip>
+          ))}
+        </div>
       </div>
 
       {data.pinned && (
@@ -90,9 +94,13 @@ function BlogIndexPage() {
       )}
 
       {loading ? (
-        <div className="py-16 text-center text-sm text-foreground/40">Loading…</div>
+        <div className="py-16 text-center text-sm text-foreground/40" role="status" aria-live="polite">
+          Loading…
+        </div>
       ) : data.posts.length === 0 ? (
-        <div className="clay p-10 text-center text-sm text-foreground/60">No posts here yet.</div>
+        <div className="clay p-10 text-center text-sm text-foreground/60" role="status" aria-live="polite">
+          No posts here yet.
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {data.posts.map((p) => (
@@ -102,7 +110,7 @@ function BlogIndexPage() {
       )}
 
       {data.totalPages > 1 && (
-        <div className="mt-10 flex items-center justify-center gap-3">
+        <nav aria-label="Pagination" className="mt-10 flex items-center justify-center gap-3">
           <button
             disabled={(search.page ?? 1) <= 1}
             onClick={() => navigate({ search: (prev) => ({ ...prev, page: (prev.page ?? 1) - 1 }) })}
@@ -110,7 +118,7 @@ function BlogIndexPage() {
           >
             Previous
           </button>
-          <span className="text-xs text-foreground/50">
+          <span className="text-xs text-foreground/50" aria-live="polite">
             Page {data.page} of {data.totalPages}
           </span>
           <button
@@ -120,7 +128,7 @@ function BlogIndexPage() {
           >
             Next
           </button>
-        </div>
+        </nav>
       )}
     </div>
   );
@@ -130,6 +138,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
         active ? "bg-foreground text-background" : "clay-chip text-foreground/60"
       }`}

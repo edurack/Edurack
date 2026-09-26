@@ -1,6 +1,17 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
-import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconMail as Mail, IconLock as Lock, IconKey as KeyRound, IconEye as Eye, IconUser as User } from "@tabler/icons-react";
+import {
+  IconLoader2 as Loader2,
+  IconShieldCheck as ShieldCheck,
+  IconMail as Mail,
+  IconLock as Lock,
+  IconKey as KeyRound,
+  IconEye as Eye,
+  IconUser as User,
+  IconArrowLeft as ArrowLeft,
+  IconActivity as Activity,
+  IconUsersGroup as Users2,
+} from "@tabler/icons-react";
 import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import {
   adminAuthClient,
@@ -65,19 +76,63 @@ function AdminAuthPage() {
       : "Restricted access. A valid security passkey is required.";
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--admin-bg,inherit)]">
+    <div className="grid min-h-screen lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+      {/* Brand panel — same ink-navy treatment as the student auth screen,
+          reframed around what the admin portal actually does. */}
+      <aside className="ink-section hidden flex-col justify-between p-12 lg:flex">
+        <Link to="/" className="flex items-center gap-2">
+          <img
+            src="https://www.edurack.in/edurack-logo.webp"
+            alt="Edurack"
+            width={62}
+            height={70}
+            className="h-10 w-auto object-contain"
+          />
+          <span className="font-display text-xl font-extrabold tracking-tight">edurack</span>
+        </Link>
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">Admin Portal</p>
+          <h2 className="mt-4 font-display text-5xl leading-[1.05] tracking-tight">
+            <span className="block font-light">Run the platform.</span>
+            <span className="block font-extrabold">Don't just watch it.</span>
+          </h2>
+          <ul className="mt-8 space-y-3 text-white/70">
+            <li className="flex items-center gap-2.5">
+              <Activity className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Live purchases, students and revenue
+            </li>
+            <li className="flex items-center gap-2.5">
+              <Users2 className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Mentor, intern and promoter applications
+            </li>
+            <li className="flex items-center gap-2.5">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Support tickets across every account type
+            </li>
+          </ul>
+        </div>
+        <p className="text-sm text-white/40">Access attempts are logged. edurack.in</p>
+      </aside>
 
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-10">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <div className="clay flex h-14 w-14 items-center justify-center">
-            <ShieldCheck className="h-6 w-6 text-foreground/70" />
+      {/* Auth card */}
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-10 sm:px-6">
+        <div className="mb-6 w-full">
+          <Link
+            to="/"
+            className="clay-chip group inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-foreground/80 transition hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            Back to home
+          </Link>
+        </div>
+
+        <div className="mb-6 flex flex-col items-center gap-3 lg:hidden">
+          <div className="clay flex h-12 w-12 items-center justify-center">
+            <ShieldCheck className="h-5 w-5 text-foreground/70" />
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/60">
             Edurack — Admin Portal
           </p>
         </div>
 
-        <div className="clay w-full p-5 sm:p-8">
+        <div className="w-full rounded-3xl border border-border bg-card p-5 sm:p-8">
           <div className="mb-6 text-center">
             <h1 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               {heading}
