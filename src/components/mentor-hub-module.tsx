@@ -55,6 +55,80 @@ function ClayField({ label, children }: { label: string; children: React.ReactNo
 const inputClass =
   "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
 
+// A mentor can be expert at more than one subject, so "Expert at" is a set
+// of chips rather than a single text field. Type a subject and press
+// Enter or comma to add it; click the × on a chip (or Backspace on an
+// empty field) to remove the last one. Same free-text convention already
+// used for session subjects elsewhere in the admin (no fixed subject
+// list in this app).
+export function SubjectTagInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function commitDraft() {
+    const cleaned = draft.trim();
+    if (!cleaned) return;
+    if (!value.some((s) => s.toLowerCase() === cleaned.toLowerCase())) {
+      onChange([...value, cleaned]);
+    }
+    setDraft("");
+  }
+
+  function removeAt(index: number) {
+    onChange(value.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className={`${inputClass} flex flex-wrap items-center gap-1.5`}>
+      {value.map((subject, i) => (
+        <span
+          key={subject}
+          className="inline-flex items-center gap-1 rounded-full bg-primary/15 py-1 pl-3 pr-1.5 text-xs font-semibold text-primary"
+        >
+          {subject}
+          <button
+            type="button"
+            onClick={() => removeAt(i)}
+            className="grid h-4 w-4 place-items-center rounded-full text-primary/70 hover:bg-primary/20 hover:text-primary"
+            aria-label={`Remove ${subject}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => {
+          if (e.target.value.endsWith(",")) {
+            setDraft(e.target.value.slice(0, -1));
+            commitDraft();
+            return;
+          }
+          setDraft(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitDraft();
+          } else if (e.key === "Backspace" && draft === "" && value.length > 0) {
+            removeAt(value.length - 1);
+          }
+        }}
+        onBlur={commitDraft}
+        placeholder={value.length === 0 ? placeholder : "Add another…"}
+        className="min-w-[8rem] flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+      />
+    </div>
+  );
+}
+
 export function MentorHubModule({ adminUser }: { adminUser: AdminUser }) {
   const [mentors, setMentors] = useState<Mentor[] | null>(null);
   const [batches, setBatches] = useState<MentorshipBatch[] | null>(null);
@@ -175,9 +249,10 @@ type MentorFullDetail = {
   enrolledCollege: string;
   pursuedCourse: string;
   // Expertise Showcase — admin-set, surfaced on the mentor's public profile.
+  // A mentor can be listed as expert at more than one subject.
   // NOTE: getAdminMentorFullDetail (server-functions/admin.ts) needs to
   // return these four fields too — see the note below this file.
-  expertAt: string;
+  expertAt: string[];
   whyExpertAt: string;
   scoreType: MentorScoreType | "";
   scoreValue: string;
@@ -260,7 +335,7 @@ function MentorDetailDrawer({
   const [verifyResult, setVerifyResult] = useState<"match" | "mismatch" | null>(null);
 
   // ── Expertise Showcase editor state ──────────────────────────────────
-  const [expertAt, setExpertAt] = useState("");
+  const [expertAt, setExpertAt] = useState<string[]>([]);
   const [whyExpertAt, setWhyExpertAt] = useState("");
   const [scoreType, setScoreType] = useState<MentorScoreType | "">("");
   const [scoreValue, setScoreValue] = useState("");
@@ -274,7 +349,7 @@ function MentorDetailDrawer({
       const { detail } = await getAdminMentorFullDetail({ data: { token, mentorId } });
       const d = detail as MentorFullDetail;
       setData(d);
-      setExpertAt(d.expertAt ?? "");
+      setExpertAt(Array.isArray(d.expertAt) ? d.expertAt : []);
       setWhyExpertAt(d.whyExpertAt ?? "");
       setScoreType((d.scoreType as MentorScoreType) || "");
       setScoreValue(d.scoreValue ?? "");
@@ -455,12 +530,11 @@ function MentorDetailDrawer({
             {/* ── Expertise Showcase — editable, admin-only ─────────────── */}
             <DetailSection icon={Award} title="Expertise showcase (shown on public profile)">
               <div className="clay-inset space-y-3 rounded-2xl p-4">
-                <ClayField label="Expert at (subject)">
-                  <input
+                <ClayField label="Expert at (subjects)">
+                  <SubjectTagInput
                     value={expertAt}
-                    onChange={(e) => setExpertAt(e.target.value)}
+                    onChange={setExpertAt}
                     placeholder="e.g. Organic Chemistry"
-                    className={inputClass}
                   />
                 </ClayField>
 

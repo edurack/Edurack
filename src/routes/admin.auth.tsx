@@ -22,6 +22,7 @@ import {
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { verifyAdminAccess } from "@/server-functions/admin";
 import { mentorLogin } from "@/server-functions/mentor-auth";
+import { ADMIN_THEME_VARS, ADMIN_THEME_CLASS } from "@/lib/admin-theme";
 
 export const Route = createFileRoute("/admin/auth")({
   head: () => ({
@@ -62,7 +63,10 @@ function AdminAuthPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div
+        className={`${ADMIN_THEME_CLASS} flex min-h-screen items-center justify-center bg-background`}
+        style={ADMIN_THEME_VARS}
+      >
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
       </div>
     );
@@ -76,10 +80,14 @@ function AdminAuthPage() {
       : "Restricted access. A valid security passkey is required.";
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
-      {/* Brand panel — same ink-navy treatment as the student auth screen,
-          reframed around what the admin portal actually does. */}
-      <aside className="ink-section hidden flex-col justify-between p-12 lg:flex">
+    <div
+      className={`${ADMIN_THEME_CLASS} grid min-h-screen bg-background lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]`}
+      style={ADMIN_THEME_VARS}
+    >
+      {/* Brand rail — graphite, not the site's navy ink-section, with a
+          small live-readout instead of a generic bullet list: this panel
+          exists to monitor the platform, so show it monitoring something. */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-border bg-card p-12 lg:flex">
         <Link to="/" className="flex items-center gap-2">
           <img
             src="https://www.edurack.in/edurack-logo.webp"
@@ -88,27 +96,33 @@ function AdminAuthPage() {
             height={70}
             className="h-10 w-auto object-contain"
           />
-          <span className="font-display text-xl font-extrabold tracking-tight">edurack</span>
+          <span className="font-display text-xl font-extrabold tracking-tight text-foreground">edurack</span>
         </Link>
+
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/50">Admin Portal</p>
-          <h2 className="mt-4 font-display text-5xl leading-[1.05] tracking-tight">
+          <h2 className="font-display text-5xl leading-[1.05] tracking-tight text-foreground">
             <span className="block font-light">Run the platform.</span>
             <span className="block font-extrabold">Don't just watch it.</span>
           </h2>
-          <ul className="mt-8 space-y-3 text-white/70">
-            <li className="flex items-center gap-2.5">
-              <Activity className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Live purchases, students and revenue
-            </li>
-            <li className="flex items-center gap-2.5">
-              <Users2 className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Mentor, intern and promoter applications
-            </li>
-            <li className="flex items-center gap-2.5">
-              <ShieldCheck className="h-4 w-4 shrink-0 text-[#7ba4f0]" /> Support tickets across every account type
-            </li>
-          </ul>
+          <p className="mt-4 max-w-sm text-foreground/60">
+            One console for students, mentors, interns and everything they've paid for.
+          </p>
+
+          <div className="mt-10 divide-y divide-border overflow-hidden rounded-2xl border border-border">
+            {[
+              { label: "Students on the platform", icon: Users2 },
+              { label: "Open mentor, intern & promoter applications", icon: Activity },
+              { label: "Support tickets across every account type", icon: ShieldCheck },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center gap-3 bg-secondary/40 px-4 py-3.5">
+                <row.icon className="h-4 w-4 shrink-0 text-primary" />
+                <span className="text-sm text-foreground/70">{row.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <p className="text-sm text-white/40">Access attempts are logged. edurack.in</p>
+
+        <p className="font-mono text-xs text-foreground/35">Access attempts are logged · edurack.in</p>
       </aside>
 
       {/* Auth card */}
@@ -125,11 +139,9 @@ function AdminAuthPage() {
 
         <div className="mb-6 flex flex-col items-center gap-3 lg:hidden">
           <div className="clay flex h-12 w-12 items-center justify-center">
-            <ShieldCheck className="h-5 w-5 text-foreground/70" />
+            <ShieldCheck className="h-5 w-5 text-primary" />
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/60">
-            Edurack — Admin Portal
-          </p>
+          <p className="text-sm font-semibold text-foreground/70">Edurack admin portal</p>
         </div>
 
         <div className="w-full rounded-3xl border border-border bg-card p-5 sm:p-8">
@@ -144,21 +156,21 @@ function AdminAuthPage() {
             <button
               type="button"
               onClick={() => setTab("signin")}
-              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "signin" ? "clay-btn text-white" : "text-foreground/70 hover:text-foreground"}`}
+              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "signin" ? "clay-btn" : "text-foreground/70 hover:text-foreground"}`}
             >
               Sign In
             </button>
             <button
               type="button"
               onClick={() => setTab("signup")}
-              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "signup" ? "clay-btn text-white" : "text-foreground/70 hover:text-foreground"}`}
+              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "signup" ? "clay-btn" : "text-foreground/70 hover:text-foreground"}`}
             >
               Register
             </button>
             <button
               type="button"
               onClick={() => setTab("mentor")}
-              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "mentor" ? "clay-btn text-white" : "text-foreground/70 hover:text-foreground"}`}
+              className={`rounded-full py-2 text-xs font-semibold transition-all ${tab === "mentor" ? "clay-btn" : "text-foreground/70 hover:text-foreground"}`}
             >
               Mentor
             </button>

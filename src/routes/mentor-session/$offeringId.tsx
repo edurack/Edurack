@@ -244,11 +244,11 @@ function SessionDetail({
             {mentorBio.enrolledCollege && <InfoChip label="College" value={mentorBio.enrolledCollege} />}
             {mentorBio.pursuedCourse && <InfoChip label="Course" value={mentorBio.pursuedCourse} />}
           </div>
-          {mentorBio.expertAt && (
+          {mentorBio.expertAt.length > 0 && (
             <div className="clay-inset mt-4 flex items-start gap-3 rounded-2xl p-4">
               <Trophy className="mt-0.5 h-5 w-5 shrink-0" style={{ color: PINK_DEEP }} />
               <div>
-                <p className="text-sm font-bold text-foreground">Expert at {mentorBio.expertAt}</p>
+                <p className="text-sm font-bold text-foreground">Expert at {mentorBio.expertAt.join(", ")}</p>
                 {mentorBio.whyExpertAt && <p className="mt-1 text-xs text-foreground/60">{mentorBio.whyExpertAt}</p>}
                 {mentorBio.scoreType && mentorBio.scoreValue && (
                   <p className="mt-1 text-xs font-semibold text-foreground/50">

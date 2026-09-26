@@ -33,6 +33,9 @@ import {
   IconBriefcase as Briefcase,
 } from "@tabler/icons-react";
 import { listMentorsForLanding } from "@/server-functions/catalog";
+import { listPublishedPosts } from "@/server-functions/blog-public";
+import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
+import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
 import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
 
@@ -63,6 +66,12 @@ export const Route = createFileRoute("/")({
     return {
       mentorsPromise: listMentorsForLanding().then(
         (res) => res.mentors as LandingMentor[],
+      ),
+      // Same streamed-promise pattern as mentors above: the homepage shell
+      // ships immediately and the blog rail resolves in behind it, rather
+      // than blocking FCP on a Mongo round trip nothing above the fold needs.
+      postsPromise: listPublishedPosts({ data: { page: 1 } }).then(
+        (res) => res.posts.slice(0, 3),
       ),
     };
   },
@@ -172,6 +181,7 @@ const navLinks: NavLink[] = [
   { label: "Why Edurack", type: "anchor", href: "#about" },
   { label: "Connect", type: "anchor", href: "#connect" },
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
+  { label: "Blog", type: "route", to: "/blog" },
   { label: "Contact", type: "route", to: "/contact" },
 ];
 
@@ -311,6 +321,7 @@ function Index() {
           <SimulatorSection />
           <MentorShowcase />
           <FeaturesSection />
+          <BlogShowcase />
           <MentorBanner />
           <CareersStrip />
           <FinalCta />
@@ -349,7 +360,7 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
   );
 }
 
-const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "Contact"].includes(l.label));
+const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "Blog", "Contact"].includes(l.label));
 
 function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
   const cls = "inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground";
@@ -525,7 +536,7 @@ function SimulatorSection() {
 
 // ── Mentors (real data, streamed) ──────────────────────────────────────────
 type LandingMentor = {
-  id: string; name: string; profilePictureUrl: string | null; yearOfStudy: string; aiimsIitRank: string; expertAt: string;
+  id: string; name: string; profilePictureUrl: string | null; yearOfStudy: string; aiimsIitRank: string; expertAt: string[];
   batches: { id: string; name: string; track: string; exam: string }[];
 };
 
@@ -574,7 +585,9 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
                 </p>
               </div>
             </div>
-            {m.expertAt?.trim() && <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt}</p>}
+            {m.expertAt.length > 0 && (
+              <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt.join(", ")}</p>
+            )}
             {m.batches.length > 0 && (
               <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
                 {m.batches.map((b) => <li key={b.id} className="truncate">{b.name} · {b.exam.toUpperCase()} · {b.track}</li>)}
@@ -618,6 +631,57 @@ function FeaturesSection() {
         </Rise>
       </div>
     </section>
+  );
+}
+
+// ── Blog (real data, streamed) ──────────────────────────────────────────────
+// The homepage previously linked nowhere in the site to /blog or any post —
+// no header link, no section, no footer link. Crawlers largely find pages
+// by following links from already-indexed, frequently-crawled pages, and
+// the homepage is that page here. Being in sitemap.xml alone doesn't carry
+// the same weight, and gets crawled far less often. This section, plus the
+// header/footer links added elsewhere in this file, give Google (and users)
+// an actual path from "/" into the blog.
+function BlogShowcase() {
+  const { postsPromise } = Route.useLoaderData();
+  return (
+    <section id="blog" className="border-y border-border bg-secondary/50 py-20 sm:py-28">
+      <div className={WRAP}>
+        <Rise className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <Title light="Strategy and stories," bold="not just a product." />
+            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Exam strategy, mentor stories and platform updates for NEET, JEE, CUET and IPMAT aspirants.</p>
+          </div>
+          <Link to="/blog" preload="viewport" className={`${GHOST_BTN} shrink-0`}>Read the blog <ArrowRight className="h-4 w-4" /></Link>
+        </Rise>
+        <Suspense fallback={<p className="mt-10 text-muted-foreground">Loading recent posts…</p>}>
+          <Await promise={postsPromise}>{(posts) => <BlogPostsResolved posts={posts} />}</Await>
+        </Suspense>
+      </div>
+    </section>
+  );
+}
+
+function BlogPostsResolved({ posts }: { posts: PublicBlogPostSummary[] }) {
+  if (!posts.length) return null;
+  return (
+    <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {posts.map((p, i) => (
+        <Rise key={p.id} delay={(i % 3) * 0.08}>
+          <Link to="/blog/$slug" params={{ slug: p.slug }} className="group flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card transition-colors hover:border-primary">
+            {p.coverImageUrl && (
+              <img src={p.coverImageUrl} alt={p.coverImageAlt} loading="lazy" decoding="async" className="h-40 w-full object-cover" />
+            )}
+            <div className="flex flex-1 flex-col p-5">
+              <span className="text-xs font-semibold text-primary">{BLOG_CATEGORY_LABELS[p.category]}</span>
+              <h3 className="mt-2 font-display text-lg font-bold leading-snug">{p.title}</h3>
+              {p.excerpt && <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{p.excerpt}</p>}
+              <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-bold text-foreground">Read more <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
+            </div>
+          </Link>
+        </Rise>
+      ))}
+    </div>
   );
 }
 
@@ -675,7 +739,7 @@ function FinalCta() {
 // ── Footer ─────────────────────────────────────────────────────────────────
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
-  { title: "Product", links: [{ label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }] },
+  { title: "Product", links: [{ label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }] },
   { title: "Help", links: [{ label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
 ];
