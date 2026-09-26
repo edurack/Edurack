@@ -536,7 +536,7 @@ function SimulatorSection() {
 
 // ── Mentors (real data, streamed) ──────────────────────────────────────────
 type LandingMentor = {
-  id: string; name: string; profilePictureUrl: string | null; yearOfStudy: string; aiimsIitRank: string; expertAt: string[];
+  id: string; name: string; profilePictureUrl: string | null; yearOfStudy: string; aiimsIitRank: string; expertAt: string;
   batches: { id: string; name: string; track: string; exam: string }[];
 };
 
@@ -586,7 +586,7 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
               </div>
             </div>
             {m.expertAt.length > 0 && (
-              <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt.join(", ")}</p>
+              <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt}</p>
             )}
             {m.batches.length > 0 && (
               <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
