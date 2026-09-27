@@ -50,6 +50,7 @@ import { SellTestsAdminModule } from "@/components/sell-tests-admin-module";
 import { SessionTemplatesAdminModule } from "@/components/session-templates-admin-module";
 import { InternHubModule } from "@/components/admin/intern-hub-module";
 import { InternTrialModule } from "@/components/admin/intern-trial-module";
+import { ADMIN_THEME_CLASS, ADMIN_THEME_VARS } from "@/lib/admin-theme";
 
 
 type ModuleKey =
@@ -186,7 +187,10 @@ function AdminDashboardPage() {
 
   if (loading || !adminUser || !isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div
+        className={`${ADMIN_THEME_CLASS} flex min-h-screen items-center justify-center bg-background`}
+        style={ADMIN_THEME_VARS}
+      >
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
       </div>
     );
@@ -196,7 +200,7 @@ function AdminDashboardPage() {
   const activeDef = MODULE_LOOKUP[activeModule];
 
   return (
-    <div className="relative min-h-screen">
+    <div className={`${ADMIN_THEME_CLASS} relative min-h-screen bg-background`} style={ADMIN_THEME_VARS}>
 
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background py-5 md:flex">
@@ -1733,20 +1737,20 @@ function OnboardingDetailsDrawer({
       });
 
       await updateMentorLockedInfo({
-        data: {
-          token,
-          mentorId,
-          lockedInfo: {
-            aiimsIitRank: lockedRank.trim() || "Not specified",
-            enrolledCollege: lockedCollege.trim() || "Not specified",
-            pursuedCourse: lockedCourse.trim() || "Not specified",
-            expertAt: lockedExpertAt.trim(),
-            whyExpertAt: lockedWhyExpertAt.trim(),
-            scoreType: lockedScoreType || null,
-            scoreValue: lockedScoreValue.trim(),
-          },
-        },
-      });
+  data: {
+    token,
+    mentorId,
+    lockedInfo: {
+      aiimsIitRank: lockedRank.trim() || "Not specified",
+      enrolledCollege: lockedCollege.trim() || "Not specified",
+      pursuedCourse: lockedCourse.trim() || "Not specified",
+      expertAt: lockedExpertAt.trim(),
+      whyExpertAt: lockedWhyExpertAt.trim(),
+      scoreType: lockedScoreType,
+      scoreValue: lockedScoreValue.trim(),
+    },
+  },
+});
 
       await markMentorProfileCreated({ data: { token, applicationId, mentorId } });
 

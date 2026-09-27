@@ -110,6 +110,11 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
     loadList();
   }
 
+  const totalViews = useMemo(
+    () => (posts ?? []).reduce((sum, p) => sum + (p.viewCount ?? 0), 0),
+    [posts],
+  );
+
   if (view === "editor") {
     return <BlogEditor adminUser={adminUser} postId={editingId} onBack={backToList} />;
   }
@@ -119,7 +124,15 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Blog</h1>
-          <p className="mt-1 text-sm text-foreground/60">Write, schedule, and publish posts to edurack.in/blog.</p>
+          <p className="mt-1 text-sm text-foreground/60">
+            Write, schedule, and publish posts to edurack.in/blog.
+            {posts && posts.length > 0 && (
+              <>
+                {" "}· <span className="font-semibold text-foreground/80">{totalViews.toLocaleString()}</span> total
+                views (unique visitors, admin-only)
+              </>
+            )}
+          </p>
         </div>
         <button onClick={openNew} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
           <Plus className="h-4 w-4" />
@@ -143,6 +156,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                 <th className="px-4 py-3 font-semibold">Title</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Category</th>
+                <th className="px-4 py-3 font-semibold">Views</th>
                 <th className="px-4 py-3 font-semibold">Updated</th>
                 <th className="px-4 py-3"></th>
               </tr>
@@ -156,8 +170,15 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                     </button>
                     <p className="text-[11px] text-foreground/40">/blog/{p.slug}</p>
                   </td>
+                  
                   <td className="px-4 py-3">{statusPill(p.status)}</td>
                   <td className="px-4 py-3 text-foreground/60">{BLOG_CATEGORY_LABELS[p.category]}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground/80">
+                      <Eye className="h-3.5 w-3.5 text-foreground/40" />
+                      {(p.viewCount ?? 0).toLocaleString()}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-foreground/40">
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : "—"}
                   </td>

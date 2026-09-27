@@ -8,8 +8,22 @@
 // "doesn't exist" apart from "exists but isn't public yet."
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
+import { getCurrentRequest } from "@/lib/get-request";
 import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
 import type { ExamKey } from "@/lib/admin-types";
+
+// Same header-based lookup used for session/device tracking elsewhere
+// (see server-functions/sessions.ts) — the IP is read server-side from
+// the request, never trusted from the client body.
+function getClientIp(): string {
+  const request = getCurrentRequest();
+  return (
+    request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request?.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}"@/lib/admin-types";
+
 
 const PUBLISHED_FILTER = { status: "published", deletedAt: null } as const;
 
@@ -140,13 +154,54 @@ export const listRelatedPosts = createServerFn({ method: "GET" })
 // Good enough for an admin-facing "top posts" sort; not meant to survive
 // deliberate refresh-spam the way a real analytics pipeline would guard
 // against.
+// De-duplicated by IP, read server-side from the request headers — never
+// trusted from the client body, since a client could otherwise claim any
+// IP it likes and inflate the count. The client still only calls this
+// once per page view (see routes/blog/$slug.tsx), but the dedup is what
+// actually stops the same visitor refreshing (or a bot hitting the page
+// on a loop) from moving the number: a doc is written to blogPostViews
+// keyed on (slug, ip), and the post's viewCount is only incremented the
+// first time that pair is seen. Good enough for an admin-facing "top
+// posts" / unique-visitor sort; a visitor behind a shared or rotating IP
+// (office NAT, mobile carrier, VPN) will still only ever count once from
+// that address — the standard, accepted trade-off of IP-based counting,
+// not meant to replace a real analytics pipeline with cookies/device IDs.
 export const incrementBlogViewCount = createServerFn({ method: "POST" })
   .validator((data: { slug: string }) => data)
   .handler(async ({ data }) => {
     const db = await getDb();
-    await db.collection("blogPosts").updateOne(
+    const ip = getClientIp();
+    const userAgent = getCurrentRequest()?.headers.get("user-agent") ?? "unknown";
+    const now = new Date();
+
+    // Only count a post that's actually public right now — same rule as
+    // every other read in this file.
+    const post = await db.collection("blogPosts").findOne(
       { slug: data.slug, ...PUBLISHED_FILTER },
-      { $inc: { viewCount: 1 } },
+      { projection: { _id: 1 } },
     );
+    if (!post) return { ok: true };
+
+    const viewResult = await db.collection("blogPostViews").updateOne(
+      { slug: data.slug, ip },
+      {
+        $setOnInsert: { slug: data.slug, ip, userAgent, firstViewedAt: now },
+        $set: { lastViewedAt: now },
+        $inc: { hitCount: 1 },
+      },
+      { upsert: true },
+    );
+
+    // upsertedCount === 1 means this (slug, ip) pair didn't exist before
+    // this call — i.e. this is the first time this IP has viewed this
+    // post, so it's the moment (and the only moment) the public counter
+    // moves.
+    if (viewResult.upsertedCount > 0) {
+      await db.collection("blogPosts").updateOne(
+        { slug: data.slug, ...PUBLISHED_FILTER },
+        { $inc: { viewCount: 1 } },
+      );
+    }
+
     return { ok: true };
   });
