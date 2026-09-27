@@ -458,3 +458,43 @@ details > summary::-webkit-details-marker {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────
+   AUTOFILL OVERRIDE
+   Chromium/WebKit paint an opaque white background on any input the
+   browser has autofilled or offers to save credentials for, ignoring
+   `bg-transparent` entirely — most visible on the admin sign-in form's
+   email/password/passkey fields, which otherwise sit inside a themed
+   `clay-inset` wrapper. This repaints the autofilled state itself,
+   using the same --color-secondary / --color-foreground tokens the
+   surrounding theme (including the ADMIN_THEME_VARS override) already
+   defines, so it matches whatever theme is active instead of flashing
+   the browser's own white. The absurdly long transition-delay is the
+   standard trick to stop the browser re-asserting its own background
+   a moment after this rule paints.
+   ──────────────────────────────────────────────────────────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--color-foreground);
+  -webkit-box-shadow: 0 0 0px 1000px var(--color-secondary) inset;
+  box-shadow: 0 0 0px 1000px var(--color-secondary) inset;
+  caret-color: var(--color-foreground);
+  transition: background-color 9999s ease-in-out 0s, color 9999s ease-in-out 0s;
+}
+
+/* Unconditional safety net: an <input> living inside a themed clay-inset
+   wrapper (the admin sign-in fields, search boxes, etc.) always keeps a
+   transparent background and the theme's own text color, regardless of
+   UA defaults, autofill state, or forced-colors quirks the two rules
+   above don't happen to catch in a given browser. */
+.clay-inset input,
+.clay-inset textarea,
+.clay-inset select {
+  background-color: transparent !important;
+  color: var(--color-foreground) !important;
+}
+.clay-inset input::placeholder,
+.clay-inset textarea::placeholder {
+  color: color-mix(in oklab, var(--color-foreground) 40%, transparent) !important;
+}

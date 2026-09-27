@@ -1655,8 +1655,6 @@ export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
       email = (app?.personal as { email?: string } | undefined)?.email ?? null;
     }
 
-    const introVideo = await db.collection("mentorIntroVideoStatus").findOne({ mentorId: data.mentorId });
-
     const batches = await db
       .collection("mentorshipBatches")
       .find({ assignedMentorId: data.mentorId })
@@ -1686,14 +1684,9 @@ export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
         scoreType: (mentor.scoreType as string | null) ?? "",
         scoreValue: (mentor.scoreValue as string) ?? "",
         createdAt: mentor.createdAt instanceof Date ? mentor.createdAt.toISOString() : null,
-        introVideo: introVideo
-          ? {
-              driveUploadLink: (introVideo.driveUploadLink as string | null) ?? null,
-              uploaded: Boolean(introVideo.uploaded),
-              markedUploadedAt:
-                introVideo.markedUploadedAt instanceof Date ? introVideo.markedUploadedAt.toISOString() : null,
-            }
-          : null,
+        // Self-uploaded directly by the mentor now (see updateMyMentorProfile
+        // in mentor-auth.ts) — no separate Drive-link workflow anymore.
+        introVideoUrl: (mentor.introVideoUrl as string | null) ?? null,
         onboarding: onboarding
           ? {
               weeklyHours: Number(onboarding.weeklyHours ?? 0),

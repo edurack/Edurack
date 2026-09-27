@@ -143,6 +143,7 @@ type SessionRow = {
   meetingLink: string | null;
   lectureUrl: string | null;
   lectureTitle: string | null;
+  isFreePreview: boolean;
   durationMinutes: number | null;
   scheduledAt: string;
   status: "scheduled" | "completed" | "cancelled";
@@ -1336,8 +1337,10 @@ function SessionsTab({
                 : "Watch"
             : "Join";
 
+        const isFreePreviewLecture = s.track === "AsyncLecture" && s.isFreePreview;
+
         return (
-          <LockGate key={s.id} locked={!isPurchased}>
+          <LockGate key={s.id} locked={!isPurchased && !isFreePreviewLecture}>
             <div className="clay flex flex-col gap-3 p-4 transition-transform hover:border-primary/60 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="flex items-start gap-3">
                 <div className="clay-inset flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl sm:h-10 sm:w-10">
@@ -1346,6 +1349,11 @@ function SessionsTab({
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
                     <span className="truncate">{s.track === "AsyncLecture" ? s.lectureTitle : meta.label}</span>
+                    {isFreePreviewLecture && !isPurchased && (
+                      <span className="rounded-full bg-[var(--mint-soft)]/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                        Free preview
+                      </span>
+                    )}
                     {s.status === "cancelled" && (
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"

@@ -9,6 +9,7 @@ import {
   listLectureViewersDetail,
   sendLectureWatchAlert,
   listLectureWatchAlerts,
+  setLectureFreePreview,
 } from "@/server-functions/mentor-portal";
 import { ModuleHeader, StatChip, LoadingBlock, EmptyState, ErrorBanner } from "@/components/mentor-portal-ui";
 import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
@@ -37,6 +38,7 @@ type Lecture = {
   batchName: string;
   lectureTitle: string;
   lectureUrl: string;
+  isFreePreview: boolean;
   scheduledAt: string;
   viewerCount: number;
   completedCount: number;
@@ -90,13 +92,31 @@ export function MentorLectureLibraryModule({ mentorToken }: { mentorToken: strin
                     <Library className="h-4 w-4 text-foreground/50" />
                   </div>
                   <div>
-                    <p className="font-semibold text-foreground">{l.lectureTitle}</p>
+                    <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+                      {l.lectureTitle}
+                      {l.isFreePreview && (
+                        <span className="rounded-full bg-[var(--mint-soft)]/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                          Free preview
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-foreground/50">
                       {l.batchName} · Ingested {new Date(l.scheduledAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      await setLectureFreePreview({
+                        data: { token: mentorToken, sessionId: l.id, isFreePreview: !l.isFreePreview },
+                      });
+                      await refreshLibrary();
+                    }}
+                    className="clay-btn-ghost inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-foreground/70"
+                  >
+                    {l.isFreePreview ? "Remove free preview" : "Mark free preview"}
+                  </button>
                   <button
                     data-tour={i === 0 ? "library-notify" : undefined}
                     onClick={() => setAlertSessionId(l.id)}

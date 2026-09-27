@@ -163,15 +163,15 @@ export const MENTOR_SCORE_TYPE_LABELS: Record<MentorScoreType, string> = {
   score: "Score",
 };
 
-// NOTE: introVideoUrl is retired from being mentor-uploaded. It's replaced
-// by the Drive-link workflow below (MentorIntroVideoStatus). Kept here as
-// nullable/optional so any old data or admin tooling that still reads it
-// doesn't break, but the mentor-facing profile form no longer writes to it
-// directly — see MentorProfileUpdateInput.
+// Self-introduction video — a direct upload, stored via the same
+// mentor-uploads pipeline as lecture videos (see uploadMentorLecture /
+// LectureUploadField). The URL is mentor-writable through
+// updateMyMentorProfile below, and is what the public mentor profile page
+// and the batch/course description page play on load.
 export type MentorProfileExtended = Mentor & {
   aboutText: string;
   yearOfStudy: YearOfStudy | "";
-  introVideoUrl: string | null; // legacy — no longer mentor-writable
+  introVideoUrl: string | null;
 
   aiimsIitRank: string;
   enrolledCollege: string;
@@ -185,14 +185,12 @@ export type MentorProfileExtended = Mentor & {
 };
 
 // Fields the mentor is permitted to submit via the self-service profile form.
-// introVideoUrl removed — self-intro video is now a Drive-link workflow
-// (see setIntroVideoUploadedStatus in mentor-profile-extras.ts), not a
-// direct file upload through this form.
 export type MentorProfileUpdateInput = {
   name: string;
   profilePictureUrl: string | null;
   aboutText: string;
   yearOfStudy: YearOfStudy | "";
+  introVideoUrl: string | null;
 };
 
 export type MentorLockedInfoInput = {
@@ -206,22 +204,6 @@ export type MentorLockedInfoInput = {
   whyExpertAt: string;
   scoreType: MentorScoreType | "";
   scoreValue: string;
-};
-
-// ─── Module 6c: Self-Introduction Video — Google Drive workflow ────────────
-// Replaces the old direct-upload flow. Edurack (admin) owns a Google Drive
-// folder per mentor (or one shared intake folder — up to however admin.ts
-// wires driveUploadLink) where the mentor manually drops their video.
-// This portal only tracks: the link to go upload to, written instructions
-// on how the video should be shot/framed, and a mentor-toggled "I've
-// uploaded it" status flag — there is no file transfer through our own
-// servers at all for this asset anymore.
-export type MentorIntroVideoStatus = {
-  mentorId: string;
-  driveUploadLink: string | null; // admin-provided; null until admin sets one
-  instructions: string; // admin-provided guidance text (framing, length, etc.)
-  uploaded: boolean; // mentor self-reported
-  markedUploadedAt: string | null;
 };
 
 // ─── Module 9: Live Session Scheduler (Tracks A / B / C) ────────────────────
@@ -238,6 +220,11 @@ export type MentorshipSession = {
   meetingLink: string | null;
   lectureUrl: string | null;
   lectureTitle: string | null;
+  // Only meaningful for track === "AsyncLecture". When true, a prospective
+  // student can watch this lecture before purchasing the batch — see
+  // getLectureSessionForStudent / listMentorshipSessionsForStudent in
+  // batch-hub.ts, which skip the purchase check for these.
+  isFreePreview: boolean;
   scheduledAt: string;
   status: SessionStatus;
   createdAt: string | null;

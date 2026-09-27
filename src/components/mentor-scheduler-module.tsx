@@ -8,6 +8,7 @@ import {
   getStudentSessionUsage,
   createMentorshipSession,
   listMentorshipSessions,
+  setLectureFreePreview,
   updateSessionStatus,
   listLectureComments,
   setLectureCommentVisibility,
@@ -429,6 +430,7 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureUrl, setLectureUrl] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [isFreePreview, setIsFreePreview] = useState(false);
   const [sessions, setSessions] = useState<MentorshipSession[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -457,12 +459,20 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
       await createMentorshipSession({
         data: {
           token: mentorToken,
-          session: { batchId, track: "AsyncLecture", lectureTitle: lectureTitle.trim(), lectureUrl: lectureUrl.trim(), scheduledAt },
+          session: {
+            batchId,
+            track: "AsyncLecture",
+            lectureTitle: lectureTitle.trim(),
+            lectureUrl: lectureUrl.trim(),
+            scheduledAt,
+            isFreePreview,
+          },
         },
       });
       setLectureTitle("");
       setLectureUrl("");
       setScheduledAt("");
+      setIsFreePreview(false);
       setShowForm(false);
       await refreshSessions();
     } catch (err) {
@@ -504,6 +514,21 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
               <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className={inputClass} />
             </ClayField>
 
+            <label className="clay-inset flex cursor-pointer items-center justify-between gap-3 rounded-2xl px-4 py-3.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">Free preview</p>
+                <p className="text-xs text-foreground/50">
+                  Prospective students can watch this lecture on the batch page before purchasing.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={isFreePreview}
+                onChange={(e) => setIsFreePreview(e.target.checked)}
+                className="h-4 w-4 shrink-0 accent-[var(--sky-deep)]"
+              />
+            </label>
+
             {error && <ErrorBanner message={error} />}
 
             <button
@@ -541,18 +566,38 @@ function TrackAsyncLecture({ mentorToken, batchId }: { mentorToken: string; batc
               <li key={s.id} className="clay-inset px-4 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{s.lectureTitle}</p>
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                      {s.lectureTitle}
+                      {s.isFreePreview && (
+                        <span className="rounded-full bg-[var(--mint-soft)]/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
+                          Free preview
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-xs text-foreground/50">
                       Available from {new Date(s.scheduledAt).toLocaleString()}
                     </p>
                   </div>
-                  <button
-                    onClick={() => setActiveLectureId(activeLectureId === s.id ? null : s.id)}
-                    className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    {activeLectureId === s.id ? "Hide comments" : "Moderate comments"}
-                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <button
+                      onClick={() => setActiveLectureId(activeLectureId === s.id ? null : s.id)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      {activeLectureId === s.id ? "Hide comments" : "Moderate comments"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await setLectureFreePreview({
+                          data: { token: mentorToken, sessionId: s.id, isFreePreview: !s.isFreePreview },
+                        });
+                        await refreshSessions();
+                      }}
+                      className="text-xs font-medium text-foreground/40 hover:text-foreground/70"
+                    >
+                      {s.isFreePreview ? "Remove free preview" : "Mark as free preview"}
+                    </button>
+                  </div>
                 </div>
                 {activeLectureId === s.id && <CommentAuditor mentorToken={mentorToken} sessionId={s.id} />}
               </li>

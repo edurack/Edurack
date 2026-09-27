@@ -17,6 +17,16 @@ import type { CSSProperties } from "react";
 // focus rings — without touching each module's internals.
 // ─────────────────────────────────────────────────────────────────────────
 export const ADMIN_THEME_VARS = {
+  // Tells the browser this scope is dark, independent of the --variables
+  // below. Without this, Chromium/Edge still assume a light UI for native
+  // form-control chrome (autofill background, date/color pickers, the
+  // password "reveal" icon, scrollbars) even though every custom CSS
+  // variable here is dark — which is exactly why the sign-in inputs were
+  // rendering as plain white boxes with invisible icons/placeholder text:
+  // the browser was painting its own light-mode default underneath our
+  // CSS, not respecting our palette at all.
+  colorScheme: "dark",
+
   "--background": "oklch(0.145 0.007 75)",
   "--foreground": "oklch(0.95 0.004 75)",
 

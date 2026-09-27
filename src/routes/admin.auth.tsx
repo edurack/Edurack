@@ -22,7 +22,6 @@ import {
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { verifyAdminAccess } from "@/server-functions/admin";
 import { mentorLogin } from "@/server-functions/mentor-auth";
-import { ADMIN_THEME_VARS, ADMIN_THEME_CLASS } from "@/lib/admin-theme";
 
 export const Route = createFileRoute("/admin/auth")({
   head: () => ({
@@ -63,10 +62,7 @@ function AdminAuthPage() {
 
   if (loading) {
     return (
-      <div
-        className={`${ADMIN_THEME_CLASS} flex min-h-screen items-center justify-center bg-background`}
-        style={ADMIN_THEME_VARS}
-      >
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
       </div>
     );
@@ -80,10 +76,7 @@ function AdminAuthPage() {
       : "Restricted access. A valid security passkey is required.";
 
   return (
-    <div
-      className={`${ADMIN_THEME_CLASS} grid min-h-screen bg-background lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]`}
-      style={ADMIN_THEME_VARS}
-    >
+    <div className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
       {/* Brand rail — graphite, not the site's navy ink-section, with a
           small live-readout instead of a generic bullet list: this panel
           exists to monitor the platform, so show it monitoring something. */}

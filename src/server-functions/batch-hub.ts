@@ -311,6 +311,7 @@ export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" }
         meetingLink: (r.meetingLink as string | null) ?? null,
         lectureUrl: null, // never expose the raw URL here — /lecture/$sessionId signs it after checking purchase
         lectureTitle: (r.lectureTitle as string | null) ?? null,
+        isFreePreview: Boolean(r.isFreePreview),
         durationMinutes: (r.durationMinutes as number | null) ?? null,
         scheduledAt: r.scheduledAt as string,
         status: r.status as "scheduled" | "completed" | "cancelled",
@@ -358,10 +359,14 @@ export const getLectureSessionForStudent = createServerFn({ method: "GET" })
     if (!session) throw new Error("Lecture not found.");
     if (session.track !== "AsyncLecture") throw new Error("This session is not a recorded lecture.");
 
-    const purchase = await db
-      .collection("purchases")
-      .findOne({ uid: decoded.uid, itemType: "mentorship", itemId: session.batchId as string });
-    if (!purchase) throw new Error("You have not purchased this mentorship batch.");
+    // Free-preview lectures are watchable by any signed-in student without
+    // a purchase — everything else still requires one.
+    if (!session.isFreePreview) {
+      const purchase = await db
+        .collection("purchases")
+        .findOne({ uid: decoded.uid, itemType: "mentorship", itemId: session.batchId as string });
+      if (!purchase) throw new Error("You have not purchased this mentorship batch.");
+    }
 
     let mentorName: string | null = null;
     const batch = await db.collection("mentorshipBatches").findOne({ _id: new ObjectId(session.batchId as string) });
@@ -434,10 +439,12 @@ export const postLectureCommentAsStudent = createServerFn({ method: "POST" })
     const session = await db.collection("mentorshipSessions").findOne({ _id: new ObjectId(data.sessionId) });
     if (!session) throw new Error("Lecture not found.");
 
-    const purchase = await db
-      .collection("purchases")
-      .findOne({ uid: decoded.uid, itemType: "mentorship", itemId: session.batchId as string });
-    if (!purchase) throw new Error("You have not purchased this mentorship batch.");
+    if (!session.isFreePreview) {
+      const purchase = await db
+        .collection("purchases")
+        .findOne({ uid: decoded.uid, itemType: "mentorship", itemId: session.batchId as string });
+      if (!purchase) throw new Error("You have not purchased this mentorship batch.");
+    }
 
     const profile = await db.collection("profiles").findOne({ uid: decoded.uid });
     const studentName = (profile?.fullName as string) || "Student";

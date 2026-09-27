@@ -330,6 +330,9 @@ type CreateSessionInput = {
   meetingLink?: string;
   lectureUrl?: string;
   lectureTitle?: string;
+  // AsyncLecture only — lets a mentor mark a lecture as a free preview that
+  // prospective (non-purchasing) students can watch from the batch page.
+  isFreePreview?: boolean;
   scheduledAt: string;
 };
 
@@ -426,6 +429,7 @@ export const createMentorshipSession = createServerFn({ method: "POST" })
         meetingLink: data.session.meetingLink.trim(),
         lectureUrl: null,
         lectureTitle: null,
+        isFreePreview: false,
         scheduledAt,
         status: "scheduled",
         createdAt: new Date(),
@@ -445,6 +449,7 @@ export const createMentorshipSession = createServerFn({ method: "POST" })
         meetingLink: data.session.meetingLink.trim(),
         lectureUrl: null,
         lectureTitle: null,
+        isFreePreview: false,
         scheduledAt,
         status: "scheduled",
         createdAt: new Date(),
@@ -465,6 +470,7 @@ export const createMentorshipSession = createServerFn({ method: "POST" })
       meetingLink: null,
       lectureUrl: data.session.lectureUrl.trim(),
       lectureTitle: data.session.lectureTitle.trim(),
+      isFreePreview: Boolean(data.session.isFreePreview),
       scheduledAt,
       status: "scheduled",
       createdAt: new Date(),
@@ -498,6 +504,7 @@ export const listMentorshipSessions = createServerFn({ method: "POST" })
       meetingLink: (r.meetingLink as string | null) ?? null,
       lectureUrl: (r.lectureUrl as string | null) ?? null,
       lectureTitle: (r.lectureTitle as string | null) ?? null,
+      isFreePreview: Boolean(r.isFreePreview),
       scheduledAt: r.scheduledAt as string,
       status: r.status as MentorshipSession["status"],
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
@@ -946,6 +953,25 @@ export const listMyMentorTickets = createServerFn({ method: "POST" })
   });
 
 // ─── Lecture Library ─────────────────────────────────────────────────────
+// Flip a lecture's free-preview flag from the Lecture Library (in addition
+// to setting it at upload time in the scheduler). Scoped to the mentor's
+// own lecture via the mentorId filter, same ownership pattern as the rest
+// of this file.
+export const setLectureFreePreview = createServerFn({ method: "POST" })
+  .validator((data: { token: string; sessionId: string; isFreePreview: boolean }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const result = await db.collection("mentorshipSessions").updateOne(
+      { _id: new ObjectId(data.sessionId), mentorId, track: "AsyncLecture" },
+      { $set: { isFreePreview: data.isFreePreview } },
+    );
+    if (result.matchedCount === 0) throw new Error("Lecture not found.");
+    return { ok: true };
+  });
+
 export const listMyLectureLibrary = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
@@ -987,6 +1013,7 @@ export const listMyLectureLibrary = createServerFn({ method: "POST" })
           batchName: batchNameById.get(l.batchId as string) ?? "Batch",
           lectureTitle: l.lectureTitle as string,
           lectureUrl: l.lectureUrl as string,
+          isFreePreview: Boolean(l.isFreePreview),
           scheduledAt: l.scheduledAt as string,
           viewerCount: progress.length,
           completedCount,

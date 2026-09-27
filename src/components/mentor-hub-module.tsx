@@ -257,7 +257,7 @@ type MentorFullDetail = {
   scoreType: MentorScoreType | "";
   scoreValue: string;
   createdAt: string | null;
-  introVideo: { driveUploadLink: string | null; uploaded: boolean; markedUploadedAt: string | null } | null;
+  introVideoUrl: string | null;
   onboarding: {
     weeklyHours: number;
     wantsToSellTestSeries: boolean;
@@ -606,29 +606,25 @@ function MentorDetailDrawer({
               </div>
             </DetailSection>
 
-            {data.introVideo && (
-              <DetailSection icon={CheckCircle2} title="Intro video">
-                <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+            <DetailSection icon={CheckCircle2} title="Intro video">
+              <ul className="clay-inset space-y-1.5 px-3.5 py-3 text-foreground/70">
+                <li>
+                  Uploaded: <strong className="text-foreground">{data.introVideoUrl ? "Yes" : "No"}</strong>
+                </li>
+                {data.introVideoUrl && (
                   <li>
-                    Uploaded: <strong className="text-foreground">{data.introVideo.uploaded ? "Yes" : "No"}</strong>
-                    {data.introVideo.markedUploadedAt && ` · ${formatDate(data.introVideo.markedUploadedAt)}`}
+                    <a
+                      href={data.introVideoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      View video <ExternalLink className="h-3 w-3" />
+                    </a>
                   </li>
-                  {data.introVideo.driveUploadLink && (
-                    
-                    <li>
-                      <a
-                        href={data.introVideo.driveUploadLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 font-semibold text-[var(--sky-deep)] hover:underline"
-                      >
-                        Drive folder <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </li>
-                  )}
-                </ul>
-              </DetailSection>
-            )}
+                )}
+              </ul>
+            </DetailSection>
 
             {/* Full onboarding wizard submission, if this mentor came through it */}
             {data.onboarding ? (
