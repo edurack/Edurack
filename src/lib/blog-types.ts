@@ -153,3 +153,66 @@ export type BlogRevision = {
   bodyMarkdown: string;
   savedAt: string;
 };
+
+
+// ─── Free-test popup ───────────────────────────────────────────────────────
+// A popup shown ~10 seconds after a blog page loads, nudging readers toward
+// the free test series. Three audiences: JEE posts see the JEE link, NEET
+// posts the NEET link, everything else (CUET/IPMAT/general posts and the blog
+// index) the general one. Edited from the admin Blog tab.
+export type BlogPromoAudience = "jee" | "neet" | "general";
+
+export const BLOG_PROMO_AUDIENCES: BlogPromoAudience[] = ["jee", "neet", "general"];
+
+export const BLOG_PROMO_AUDIENCE_LABELS: Record<BlogPromoAudience, string> = {
+  jee: "JEE blogs",
+  neet: "NEET blogs",
+  general: "General (all other blogs + blog home)",
+};
+
+export type BlogPromoConfig = {
+  enabled: boolean;
+  url: string; // "/..." internal path or "https://..." external link
+  title: string;
+  message: string;
+  buttonLabel: string;
+};
+
+export type BlogPromoSettings = Record<BlogPromoAudience, BlogPromoConfig>;
+
+export const BLOG_PROMO_DELAY_MS = 10_000;
+
+export const DEFAULT_BLOG_PROMO_SETTINGS: BlogPromoSettings = {
+  jee: {
+    enabled: false,
+    url: "",
+    title: "Free JEE test series is live",
+    message: "Try a free JEE test on Edurack and see where you stand — no payment needed.",
+    buttonLabel: "Take a free JEE test",
+  },
+  neet: {
+    enabled: false,
+    url: "",
+    title: "Free NEET test series is live",
+    message: "Try a free NEET test on Edurack and see where you stand — no payment needed.",
+    buttonLabel: "Take a free NEET test",
+  },
+  general: {
+    enabled: false,
+    url: "",
+    title: "Free test series is available",
+    message: "Try a free test series on Edurack and check your preparation for yourself.",
+    buttonLabel: "Try it free",
+  },
+};
+
+// Which audience a given page belongs to. Post pages pass their own
+// examKey/category; the blog index passes whatever filter is active.
+export function resolveBlogPromoAudience(input: {
+  examKey?: string | null;
+  category?: string | null;
+}): BlogPromoAudience {
+  if (input.examKey === "jee" || input.category === "jeeStrategy") return "jee";
+  if (input.examKey === "neet" || input.category === "neetStrategy") return "neet";
+  return "general";
+}

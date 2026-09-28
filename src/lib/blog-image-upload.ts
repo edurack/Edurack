@@ -33,6 +33,15 @@ async function compressImage(file: File): Promise<File> {
 // same bucket. If cover images ever need a different aspect-ratio crop
 // step, that's the point to split them, not before.
 export async function uploadBlogImage(file: File): Promise<string> {
+  // SVGs stay vectors: the canvas → webp pipeline below would rasterize them
+  // (blurry at high zoom, and createImageBitmap can't decode SVG in every
+  // browser). They are rendered on the site through <img>, where scripts
+  // inside an SVG never run, so uploading the file as-is is safe.
+  if (file.type === "image/svg+xml" || /\.svg$/i.test(file.name)) {
+    if (file.size > 2 * 1024 * 1024) throw new Error("SVG is over 2MB");
+    const svgFile = new File([file], "blog-graphic.svg", { type: "image/svg+xml" });
+    return uploadToSupabase(BLOG_ASSETS_BUCKET, svgFile, 31536000);
+  }
   const compressed = await compressImage(file);
   // 1-year cache: uploadToSupabase randomizes the filename, so a given
   // URL's content never changes.

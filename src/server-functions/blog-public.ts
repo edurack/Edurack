@@ -9,7 +9,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { getCurrentRequest } from "@/lib/get-request";
-import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
+import type { BlogCategory, BlogPromoAudience, BlogPromoConfig, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
+import { DEFAULT_BLOG_PROMO_SETTINGS } from "@/lib/blog-types";
 import type { ExamKey } from "@/lib/admin-types";
 
 // Same header-based lookup used for session/device tracking elsewhere
@@ -22,7 +23,7 @@ function getClientIp(): string {
     request?.headers.get("x-real-ip") ??
     "unknown"
   );
-}"@/lib/admin-types";
+}
 
 
 const PUBLISHED_FILTER = { status: "published", deletedAt: null } as const;
@@ -204,4 +205,34 @@ export const incrementBlogViewCount = createServerFn({ method: "POST" })
     }
 
     return { ok: true };
+  });
+
+// ─── Free-test popup (public) ─────────────────────────────────────────────
+// Returns the popup config for one audience, or null when nothing should be
+// shown. A JEE/NEET audience with no usable link of its own falls back to the
+// "general" popup, so switching on just the general one still covers every
+// blog page until a dedicated link is added.
+function usablePromo(c: any): BlogPromoConfig | null {
+  if (!c?.enabled || typeof c.url !== "string" || !c.url) return null;
+  const okUrl = (c.url.startsWith("/") && !c.url.startsWith("//")) || /^https:\/\//i.test(c.url);
+  if (!okUrl) return null;
+  const d = DEFAULT_BLOG_PROMO_SETTINGS.general;
+  return {
+    enabled: true,
+    url: c.url,
+    title: c.title || d.title,
+    message: c.message || d.message,
+    buttonLabel: c.buttonLabel || d.buttonLabel,
+  };
+}
+
+export const getBlogPromoPopup = createServerFn({ method: "GET" })
+  .validator((data: { audience: BlogPromoAudience }) => data)
+  .handler(async ({ data }) => {
+    const db = await getDb();
+    const doc = await db.collection("blogSettings").findOne({ _id: "promoPopup" } as any);
+    const s = doc?.settings ?? {};
+    const audience: BlogPromoAudience = ["jee", "neet", "general"].includes(data.audience) ? data.audience : "general";
+    const popup = usablePromo(s[audience]) ?? (audience !== "general" ? usablePromo(s.general) : null);
+    return { popup };
   });

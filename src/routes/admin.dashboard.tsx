@@ -49,7 +49,7 @@ import { MentorHubModule } from "@/components/mentor-hub-module";
 import { SellTestsAdminModule } from "@/components/sell-tests-admin-module";
 import { InternHubModule } from "@/components/admin/intern-hub-module";
 import { InternTrialModule } from "@/components/admin/intern-trial-module";
-import { ADMIN_THEME_CLASS, ADMIN_THEME_VARS } from "@/lib/admin-theme";
+import { useForceLightTheme } from "@/lib/use-force-light-theme";
 
 
 type ModuleKey =
@@ -154,6 +154,9 @@ function formatDateTime(iso: string | null) {
 }
 
 function AdminDashboardPage() {
+  // Admin is light-only: pin the page to the light theme for as long as this
+  // page is mounted, even if the visitor's saved/OS theme is dark.
+  useForceLightTheme();
   const { adminUser, isAdmin, loading } = useAdminClaim();
   const navigate = useNavigate();
   const { tab, ticketId } = Route.useSearch();
@@ -184,10 +187,7 @@ function AdminDashboardPage() {
 
   if (loading || !adminUser || !isAdmin) {
     return (
-      <div
-        className={`${ADMIN_THEME_CLASS} flex min-h-screen items-center justify-center bg-background`}
-        style={ADMIN_THEME_VARS}
-      >
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
       </div>
     );
@@ -197,7 +197,7 @@ function AdminDashboardPage() {
   const activeDef = MODULE_LOOKUP[activeModule];
 
   return (
-    <div className={`${ADMIN_THEME_CLASS} relative min-h-screen bg-background`} style={ADMIN_THEME_VARS}>
+    <div className="relative min-h-screen bg-background">
 
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background py-5 md:flex">

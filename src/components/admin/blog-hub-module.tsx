@@ -34,6 +34,7 @@ import {
 } from "@/server-functions/blog-admin";
 import { uploadBlogImage } from "@/lib/blog-image-upload";
 import { BlogImageInsertField } from "@/components/admin/blog-image-insert-field";
+import { BlogPromoSettingsPanel } from "@/components/admin/blog-promo-settings";
 import { BlogBody } from "@/lib/blog-content";
 import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
 import type { BlogPost, BlogPostInput, BlogCategory } from "@/lib/blog-types";
@@ -77,6 +78,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
   const [listStatus, setListStatus] = useState<"loading" | "ready" | "error">("loading");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showPromo, setShowPromo] = useState(false);
 
   async function loadList() {
     setListStatus("loading");
@@ -134,11 +136,21 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
             )}
           </p>
         </div>
-        <button onClick={openNew} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
-          <Plus className="h-4 w-4" />
-          New post
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPromo((v) => !v)}
+            className={`rounded-full px-4 py-2.5 text-xs font-bold ${showPromo ? "bg-foreground text-background" : "clay-chip text-foreground/70"}`}
+          >
+            Free test popup
+          </button>
+          <button onClick={openNew} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
+            <Plus className="h-4 w-4" />
+            New post
+          </button>
+        </div>
       </div>
+
+      {showPromo && <BlogPromoSettingsPanel adminUser={adminUser} />}
 
       {listStatus === "loading" ? (
         <div className="flex justify-center py-10">
@@ -496,7 +508,7 @@ function BlogEditor({
               <BlogImageInsertField
                 value={form.bodyMarkdown}
                 onChange={(v) => set("bodyMarkdown", v)}
-                placeholder="Write in markdown — # heading, **bold**, - list item, > quote, [link](url), ![](image url)…"
+                placeholder="Write in markdown — # heading, **bold**, - list, > quote, [link](url), ![](image), $x^2$ math, <svg> code, :::tip callouts…"
                 className="clay-inset w-full resize-y rounded-2xl px-4 py-3 text-sm leading-relaxed focus:outline-none"
               />
             )}

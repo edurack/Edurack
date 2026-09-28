@@ -5,6 +5,22 @@
 // lists, tables, code blocks, quotes, images, links, custom inline CTA
 // buttons, an accessible FAQ accordion, and responsive text wrapping.
 //
+// Rich-content authoring syntax (all of it renders on the server too, so SSR
+// and SEO see the finished page):
+//   - Math:      $E=mc^2$ inline, $$ ... $$ display (can span lines), or a
+//                ```math fenced block. Chemistry: $\\ce{2H2 + O2 -> 2H2O}$
+//                (KaTeX + mhchem). A literal dollar sign is written \\$.
+//   - SVG:       paste raw <svg ...>...</svg> straight into the body, or wrap
+//                it in a ```svg fence (text after "svg" on the fence line is
+//                the caption). SVG is always rendered through an <img> data
+//                URI, never inlined, so scripts / external loads inside a
+//                pasted SVG can never execute on the page.
+//   - Images:    ![alt](url) — add a caption with ![alt](url "Caption").
+//   - Callouts:  :::note / :::tip / :::warning / :::important / :::example
+//                (optional title after the keyword), closed by a lone :::.
+//                Callouts can contain any of the syntax above.
+//   - Inline:    ~~strikethrough~~ and ==highlight== on top of bold/italic.
+//
 // Accessibility notes (read before editing this file):
 //   - Every heading gets a stable, deduped `id` so the Table of Contents
 //     and any external "jump to section" link keeps working.
@@ -25,6 +41,12 @@
 //     cells, and are wrapped in a labelled, keyboard-scrollable region so
 //     wide tables don't break horizontal layout on mobile.
 
+import katex from "katex";
+import "katex/dist/katex.min.css";
+// Chemistry: enables \ce{...} and \pu{...} inside math — bundled with katex.
+// @ts-ignore — no bundled type declarations for the contrib entry point
+import "katex/contrib/mhchem";
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -39,12 +61,172 @@ function isSafeUrl(url: string): boolean {
   return /^https?:\/\//i.test(trimmed);
 }
 
+// ── Math handling ─────────────────────────────────────────────────────────
+// Math is pulled out of the markdown BEFORE any other parsing and replaced by
+// a private-use-character token. That way `*`, `_`, `<` and friends inside a
+// formula are never mangled by the markdown rules or HTML-escaping, and a
+// multi-line $$ ... $$ block survives the line-by-line block parser. Tokens
+// are swapped for KaTeX output at the very end of renderInline.
+// Module-level store is safe: rendering is fully synchronous.
+const MATH_OPEN = "\uE000";
+const MATH_CLOSE = "\uE001";
+const MATH_TOKEN_PATTERN = /\uE000(\d+)\uE001/g;
+
+type MathEntry = { raw: string; html: string; display: boolean };
+let mathStore: MathEntry[] = [];
+
+function renderKatex(expr: string, display: boolean): string {
+  try {
+    return katex.renderToString(expr, {
+      displayMode: display,
+      throwOnError: false,
+      strict: "ignore",
+      trust: false,
+      output: "htmlAndMathml",
+    });
+  } catch {
+    return `<code class="rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-mono">${escapeHtml(expr)}</code>`;
+  }
+}
+
+function stashMath(expr: string, display: boolean): string {
+  const raw = display ? `$$${expr}$$` : `$${expr}$`;
+  const rendered = renderKatex(expr.trim(), display);
+  const html = display
+    ? `<span class="blog-math-display my-4 block max-w-full overflow-x-auto overflow-y-hidden text-center">${rendered}</span>`
+    : rendered;
+  mathStore.push({ raw, html, display });
+  return `${MATH_OPEN}${mathStore.length - 1}${MATH_CLOSE}`;
+}
+
+function restoreMathHtml(text: string): string {
+  return text.replace(MATH_TOKEN_PATTERN, (_, n) => mathStore[Number(n)]?.html ?? "");
+}
+
+function restoreMathRaw(text: string): string {
+  return text.replace(MATH_TOKEN_PATTERN, (_, n) => mathStore[Number(n)]?.raw ?? "");
+}
+
+// Inline: $...$ — the opening $ must be followed by a non-space, the closing
+// $ preceded by a non-space and NOT followed by a digit. That is what keeps
+// prose like "costs $5 and $10" from being read as a formula.
+const INLINE_MATH_PATTERN = /(?<!\\)\$(?![\s$])([^$\n]*?[^\s$\\])\$(?!\d)/g;
+const DISPLAY_MATH_PATTERN = /(?<!\\)\$\$([\s\S]+?)\$\$/g;
+
+function extractMathFromText(text: string): string {
+  // Leave `inline code` spans untouched — a $ in code is just a $.
+  return text
+    .split(/(`[^`\n]*`)/)
+    .map((part, idx) => {
+      if (idx % 2 === 1) return part;
+      return part
+        .replace(DISPLAY_MATH_PATTERN, (_, expr) => stashMath(expr, true))
+        .replace(INLINE_MATH_PATTERN, (_, expr) => stashMath(expr, false));
+    })
+    .join("");
+}
+
+// Walks the document, skipping fenced code blocks and raw <svg> blocks, and
+// extracts math from everything else.
+function extractMath(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let buffer: string[] = [];
+  let inFence = false;
+  let inSvg = false;
+
+  const flush = () => {
+    if (buffer.length) {
+      out.push(extractMathFromText(buffer.join("\n")));
+      buffer = [];
+    }
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (inFence) {
+      out.push(line);
+      if (t.startsWith("```")) inFence = false;
+      continue;
+    }
+    if (inSvg) {
+      out.push(line);
+      if (/<\/svg>/i.test(t)) inSvg = false;
+      continue;
+    }
+    if (t.startsWith("```")) {
+      flush();
+      out.push(line);
+      inFence = true;
+      continue;
+    }
+    if (/^<svg[\s>]/i.test(t)) {
+      flush();
+      out.push(line);
+      if (!/<\/svg>/i.test(t)) inSvg = true;
+      continue;
+    }
+    buffer.push(line);
+  }
+  flush();
+  return out.join("\n");
+}
+
+// ── SVG handling ──────────────────────────────────────────────────────────
+const MAX_SVG_CHARS = 300_000;
+
+function svgOpeningTag(svg: string): string {
+  const end = svg.indexOf(">");
+  return end === -1 ? svg : svg.slice(0, end + 1);
+}
+
+function renderSvgFigure(svgCode: string, caption: string): string {
+  let svg = svgCode.trim();
+  if (!/^<svg[\s>]/i.test(svg) || !/<\/svg>\s*$/i.test(svg)) {
+    return `<p class="my-4 text-sm text-rose-600">SVG block is incomplete — it must start with &lt;svg and end with &lt;/svg&gt;.</p>`;
+  }
+  if (svg.length > MAX_SVG_CHARS) {
+    return `<p class="my-4 text-sm text-rose-600">SVG is too large to embed — upload it as an image instead.</p>`;
+  }
+
+  let open = svgOpeningTag(svg);
+  let patched = open;
+  // An <img> data-URI SVG is only valid with an xmlns.
+  if (!/\sxmlns\s*=/.test(patched)) patched = patched.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  // No intrinsic size → the browser falls back to a tiny 300×150 box. If a
+  // viewBox exists, derive width/height from it so the image scales properly.
+  const hasWidth = /\swidth\s*=/.test(patched);
+  const hasHeight = /\sheight\s*=/.test(patched);
+  const vb = /viewBox\s*=\s*["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)\s*["']/i.exec(patched);
+  if (vb && (!hasWidth || !hasHeight)) {
+    const extra = `${hasWidth ? "" : ` width="${vb[1]}"`}${hasHeight ? "" : ` height="${vb[2]}"`}`;
+    patched = patched.replace(/^<svg/i, `<svg${extra}`);
+  }
+  svg = patched + svg.slice(open.length);
+
+  const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  const alt = caption ? restoreMathRaw(caption) : "Diagram";
+  const figcaption = caption
+    ? `<figcaption class="mt-2 text-center text-xs text-foreground/60">${renderInline(caption)}</figcaption>`
+    : "";
+  // White card: pasted SVGs are usually drawn for a white background and
+  // would disappear on a dark theme otherwise.
+  return `<figure class="blog-figure blog-svg my-6"><div class="overflow-x-auto rounded-xl border border-foreground/10 bg-white p-3 text-center"><img src="${src}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" class="mx-auto h-auto max-w-full" /></div>${figcaption}</figure>`;
+}
+
+function parseImageTarget(raw: string): { url: string; caption: string } {
+  const m = /^(\S+)\s+"([^"]*)"\s*$/.exec(raw.trim());
+  return m ? { url: m[1], caption: m[2] } : { url: raw.trim(), caption: "" };
+}
+
 // Strips the inline markdown syntax we support so heading text can be
 // turned into a clean slug and into an accessible accordion <summary>.
 function stripInlineMarkdown(text: string): string {
-  return text
+  return restoreMathRaw(text)
     .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\$\$?([^$]+)\$\$?/g, "$1")
+    .replace(/~~|==/g, "")
     .replace(/[*`_]/g, "")
     .trim();
 }
@@ -59,19 +241,21 @@ function slugify(text: string): string {
   return base || "section";
 }
 
-const INLINE_PATTERN = /(\*\*[^*]+\*\*|`[^`]+`|!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\)|\*[^*]+\*)/g;
+const INLINE_PATTERN = /(\*\*[^*]+\*\*|~~[^~]+~~|==[^=]+==|`[^`]+`|!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\)|\*[^*]+\*)/g;
 
 function renderInline(text: string): string {
   const parts = text.split(INLINE_PATTERN);
-  return parts
+  const joined = parts
     .map((part) => {
       if (!part) return "";
 
       const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(part);
       if (image) {
-        const [, alt, url] = image;
+        const [, alt, target] = image;
+        const { url, caption } = parseImageTarget(target);
         if (!isSafeUrl(url)) return escapeHtml(part);
-        return `<img src="${escapeHtml(url.trim())}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" class="blog-inline-image rounded-xl max-w-full h-auto my-4" />`;
+        const titleAttr = caption ? ` title="${escapeHtml(caption)}"` : "";
+        return `<img src="${escapeHtml(url)}" alt="${escapeHtml(restoreMathRaw(alt))}"${titleAttr} loading="lazy" decoding="async" class="blog-inline-image rounded-xl max-w-full h-auto my-4" />`;
       }
 
       const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(part);
@@ -109,6 +293,12 @@ function renderInline(text: string): string {
         return `<a href="${escapeHtml(url.trim())}"${relAttr} class="font-medium text-primary underline underline-offset-4 break-all">${escapeHtml(label)}${externalSuffix}</a>`;
       }
 
+      if (part.startsWith("~~") && part.endsWith("~~") && part.length > 4) {
+        return `<del>${escapeHtml(part.slice(2, -2))}</del>`;
+      }
+      if (part.startsWith("==") && part.endsWith("==") && part.length > 4) {
+        return `<mark class="rounded bg-yellow-200/70 px-1 text-foreground">${escapeHtml(part.slice(2, -2))}</mark>`;
+      }
       if (part.startsWith("**") && part.endsWith("**") && part.length > 3) {
         return `<strong>${escapeHtml(part.slice(2, -2))}</strong>`;
       }
@@ -119,9 +309,10 @@ function renderInline(text: string): string {
         return `<em>${escapeHtml(part.slice(1, -1))}</em>`;
       }
 
-      return escapeHtml(part);
+      return escapeHtml(part).replace(/\\\$/g, "$");
     })
     .join("");
+  return restoreMathHtml(joined);
 }
 
 type ListState = { kind: "ul" | "ol"; items: string[] } | null;
@@ -232,19 +423,48 @@ export function extractHeadings(markdown: string): BlogHeading[] {
 
 const FAQ_HEADING_PATTERN = /frequently asked questions/i;
 
-export function renderBlogMarkdownToHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+type RenderShared = { headingIdCounts: Map<string, number>; faqBlockIndex: number };
+
+const CALLOUT_OPEN = /^:::(note|tip|warning|important|example)\b[ \t]*(.*)$/i;
+
+const CALLOUT_STYLES: Record<string, { label: string; box: string; tag: string }> = {
+  note: { label: "Note", box: "border-primary/60 bg-primary/5", tag: "text-primary" },
+  tip: { label: "Tip", box: "border-emerald-500/70 bg-emerald-500/10", tag: "text-emerald-600" },
+  warning: { label: "Warning", box: "border-amber-500/70 bg-amber-500/10", tag: "text-amber-600" },
+  important: { label: "Important", box: "border-rose-500/70 bg-rose-500/10", tag: "text-rose-600" },
+  example: { label: "Example", box: "border-violet-500/70 bg-violet-500/10", tag: "text-violet-600" },
+};
+
+function renderBlocks(lines: string[], shared: RenderShared): string {
   const out: string[] = [];
   let paragraph: string[] = [];
   let list: ListState = null;
   let inCodeFence = false;
+  let fenceInfo = "";
   let codeLines: string[] = [];
-  const headingIdCounts = new Map<string, number>();
+  const headingIdCounts = shared.headingIdCounts;
+
+  // A closed (or end-of-document) fence becomes one of: an SVG figure, a
+  // display-math block, or a plain code block.
+  function emitFence() {
+    const lang = fenceInfo.split(/\s+/)[0]?.toLowerCase() ?? "";
+    const rest = fenceInfo.slice(lang.length).trim();
+    const body = codeLines.join("\n");
+    if (lang === "svg") {
+      out.push(renderSvgFigure(body, rest));
+    } else if (lang === "math" || lang === "latex" || lang === "tex") {
+      out.push(`<div class="blog-math-block">${stashMathBlockHtml(body)}</div>`);
+    } else {
+      out.push(`<pre class="blog-code-block my-6 overflow-x-auto rounded-xl bg-foreground/5 p-4 text-xs font-mono"><code>${escapeHtml(body)}</code></pre>`);
+    }
+    codeLines = [];
+    fenceInfo = "";
+    inCodeFence = false;
+  }
 
   // FAQ accordion state. See module doc comment above for the authoring
   // convention this implements.
   let faqMode = false;
-  let faqBlockIndex = 0;
   let faqItems: { question: string; answerParagraphs: string[] }[] = [];
 
   function nextHeadingId(text: string): string {
@@ -259,7 +479,8 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       faqMode = false;
       return;
     }
-    faqBlockIndex++;
+    shared.faqBlockIndex++;
+    const faqBlockIndex = shared.faqBlockIndex;
     const itemsHtml = faqItems
       .map((item, i) => {
         const qId = `faq-${faqBlockIndex}-${i + 1}`;
@@ -308,14 +529,13 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
 
     if (line.trim().startsWith("```")) {
       if (inCodeFence) {
-        out.push(`<pre class="blog-code-block my-6 overflow-x-auto rounded-xl bg-foreground/5 p-4 text-xs font-mono"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-        codeLines = [];
-        inCodeFence = false;
+        emitFence();
       } else {
         flushParagraph();
         flushList(list, out);
         list = null;
         inCodeFence = true;
+        fenceInfo = line.trim().slice(3).trim();
       }
       i++;
       continue;
@@ -333,6 +553,48 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushList(list, out);
       list = null;
       i++;
+      continue;
+    }
+
+    // Raw pasted SVG: <svg ...> ... </svg> — collected up to the closing tag.
+    if (/^<svg[\s>]/i.test(trimmed)) {
+      flushParagraph();
+      flushList(list, out);
+      list = null;
+      if (faqMode) flushFaq();
+      const svgLines: string[] = [];
+      let j = i;
+      while (j < lines.length) {
+        svgLines.push(lines[j]);
+        if (/<\/svg>/i.test(lines[j])) break;
+        j++;
+      }
+      out.push(renderSvgFigure(svgLines.join("\n"), ""));
+      i = j + 1;
+      continue;
+    }
+
+    // Callout box: :::tip Optional title ... :::
+    const calloutOpen = CALLOUT_OPEN.exec(trimmed);
+    if (calloutOpen) {
+      flushParagraph();
+      flushList(list, out);
+      list = null;
+      if (faqMode) flushFaq();
+      const kind = calloutOpen[1].toLowerCase();
+      const title = calloutOpen[2].trim();
+      const inner: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && lines[j].trim() !== ":::") {
+        inner.push(lines[j]);
+        j++;
+      }
+      const style = CALLOUT_STYLES[kind];
+      const innerHtml = renderBlocks(inner, shared);
+      out.push(
+        `<aside class="blog-callout my-6 rounded-xl border-l-4 px-4 py-3 ${style.box}"><p class="mb-1 text-xs font-bold uppercase tracking-wide ${style.tag}">${escapeHtml(style.label)}${title ? ` · <span class="normal-case tracking-normal text-foreground">${renderInline(title)}</span>` : ""}</p><div class="blog-callout-body [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">${innerHtml}</div></aside>`,
+      );
+      i = j + 1;
       continue;
     }
 
@@ -384,7 +646,11 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
       flushParagraph();
       flushList(list, out);
       list = null;
-      out.push(`<figure class="blog-figure my-6">${renderInline(trimmed)}</figure>`);
+      const imgParts = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(trimmed);
+      const imgCaption = imgParts ? parseImageTarget(imgParts[2]).caption : "";
+      out.push(
+        `<figure class="blog-figure my-6">${renderInline(trimmed)}${imgCaption ? `<figcaption class="mt-2 text-center text-xs text-foreground/60">${renderInline(imgCaption)}</figcaption>` : ""}</figure>`,
+      );
       i++;
       continue;
     }
@@ -436,22 +702,44 @@ export function renderBlogMarkdownToHtml(markdown: string): string {
   flushParagraph();
   flushList(list, out);
   if (faqMode) flushFaq();
-  if (inCodeFence && codeLines.length > 0) {
-    out.push(`<pre class="blog-code-block my-6 overflow-x-auto rounded-xl bg-foreground/5 p-4 text-xs font-mono"><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-  }
+  if (inCodeFence && codeLines.length > 0) emitFence();
 
   return out.join("\n");
 }
 
+// A ```math fence is display math without needing $$ delimiters.
+function stashMathBlockHtml(expr: string): string {
+  const token = stashMath(expr, true);
+  return restoreMathHtml(token);
+}
+
+export function renderBlogMarkdownToHtml(markdown: string): string {
+  mathStore = [];
+  const normalized = markdown.replace(/\r\n/g, "\n");
+  const withMathStashed = extractMath(normalized);
+  const html = renderBlocks(withMathStashed.split("\n"), { headingIdCounts: new Map(), faqBlockIndex: 0 });
+  mathStore = [];
+  return html;
+}
+
 const WORDS_PER_MINUTE = 200;
 
+// SVG source and LaTeX are markup, not prose — counting their characters as
+// "words" would make a diagram-heavy post look like a 40-minute read.
+function stripNonProse(markdown: string): string {
+  return markdown
+    .replace(/```(?:svg|math|latex|tex)[^\n]*\n[\s\S]*?```/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/\$\$[\s\S]+?\$\$/g, " ");
+}
+
 export function estimateReadingTimeMinutes(markdown: string): number {
-  const words = markdown.trim().split(/\s+/).filter(Boolean).length;
+  const words = stripNonProse(markdown).trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 
 export function stripMarkdownToText(markdown: string): string {
-  return markdown
+  return stripNonProse(markdown)
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")

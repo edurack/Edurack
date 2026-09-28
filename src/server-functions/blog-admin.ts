@@ -13,7 +13,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { estimateReadingTimeMinutes } from "@/lib/blog-content";
-import type { BlogPost, BlogPostInput, BlogPostStatus, BlogCategory } from "@/lib/blog-types";
+import type { BlogPost, BlogPostInput, BlogPostStatus, BlogCategory, BlogPromoSettings } from "@/lib/blog-types";
+import { BLOG_PROMO_AUDIENCES, DEFAULT_BLOG_PROMO_SETTINGS } from "@/lib/blog-types";
 import type { ExamKey, Track } from "@/lib/admin-types";
 
 async function requireAdmin(token: string) {
@@ -358,3 +359,60 @@ export async function publishDueScheduledPosts(): Promise<{ published: number }>
   }
   return { published: due.length };
 }
+
+
+// ─── Free-test popup settings ─────────────────────────────────────────────
+// One document in `blogSettings` (_id "promoPopup") holding the three
+// audience configs. Links are validated on save: internal paths ("/...") or
+// https:// only — a javascript: or data: URL typed into this field must never
+// reach a public button.
+function isAllowedPromoUrl(url: string): boolean {
+  if (url.startsWith("/") && !url.startsWith("//")) return true;
+  return /^https:\/\//i.test(url);
+}
+
+function cleanPromoSettings(raw: any): BlogPromoSettings {
+  const out = { ...DEFAULT_BLOG_PROMO_SETTINGS } as BlogPromoSettings;
+  for (const key of BLOG_PROMO_AUDIENCES) {
+    const d = DEFAULT_BLOG_PROMO_SETTINGS[key];
+    const r = raw?.[key] ?? {};
+    out[key] = {
+      enabled: Boolean(r.enabled),
+      url: typeof r.url === "string" ? r.url.trim().slice(0, 500) : "",
+      title: (typeof r.title === "string" && r.title.trim() ? r.title.trim() : d.title).slice(0, 120),
+      message: (typeof r.message === "string" && r.message.trim() ? r.message.trim() : d.message).slice(0, 300),
+      buttonLabel: (typeof r.buttonLabel === "string" && r.buttonLabel.trim() ? r.buttonLabel.trim() : d.buttonLabel).slice(0, 40),
+    };
+  }
+  return out;
+}
+
+export const getBlogPromoSettingsAdmin = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const doc = await db.collection("blogSettings").findOne({ _id: "promoPopup" } as any);
+    return { settings: cleanPromoSettings(doc?.settings) };
+  });
+
+export const saveBlogPromoSettings = createServerFn({ method: "POST" })
+  .validator((data: { token: string; settings: BlogPromoSettings }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const settings = cleanPromoSettings(data.settings);
+    for (const key of BLOG_PROMO_AUDIENCES) {
+      const c = settings[key];
+      if (c.url && !isAllowedPromoUrl(c.url)) {
+        throw new Error(`${key.toUpperCase()} link must start with "/" or "https://".`);
+      }
+      if (c.enabled && !c.url) {
+        throw new Error(`${key.toUpperCase()} popup is switched on but has no link.`);
+      }
+    }
+    const db = await getDb();
+    await db
+      .collection("blogSettings")
+      .updateOne({ _id: "promoPopup" } as any, { $set: { settings, updatedAt: new Date() } }, { upsert: true });
+    return { ok: true };
+  });

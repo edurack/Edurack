@@ -3,10 +3,11 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { getPublishedPostBySlug, incrementBlogViewCount, listRelatedPosts } from "@/server-functions/blog-public";
 import { BlogBody, estimateReadingTimeMinutes, extractHeadings } from "@/lib/blog-content";
-import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
+import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
 import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MobileTableOfContents, TableOfContentsSidebar } from "@/components/blog/table-of-contents";
 import { BlogBreadcrumbs, buildBreadcrumbJsonLd, buildPostBreadcrumbs } from "@/components/blog/blog-breadcrumbs";
+import { FreeTestPopup } from "@/components/blog/free-test-popup";
 import { IconClock as Clock, IconLink as LinkIcon, IconBrandWhatsapp as WhatsApp } from "@tabler/icons-react";
 
 const SITE_URL = "https://www.edurack.in";
@@ -89,6 +90,9 @@ function BlogPostPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:py-14">
+      {/* key: a fresh 10s timer for every post, even when navigating post → post */}
+      <FreeTestPopup key={post.id} audience={resolveBlogPromoAudience({ examKey: post.examKey, category: post.category })} />
+
       {/* Skip link: the very first focusable element on the page, visually
           hidden until it receives keyboard focus. Lets keyboard and
           screen-reader users bypass the breadcrumb/header chrome and land

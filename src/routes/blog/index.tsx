@@ -3,9 +3,10 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { pageHead } from "@/lib/seo";
 import { listPublishedPosts } from "@/server-functions/blog-public";
-import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
+import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
 import type { BlogCategory, PublicBlogPostSummary } from "@/lib/blog-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
+import { FreeTestPopup } from "@/components/blog/free-test-popup";
 import type { ExamKey } from "@/lib/admin-types";
 
 type BlogSearch = { category?: BlogCategory; examKey?: ExamKey; page?: number };
@@ -53,6 +54,8 @@ function BlogIndexPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-14">
+      {/* Filtering by JEE/NEET switches to that exam's link; otherwise general. */}
+      <FreeTestPopup audience={resolveBlogPromoAudience({ examKey: search.examKey, category: search.category })} />
       <div className="mb-8">
         <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">Edurack Blog</h1>
         <p className="mt-1 text-sm text-foreground/60">Exam strategy, mentor stories, and what's new on the platform.</p>
