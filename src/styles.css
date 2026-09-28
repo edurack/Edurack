@@ -355,35 +355,107 @@
   }
 }
 
-.blog-body { font-size: 1rem; line-height: 1.75; }
-.blog-body p { margin: 0 0 1.1em; }
-.blog-heading { font-weight: 700; margin: 1.6em 0 0.6em; }
-h2.blog-heading { font-size: 1.4em; }
-h3.blog-heading { font-size: 1.2em; }
-h4.blog-heading { font-size: 1.05em; }
-.blog-list { margin: 0 0 1.1em; padding-left: 1.4em; }
-.blog-list li { margin-bottom: 0.35em; }
+/* ────────────────────────────────────────────────────────────────────
+   BLOG: READING TYPOGRAPHY
+   Unlayered on purpose — these win over the Tailwind utility classes that
+   blog-content.tsx also puts on each element, so the article look lives in
+   one place. Colours use theme tokens, so light and dark both work.
+   ──────────────────────────────────────────────────────────────────── */
+.blog-body {
+  font-size: 1.0625rem;
+  line-height: 1.85;
+  color: color-mix(in oklab, var(--color-foreground) 86%, transparent);
+}
+@media (min-width: 640px) {
+  .blog-body { font-size: 1.125rem; }
+}
+.blog-body p { margin: 0 0 1.35em; line-height: 1.85; }
+.blog-body > p:first-child {
+  font-size: 1.16em;
+  line-height: 1.7;
+  color: var(--color-foreground);
+}
+.blog-body strong { color: var(--color-foreground); font-weight: 700; }
+
+.blog-heading {
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--color-foreground);
+}
+h2.blog-heading { font-size: clamp(1.55rem, 1.25rem + 1.2vw, 2rem); margin: 2.6em 0 0.7em; }
+h2.blog-heading::before {
+  content: "";
+  display: block;
+  width: 2.75rem;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  margin-bottom: 0.6em;
+}
+h3.blog-heading { font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem); margin: 2em 0 0.55em; }
+h4.blog-heading { font-size: 1.125rem; margin: 1.6em 0 0.5em; }
+.blog-body > .blog-heading:first-child { margin-top: 0; }
+
+.blog-body .blog-list { margin: 0 0 1.4em; padding-left: 1.5em; }
+.blog-list li { margin-bottom: 0.55em; padding-left: 0.25em; }
+.blog-list li::marker { color: var(--color-primary); font-weight: 700; }
+
 .blog-quote {
-  border-left: 3px solid var(--foreground, #1c1b19);
-  opacity: 0.85;
-  padding: 0.2em 0 0.2em 1em;
-  margin: 1.2em 0;
-  font-style: italic;
+  margin: 1.8em 0;
+  padding: 1.1em 1.4em;
+  border-left: 4px solid var(--color-primary);
+  border-radius: 0 16px 16px 0;
+  background: color-mix(in oklab, var(--color-primary) 7%, transparent);
+  color: var(--color-foreground);
+  font-style: normal;
+  font-size: 1.05em;
+  opacity: 1;
 }
 .blog-code-block {
-  background: rgba(0,0,0,0.05);
-  border-radius: 10px;
-  padding: 1em 1.2em;
-  overflow-x: auto;
-  margin: 1.2em 0;
+  background: #141b2b;
+  color: #e6ecf7;
+  border-radius: 14px;
+  padding: 1.1em 1.3em;
+  margin: 1.6em 0;
   font-size: 0.85em;
+  line-height: 1.65;
 }
-.blog-rule { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 2em 0; }
-.blog-figure { margin: 1.6em 0; }
+.blog-code-block code { background: none; padding: 0; color: inherit; }
+.blog-rule { border: none; border-top: 1px solid var(--color-border); margin: 2.5em 0; }
+.blog-figure { margin: 2em 0; }
 .blog-inline-image, .blog-figure img {
   width: 100%;
-  border-radius: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
   object-fit: cover;
+}
+/* Pasted / fenced SVG diagrams sit in their own white card at natural size. */
+.blog-svg img { width: auto; max-width: 100%; border: none; border-radius: 0; object-fit: contain; }
+.blog-math-display { margin: 1.4em 0; }
+
+/* Callouts + FAQ */
+.blog-callout-body > :first-child { margin-top: 0; }
+.blog-callout-body > :last-child { margin-bottom: 0; }
+.blog-callout .blog-heading::before { display: none; }
+.blog-faq-item:hover .blog-faq-question { color: var(--color-primary); }
+
+/* Free-test popup: light sweep across the main button. */
+@keyframes promo-shine {
+  0% { transform: translateX(-140%) skewX(-20deg); }
+  55%, 100% { transform: translateX(380%) skewX(-20deg); }
+}
+.promo-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  animation: promo-shine 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .promo-shine::after { animation: none; display: none; }
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -422,8 +494,16 @@ select:focus-visible,
 .blog-table td:last-child {
   border-right: none;
 }
+.blog-table-wrap { border-radius: 16px; }
 .blog-table thead th {
-  background: var(--color-secondary);
+  background: color-mix(in oklab, var(--color-primary) 9%, var(--color-card));
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--color-foreground) 72%, transparent);
+}
+.blog-table tbody tr:nth-child(even) {
+  background: color-mix(in oklab, var(--color-foreground) 3%, transparent);
 }
 
 /* ────────────────────────────────────────────────────────────────────

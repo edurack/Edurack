@@ -236,3 +236,72 @@ export const getBlogPromoPopup = createServerFn({ method: "GET" })
     const popup = usablePromo(s[audience]) ?? (audience !== "general" ? usablePromo(s.general) : null);
     return { popup };
   });
+
+
+// ─── Callback request from a blog page ────────────────────────────────────
+// Writes into the SAME `callbackRequests` collection the /contact form uses,
+// so these leads show up in the admin dashboard's existing callback list with
+// no admin changes. The blog origin is visible there in the topic chip
+// ("Blog: <post slug>").
+//
+// Public + unauthenticated, so it defends itself: a hidden honeypot field
+// (bots fill it, people never see it), a 24h de-dupe per phone number, and a
+// per-IP hourly cap.
+const BLOG_CALLBACK_EXAMS = ["NEET", "JEE", "CUET", "IPMAT", "Dual Track"] as const;
+const BLOG_CALLBACK_CLASSES = ["11th", "12th", "Dropper", "Other"] as const;
+
+export const requestBlogCallback = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      studentName: string;
+      mobileNumber: string;
+      examTrack: string;
+      academicClass: string;
+      postSlug?: string;
+      website?: string; // honeypot
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    // Honeypot tripped: pretend success, store nothing.
+    if (data.website && data.website.trim()) return { ok: true };
+
+    const name = (data.studentName ?? "").trim().slice(0, 80);
+    if (name.length < 2) throw new Error("Please enter your name.");
+    if (!/^[6-9]\d{9}$/.test(data.mobileNumber ?? "")) throw new Error("Enter a valid 10-digit mobile number.");
+    if (!(BLOG_CALLBACK_EXAMS as readonly string[]).includes(data.examTrack)) throw new Error("Select your target exam.");
+    if (!(BLOG_CALLBACK_CLASSES as readonly string[]).includes(data.academicClass)) throw new Error("Select your current class.");
+
+    const slug = (data.postSlug ?? "").replace(/[^a-z0-9-]/gi, "").slice(0, 80);
+    const db = await getDb();
+    const col = db.collection("callbackRequests");
+    const now = Date.now();
+
+    // Same number already asked in the last 24h → treat as done, don't
+    // create a second lead for the team to call twice.
+    const dupe = await col.findOne({
+      mobileNumber: data.mobileNumber,
+      requestedAt: { $gte: new Date(now - 24 * 60 * 60 * 1000) },
+    });
+    if (dupe) return { ok: true };
+
+    const ip = getClientIp();
+    if (ip !== "unknown") {
+      const recent = await col.countDocuments({ ip, requestedAt: { $gte: new Date(now - 60 * 60 * 1000) } });
+      if (recent >= 8) throw new Error("Too many requests from your network. Please try again later.");
+    }
+
+    await col.insertOne({
+      studentName: name,
+      mobileNumber: data.mobileNumber,
+      examTrack: data.examTrack,
+      academicClass: data.academicClass,
+      discussionTopic: slug ? `Blog: ${slug}`.slice(0, 60) : "Blog enquiry",
+      source: "blog",
+      sourcePostSlug: slug || null,
+      ip,
+      status: "pending",
+      requestedAt: new Date(),
+      contactedAt: null,
+    });
+    return { ok: true };
+  });

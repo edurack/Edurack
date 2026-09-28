@@ -7,6 +7,7 @@ import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from 
 import type { BlogCategory, PublicBlogPostSummary } from "@/lib/blog-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import { FreeTestPopup } from "@/components/blog/free-test-popup";
+import { BlogCallbackSection } from "@/components/blog/blog-callback-section";
 import type { ExamKey } from "@/lib/admin-types";
 
 type BlogSearch = { category?: BlogCategory; examKey?: ExamKey; page?: number };
@@ -135,6 +136,8 @@ function BlogIndexPage() {
           </button>
         </nav>
       )}
+
+      <BlogCallbackSection examKey={search.examKey} category={search.category} className="mt-16" />
     </div>
   );
 }
@@ -155,11 +158,19 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 
 function PostCard({ post }: { post: PublicBlogPostSummary }) {
   return (
-    <Link to="/blog/$slug" params={{ slug: post.slug }} className="clay flex flex-col overflow-hidden">
-      {post.coverImageUrl && <img src={post.coverImageUrl} alt={post.coverImageAlt} className="aspect-video w-full object-cover" />}
+    <Link
+      to="/blog/$slug"
+      params={{ slug: post.slug }}
+      className="clay group flex flex-col overflow-hidden transition hover:-translate-y-0.5 hover:border-primary/40"
+    >
+      {post.coverImageUrl && (
+        <div className="overflow-hidden">
+          <img src={post.coverImageUrl} alt={post.coverImageAlt} className="aspect-video w-full object-cover transition duration-500 group-hover:scale-105" />
+        </div>
+      )}
       <div className="flex flex-1 flex-col p-4">
-        <span className="text-[11px] font-semibold text-foreground/50">{BLOG_CATEGORY_LABELS[post.category]}</span>
-        <p className="mt-1.5 line-clamp-2 text-sm font-bold text-foreground">{post.title}</p>
+        <span className="w-fit rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">{BLOG_CATEGORY_LABELS[post.category]}</span>
+        <p className="mt-2 line-clamp-2 text-sm font-bold leading-snug text-foreground">{post.title}</p>
         <p className="mt-1.5 line-clamp-2 flex-1 text-xs text-foreground/60">{post.excerpt}</p>
         <p className="mt-3 text-[11px] text-foreground/40">{post.readingTimeMinutes} min read</p>
       </div>
