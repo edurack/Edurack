@@ -21,14 +21,24 @@ export const SESSION_PLATFORM_COMMISSION_PERCENT = 5;
 // effectively-unlimited session.
 export const MAX_SESSION_CAPACITY = 200;
 
-export type SessionTemplate = {
-  id: string;
-  title: string;
-  description: string;
-  thumbnailUrl: string;
-  enabled: boolean;
-  createdAt: string | null;
-};
+// "Open to everyone" offerings are stored as an ordinary offering with
+// capacity pinned to the technical max — there's no separate "unlimited"
+// column in the DB. isUnlimitedOffering()/UNLIMITED_CAPACITY are the one
+// place that mapping lives, so the UI never has to hardcode 200 itself.
+export const UNLIMITED_CAPACITY = MAX_SESSION_CAPACITY;
+export function isUnlimitedOffering(o: { capacity: number; isFree: boolean }): boolean {
+  return o.isFree && o.capacity >= UNLIMITED_CAPACITY;
+}
+
+// The three formats a mentor picks from when publishing a session — this
+// is the single source of truth for that choice; capacity/isFree are just
+// how each format is represented underneath.
+export type SessionFormat = "one_on_one" | "limited_group" | "open_unlimited";
+export function formatForOffering(o: { capacity: number; isFree: boolean }): SessionFormat {
+  if (o.capacity <= 1) return "one_on_one";
+  if (isUnlimitedOffering(o)) return "open_unlimited";
+  return "limited_group";
+}
 
 export type MentorSessionOffering = {
   id: string;
@@ -108,6 +118,42 @@ export type SessionRoster = {
   capacity: number;
   students: MentorSessionBooking[];
 };
+
+// One human-readable line describing when an offering runs — "Every Mon,
+// Wed · 5:00 PM" for a recurring one, "One-time · 3 Oct · 5:00 PM" for a
+// single-date one — so a student can tell at a glance when the mentor is
+// actually free, instead of reading a raw list of upcoming dates.
+export function describeSchedule(o: {
+  recurringDays: DayOfWeek[];
+  startTimes: string[];
+  dateRangeStart: string | null;
+  dateRangeEnd: string | null;
+  isOngoing: boolean;
+}): string {
+  const times = o.startTimes.map(formatTime12h).join(", ");
+  const isOneTime = !o.isOngoing && o.dateRangeStart && o.dateRangeEnd && o.dateRangeStart === o.dateRangeEnd;
+
+  if (isOneTime) {
+    const d = new Date(o.dateRangeStart as string);
+    const dateLabel = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    return `One-time · ${dateLabel} · ${times}`;
+  }
+
+  const dayLabels = o.recurringDays
+    .slice()
+    .sort()
+    .map((d) => DAY_LABELS[d])
+    .join(", ");
+  const until = !o.isOngoing && o.dateRangeEnd ? ` (until ${new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})` : "";
+  return `Every ${dayLabels} · ${times}${until}`;
+}
+
+function formatTime12h(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
 
 export function splitSessionPrice(price: number) {
   const platformAmount = Math.round(price * (SESSION_PLATFORM_COMMISSION_PERCENT / 100));

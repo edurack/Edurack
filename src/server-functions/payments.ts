@@ -195,6 +195,24 @@ async function assertSeatAvailable(offeringId: string, date: string, startTime: 
   if ((count ?? 0) >= offering.capacity) throw new Error("Sorry, that slot is full.");
 }
 
+// One booking per student per offering — a student who's already booked
+// a slot on this offering can't book a second one (same slot or a
+// different one) until their existing booking is cancelled. Checked
+// before both a paid order is created and a free slot is claimed, so it
+// can't be bypassed by either path.
+async function assertStudentHasNotBookedOffering(offeringId: string, studentUid: string) {
+  const { count, error } = await supabase
+    .from("mentor_session_bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("offering_id", offeringId)
+    .eq("student_uid", studentUid)
+    .neq("status", "cancelled");
+  if (error) throw new Error(error.message);
+  if ((count ?? 0) > 0) {
+    throw new Error("You've already booked a slot for this session — cancel it first if you'd like to pick a different time.");
+  }
+}
+
 // Shared by verifyRazorpayPayment's mentorSession branch (paid) and
 // claimFreeItem's mentorSession branch (free) — inserts the booking row
 // and best-effort sends the two session emails.
@@ -325,6 +343,7 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     if (data.itemType === "mentorSession") {
       if (!data.sessionDate || !data.sessionStartTime) throw new Error("Missing session date/time.");
       if (sellingPrice <= 0) throw new Error("This session is free — use claimFreeItem instead.");
+      await assertStudentHasNotBookedOffering(data.itemId, decoded.uid);
       await assertSeatAvailable(data.itemId, data.sessionDate, data.sessionStartTime);
     }
 
@@ -526,6 +545,7 @@ export const claimFreeItem = createServerFn({ method: "POST" })
 
     if (data.itemType === "mentorSession") {
       if (!data.sessionDate || !data.sessionStartTime) throw new Error("Missing session date/time.");
+      await assertStudentHasNotBookedOffering(data.itemId, decoded.uid);
       await assertSeatAvailable(data.itemId, data.sessionDate, data.sessionStartTime);
       const { bookingId } = await createSessionBookingRecord({
         offeringId: data.itemId,

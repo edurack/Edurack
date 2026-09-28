@@ -3,7 +3,7 @@ import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
 import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps, IconUserCheck as UserCheck, IconFlask as FlaskConical } from "@tabler/icons-react";
-import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, CalendarClock } from "lucide-react";
+import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
@@ -47,9 +47,9 @@ import { QuestionIngestionModule } from "@/components/question-ingestion-module"
 import { BundleInspectorModule } from "@/components/bundle-inspector-module";
 import { MentorHubModule } from "@/components/mentor-hub-module";
 import { SellTestsAdminModule } from "@/components/sell-tests-admin-module";
-import { SessionTemplatesAdminModule } from "@/components/session-templates-admin-module";
 import { InternHubModule } from "@/components/admin/intern-hub-module";
 import { InternTrialModule } from "@/components/admin/intern-trial-module";
+import { ADMIN_THEME_CLASS, ADMIN_THEME_VARS } from "@/lib/admin-theme";
 
 
 type ModuleKey =
@@ -62,7 +62,6 @@ type ModuleKey =
   | "inspector"
   | "students"
   | "applications"
-  | "sessionTemplates"
   | "mentors"
   | "promoters"
   | "blogs" 
@@ -88,7 +87,6 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "questions", label: "Questions", icon: ListChecks  as any },
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
-      { key: "sessionTemplates", label: "Session Templates", icon: CalendarClock as any },
       { key: "blogs", label: "Blog", icon: FileText },
 
 
@@ -186,7 +184,10 @@ function AdminDashboardPage() {
 
   if (loading || !adminUser || !isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div
+        className={`${ADMIN_THEME_CLASS} flex min-h-screen items-center justify-center bg-background`}
+        style={ADMIN_THEME_VARS}
+      >
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
       </div>
     );
@@ -196,7 +197,7 @@ function AdminDashboardPage() {
   const activeDef = MODULE_LOOKUP[activeModule];
 
   return (
-    <div className="relative min-h-screen">
+    <div className={`${ADMIN_THEME_CLASS} relative min-h-screen bg-background`} style={ADMIN_THEME_VARS}>
 
       <div className="flex min-h-screen">
         <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background py-5 md:flex">
@@ -357,8 +358,6 @@ function ModuleRouter({
       return <BundleInspectorModule adminUser={adminUser} />;
     case "sellTests":
       return <SellTestsAdminModule adminUser={adminUser} />;
-    case "sessionTemplates": 
-      return <SessionTemplatesAdminModule adminUser={adminUser} />;
     case "students":
       return <StudentsModule adminUser={adminUser} />;
     case "applications":
@@ -1733,20 +1732,20 @@ function OnboardingDetailsDrawer({
       });
 
       await updateMentorLockedInfo({
-        data: {
-          token,
-          mentorId,
-          lockedInfo: {
-            aiimsIitRank: lockedRank.trim() || "Not specified",
-            enrolledCollege: lockedCollege.trim() || "Not specified",
-            pursuedCourse: lockedCourse.trim() || "Not specified",
-            expertAt: lockedExpertAt.trim(),
-            whyExpertAt: lockedWhyExpertAt.trim(),
-            scoreType: lockedScoreType || null,
-            scoreValue: lockedScoreValue.trim(),
-          },
-        },
-      });
+  data: {
+    token,
+    mentorId,
+    lockedInfo: {
+      aiimsIitRank: lockedRank.trim() || "Not specified",
+      enrolledCollege: lockedCollege.trim() || "Not specified",
+      pursuedCourse: lockedCourse.trim() || "Not specified",
+      expertAt: lockedExpertAt.trim(),
+      whyExpertAt: lockedWhyExpertAt.trim(),
+      scoreType: lockedScoreType,
+      scoreValue: lockedScoreValue.trim(),
+    },
+  },
+});
 
       await markMentorProfileCreated({ data: { token, applicationId, mentorId } });
 

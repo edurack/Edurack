@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getMentorSessionOfferingDetail } from "@/server-functions/student-sessions";
 import { BookingDialog } from "@/components/student-open-sessions-module";
 import { AppHeader } from "@/components/app-header";
-import type { MentorBioForOffering, OpenSlot, OtherOfferingSummary, PublicMentorOffering } from "@/lib/session-types";
+import { isUnlimitedOffering, describeSchedule, type MentorBioForOffering, type OpenSlot, type OtherOfferingSummary, type PublicMentorOffering } from "@/lib/session-types";
 
 export const Route = createFileRoute("/mentor-session/$offeringId")({
   component: MentorSessionDetailPage,
@@ -189,7 +189,8 @@ function SessionDetail({
   isSignedIn: boolean;
 }) {
   const { offering, mentorBio, otherOfferings } = data;
-  const isGroup = offering.capacity > 1;
+  const unlimited = isUnlimitedOffering(offering);
+  const isGroup = offering.capacity > 1 && !unlimited;
   const slotsForSelectedDate = dateGroups.find(([d]) => d === selectedDate)?.[1] ?? [];
 
   return (
@@ -198,8 +199,8 @@ function SessionDetail({
         {/* Hero */}
         <div className="clay overflow-hidden">
           <div className="relative flex h-56 items-center justify-center sm:h-72" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}>
-            {offering.thumbnailUrl ? (
-              <img src={offering.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+            {offering.thumbnailUrl || offering.mentorPhotoUrl ? (
+              <img src={offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined} alt="" className="h-full w-full object-cover" />
             ) : (
               <Sparkles className="h-14 w-14 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
             )}
@@ -208,10 +209,10 @@ function SessionDetail({
                 {offering.subject}
               </span>
             )}
-            {isGroup && (
+            {(isGroup || unlimited) && (
               <span className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-background/90 px-3 py-1.5 text-xs font-bold text-foreground/80 shadow-sm">
                 <UsersIcon className="h-3.5 w-3.5" />
-                Group session
+                {unlimited ? "Open to everyone" : "Group session"}
               </span>
             )}
           </div>
@@ -228,6 +229,10 @@ function SessionDetail({
               <span className="text-sm font-semibold text-foreground/70">{mentorBio.name}</span>
               {mentorBio.yearOfStudy && <span className="text-xs text-foreground/40">· {mentorBio.yearOfStudy}</span>}
             </div>
+            <p className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-foreground/60">
+              <Clock className="h-4 w-4 shrink-0 text-foreground/40" />
+              {describeSchedule(offering)}
+            </p>
             {offering.description && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-foreground/70">{offering.description}</p>}
           </div>
         </div>

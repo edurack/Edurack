@@ -61,8 +61,8 @@ export function LandingFreeSessionsSection() {
               className="clay flex flex-col overflow-hidden p-3 transition-transform duration-200 hover:border-primary/60"
             >
               <div className="relative flex h-24 items-center justify-center overflow-hidden rounded-2xl" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}>
-                {s.thumbnailUrl ? (
-                  <img src={s.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                {s.thumbnailUrl || s.mentorPhotoUrl ? (
+                  <img src={s.thumbnailUrl ?? s.mentorPhotoUrl ?? undefined} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <Sparkles className="h-8 w-8 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
                 )}

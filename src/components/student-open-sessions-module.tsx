@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { IconLoader2 as Loader2, IconClock as Clock, IconX as X, IconUsers as Users } from "@tabler/icons-react";
-import { listOpenMentorSessions } from "@/server-functions/student-sessions";
+import { IconLoader2 as Loader2, IconClock as Clock, IconX as X, IconUsers as Users, IconInfoCircle as Info } from "@tabler/icons-react";
+import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions/student-sessions";
 import { createRazorpayOrder, verifyRazorpayPayment, claimFreeItem } from "@/server-functions/payments";
-import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
+import { isUnlimitedOffering, describeSchedule, type OpenSlot, type PublicMentorOffering } from "@/lib/session-types";
 
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
@@ -26,12 +26,23 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
   const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
   const [query, setQuery] = useState(subjectFilter ?? "");
   const [booking, setBooking] = useState<{ offering: PublicMentorOffering; slot: OpenSlot } | null>(null);
+  // One booking per offering (enforced server-side too — see
+  // assertStudentHasNotBookedOffering in payments.ts) — this set is just
+  // what lets the card say "You've booked this" instead of letting the
+  // student attempt, and fail, a second booking.
+  const [bookedOfferingIds, setBookedOfferingIds] = useState<Set<string>>(new Set());
 
   async function load() {
     const token = await getToken();
-    const { offerings: rows, slotsByOffering: slots } = await listOpenMentorSessions({ data: { token } });
+    const [{ offerings: rows, slotsByOffering: slots }, { bookings }] = await Promise.all([
+      listOpenMentorSessions({ data: { token } }),
+      listMyBookedSessions({ data: { token } }),
+    ]);
     setOfferings(rows as PublicMentorOffering[]);
     setSlotsByOffering(slots as Record<string, OpenSlot[]>);
+    setBookedOfferingIds(
+      new Set((bookings as any[]).filter((b) => b.status !== "cancelled").map((b) => b.offering_id as string)),
+    );
   }
 
   useEffect(() => {
@@ -53,6 +64,17 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
 
   return (
     <div>
+      <div className="clay-inset mb-4 flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs text-foreground/60">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground/40" />
+        <p>
+          Book a mentor's open time directly — 1:1, a small group, or an open session anyone can join. Each card shows exactly when the
+          mentor is free. You can hold <strong className="text-foreground/80">one active booking per session</strong> — cancel it from{" "}
+          <Link to="/my-sessions" className="font-semibold underline">
+            My Sessions
+          </Link>{" "}
+          if you need to rebook a different time.
+        </p>
+      </div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <input
           value={query}
@@ -82,7 +104,13 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {filtered.map((o) => (
-            <OfferingCard key={o.id} offering={o} slots={slotsByOffering[o.id] ?? []} onPick={(slot) => setBooking({ offering: o, slot })} />
+            <OfferingCard
+              key={o.id}
+              offering={o}
+              slots={slotsByOffering[o.id] ?? []}
+              alreadyBooked={bookedOfferingIds.has(o.id)}
+              onPick={(slot) => setBooking({ offering: o, slot })}
+            />
           ))}
         </div>
       )}
@@ -103,21 +131,36 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
   );
 }
 
-function OfferingCard({ offering, slots, onPick }: { offering: PublicMentorOffering; slots: OpenSlot[]; onPick: (slot: OpenSlot) => void }) {
+function OfferingCard({
+  offering,
+  slots,
+  alreadyBooked,
+  onPick,
+}: {
+  offering: PublicMentorOffering;
+  slots: OpenSlot[];
+  alreadyBooked: boolean;
+  onPick: (slot: OpenSlot) => void;
+}) {
   const preview = slots.slice(0, 4);
-  const isGroup = offering.capacity > 1;
+  const unlimited = isUnlimitedOffering(offering);
+  const isGroup = offering.capacity > 1 && !unlimited;
   return (
     <div className="clay flex flex-col overflow-hidden p-3">
       <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)]">
-        {offering.thumbnailUrl ? (
-          <img src={offering.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+        {offering.thumbnailUrl || offering.mentorPhotoUrl ? (
+          <img
+            src={offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined}
+            alt=""
+            className={offering.thumbnailUrl ? "h-full w-full object-cover" : "h-full w-full object-cover opacity-90"}
+          />
         ) : (
           <Clock className="h-9 w-9 text-[var(--pink-deep,#BE185D)] opacity-50" strokeWidth={1.5} />
         )}
-        {isGroup && (
+        {(isGroup || unlimited) && (
           <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold text-foreground/70 shadow-sm">
             <Users className="h-3 w-3" />
-            Group
+            {unlimited ? "Open to everyone" : "Group"}
           </span>
         )}
       </div>
@@ -133,22 +176,35 @@ function OfferingCard({ offering, slots, onPick }: { offering: PublicMentorOffer
           {offering.title}
         </Link>
         <p className="mt-1 text-sm font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground/50">
+          <Clock className="h-3.5 w-3.5 shrink-0" />
+          {describeSchedule(offering)}
+        </p>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {preview.map((s) => (
-            <button
-              key={`${s.date}-${s.startTime}`}
-              onClick={() => onPick(s)}
-              className="clay-chip flex flex-col items-start rounded-2xl px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
-            >
-              <span>
-                {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {s.startTime}
-              </span>
-              {isGroup && <span className="text-[10px] font-normal text-foreground/40">{s.seatsRemaining} seats left</span>}
-            </button>
-          ))}
-          {slots.length > preview.length && <span className="self-center text-[11px] text-foreground/40">+{slots.length - preview.length} more</span>}
-        </div>
+        {alreadyBooked ? (
+          <Link
+            to="/my-sessions"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-2xl bg-[var(--mint-soft)]/60 px-3 py-2 text-xs font-bold text-foreground"
+          >
+            You've booked this — view it in My Sessions
+          </Link>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {preview.map((s) => (
+              <button
+                key={`${s.date}-${s.startTime}`}
+                onClick={() => onPick(s)}
+                className="clay-chip flex flex-col items-start rounded-2xl px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
+              >
+                <span>
+                  {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {s.startTime}
+                </span>
+                {isGroup && <span className="text-[10px] font-normal text-foreground/40">{s.seatsRemaining} seats left</span>}
+              </button>
+            ))}
+            {slots.length > preview.length && <span className="self-center text-[11px] text-foreground/40">+{slots.length - preview.length} more</span>}
+          </div>
+        )}
       </div>
     </div>
   );
