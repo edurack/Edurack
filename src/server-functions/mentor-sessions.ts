@@ -172,14 +172,83 @@ export const createOffering = createServerFn({ method: "POST" })
     return { offering: rowToOffering(row) };
   });
 
+// Edit any detail of an existing offering. Takes the same typed fields as
+// createOffering and applies the same validation, rather than a free-form
+// column patch — so an edit can never write something a create would have
+// rejected (or touch columns like mentor_id). Capacity can't be lowered
+// below the seats already taken on any upcoming instance, since that
+// would silently over-book students who've already paid.
 export const updateOffering = createServerFn({ method: "POST" })
-  .validator((d: { token: string; offeringId: string; patch: Partial<Record<string, unknown>> }) => d)
+  .validator(
+    (d: {
+      token: string;
+      offeringId: string;
+      title: string;
+      description: string;
+      durationMinutes: (typeof DURATION_OPTIONS)[number];
+      isFree: boolean;
+      price: number;
+      thumbnailUrl: string | null;
+      recurringDays: DayOfWeek[];
+      startTimes: string[];
+      dateRangeStart: string | null;
+      dateRangeEnd: string | null;
+      isOngoing: boolean;
+      capacity: number;
+      subject: string | null;
+    }) => d,
+  )
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
+
+    if (!data.title.trim()) throw new Error("Give this session a title.");
+    if (data.recurringDays.length === 0) throw new Error("Pick at least one day.");
+    if (data.startTimes.length === 0) throw new Error("Add at least one time slot.");
+    if (!data.isFree && (!data.price || data.price <= 0)) throw new Error("Set a price, or mark this session free.");
+    if (!data.isOngoing && !data.dateRangeEnd) throw new Error("Set an end date, or mark this session ongoing.");
+    if (!Number.isInteger(data.capacity) || data.capacity < 1 || data.capacity > MAX_SESSION_CAPACITY) {
+      throw new Error(`Capacity must be between 1 and ${MAX_SESSION_CAPACITY}.`);
+    }
+
     const sb = supabase;
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const { data: upcoming, error: upErr } = await sb
+      .from("mentor_session_bookings")
+      .select("session_date, start_time")
+      .eq("offering_id", data.offeringId)
+      .eq("mentor_id", mentorId)
+      .neq("status", "cancelled")
+      .gte("session_date", todayIso);
+    if (upErr) throw new Error(upErr.message);
+    const perInstance = new Map<string, number>();
+    for (const r of upcoming ?? []) {
+      const k = `${r.session_date}:${r.start_time}`;
+      perInstance.set(k, (perInstance.get(k) ?? 0) + 1);
+    }
+    const maxTaken = Math.max(0, ...perInstance.values());
+    if (data.capacity < maxTaken) {
+      throw new Error(`An upcoming session already has ${maxTaken} students booked — capacity can't go below that.`);
+    }
+
     const { error } = await sb
       .from("mentor_session_offerings")
-      .update({ ...data.patch, updated_at: new Date().toISOString() })
+      .update({
+        title: data.title.trim(),
+        description: data.description.trim(),
+        duration_minutes: data.durationMinutes,
+        is_free: data.isFree,
+        price: data.isFree ? 0 : data.price,
+        thumbnail_url: data.thumbnailUrl,
+        recurring_days: data.recurringDays,
+        start_times: data.startTimes,
+        date_range_start: data.dateRangeStart,
+        date_range_end: data.isOngoing ? null : data.dateRangeEnd,
+        is_ongoing: data.isOngoing,
+        capacity: data.capacity,
+        subject: data.subject?.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", data.offeringId)
       .eq("mentor_id", mentorId); // ownership check, not just an id match
     if (error) throw new Error(error.message);

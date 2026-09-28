@@ -317,6 +317,34 @@ export const listMyAssignedBatches = createServerFn({ method: "POST" })
     };
   });
 
+// A mentor's standing 1:1 meeting room link (e.g. a permanent Zoom/Meet
+// room) — set once, then auto-filled into every new OneOnOne session
+// instead of re-typing the same link per student. Stored directly on the
+// mentor doc; kept separate from the big getMentorProfile/
+// updateMyMentorProfile pair in mentor-auth.ts since it's only ever read
+// or written from the scheduler, not the Profile Control page.
+export const getMyDefaultOneOnOneLink = createServerFn({ method: "POST" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const m = await db.collection("mentors").findOne({ _id: new ObjectId(mentorId) }, { projection: { defaultOneOnOneLink: 1 } });
+    return { link: (m?.defaultOneOnOneLink as string | null) ?? null };
+  });
+
+export const setMyDefaultOneOnOneLink = createServerFn({ method: "POST" })
+  .validator((data: { token: string; link: string }) => data)
+  .handler(async ({ data }) => {
+    const mentorId = await requireMentor(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    await db
+      .collection("mentors")
+      .updateOne({ _id: new ObjectId(mentorId) }, { $set: { defaultOneOnOneLink: data.link.trim() || null } });
+    return { ok: true };
+  });
+
 // ─── Module 9: Smart Live Session Scheduler (Tracks A / B / C) ──────────────
 import type { SessionTrack, MentorshipSession, StudentSessionUsage, LectureComment } from "@/lib/admin-types";
 const MAX_SESSIONS_PER_STUDENT = 20;

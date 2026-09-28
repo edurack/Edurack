@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2, IconClock as Clock, IconX as X, IconUsers as Users, IconInfoCircle as Info } from "@tabler/icons-react";
 import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions/student-sessions";
 import { createRazorpayOrder, verifyRazorpayPayment, claimFreeItem } from "@/server-functions/payments";
+import { SessionCalendar } from "@/components/session-calendar";
 import { isUnlimitedOffering, describeSchedule, type OpenSlot, type PublicMentorOffering } from "@/lib/session-types";
 
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
@@ -26,6 +27,7 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
   const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
   const [query, setQuery] = useState(subjectFilter ?? "");
   const [booking, setBooking] = useState<{ offering: PublicMentorOffering; slot: OpenSlot } | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
   // One booking per offering (enforced server-side too — see
   // assertStudentHasNotBookedOffering in payments.ts) — this set is just
   // what lets the card say "You've booked this" instead of letting the
@@ -62,6 +64,17 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
     });
   }, [offerings, priceFilter, query, slotsByOffering]);
 
+  // Every bookable slot across the filtered offerings, one calendar event
+  // each — so a student can pick a day first and see everything open on it,
+  // instead of hunting through each mentor's card.
+  const calendarEvents = useMemo(
+    () =>
+      filtered.flatMap((o) =>
+        (slotsByOffering[o.id] ?? []).map((slot) => ({ date: slot.date, startTime: slot.startTime, offering: o, slot })),
+      ),
+    [filtered, slotsByOffering],
+  );
+
   return (
     <div>
       <div className="clay-inset mb-4 flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs text-foreground/60">
@@ -82,7 +95,18 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
           placeholder="Search mentors, topics, or subjects…"
           className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none sm:max-w-xs"
         />
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="clay-inset mr-1 flex gap-1 rounded-full p-1">
+            {(["list", "calendar"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`rounded-full px-3 py-1 text-xs font-bold ${view === v ? "clay-btn text-white" : "text-foreground/60"}`}
+              >
+                {v === "list" ? "List" : "Calendar"}
+              </button>
+            ))}
+          </div>
           {(["all", "free", "paid"] as PriceFilter[]).map((f) => (
             <button
               key={f}
@@ -101,6 +125,44 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
         </div>
       ) : filtered.length === 0 ? (
         <div className="clay p-8 text-center text-sm text-foreground/60">No open sessions match right now — check back soon.</div>
+      ) : view === "calendar" ? (
+        <SessionCalendar
+          events={calendarEvents}
+          emptyDayLabel="No open sessions this day."
+          initialMonth={calendarEvents.length > 0 ? new Date(calendarEvents[0].date) : undefined}
+          renderEvent={(e) => {
+            const booked = bookedOfferingIds.has(e.offering.id);
+            const unlimited = isUnlimitedOffering(e.offering);
+            const isGroup = e.offering.capacity > 1 && !unlimited;
+            return (
+              <div key={`${e.offering.id}-${e.slot.date}-${e.slot.startTime}`} className="clay-inset rounded-2xl px-3.5 py-3">
+                <p className="truncate text-sm font-bold text-foreground">{e.offering.title}</p>
+                <p className="text-xs text-foreground/50">
+                  {e.offering.mentorName} · {e.slot.startTime} · {e.slot.durationMinutes} min
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-foreground/70">
+                    {e.offering.isFree ? "Free" : currency.format(e.offering.price)}
+                    {isGroup && <span className="ml-1.5 font-normal text-foreground/40">{e.slot.seatsRemaining} seats left</span>}
+                    {unlimited && <span className="ml-1.5 font-normal text-foreground/40">open to everyone</span>}
+                  </span>
+                  {booked ? (
+                    <Link to="/my-sessions" className="text-xs font-bold text-[var(--sky-deep)] hover:underline">
+                      Booked
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => setBooking({ offering: e.offering, slot: e.slot })}
+                      className="clay-btn rounded-full px-3.5 py-1.5 text-xs font-bold"
+                    >
+                      Book
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          }}
+        />
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {filtered.map((o) => (

@@ -13,6 +13,7 @@ import {
 import {
   listMyOfferings,
   createOffering,
+  updateOffering,
   setOfferingActive,
   deleteOffering,
   listMyBookings,
@@ -25,6 +26,7 @@ import {
   MAX_SESSION_CAPACITY,
   UNLIMITED_CAPACITY,
   isUnlimitedOffering,
+  formatForOffering,
   describeSchedule,
   groupBookingsIntoRosters,
   type DayOfWeek,
@@ -34,6 +36,8 @@ import {
   type SessionRoster,
 } from "@/lib/session-types";
 import { ImageUploadField } from "@/components/mentor-portal-ui";
+import { SessionCalendar } from "@/components/session-calendar";
+import { expandOfferingToSlots } from "@/lib/session-slots";
 import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
 
 const SESSIONS_TOUR_STEPS: TourStep[] = [
@@ -54,10 +58,11 @@ const SESSIONS_TOUR_STEPS: TourStep[] = [
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
 export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
-  const [tab, setTab] = useState<"offerings" | "bookings">("offerings");
+  const [tab, setTab] = useState<"offerings" | "bookings" | "calendar">("offerings");
   const [offerings, setOfferings] = useState<MentorSessionOffering[] | null>(null);
   const [bookings, setBookings] = useState<MentorSessionBooking[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingOffering, setEditingOffering] = useState<MentorSessionOffering | null>(null);
 
   async function loadOfferings() {
     const { offerings: rows } = await listMyOfferings({ data: { token: mentorToken } });
@@ -126,6 +131,12 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
           >
             Sessions & students {rosters ? `(${rosters.length} · ${studentCount} students)` : ""}
           </button>
+          <button
+            onClick={() => setTab("calendar")}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === "calendar" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
+          >
+            Calendar
+          </button>
         </div>
         {tab === "offerings" && (
           <button
@@ -142,6 +153,7 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
         <div data-tour="sessions-content">
         <OfferingsList
           offerings={offerings}
+          onEdit={setEditingOffering}
           onToggleActive={async (id, active) => {
             await setOfferingActive({ data: { token: mentorToken, offeringId: id, active } });
             loadOfferings();
@@ -152,6 +164,17 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
             loadOfferings();
           }}
         />
+        </div>
+      ) : tab === "calendar" ? (
+        <div data-tour="sessions-content">
+          <MentorCalendarTab
+            offerings={offerings}
+            bookings={bookings}
+            onSetLink={async (offeringId, sessionDate, startTime, link) => {
+              await setMeetingLinkForSession({ data: { token: mentorToken, offeringId, sessionDate, startTime, meetingLink: link } });
+              loadBookings();
+            }}
+          />
         </div>
       ) : (
         <div data-tour="sessions-content">
@@ -176,6 +199,19 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
         />
       )}
 
+      {editingOffering && (
+        <CreateOfferingDialog
+          key={editingOffering.id}
+          mentorToken={mentorToken}
+          editing={editingOffering}
+          onClose={() => setEditingOffering(null)}
+          onCreated={() => {
+            setEditingOffering(null);
+            loadOfferings();
+          }}
+        />
+      )}
+
       {tour.active && <OnboardingTour steps={SESSIONS_TOUR_STEPS} onFinish={tour.finish} />}
     </div>
   );
@@ -183,10 +219,12 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
 
 function OfferingsList({
   offerings,
+  onEdit,
   onToggleActive,
   onDelete,
 }: {
   offerings: MentorSessionOffering[] | null;
+  onEdit: (o: MentorSessionOffering) => void;
   onToggleActive: (id: string, active: boolean) => void;
   onDelete: (id: string) => void;
 }) {
@@ -225,6 +263,9 @@ function OfferingsList({
             <p className="text-[11px] text-foreground/40">Ends {new Date(o.dateRangeEnd).toLocaleDateString("en-IN")}</p>
           )}
           <div className="mt-2 flex gap-2">
+            <button onClick={() => onEdit(o)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
+              Edit
+            </button>
             <button onClick={() => onToggleActive(o.id, !o.active)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
               {o.active ? "Pause" : "Resume"}
             </button>
@@ -245,6 +286,166 @@ function OfferingsList({
 // Groups bookings into one card per session instance — for a 1:1 offering
 // that's one student; for a group offering it's the whole roster, with one
 // shared meeting-link field for everyone in that session.
+type MentorCalendarEvent = {
+  date: string;
+  startTime: string;
+  offeringId: string;
+  title: string;
+  durationMinutes: number;
+  capacity: number;
+  students: MentorSessionBooking[];
+};
+
+// Every upcoming instance of every offering on one calendar — instances
+// with bookings (from the roster data) AND instances still open with no
+// bookings yet (expanded from the offering's schedule), so the mentor sees
+// the true shape of their week, not just the days students happened to book.
+function MentorCalendarTab({
+  offerings,
+  bookings,
+  onSetLink,
+}: {
+  offerings: MentorSessionOffering[] | null;
+  bookings: MentorSessionBooking[] | null;
+  onSetLink: (offeringId: string, sessionDate: string, startTime: string, link: string) => void;
+}) {
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+
+  const events = useMemo<MentorCalendarEvent[]>(() => {
+    if (!offerings || !bookings) return [];
+    const active = bookings.filter((b) => b.status !== "cancelled");
+
+    const byKey = new Map<string, MentorCalendarEvent>();
+    const seatCounts = new Map<string, number>();
+    const offeringById = new Map(offerings.map((o) => [o.id, o]));
+
+    for (const b of active) {
+      const key = `${b.offeringId}:${b.sessionDate}:${b.startTime}`;
+      seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
+      const existing = byKey.get(key);
+      if (existing) existing.students.push(b);
+      else
+        byKey.set(key, {
+          date: b.sessionDate,
+          startTime: b.startTime,
+          offeringId: b.offeringId,
+          title: b.offeringTitle ?? offeringById.get(b.offeringId)?.title ?? "Session",
+          durationMinutes: b.durationMinutes,
+          capacity: offeringById.get(b.offeringId)?.capacity ?? 1,
+          students: [b],
+        });
+    }
+
+    // Open (not-yet-booked) instances over the next ~2 months.
+    for (const o of offerings) {
+      for (const s of expandOfferingToSlots(o, seatCounts, 60)) {
+        const key = `${s.offeringId}:${s.date}:${s.startTime}`;
+        if (byKey.has(key)) continue;
+        byKey.set(key, {
+          date: s.date,
+          startTime: s.startTime,
+          offeringId: o.id,
+          title: o.title,
+          durationMinutes: o.durationMinutes,
+          capacity: o.capacity,
+          students: [],
+        });
+      }
+    }
+    return Array.from(byKey.values());
+  }, [offerings, bookings]);
+
+  if (offerings === null || bookings === null) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+      </div>
+    );
+  }
+
+  return (
+    <SessionCalendar
+      events={events}
+      emptyDayLabel="No sessions scheduled this day."
+      renderEvent={(e) => {
+        const key = `${e.offeringId}:${e.date}:${e.startTime}`;
+        const existingLink = e.students.find((s) => s.meetingLink)?.meetingLink ?? null;
+        const unlimited = e.capacity >= UNLIMITED_CAPACITY;
+        const seatLabel = unlimited
+          ? `${e.students.length} joined`
+          : e.capacity > 1
+            ? `${e.students.length}/${e.capacity} booked`
+            : e.students.length > 0
+              ? "Booked"
+              : "Open";
+        return (
+          <div key={key} className="clay-inset rounded-2xl px-3.5 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-foreground">{e.title}</p>
+                <p className="text-xs text-foreground/50">
+                  {e.startTime} · {e.durationMinutes} min
+                </p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  e.students.length > 0 ? "bg-[var(--mint-soft)]/60 text-foreground" : "bg-foreground/5 text-foreground/50"
+                }`}
+              >
+                {seatLabel}
+              </span>
+            </div>
+
+            {e.students.length > 0 && (
+              <p className="mt-2 text-xs text-foreground/60">{e.students.map((s) => s.studentName).join(", ")}</p>
+            )}
+
+            {e.students.length > 0 &&
+              (editingKey === key ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    value={draft}
+                    onChange={(ev) => setDraft(ev.target.value)}
+                    placeholder="Meeting link"
+                    className="clay-inset min-w-0 flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      onSetLink(e.offeringId, e.date, e.startTime, draft);
+                      setEditingKey(null);
+                    }}
+                    className="clay-btn rounded-full px-3 py-1.5 text-xs font-semibold"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-3">
+                  {existingLink && (
+                    <a href={existingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
+                      <LinkIcon className="h-3.5 w-3.5" />
+                      Join link
+                    </a>
+                  )}
+                  <button
+                    onClick={() => {
+                      setDraft(existingLink ?? "");
+                      setEditingKey(key);
+                    }}
+                    className="text-xs font-semibold text-foreground/50 hover:text-foreground/80"
+                  >
+                    {existingLink ? "Change link" : "Add meeting link"}
+                  </button>
+                </div>
+              ))}
+          </div>
+        );
+      }}
+    />
+  );
+}
+
 function RosterList({
   rosters,
   onSetLink,
@@ -353,32 +554,40 @@ function RosterList({
   );
 }
 
+// Used for both creating a new offering and editing an existing one — when
+// `editing` is passed, every field starts pre-filled from it and saving
+// calls updateOffering instead of createOffering.
 function CreateOfferingDialog({
   mentorToken,
+  editing = null,
   onClose,
   onCreated,
 }: {
   mentorToken: string;
+  editing?: MentorSessionOffering | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [duration, setDuration] = useState<(typeof DURATION_OPTIONS)[number]>(30);
-  const [isFree, setIsFree] = useState(false);
-  const [price, setPrice] = useState("");
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [duration, setDuration] = useState<(typeof DURATION_OPTIONS)[number]>(editing?.durationMinutes ?? 30);
+  const [isFree, setIsFree] = useState(editing?.isFree ?? false);
+  const [price, setPrice] = useState(editing && !editing.isFree ? String(editing.price) : "");
   // Nothing recurs until the mentor explicitly says so — "once" is the
   // default so publishing a session never silently turns into a standing
   // weekly commitment.
-  const [repeatMode, setRepeatMode] = useState<"once" | "weekly_ongoing" | "weekly_until">("once");
-  const [onceDate, setOnceDate] = useState("");
-  const [days, setDays] = useState<Set<DayOfWeek>>(new Set());
-  const [times, setTimes] = useState<string[]>(["17:00"]);
-  const [endDate, setEndDate] = useState("");
-  const [format, setFormat] = useState<SessionFormat>("one_on_one");
-  const [groupCapacity, setGroupCapacity] = useState("10");
-  const [subject, setSubject] = useState("");
-  const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const isEditedOneTime = !!editing && !editing.isOngoing && !!editing.dateRangeStart && editing.dateRangeStart === editing.dateRangeEnd;
+  const [repeatMode, setRepeatMode] = useState<"once" | "weekly_ongoing" | "weekly_until">(
+    !editing ? "once" : editing.isOngoing ? "weekly_ongoing" : isEditedOneTime ? "once" : "weekly_until",
+  );
+  const [onceDate, setOnceDate] = useState(isEditedOneTime ? (editing!.dateRangeStart as string) : "");
+  const [days, setDays] = useState<Set<DayOfWeek>>(new Set(editing?.recurringDays ?? []));
+  const [times, setTimes] = useState<string[]>(editing?.startTimes?.length ? editing.startTimes : ["17:00"]);
+  const [endDate, setEndDate] = useState(editing && !editing.isOngoing && !isEditedOneTime ? (editing.dateRangeEnd ?? "") : "");
+  const [format, setFormat] = useState<SessionFormat>(editing ? formatForOffering(editing) : "one_on_one");
+  const [groupCapacity, setGroupCapacity] = useState(editing && editing.capacity > 1 ? String(editing.capacity) : "10");
+  const [subject, setSubject] = useState(editing?.subject ?? "");
+  const [thumbnailUrl, setThumbnailUrl] = useState(editing?.thumbnailUrl ?? "");
   const [mentorPhotoUrl, setMentorPhotoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -389,7 +598,9 @@ function CreateOfferingDialog({
   useEffect(() => {
     getMentorProfile({ data: { token: mentorToken } }).then(({ profile }) => {
       setMentorPhotoUrl(profile.profilePictureUrl);
-      setThumbnailUrl((prev) => prev || (profile.profilePictureUrl ?? ""));
+      // Only pre-fill for a brand-new offering — when editing, an empty
+      // thumbnail is a deliberate choice and shouldn't be overwritten.
+      if (!editing) setThumbnailUrl((prev) => prev || (profile.profilePictureUrl ?? ""));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -432,8 +643,7 @@ function CreateOfferingDialog({
       const dateRangeEnd = repeatMode === "once" ? onceDate : repeatMode === "weekly_until" ? endDate || null : null;
       const isOngoing = repeatMode === "weekly_ongoing";
 
-      await createOffering({
-        data: {
+      const payload = {
           token: mentorToken,
           title,
           description,
@@ -448,8 +658,9 @@ function CreateOfferingDialog({
           isOngoing,
           capacity: cap,
           subject: subject.trim() || null,
-        },
-      });
+      };
+      if (editing) await updateOffering({ data: { ...payload, offeringId: editing.id } });
+      else await createOffering({ data: payload });
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create this offering.");
@@ -462,7 +673,7 @@ function CreateOfferingDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="clay max-h-[90vh] w-full max-w-lg overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold text-foreground">New session offering</h3>
+          <h3 className="font-display text-lg font-bold text-foreground">{editing ? "Edit session offering" : "New session offering"}</h3>
           <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70">
             <X className="h-5 w-5" />
           </button>
@@ -673,7 +884,7 @@ function CreateOfferingDialog({
             className="clay-btn mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold transition-transform disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarTime className="h-4 w-4" />}
-            Publish offering
+            {editing ? "Save changes" : "Publish offering"}
           </button>
         </div>
       </div>

@@ -9,6 +9,8 @@ import {
   createMentorshipSession,
   listMentorshipSessions,
   setLectureFreePreview,
+  getMyDefaultOneOnOneLink,
+  setMyDefaultOneOnOneLink,
   updateSessionStatus,
   listLectureComments,
   setLectureCommentVisibility,
@@ -143,6 +145,15 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  // One standing meeting-room link, reused for every 1:1 session instead
+  // of retyping a link per student. New sessions auto-fill with it; the
+  // field can still be overridden per-session if a mentor genuinely needs
+  // a different link once.
+  const [defaultLink, setDefaultLink] = useState<string | null>(null);
+  const [editingDefaultLink, setEditingDefaultLink] = useState(false);
+  const [defaultLinkDraft, setDefaultLinkDraft] = useState("");
+  const [savingDefaultLink, setSavingDefaultLink] = useState(false);
+
   useEffect(() => {
     (async () => {
       const { students: rows } = await listBatchStudents({ data: { token: mentorToken, batchId } });
@@ -151,6 +162,27 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
+
+  useEffect(() => {
+    getMyDefaultOneOnOneLink({ data: { token: mentorToken } }).then(({ link }) => {
+      setDefaultLink(link);
+      if (link) setMeetingLink(link);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mentorToken]);
+
+  async function saveDefaultLink() {
+    setSavingDefaultLink(true);
+    try {
+      await setMyDefaultOneOnOneLink({ data: { token: mentorToken, link: defaultLinkDraft.trim() } });
+      const saved = defaultLinkDraft.trim() || null;
+      setDefaultLink(saved);
+      if (saved) setMeetingLink(saved);
+      setEditingDefaultLink(false);
+    } finally {
+      setSavingDefaultLink(false);
+    }
+  }
 
   async function refreshUsage(uid: string) {
     if (!uid) return;
@@ -195,7 +227,7 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
           session: { batchId, track: "OneOnOne", studentUid, durationMinutes: minutes, meetingLink: meetingLink.trim(), scheduledAt },
         },
       });
-      setMeetingLink("");
+      setMeetingLink(defaultLink ?? "");
       setScheduledAt("");
       setShowForm(false);
       await Promise.all([refreshUsage(studentUid), refreshSessions()]);
@@ -286,7 +318,60 @@ function TrackOneOnOne({ mentorToken, batchId }: { mentorToken: string; batchId:
                     className={inputClass + " pl-10"}
                   />
                 </div>
+                {defaultLink && meetingLink === defaultLink && (
+                  <p className="mt-1 text-[11px] text-foreground/40">Using your default 1:1 link — every new session starts with this.</p>
+                )}
               </ClayField>
+
+              <div className="clay-inset rounded-2xl px-4 py-3">
+                {editingDefaultLink ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={defaultLinkDraft}
+                      onChange={(e) => setDefaultLinkDraft(e.target.value)}
+                      placeholder="Your standing meeting-room link"
+                      className={inputClass + " flex-1"}
+                    />
+                    <button
+                      type="button"
+                      onClick={saveDefaultLink}
+                      disabled={savingDefaultLink}
+                      className="clay-btn shrink-0 rounded-full px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingDefaultLink(false)}
+                      className="shrink-0 text-xs font-medium text-foreground/40 hover:text-foreground/70"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-foreground/60">
+                      {defaultLink ? (
+                        <>
+                          Default 1:1 link: <span className="font-semibold text-foreground/80">{defaultLink}</span>
+                        </>
+                      ) : (
+                        "No default 1:1 link set yet — save one so you don't retype it for every student."
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDefaultLinkDraft(defaultLink ?? "");
+                        setEditingDefaultLink(true);
+                      }}
+                      className="shrink-0 text-xs font-semibold text-[var(--sky-deep)] hover:underline"
+                    >
+                      {defaultLink ? "Change" : "Set one"}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {error && <ErrorBanner message={error} />}
 
