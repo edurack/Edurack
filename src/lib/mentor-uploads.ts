@@ -7,6 +7,9 @@ import {
   supabase,
   MENTOR_IMAGES_BUCKET,
   MENTOR_FILES_BUCKET,
+  SESSION_ARTWORK_BUCKET,
+  SESSION_ARTWORK_FALLBACK_BUCKETS,
+  MAX_SESSION_ARTWORK_BYTES,
   MAX_IMAGE_BYTES,
   MAX_FILE_BYTES,
   MAX_LECTURE_BYTES,
@@ -53,6 +56,56 @@ export async function uploadMentorFile(file: File, basePath: string): Promise<st
     throw new Error(`That file is ${formatBytes(file.size)} — please choose one under ${formatBytes(MAX_FILE_BYTES)}.`);
   }
   return simpleSupabaseUpload(MENTOR_FILES_BUCKET, uniquePath(basePath, file.name), file);
+}
+
+// ─── Session artwork (thumbnail + 4:5 poster) ──────────────────────────────
+// Supabase answers "Bucket not found" (404) when a bucket was never created,
+// and an RLS error when the bucket exists but has no anon insert policy. In
+// both cases that bucket is unusable for us, so we move on to the next
+// candidate instead of failing the mentor's upload. Whichever bucket works
+// is remembered for the rest of the tab session.
+let workingArtworkBucket: string | null = null;
+
+function isBucketUnusable(err: unknown) {
+  const e = err as { message?: string; statusCode?: string | number; status?: number } | null;
+  const msg = (e?.message ?? "").toLowerCase();
+  const code = String(e?.statusCode ?? e?.status ?? "");
+  return (
+    msg.includes("bucket not found") ||
+    msg.includes("row-level security") ||
+    msg.includes("violates") ||
+    code === "404" ||
+    code === "403"
+  );
+}
+
+export async function uploadSessionArtwork(file: File, basePath: string): Promise<string> {
+  if (file.size > MAX_SESSION_ARTWORK_BYTES) {
+    throw new Error(`That image is ${formatBytes(file.size)} — please choose one under ${formatBytes(MAX_SESSION_ARTWORK_BYTES)}.`);
+  }
+  const path = uniquePath(basePath, file.name);
+  const candidates = [
+    ...(workingArtworkBucket ? [workingArtworkBucket] : []),
+    SESSION_ARTWORK_BUCKET,
+    ...SESSION_ARTWORK_FALLBACK_BUCKETS,
+  ].filter((b, i, all) => all.indexOf(b) === i);
+
+  let lastError: unknown = null;
+  for (const bucket of candidates) {
+    try {
+      const url = await simpleSupabaseUpload(bucket, path, file);
+      workingArtworkBucket = bucket;
+      return url;
+    } catch (err) {
+      lastError = err;
+      if (bucket === workingArtworkBucket) workingArtworkBucket = null;
+      if (!isBucketUnusable(err)) throw err;
+    }
+  }
+  console.error("Session artwork upload failed on every bucket", lastError);
+  throw new Error(
+    `Image storage isn't set up yet — ask the Edurack team to create a public "${SESSION_ARTWORK_BUCKET}" bucket in Supabase Storage.`,
+  );
 }
 
 // ─── Lectures: S3 multipart upload ─────────────────────────────────────────

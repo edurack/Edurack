@@ -12,7 +12,7 @@ import { useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video, IconHelpCircle as HelpCircle } from "@tabler/icons-react";
 import { Inbox, Camera } from "lucide-react"; // TODO: no Tabler mapping found yet
-import { uploadMentorImage, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
+import { uploadMentorImage, uploadSessionArtwork, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
 
 // ─── Shared input styling ──────────────────────────────────────────────
 export const inputClass =
@@ -263,6 +263,83 @@ export function ImageUploadField({
               onClick={() => onChange("")}
               className="inline-flex items-center gap-1 text-xs font-medium text-foreground/40 hover:text-rose-600"
             >
+              <X className="h-3 w-3" />
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <p className="mt-1.5 text-xs font-medium text-rose-600">{error}</p>}
+    </ClayField>
+  );
+}
+
+// Session artwork picker — used for a session's square thumbnail AND its
+// 4:5 poster. `shape` only changes the preview frame; both go through
+// uploadSessionArtwork, which falls back across buckets so a missing bucket
+// never surfaces as "Bucket not found" to the mentor.
+export function SessionArtworkField({
+  label,
+  value,
+  onChange,
+  storagePath,
+  shape = "square",
+  hint,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (url: string) => void;
+  storagePath: string;
+  shape?: "square" | "poster";
+  hint?: string;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputId = `art-upload-${storagePath}`;
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (!file.type.startsWith("image/")) return setError("Please choose an image file.");
+    setUploading(true);
+    try {
+      onChange(await uploadSessionArtwork(file, storagePath));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  const frame = shape === "poster" ? "aspect-[4/5] w-24 rounded-2xl" : "h-16 w-16 rounded-full";
+
+  return (
+    <ClayField label={label} hint={hint ?? (shape === "poster" ? "4:5 portrait, e.g. 1080×1350" : undefined)}>
+      <div className="flex items-center gap-3">
+        <div className={`clay-inset flex shrink-0 items-center justify-center overflow-hidden ${frame}`}>
+          {uploading ? (
+            <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+          ) : value ? (
+            <img src={value} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <Camera className="h-5 w-5 text-foreground/30" />
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <input ref={inputRef} type="file" accept="image/*" disabled={disabled || uploading} onChange={(e) => handleFile(e.target.files?.[0])} className="hidden" id={inputId} />
+          <label
+            htmlFor={disabled || uploading ? undefined : inputId}
+            className={`clay-btn-ghost inline-flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold ${disabled || uploading ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            {value ? "Replace image" : "Upload image"}
+          </label>
+          {value && !uploading && (
+            <button type="button" onClick={() => onChange("")} className="inline-flex items-center gap-1 text-xs font-medium text-foreground/40 hover:text-rose-600">
               <X className="h-3 w-3" />
               Remove
             </button>

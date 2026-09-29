@@ -60,9 +60,12 @@ export function LandingFreeSessionsSection() {
               params={{ offeringId: s.id }}
               className="clay flex flex-col overflow-hidden p-3 transition-transform duration-200 hover:border-primary/60"
             >
-              <div className="relative flex h-24 items-center justify-center overflow-hidden rounded-2xl" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}>
-                {s.thumbnailUrl || s.mentorPhotoUrl ? (
-                  <img src={s.thumbnailUrl ?? s.mentorPhotoUrl ?? undefined} alt="" className="h-full w-full object-cover" />
+              <div
+                className={`relative flex items-center justify-center overflow-hidden rounded-2xl ${s.posterUrl ? "aspect-[4/5] w-full" : "h-24"}`}
+                style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}
+              >
+                {s.posterUrl || s.thumbnailUrl || s.mentorPhotoUrl ? (
+                  <img src={s.posterUrl ?? s.thumbnailUrl ?? s.mentorPhotoUrl ?? undefined} alt="" loading="lazy" className="h-full w-full object-cover" />
                 ) : (
                   <Sparkles className="h-8 w-8 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
                 )}
@@ -86,7 +89,7 @@ export function LandingFreeSessionsSection() {
                 <h3 className="mb-2 font-display text-base font-bold leading-tight text-foreground">{s.title}</h3>
                 <p className="mb-4 flex items-center gap-1 text-xs text-foreground/50">
                   <Clock className="h-3.5 w-3.5" />
-                  {new Date(s.nextSlot.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })} · {s.nextSlot.startTime}
+                  {new Date(s.nextSlot.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })} · {s.nextSlot.startTime}
                 </p>
                 <span
                   className="mt-auto flex items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-sm font-bold text-white transition-transform duration-200"

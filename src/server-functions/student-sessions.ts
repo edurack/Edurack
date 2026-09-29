@@ -21,6 +21,7 @@ function rowToOffering(row: any): MentorSessionOffering {
     isFree: row.is_free,
     price: Number(row.price),
     thumbnailUrl: row.thumbnail_url,
+    posterUrl: row.poster_url ?? null,
     recurringDays: row.recurring_days,
     startTimes: row.start_times,
     dateRangeStart: row.date_range_start,

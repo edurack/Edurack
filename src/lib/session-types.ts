@@ -49,6 +49,7 @@ export type MentorSessionOffering = {
   isFree: boolean;
   price: number;
   thumbnailUrl: string | null;
+  posterUrl?: string | null; // optional 4:5 portrait poster; shown in place of the thumbnail when set
   recurringDays: DayOfWeek[];
   startTimes: string[]; // "HH:mm"
   dateRangeStart: string | null; // ISO date
@@ -135,7 +136,7 @@ export function describeSchedule(o: {
 
   if (isOneTime) {
     const d = new Date(o.dateRangeStart as string);
-    const dateLabel = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    const dateLabel = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
     return `One-time · ${dateLabel} · ${times}`;
   }
 
@@ -144,7 +145,7 @@ export function describeSchedule(o: {
     .sort()
     .map((d) => DAY_LABELS[d])
     .join(", ");
-  const until = !o.isOngoing && o.dateRangeEnd ? ` (until ${new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})` : "";
+  const until = !o.isOngoing && o.dateRangeEnd ? ` (until ${new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })})` : "";
   return `Every ${dayLabels} · ${times}${until}`;
 }
 

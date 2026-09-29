@@ -124,7 +124,7 @@ export function SessionCalendar<T extends { date: string }>({
 
       <div className="clay p-4">
         <p className="mb-3 text-xs font-bold uppercase tracking-wide text-foreground/40">
-          {new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}
+          {new Date(selectedDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })}
         </p>
         {selectedEvents.length === 0 ? (
           <p className="text-sm text-foreground/50">{emptyDayLabel}</p>

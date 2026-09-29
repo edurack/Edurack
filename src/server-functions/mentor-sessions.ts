@@ -62,6 +62,7 @@ function rowToOffering(row: any): MentorSessionOffering {
     isFree: row.is_free,
     price: Number(row.price),
     thumbnailUrl: row.thumbnail_url,
+    posterUrl: row.poster_url ?? null,
     recurringDays: row.recurring_days,
     startTimes: row.start_times,
     dateRangeStart: row.date_range_start,
@@ -125,6 +126,9 @@ export const createOffering = createServerFn({ method: "POST" })
       isFree: boolean;
       price: number;
       thumbnailUrl: string | null;
+      // undefined = leave the stored poster alone (also keeps this working
+      // before the poster_url column migration has been run).
+      posterUrl?: string | null;
       recurringDays: DayOfWeek[];
       startTimes: string[];
       dateRangeStart: string | null;
@@ -157,6 +161,7 @@ export const createOffering = createServerFn({ method: "POST" })
         is_free: data.isFree,
         price: data.isFree ? 0 : data.price,
         thumbnail_url: data.thumbnailUrl,
+        ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
         recurring_days: data.recurringDays,
         start_times: data.startTimes,
         date_range_start: data.dateRangeStart,
@@ -189,6 +194,9 @@ export const updateOffering = createServerFn({ method: "POST" })
       isFree: boolean;
       price: number;
       thumbnailUrl: string | null;
+      // undefined = leave the stored poster alone (also keeps this working
+      // before the poster_url column migration has been run).
+      posterUrl?: string | null;
       recurringDays: DayOfWeek[];
       startTimes: string[];
       dateRangeStart: string | null;
@@ -240,6 +248,7 @@ export const updateOffering = createServerFn({ method: "POST" })
         is_free: data.isFree,
         price: data.isFree ? 0 : data.price,
         thumbnail_url: data.thumbnailUrl,
+        ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
         recurring_days: data.recurringDays,
         start_times: data.startTimes,
         date_range_start: data.dateRangeStart,

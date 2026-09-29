@@ -39,6 +39,7 @@ import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
 import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
 import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
+import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
 // (exam-navigation UI, question palette, timers, etc). It was being bundled
@@ -341,6 +342,7 @@ function Index() {
         <Header />
         <main>
           <HeroMotion ctaRef={ctaRef} />
+          <LandingFreeSessionsSection />
           <LoopSection />
           <SimulatorSection />
           <MentorShowcase />

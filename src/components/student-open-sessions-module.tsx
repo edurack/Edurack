@@ -209,12 +209,12 @@ function OfferingCard({
   const isGroup = offering.capacity > 1 && !unlimited;
   return (
     <div className="clay flex flex-col overflow-hidden p-3">
-      <div className="relative flex h-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)]">
-        {offering.thumbnailUrl || offering.mentorPhotoUrl ? (
+      <div className={`relative flex items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)] ${offering.posterUrl ? "aspect-[4/5] w-full" : "h-28"}`}>
+        {offering.posterUrl || offering.thumbnailUrl || offering.mentorPhotoUrl ? (
           <img
-            src={offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined}
+            src={offering.posterUrl ?? offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined}
             alt=""
-            className={offering.thumbnailUrl ? "h-full w-full object-cover" : "h-full w-full object-cover opacity-90"}
+            className={offering.posterUrl || offering.thumbnailUrl ? "h-full w-full object-cover" : "h-full w-full object-cover opacity-90"}
           />
         ) : (
           <Clock className="h-9 w-9 text-[var(--pink-deep,#BE185D)] opacity-50" strokeWidth={1.5} />
@@ -259,7 +259,7 @@ function OfferingCard({
                 className="clay-chip flex flex-col items-start rounded-2xl px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
               >
                 <span>
-                  {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {s.startTime}
+                  {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} · {s.startTime}
                 </span>
                 {isGroup && <span className="text-[10px] font-normal text-foreground/40">{s.seatsRemaining} seats left</span>}
               </button>
@@ -365,7 +365,7 @@ export function BookingDialog({
           <p className="font-semibold text-foreground">{offering.title}</p>
           <p className="text-sm text-foreground/60">with {offering.mentorName}</p>
           <p className="mt-1 text-sm text-foreground/60">
-            {new Date(slot.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })} · {slot.startTime} · {slot.durationMinutes} min
+            {new Date(slot.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })} · {slot.startTime} · {slot.durationMinutes} min
           </p>
           {isGroup && (
             <p className="mt-1 flex items-center gap-1 text-xs text-foreground/50">

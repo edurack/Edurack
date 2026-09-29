@@ -35,7 +35,7 @@ import {
   type MentorSessionBooking,
   type SessionRoster,
 } from "@/lib/session-types";
-import { ImageUploadField } from "@/components/mentor-portal-ui";
+import { SessionArtworkField } from "@/components/mentor-portal-ui";
 import { SessionCalendar } from "@/components/session-calendar";
 import { expandOfferingToSlots } from "@/lib/session-slots";
 import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
@@ -242,6 +242,11 @@ function OfferingsList({
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {offerings.map((o) => (
         <div key={o.id} className="clay flex flex-col gap-2 p-4">
+          {(o.posterUrl || o.thumbnailUrl) && (
+            <div className={`overflow-hidden rounded-2xl bg-foreground/5 ${o.posterUrl ? "mx-auto aspect-[4/5] w-40" : "h-28 w-full"}`}>
+              <img src={(o.posterUrl ?? o.thumbnailUrl) as string} alt="" className="h-full w-full object-cover" />
+            </div>
+          )}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate font-display text-base font-bold text-foreground">{o.title}</p>
@@ -260,7 +265,7 @@ function OfferingsList({
           </p>
           {o.subject && <p className="text-[11px] font-semibold text-[var(--sky-deep)]">Subject: {o.subject}</p>}
           {!o.isOngoing && o.dateRangeEnd && (
-            <p className="text-[11px] text-foreground/40">Ends {new Date(o.dateRangeEnd).toLocaleDateString("en-IN")}</p>
+            <p className="text-[11px] text-foreground/40">Ends {new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { timeZone: "UTC" })}</p>
           )}
           <div className="mt-2 flex gap-2">
             <button onClick={() => onEdit(o)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
@@ -493,7 +498,7 @@ function RosterList({
                   )}
                 </p>
                 <p className="text-xs text-foreground/50">
-                  {new Date(r.sessionDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })} · {r.startTime} ·{" "}
+                  {new Date(r.sessionDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })} · {r.startTime} ·{" "}
                   {r.durationMinutes} min
                 </p>
               </div>
@@ -588,6 +593,7 @@ function CreateOfferingDialog({
   const [groupCapacity, setGroupCapacity] = useState(editing && editing.capacity > 1 ? String(editing.capacity) : "10");
   const [subject, setSubject] = useState(editing?.subject ?? "");
   const [thumbnailUrl, setThumbnailUrl] = useState(editing?.thumbnailUrl ?? "");
+  const [posterUrl, setPosterUrl] = useState(editing?.posterUrl ?? "");
   const [mentorPhotoUrl, setMentorPhotoUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -638,7 +644,7 @@ function CreateOfferingDialog({
       // range is pinned to just that one day, so it produces exactly one
       // occurrence and then never appears again — no schema special-case
       // needed, and it can never silently turn into a standing weekly slot.
-      const recurringDays = repeatMode === "once" ? [new Date(onceDate).getDay() as DayOfWeek] : Array.from(days);
+      const recurringDays = repeatMode === "once" ? [new Date(`${onceDate}T00:00:00Z`).getUTCDay() as DayOfWeek] : Array.from(days);
       const dateRangeStart = repeatMode === "once" ? onceDate : null;
       const dateRangeEnd = repeatMode === "once" ? onceDate : repeatMode === "weekly_until" ? endDate || null : null;
       const isOngoing = repeatMode === "weekly_ongoing";
@@ -651,6 +657,12 @@ function CreateOfferingDialog({
           isFree: format === "open_unlimited" ? true : isFree,
           price: format === "open_unlimited" ? 0 : Number(price) || 0,
           thumbnailUrl: thumbnailUrl.trim() || null,
+          // Only sent when it actually changed (or a poster is set on a new
+          // offering) so saving still works on databases where the
+          // poster_url column hasn't been added yet.
+          ...((editing ? posterUrl !== (editing.posterUrl ?? "") : !!posterUrl.trim())
+            ? { posterUrl: posterUrl.trim() || null }
+            : {}),
           recurringDays,
           startTimes: times.filter(Boolean),
           dateRangeStart,
@@ -855,7 +867,7 @@ function CreateOfferingDialog({
             </div>
           </Field>
 
-          <ImageUploadField
+          <SessionArtworkField
             label="Thumbnail (optional)"
             value={thumbnailUrl}
             onChange={setThumbnailUrl}
@@ -869,6 +881,19 @@ function CreateOfferingDialog({
                 : mentorPhotoUrl
                   ? "Removed — we'll show your profile photo instead."
                   : "No profile photo on file yet — we'll show a placeholder until you upload one here or on your profile."}
+          </p>
+
+          <SessionArtworkField
+            label="Poster (optional, 4:5)"
+            shape="poster"
+            value={posterUrl}
+            onChange={setPosterUrl}
+            storagePath={`mentor-sessions/${mentorToken.split(".")[0]}/posters`}
+          />
+          <p className="-mt-2 text-[11px] text-foreground/40">
+            {posterUrl
+              ? "Students see this 4:5 poster instead of the thumbnail on session cards, the session page and the landing page."
+              : "Add a portrait poster (1080×1350 works well) — it replaces the thumbnail everywhere students see this session."}
           </p>
 
           {error && <p className="text-xs font-medium text-rose-600">{error}</p>}

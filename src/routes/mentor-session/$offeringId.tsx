@@ -31,7 +31,7 @@ export const Route = createFileRoute("/mentor-session/$offeringId")({
           description:
             offering.description?.trim() ||
             `Book a ${offering.durationMinutes}-minute ${kind} with ${mentorBio.name} on Edurack. ${price}.`,
-          image: offering.thumbnailUrl ?? mentorBio.photoUrl,
+          image: offering.posterUrl ?? offering.thumbnailUrl ?? mentorBio.photoUrl,
           mentorName: mentorBio.name,
           price: offering.isFree ? 0 : Number(offering.price) || 0,
         },
@@ -239,8 +239,13 @@ function SessionDetail({
       <div className="space-y-6">
         {/* Hero */}
         <div className="clay overflow-hidden">
-          <div className="relative flex h-56 items-center justify-center sm:h-72" style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}>
-            {offering.thumbnailUrl || offering.mentorPhotoUrl ? (
+          <div
+            className={`relative flex items-center justify-center ${offering.posterUrl ? "py-6" : "h-56 sm:h-72"}`}
+            style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}
+          >
+            {offering.posterUrl ? (
+              <img src={offering.posterUrl} alt={offering.title} className="aspect-[4/5] w-full max-w-xs rounded-2xl object-cover shadow-lg sm:max-w-sm" />
+            ) : offering.thumbnailUrl || offering.mentorPhotoUrl ? (
               <img src={offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined} alt="" className="h-full w-full object-cover" />
             ) : (
               <Sparkles className="h-14 w-14 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
@@ -334,8 +339,8 @@ function SessionDetail({
                       }`}
                       style={active ? { background: PINK_DEEP } : undefined}
                     >
-                      <span>{date.toLocaleDateString("en-IN", { weekday: "short" })}</span>
-                      <span className="text-[10px] font-normal opacity-80">{date.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                      <span>{date.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" })}</span>
+                      <span className="text-[10px] font-normal opacity-80">{date.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}</span>
                     </button>
                   );
                 })}

@@ -17,23 +17,27 @@ export function expandOfferingToSlots(
   if (!offering.active) return [];
 
   const slots: OpenSlot[] = [];
-  const rangeStart = offering.dateRangeStart ? new Date(offering.dateRangeStart) : null;
-  const rangeEnd = offering.isOngoing ? null : offering.dateRangeEnd ? new Date(offering.dateRangeEnd) : null;
+  // All calendar math is done on plain "YYYY-MM-DD" strings in India time
+  // (IST, UTC+5:30), never on local-timezone Date objects. The old version
+  // built local-midnight Dates and then called toISOString(), which shifts
+  // the date back a day on any server running ahead of UTC (e.g. IST) — a
+  // session set for 4 Oct showed up as a slot on "Sat 3 Oct".
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+  const rangeStart = offering.dateRangeStart ? offering.dateRangeStart.slice(0, 10) : null;
+  const rangeEnd = offering.isOngoing ? null : offering.dateRangeEnd ? offering.dateRangeEnd.slice(0, 10) : null;
 
   for (let i = 0; i < windowDays; i++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + i);
-    day.setHours(0, 0, 0, 0);
+    const day = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate() + i));
+    const dateStr = day.toISOString().slice(0, 10); // UTC-midnight Date, so this is exactly the IST calendar day
 
-    if (rangeStart && day < stripTime(rangeStart)) continue;
-    if (rangeEnd && day > stripTime(rangeEnd)) continue;
-    if (!offering.recurringDays.includes(day.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
-
-    const dateStr = toIsoDate(day);
+    if (rangeStart && dateStr < rangeStart) continue;
+    if (rangeEnd && dateStr > rangeEnd) continue;
+    if (!offering.recurringDays.includes(day.getUTCDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
 
     for (const startTime of offering.startTimes) {
-      // Skip slots that have already started today.
-      if (i === 0 && isPast(day, startTime, now)) continue;
+      // Skip slots that have already started (start time is IST).
+      if (i === 0 && isPast(dateStr, startTime, now)) continue;
 
       const key = `${offering.id}:${dateStr}:${startTime}`;
       const seatsTaken = seatCounts.get(key) ?? 0;
@@ -55,19 +59,9 @@ export function expandOfferingToSlots(
   return slots.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
 }
 
-function stripTime(d: Date) {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-
-function toIsoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function isPast(day: Date, startTime: string, now: Date) {
+function isPast(dateStr: string, startTime: string, now: Date) {
   const [h, m] = startTime.split(":").map(Number);
-  const slot = new Date(day);
-  slot.setHours(h, m, 0, 0);
-  return slot.getTime() <= now.getTime();
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const slotUtcMs = Date.UTC(y, mo - 1, d, h, m) - 5.5 * 60 * 60 * 1000; // IST -> UTC
+  return slotUtcMs <= now.getTime();
 }

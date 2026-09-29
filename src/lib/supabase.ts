@@ -122,6 +122,20 @@ export const MAX_INTERN_DOCUMENT_BYTES = 50 * 1024 * 1024; // 50MB
 export const INTERN_APPLICATIONS_BUCKET = "intern-applications";
 export const MAX_INTERN_APPLICATION_FILE_BYTES = 10 * 1024 * 1024; // 10MB — resumes/portfolios are small
 
+// ─── Session offering artwork (square thumbnail + 4:5 poster) ────────────
+// Preferred bucket for session artwork. If it hasn't been created yet the
+// upload helper (lib/mentor-uploads.ts → uploadSessionArtwork) quietly
+// falls back through SESSION_ARTWORK_FALLBACK_BUCKETS instead of showing
+// the mentor a raw "Bucket not found" error. Create this bucket (Public)
+// and add its insert policy — see db/session-poster-migration.sql.
+export const SESSION_ARTWORK_BUCKET = "session-thumbnails";
+export const SESSION_ARTWORK_FALLBACK_BUCKETS = [
+  MENTOR_IMAGES_BUCKET,
+  SESSION_TEMPLATES_BUCKET,
+  MENTOR_UPLOADS_BUCKET,
+] as const;
+export const MAX_SESSION_ARTWORK_BYTES = 20 * 1024 * 1024; // 20MB
+
 export const BLOG_ASSETS_BUCKET = "blog-assets";
 export const MAX_BLOG_IMAGE_BYTES = 20 * 1024 * 1024;
 
