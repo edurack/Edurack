@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { pageHead } from "@/lib/seo";
+import { pageHead, breadcrumbJsonLd } from "@/lib/seo";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { motion } from "motion/react";
 import {
@@ -14,7 +14,31 @@ import { submitPlatformTicket, listMyPlatformTickets } from "@/server-functions/
 import { AppHeader } from "@/components/app-header";
 
 export const Route = createFileRoute("/help")({
-  head: () => pageHead({"title": "Help & Support", "path": "/help", "description": "Find answers about tests, mentorship batches, payments and your account, or raise a support ticket and get a reply from the Edurack team."}),
+  // FAQPage schema turns FAQS (below) into individually-extractable Q&A
+  // pairs — this is the exact shape AI answer engines (and Google's AI
+  // Overviews) pull from directly, rather than having to parse prose.
+  head: () =>
+    pageHead({
+      title: "Help & Support",
+      path: "/help",
+      description:
+        "Find answers about tests, mentorship batches, payments and your account, or raise a support ticket and get a reply from the Edurack team.",
+      jsonLd: [
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        },
+        breadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: "Help & Support", path: "/help" },
+        ]),
+      ],
+    }),
   component: HelpPage,
 });
 

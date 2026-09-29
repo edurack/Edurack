@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 // Fonts are self-hosted via Fontsource instead of the Google Fonts CDN, which
@@ -24,7 +24,6 @@ import "@fontsource/plus-jakarta-sans/400.css";
 import "@fontsource/plus-jakarta-sans/500.css";
 import "@fontsource/plus-jakarta-sans/600.css";
 import "@fontsource/plus-jakarta-sans/700.css";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "../lib/auth-context";
 
 // ─── Site-wide SEO constants ────────────────────────────────────────────────
@@ -53,6 +52,23 @@ const structuredData = {
       logo: `${SITE_URL}/favicon.ico`,
       description: SITE_DESCRIPTION,
       areaServed: "IN",
+      // The full story lives on a real page, not crammed into meta tags —
+      // this is what both Google and AI answer engines actually read.
+      mainEntityOfPage: `${SITE_URL}/about`,
+      // Real, live social profiles (see socialLinks in site-chrome.tsx) —
+      // "sameAs" is one of the strongest identity-confirmation signals
+      // for both classic SEO and GEO/AI-answer citation, since it lets
+      // engines cross-check this Organization against independent
+      // profiles instead of trusting the site's own claims alone. Keep
+      // this list in sync with site-chrome.tsx if a handle ever changes.
+      sameAs: [
+        "https://www.linkedin.com/company/edurack",
+        "https://youtube.com/@edurack",
+        "https://instagram.com/edurack.in",
+        "https://x.com/edurack_",
+        "https://www.reddit.com/user/Edurack/",
+        "https://threads.net/@edurack.in",
+      ],
     },
     {
       "@type": "WebSite",
@@ -91,9 +107,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

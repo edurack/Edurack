@@ -17,6 +17,8 @@ const staticRoutes: { path: string; lastmod: string; priority: number; changefre
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
   { path: "/join-intern", lastmod: "2026-09-28", priority: 0.5, changefreq: "monthly" },
+  { path: "/about", lastmod: "2026-09-28", priority: 0.6 },
+  { path: "/faq", lastmod: "2026-09-28", priority: 0.6 },
   { path: "/help", lastmod: "2026-09-28", priority: 0.4 },
   { path: "/verify", lastmod: "2026-09-28", priority: 0.3 },
   { path: "/contact", lastmod: "2026-09-11", priority: 0.5 },

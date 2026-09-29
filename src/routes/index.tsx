@@ -63,7 +63,29 @@ const CbtSimulator = lazy(() =>
 // present in the streamed HTML rather than hidden behind a client fetch.
 // ---------------------------------------------
 export const Route = createFileRoute("/")({
-  head: () => pageHead({"title": "Edurack: Mock Tests, Mentors & Batches for NEET, JEE, CUET", "rawTitle": true, "path": "/", "description": "Practice with real exam-style CBT mock tests, learn from mentors reviewed by our team and join live batches for NEET, JEE, CUET and IPMAT — with deep analytics on every attempt."}),
+  // Title/description stay short on purpose — Google truncates past ~60/
+  // ~160 chars, so this is not where the "in depth" story goes. Real depth
+  // (the problem, the product, the team) lives on /about, and this WebPage
+  // node just points at it rather than duplicating the Organization/
+  // WebSite nodes __root.tsx already sets for every page.
+  head: () =>
+    pageHead({
+      title: "Edurack: Mock Tests, Mentors & Batches for NEET, JEE, CUET",
+      rawTitle: true,
+      path: "/",
+      description:
+        "Practice with real exam-style CBT mock tests, learn from mentors reviewed by our team and join live batches for NEET, JEE, CUET and IPMAT — with deep analytics on every attempt.",
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "@id": "https://www.edurack.in/#webpage",
+        url: "https://www.edurack.in/",
+        name: "Edurack: Mock Tests, Mentors & Batches for NEET, JEE, CUET",
+        isPartOf: { "@id": "https://www.edurack.in/#website" },
+        about: { "@id": "https://www.edurack.in/#organization" },
+        mainEntity: { "@id": "https://www.edurack.in/#organization" },
+      },
+    }),
   loader: () => {
     return {
       mentorsPromise: listMentorsForLanding().then(
@@ -741,8 +763,8 @@ function FinalCta() {
 // ── Footer ─────────────────────────────────────────────────────────────────
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
-  { title: "Product", links: [{ label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }] },
-  { title: "Help", links: [{ label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }] },
+  { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
 ];
 

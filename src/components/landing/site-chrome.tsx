@@ -158,6 +158,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
   {
     title: "Product",
     links: [
+      { label: "About us", to: "/about" },
       { label: "CBT Simulator", to: "/simulator/live" },
       { label: "Dashboard", to: "/dashboard" },
       { label: "Become a mentor", to: "/join-mentor" },
@@ -167,6 +168,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
   {
     title: "Help",
     links: [
+      { label: "FAQ", to: "/faq" },
       { label: "Help centre", to: "/help" },
       { label: "Contact us", to: "/contact" },
       { label: "Verify certificate", to: "/verify" },
