@@ -39,6 +39,7 @@ export const getTestAttempt = createServerFn({ method: "GET" })
       correctAnswer?: number | null;
       isCorrect: boolean;
       marksAwarded: number;
+      ignored?: boolean;
     }[];
 
     // questionResults only stored the graded outcome, not the actual
@@ -69,6 +70,7 @@ export const getTestAttempt = createServerFn({ method: "GET" })
           correctAnswer: type === "integer" ? (doc.correctAnswer as number) : undefined,
           isCorrect: r.isCorrect,
           marksAwarded: r.marksAwarded,
+          ignored: Boolean(r.ignored),
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)

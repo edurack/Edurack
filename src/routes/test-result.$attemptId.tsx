@@ -50,6 +50,7 @@ type ReviewQuestion = {
   correctAnswer?: number;
   isCorrect: boolean;
   marksAwarded: number;
+  ignored?: boolean;
 };
 
 type LeaderboardEntry = {
@@ -325,15 +326,18 @@ function TestResultContent({
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                        q.isCorrect
+                        q.ignored
+                          ? "bg-foreground/10 text-foreground/50"
+                          : q.isCorrect
                           ? "bg-[var(--mint-soft)] text-foreground"
                           : hasAnswer
                             ? "bg-[var(--coral-soft)] text-foreground"
                             : "bg-foreground/10 text-foreground/50"
                       }`}
                     >
-                      {q.isCorrect ? "Correct" : hasAnswer ? "Incorrect" : "Skipped"} · {q.marksAwarded > 0 ? "+" : ""}
-                      {q.marksAwarded}
+                      {q.ignored
+                        ? "Not counted (over the attempt limit)"
+                        : `${q.isCorrect ? "Correct" : hasAnswer ? "Incorrect" : "Skipped"} · ${q.marksAwarded > 0 ? "+" : ""}${q.marksAwarded}`}
                     </span>
                   </div>
 

@@ -6,6 +6,7 @@ import { Grid3x3 } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
 import { getProfile } from "@/server-functions/profile";
 import { getTestForTaking, submitTestAttempt } from "@/server-functions/test-engine";
+import { findRuleForQuestion, ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 import { SmartContent } from "@/lib/smart-content";
 
 export const Route = createFileRoute("/test/$testId")({
@@ -38,6 +39,7 @@ type TestMeta = {
   subjects: string[];
   totalQuestions: number;
   timeLimitMinutes: number;
+  attemptRules: AttemptRule[];
 };
 
 // Auto-submit thresholds. Violation N+1 triggers the auto-submit (so
@@ -371,8 +373,33 @@ function TestEnginePage() {
     setPaletteOpen(false);
   }
 
+  // "Attempt any N of M" groups: once N questions in the group are answered,
+  // the student has to clear one before answering another. Re-answering a
+  // question that already has an answer is always allowed. Grading enforces
+  // the same limit server-side, so this is about telling the student up front.
+  function groupInfo(q: Question) {
+    const rule = findRuleForQuestion(test?.attemptRules, q.subject, q.questionNo);
+    if (!rule) return null;
+    const members = (questions ?? []).filter((x) => findRuleForQuestion([rule], x.subject, x.questionNo));
+    const attempted = members.filter((x) => answers[x.id] !== undefined).length;
+    return { rule, total: Math.min(ruleGroupSize(rule), members.length), attempted };
+  }
+
+  function canAnswer(q: Question): boolean {
+    const info = groupInfo(q);
+    if (!info) return true;
+    if (answers[q.id] !== undefined) return true;
+    if (info.attempted < info.rule.attemptAny) return true;
+    showWarning(
+      `You can attempt only ${info.rule.attemptAny} of ${info.total} questions in this section. Clear one of your answers to attempt this one.`,
+      "warn",
+    );
+    return false;
+  }
+
   function selectOption(option: OptionKey) {
     if (!currentQuestion) return;
+    if (!canAnswer(currentQuestion)) return;
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: option }));
   }
 
@@ -385,6 +412,7 @@ function TestEnginePage() {
     if (!/^-?\d*\.?\d*$/.test(value)) return; // block invalid keystrokes
     const num = Number(value);
     if (Number.isNaN(num)) return;
+    if (!canAnswer(currentQuestion)) return;
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: num }));
   }
 
@@ -633,6 +661,17 @@ function TestEnginePage() {
                   {currentQuestion.subject}
                 </span>
               </div>
+
+              {(() => {
+                const info = groupInfo(currentQuestion);
+                if (!info) return null;
+                return (
+                  <p className="mb-4 rounded-2xl bg-[var(--sky-soft)] px-3 py-2 text-xs font-semibold text-foreground">
+                    Attempt any {info.rule.attemptAny} of {info.total} (Q{info.rule.fromNo}–Q{info.rule.toNo}) ·{" "}
+                    {info.attempted} attempted
+                  </p>
+                );
+              })()}
 
               <SmartContent value={currentQuestion.body} className="mb-5 text-sm text-foreground" eager />
 

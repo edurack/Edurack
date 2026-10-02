@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { sendMail, sendMailBatch } from "@/lib/mailer";
 import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import type { AttemptRule } from "@/lib/attempt-rules";
+import { JEE_SYLLABUS, SYLLABUS_KEY, SYLLABUS_VERSION, type Syllabus } from "@/lib/ncert-syllabus";
 import type { ExamKey, Track } from "@/lib/admin-types";
 import { PLATFORM_COMMISSION_PERCENT, DEFAULT_BATCH_PROMOTION_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
 
@@ -352,6 +354,9 @@ type TestCoreInput = {
   instructions: string;
   mentorId?: string | null;         // NEW
   referencePdfUrl?: string | null;
+  // "Attempt any N of M" groups (off unless a rule exists). Managed through
+  // saveAttemptRules, not the generic create/update calls.
+  attemptRules?: AttemptRule[];
 };
 
 export const createTestCore = createServerFn({ method: "POST" })
@@ -391,6 +396,7 @@ export const listTestCoresForBundle = createServerFn({ method: "GET" })
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
         mentorId: (r.mentorId as string | null) ?? null,
         referencePdfUrl: (r.referencePdfUrl as string | null) ?? null,
+        attemptRules: (r.attemptRules as AttemptRule[]) ?? [],
       })),
     };
   });
@@ -435,6 +441,9 @@ export const listQuestions = createServerFn({ method: "GET" })
         difficulty: r.difficulty as QuestionInput["difficulty"],
         isPYQ: Boolean(r.isPYQ),
         pyqYear: (r.pyqYear as string) ?? undefined,
+        classLevel: (r.classLevel as "11" | "12" | undefined) ?? undefined,
+        chapter: (r.chapter as string | undefined) ?? undefined,
+        topic: (r.topic as string | undefined) ?? undefined,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       })),
     };
@@ -459,6 +468,11 @@ type QuestionInput = {
   difficulty: "Easy" | "Medium" | "Hard";
   isPYQ: boolean;
   pyqYear?: string;
+  // Syllabus tagging (NCERT chapter/topic). Optional so older questions and
+  // non-JEE subjects without a syllabus still save.
+  classLevel?: "11" | "12";
+  chapter?: string;
+  topic?: string;
 };
 
 export const createQuestion = createServerFn({ method: "POST" })
@@ -479,9 +493,15 @@ export const createQuestion = createServerFn({ method: "POST" })
       throw new Error("Unknown question type.");
     }
 
+    if (q.classLevel !== undefined && q.classLevel !== "11" && q.classLevel !== "12") {
+      throw new Error("classLevel must be 11 or 12.");
+    }
+
     const db = await getDb();
     const result = await db.collection("questions").insertOne({
       ...data.question,
+      chapter: q.chapter?.trim() || undefined,
+      topic: q.topic?.trim() || undefined,
       createdAt: new Date(),
     });
     return { ok: true, id: String(result.insertedId) };
@@ -513,6 +533,9 @@ export const listQuestionsForTestSubject = createServerFn({ method: "GET" })
         difficulty: r.difficulty as "Easy" | "Medium" | "Hard",
         isPYQ: Boolean(r.isPYQ),
         pyqYear: (r.pyqYear as string) ?? undefined,
+        classLevel: (r.classLevel as "11" | "12" | undefined) ?? undefined,
+        chapter: (r.chapter as string | undefined) ?? undefined,
+        topic: (r.topic as string | undefined) ?? undefined,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       })),
     };
@@ -581,11 +604,81 @@ export const listQuestionsForTest = createServerFn({ method: "GET" })
         difficulty: r.difficulty as "Easy" | "Medium" | "Hard",
         isPYQ: Boolean(r.isPYQ),
         pyqYear: (r.pyqYear as string) ?? undefined,
+        classLevel: (r.classLevel as "11" | "12" | undefined) ?? undefined,
+        chapter: (r.chapter as string | undefined) ?? undefined,
+        topic: (r.topic as string | undefined) ?? undefined,
         createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : null,
       })),
     };
   });
 
+
+// ─── Syllabus (NCERT chapters + topics) ─────────────────────────────────────
+// Seeded from lib/ncert-syllabus.ts exactly once; after that the stored copy
+// is the single source of truth, so the same chapter/topic lists are reused by
+// every ingestion session.
+export const getSyllabus = createServerFn({ method: "GET" })
+  .validator((data: { token: string }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const db = await getDb();
+    const col = db.collection<{ _id: string; version: number; syllabus: Syllabus }>("syllabus");
+    let doc = await col.findOne({ _id: SYLLABUS_KEY });
+    if (!doc) {
+      doc = { _id: SYLLABUS_KEY, version: SYLLABUS_VERSION, syllabus: JEE_SYLLABUS };
+      await col.updateOne({ _id: SYLLABUS_KEY }, { $setOnInsert: doc }, { upsert: true });
+    }
+    return { syllabus: doc.syllabus as Syllabus };
+  });
+
+// ─── "Attempt any N of M" groups ────────────────────────────────────────────
+// Replaces the full rule list for ONE subject of a test (so the UI can add and
+// remove groups with a single call). Validated against the questions that
+// actually exist, so a rule can't point at questions that haven't been
+// uploaded yet — matching the "upload first, then configure" flow.
+export const saveAttemptRules = createServerFn({ method: "POST" })
+  .validator((data: { token: string; testId: string; subject: string; rules: AttemptRule[] }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const test = await db.collection("testCores").findOne({ _id: new ObjectId(data.testId) });
+    if (!test) throw new Error("Test not found.");
+
+    const count = await db.collection("questions").countDocuments({ testId: data.testId, subject: data.subject });
+
+    const cleaned: AttemptRule[] = [];
+    for (const r of data.rules) {
+      const size = r.toNo - r.fromNo + 1;
+      if (![r.fromNo, r.toNo, r.attemptAny].every((n) => Number.isInteger(n))) {
+        throw new Error("Rule values must be whole numbers.");
+      }
+      if (r.fromNo < 1 || size < 2) throw new Error("A group needs at least 2 questions, starting at Q1 or later.");
+      if (r.toNo > count) {
+        throw new Error(`${data.subject} has only ${count} question(s) uploaded — upload them before grouping Q${r.fromNo}–Q${r.toNo}.`);
+      }
+      if (r.attemptAny < 1 || r.attemptAny >= size) {
+        throw new Error(`"Attempt any" must be between 1 and ${size - 1} for a group of ${size}.`);
+      }
+      cleaned.push({
+        id: r.id || new ObjectId().toHexString(),
+        subject: data.subject,
+        fromNo: r.fromNo,
+        toNo: r.toNo,
+        attemptAny: r.attemptAny,
+      });
+    }
+    const sorted = [...cleaned].sort((a, b) => a.fromNo - b.fromNo);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].fromNo <= sorted[i - 1].toNo) throw new Error("Groups in the same subject can't overlap.");
+    }
+
+    const others = ((test.attemptRules as AttemptRule[]) ?? []).filter((r) => r.subject !== data.subject);
+    const attemptRules = [...others, ...cleaned];
+    await db.collection("testCores").updateOne({ _id: new ObjectId(data.testId) }, { $set: { attemptRules } });
+    return { ok: true, attemptRules };
+  });
 
 export const deleteQuestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)

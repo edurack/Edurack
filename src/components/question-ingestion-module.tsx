@@ -6,8 +6,12 @@ import {
   listBundles,
   listTestCoresForBundle,
   listQuestionsForTestSubject,
+  getSyllabus,
+  saveAttemptRules,
 } from "@/server-functions/admin";
 import { ImageInsertField } from "./admin/image-insert-field";
+import { toSyllabusSubject, type ClassLevel, type Syllabus } from "@/lib/ncert-syllabus";
+import { ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 
@@ -26,6 +30,7 @@ type TestOption = {
   name: string;
   subjects: string[];
   weightage: { subject: string; questionCount: number }[];
+  attemptRules: AttemptRule[];
 };
 
 function ModuleHeader({ title, subtitle }: { title: string; subtitle: string }) {
@@ -85,11 +90,33 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   const [isPYQ, setIsPYQ] = useState(false);
   const [pyqYear, setPyqYear] = useState("");
 
+  // ── Chapter / topic tagging ────────────────────────────────────────────
+  // Syllabus is fetched once (seeded server-side on first use). Selections are
+  // deliberately NOT cleared after each save — questions are usually entered
+  // chapter by chapter, so the tag sticks until the admin changes it.
+  const [syllabus, setSyllabus] = useState<Syllabus | null>(null);
+  const [classLevel, setClassLevel] = useState<ClassLevel>("11");
+  const [chapter, setChapter] = useState("");
+  const [topic, setTopic] = useState("");
+
+  // ── "Attempt any N of M" group (off by default) ────────────────────────
+  const [subjectQs, setSubjectQs] = useState<{ questionNo: number; type: QuestionType }[]>([]);
+  const [groupEnabled, setGroupEnabled] = useState(false);
+  const [groupFrom, setGroupFrom] = useState("");
+  const [groupSize, setGroupSize] = useState("");
+  const [groupAttempt, setGroupAttempt] = useState("");
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const selectedTest = tests?.find((t) => t.id === testId) ?? null;
+  const syllabusSubject = subject ? toSyllabusSubject(subject) : null;
+  const chapterList = syllabusSubject && syllabus ? syllabus[syllabusSubject][classLevel] : [];
+  const topicList = chapterList.find((c) => c.chapter === chapter)?.topics ?? [];
+  const subjectRules = (selectedTest?.attemptRules ?? []).filter((r) => r.subject === subject);
 
   // ─── Load bundles once ─────────────────────────────────────────────────
   useEffect(() => {
@@ -97,6 +124,21 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
       const token = await adminUser.getIdToken();
       const { bundles: rows } = await listBundles({ data: { token } });
       setBundles(rows.map((b) => ({ id: b.id, title: b.title })));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminUser]);
+
+  // ─── Load the syllabus once (seeded on the server the first time) ──────
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await adminUser.getIdToken();
+        const { syllabus: s } = await getSyllabus({ data: { token } });
+        setSyllabus(s);
+      } catch {
+        // Non-fatal: chapter/topic fall back to free-text inputs.
+        setSyllabus(null);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser]);
@@ -120,6 +162,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           name: t.name,
           subjects: t.subjects ?? [],
           weightage: t.weightage ?? [],
+          attemptRules: t.attemptRules ?? [],
         })),
       );
     })();
@@ -133,6 +176,16 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     setNextNumber(null);
     setThreshold(null);
   }, [testId]);
+
+  // Chapter/topic lists are per subject, so a tag from Physics can't carry
+  // over to Chemistry. The attempt-group form also starts closed again.
+  useEffect(() => {
+    setChapter("");
+    setTopic("");
+    setClassLevel("11");
+    setGroupEnabled(false);
+    setGroupError(null);
+  }, [subject, testId]);
 
   // ─── Fetch how many questions already exist for this test+subject, and
   // derive the next question number and this subject's threshold from it.
@@ -150,6 +203,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
         const token = await adminUser.getIdToken();
         const { questions } = await listQuestionsForTestSubject({ data: { token, testId, subject } });
         setNextNumber(questions.length + 1);
+        setSubjectQs(questions.map((q) => ({ questionNo: q.questionNo, type: q.type })));
         const w = selectedTest?.weightage.find((row) => row.subject === subject);
         setThreshold(w ? w.questionCount : null);
       } finally {
@@ -183,6 +237,10 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     if (!testId) return setError("Select a test within that bundle.");
     if (!subject) return setError("Select a subject.");
     if (nextNumber === null) return setError("Still working out the question number — try again in a moment.");
+    if (syllabusSubject && syllabus) {
+      if (!chapter) return setError("Select the chapter this question belongs to.");
+      if (!topic) return setError("Select the topic this question belongs to.");
+    }
     if (!questionBody.trim()) return setError("Enter the question body.");
 
     if (questionType === "mcq") {
@@ -233,10 +291,14 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             difficulty,
             isPYQ,
             pyqYear: isPYQ ? pyqYear.trim() : undefined,
+            classLevel: syllabusSubject && chapter ? classLevel : undefined,
+            chapter: chapter.trim() || undefined,
+            topic: topic.trim() || undefined,
           },
         },
       });
       setSuccess(true);
+      setSubjectQs((prev) => [...prev, { questionNo: nextNumber, type: questionType }]);
       resetQuestionFields();
       // Advance the counter locally for fast serial entry — no need to
       // round-trip the count query again for the very next question in the
@@ -246,6 +308,68 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
       setError(err instanceof Error ? err.message : "Could not save this question. Try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Switching the toggle on pre-fills the group from the integer questions
+  // already uploaded (e.g. Q21–Q30 → "attempt any 5"), which is the JEE case.
+  function toggleGroup(on: boolean) {
+    setGroupEnabled(on);
+    setGroupError(null);
+    if (!on) return;
+    const ints = subjectQs.filter((q) => q.type === "integer").map((q) => q.questionNo);
+    if (ints.length >= 2) {
+      const from = Math.min(...ints);
+      const size = Math.max(...ints) - from + 1;
+      setGroupFrom(String(from));
+      setGroupSize(String(size));
+      setGroupAttempt(String(Math.floor(size / 2)));
+    } else {
+      setGroupFrom("");
+      setGroupSize("");
+      setGroupAttempt("");
+    }
+  }
+
+  async function persistRules(next: AttemptRule[]) {
+    const token = await adminUser.getIdToken();
+    const { attemptRules } = await saveAttemptRules({ data: { token, testId, subject, rules: next } });
+    setTests((prev) => prev?.map((t) => (t.id === testId ? { ...t, attemptRules } : t)) ?? prev);
+  }
+
+  async function handleAddGroup() {
+    setGroupError(null);
+    const from = Number(groupFrom);
+    const size = Number(groupSize);
+    const attemptAny = Number(groupAttempt);
+    const total = subjectQs.length;
+    if (![from, size, attemptAny].every((n) => Number.isInteger(n) && n > 0)) {
+      return setGroupError("Fill in all three fields with whole numbers.");
+    }
+    if (size < 2) return setGroupError("A group needs at least 2 questions.");
+    if (attemptAny >= size) return setGroupError(`"Attempt any" must be less than ${size}, otherwise every question is compulsory.`);
+    const to = from + size - 1;
+    if (to > total) return setGroupError(`Only ${total} ${subject} question(s) uploaded so far — Q${from}–Q${to} doesn't exist yet.`);
+    if (subjectRules.some((r) => from <= r.toNo && to >= r.fromNo)) {
+      return setGroupError("This overlaps a group you already set for this subject.");
+    }
+    setGroupSaving(true);
+    try {
+      await persistRules([...subjectRules, { id: "", subject, fromNo: from, toNo: to, attemptAny }]);
+      setGroupEnabled(false);
+    } catch (err) {
+      setGroupError(err instanceof Error ? err.message : "Could not save this group.");
+    } finally {
+      setGroupSaving(false);
+    }
+  }
+
+  async function handleRemoveGroup(id: string) {
+    setGroupError(null);
+    try {
+      await persistRules(subjectRules.filter((r) => r.id !== id));
+    } catch (err) {
+      setGroupError(err instanceof Error ? err.message : "Could not remove this group.");
     }
   }
 
@@ -350,6 +474,80 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           )}
         </div>
 
+        {/* ── Optional-attempt group ("attempt any N of M") ─────────── */}
+        {contextReady && (
+          <div className="clay p-5 sm:p-6">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
+                  Optional-attempt group
+                </h2>
+                <p className="mt-1 text-xs text-foreground/50">
+                  For sections like JEE Main's integer block: pick a run of already-uploaded questions and set how many the student has to attempt. Off by default.
+                </p>
+              </div>
+              <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={groupEnabled}
+                  onChange={(e) => toggleGroup(e.target.checked)}
+                  className="h-4 w-4 accent-[var(--sky-deep)]"
+                />
+                <span className="text-xs font-semibold text-foreground/70">Enable</span>
+              </label>
+            </div>
+
+            {subjectRules.length > 0 && (
+              <ul className="mb-3 space-y-2">
+                {subjectRules.map((r) => (
+                  <li key={r.id} className="clay-inset flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5">
+                    <span className="text-sm text-foreground">
+                      Q{r.fromNo}–Q{r.toNo} · attempt any <strong>{r.attemptAny}</strong> of {ruleGroupSize(r)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveGroup(r.id)}
+                      className="text-xs font-semibold text-rose-600 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {groupEnabled && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <ClayField label="Group starts at Q#">
+                    <input value={groupFrom} onChange={(e) => setGroupFrom(e.target.value)} inputMode="numeric" placeholder="e.g. 21" className={inputClass} />
+                  </ClayField>
+                  <ClayField label="Questions in group">
+                    <input value={groupSize} onChange={(e) => setGroupSize(e.target.value)} inputMode="numeric" placeholder="e.g. 10" className={inputClass} />
+                  </ClayField>
+                  <ClayField label="Student attempts any">
+                    <input value={groupAttempt} onChange={(e) => setGroupAttempt(e.target.value)} inputMode="numeric" placeholder="e.g. 5" className={inputClass} />
+                  </ClayField>
+                </div>
+                {groupError && (
+                  <p className="rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">{groupError}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleAddGroup}
+                  disabled={groupSaving}
+                  className="clay-btn flex items-center justify-center gap-2 rounded-full px-5 py-2 text-xs font-semibold disabled:opacity-70"
+                >
+                  {groupSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save group"}
+                </button>
+              </div>
+            )}
+            {!groupEnabled && groupError && (
+              <p className="mt-2 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">{groupError}</p>
+            )}
+          </div>
+        )}
+
         {/* ── Core question inputs ──────────────────────────────────── */}
         <div className={`clay p-5 sm:p-6 ${!contextReady ? "opacity-50" : ""}`}>
           <div className="mb-4 flex items-center gap-2">
@@ -358,6 +556,79 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           </div>
 
           <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
+            {/* ── Chapter & topic ────────────────────────────────────── */}
+            {syllabusSubject && syllabus ? (
+              <div className="space-y-3">
+                <div>
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
+                    NCERT class
+                  </span>
+                  <div className="flex gap-2">
+                    {(["11", "12"] as const).map((lvl) => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => {
+                          setClassLevel(lvl);
+                          setChapter("");
+                          setTopic("");
+                        }}
+                        className={`rounded-2xl px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
+                          classLevel === lvl ? "clay-btn text-white" : "clay-chip text-foreground/70"
+                        }`}
+                      >
+                        Class {lvl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <ClayField label="Chapter">
+                    <select
+                      value={chapter}
+                      onChange={(e) => {
+                        setChapter(e.target.value);
+                        setTopic("");
+                      }}
+                      className={inputClass + " appearance-none"}
+                    >
+                      <option value="">Select chapter</option>
+                      {chapterList.map((c) => (
+                        <option key={c.chapter} value={c.chapter}>
+                          {c.chapter}
+                        </option>
+                      ))}
+                    </select>
+                  </ClayField>
+                  <ClayField label="Topic">
+                    <select
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      disabled={!chapter}
+                      className={inputClass + " appearance-none disabled:opacity-50"}
+                    >
+                      <option value="">{chapter ? "Select topic" : "Select a chapter first"}</option>
+                      {topicList.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </ClayField>
+                </div>
+                <p className="text-xs text-foreground/40">Chapter and topic stay selected after saving, so you can enter a whole chapter in a row.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ClayField label="Chapter (optional)">
+                  <input value={chapter} onChange={(e) => setChapter(e.target.value)} placeholder="e.g. Reproduction in Organisms" className={inputClass} />
+                </ClayField>
+                <ClayField label="Topic (optional)">
+                  <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Sexual reproduction" className={inputClass} />
+                </ClayField>
+              </div>
+            )}
+
             {/* ── Type toggle ────────────────────────────────────────── */}
             <div>
               <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">

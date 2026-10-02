@@ -12,6 +12,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { findRuleForQuestion, type AttemptRule } from "@/lib/attempt-rules";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
@@ -115,6 +116,9 @@ export const getTestForTaking = createServerFn({ method: "GET" })
         subjects: (test.subjects as string[]) ?? [],
         totalQuestions: test.totalQuestions as number,
         timeLimitMinutes: (test.durationMinutes as number) ?? 180,
+        // Empty for almost every test; only set when the admin turned on an
+        // "attempt any N of M" group in Question Ingestion.
+        attemptRules: ((test.attemptRules as AttemptRule[]) ?? []),
       },
       attemptNumber: priorAttemptCount + 1,
       questions: questionDocs.map((q) => {
@@ -168,15 +172,59 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
       correctAnswer: number | null;
       isCorrect: boolean;
       marksAwarded: number;
+      // True when the student answered more than the "attempt any N" limit
+      // allows and this answer fell outside the first N. Not graded.
+      ignored?: boolean;
     }[] = [];
 
     const subjectTally = new Map<string, { correct: number; incorrect: number; unanswered: number; marks: number }>();
+    const tallyFor = (subject: string) => {
+      const t = subjectTally.get(subject) ?? { correct: 0, incorrect: 0, unanswered: 0, marks: 0 };
+      subjectTally.set(subject, t);
+      return t;
+    };
+
+    const isAnswered = (q: Record<string, any>) => {
+      const given = data.answers[String(q._id)];
+      return ((q.type as string) ?? "mcq") === "mcq"
+        ? typeof given === "string" && ["A", "B", "C", "D"].includes(given)
+        : typeof given === "number" && Number.isFinite(given);
+    };
+
+    // ── "Attempt any N of M" groups ──────────────────────────────────────
+    // The client already stops a student from answering more than N, but
+    // grading must not trust that. If extra answers arrive anyway, the first
+    // N answered questions (lowest question number) are graded and the rest
+    // are ignored — nobody gets extra credit for over-attempting.
+    const rules = ((test.attemptRules as AttemptRule[]) ?? []);
+    const ignoredIds = new Set<string>();
+    const groupedIds = new Set<string>();
+    let optionalSkippedMarks = 0; // questions that never count toward the total
+    for (const rule of rules) {
+      const members = questionDocs
+        .filter((q) => findRuleForQuestion([rule], q.subject as string, q.questionNo as number))
+        .sort((a, b) => (a.questionNo as number) - (b.questionNo as number));
+      if (members.length === 0) continue;
+      const n = Math.min(rule.attemptAny, members.length);
+      const answered = members.filter(isAnswered);
+      answered.slice(n).forEach((q) => ignoredIds.add(String(q._id)));
+      members.forEach((q) => groupedIds.add(String(q._id)));
+      optionalSkippedMarks += (members.length - n) * 4;
+      // Unanswered slots are counted once per group (N − graded answers),
+      // not once per untouched question, so a 5-of-10 group the student
+      // skipped entirely reads as 5 skipped, not 10.
+      const missing = n - Math.min(n, answered.length);
+      unansweredCount += missing;
+      tallyFor(rule.subject).unanswered += missing;
+    }
 
     for (const q of questionDocs) {
       const questionId = String(q._id);
       const type = (q.type as "mcq" | "integer") ?? "mcq";
       const subject = q.subject as string;
       const given = data.answers[questionId];
+      const ignored = ignoredIds.has(questionId);
+      const answered = isAnswered(q);
 
       let marksAwarded = 0;
       let isCorrect = false;
@@ -187,34 +235,24 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
 
       if (type === "mcq") {
         correctOption = q.correctOption as "A" | "B" | "C" | "D";
-        selectedOption = typeof given === "string" ? given : null;
-
-        if (!selectedOption) {
-          unansweredCount++;
-        } else if (selectedOption === correctOption) {
-          correctCount++;
-          marksAwarded = 4;
-          isCorrect = true;
-        } else {
-          incorrectCount++;
-          marksAwarded = -1;
+        selectedOption = answered ? (given as "A" | "B" | "C" | "D") : null;
+        if (answered && !ignored) {
+          if (selectedOption === correctOption) {
+            marksAwarded = 4;
+            isCorrect = true;
+          } else {
+            marksAwarded = -1;
+          }
         }
       } else {
         // Integer/Numerical type — JEE convention: exact match, +4/0, no
         // negative marking. Epsilon guards against float rounding only
         // (e.g. 4.9999999 vs 5), it's not a lenient tolerance range.
         correctAnswer = q.correctAnswer as number;
-        selectedAnswer = typeof given === "number" && Number.isFinite(given) ? given : null;
-
-        if (selectedAnswer === null) {
-          unansweredCount++;
-        } else if (Math.abs(selectedAnswer - correctAnswer) < 1e-6) {
-          correctCount++;
+        selectedAnswer = answered ? (given as number) : null;
+        if (answered && !ignored && Math.abs((selectedAnswer as number) - correctAnswer) < 1e-6) {
           marksAwarded = 4;
           isCorrect = true;
-        } else {
-          incorrectCount++;
-          marksAwarded = 0;
         }
       }
 
@@ -229,19 +267,33 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
         correctAnswer,
         isCorrect,
         marksAwarded,
+        ...(ignored ? { ignored: true } : {}),
       });
 
-      const tally = subjectTally.get(subject) ?? { correct: 0, incorrect: 0, unanswered: 0, marks: 0 };
-      const wasAnswered = type === "mcq" ? Boolean(selectedOption) : selectedAnswer !== null;
-      if (!wasAnswered) tally.unanswered++;
-      else if (isCorrect) tally.correct++;
-      else tally.incorrect++;
+      // Ignored answers are not graded and never reach the tallies. Unanswered
+      // questions inside an optional group were already accounted for above.
+      if (ignored) continue;
+      const tally = tallyFor(subject);
+      if (!answered) {
+        if (!groupedIds.has(questionId)) {
+          unansweredCount++;
+          tally.unanswered++;
+        }
+      } else if (isCorrect) {
+        correctCount++;
+        tally.correct++;
+      } else {
+        incorrectCount++;
+        tally.incorrect++;
+      }
       tally.marks += marksAwarded;
-      subjectTally.set(subject, tally);
     }
 
-    const score = correctCount * 4 - incorrectCount * 1;
-    const totalMarks = questionDocs.length * 4;
+    // Sum of per-question marks: MCQ wrong = −1, integer wrong = 0. (This used
+    // to be correct×4 − incorrect×1, which also deducted 1 for every wrong
+    // integer answer despite the no-negative-marking rule above.)
+    const score = questionResults.reduce((sum, r) => sum + r.marksAwarded, 0);
+    const totalMarks = questionDocs.length * 4 - optionalSkippedMarks;
     const attemptNumber = (await db.collection("testAttempts").countDocuments({ uid: decoded.uid, testId: data.testId })) + 1;
 
     const subjectBreakdown = Array.from(subjectTally.entries()).map(([subject, tally]) => ({
