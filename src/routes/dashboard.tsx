@@ -540,6 +540,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
   const continueCount = ownedListings.length + ownedTests.length;
   const actions = [
     { icon: Play, label: "Take a free mock", sub: "Exam-format practice", to: "/simulator/live" },
+    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq" },
     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
@@ -607,10 +608,11 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {actions.map((a) => {
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        {actions.map((a, i) => {
           const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
-          return a.to ? <Link key={a.label} to={a.to} className={tile}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={tile}>{inner}</button>;
+          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 lg:col-span-1` : tile;
+          return a.to ? <Link key={a.label} to={a.to} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
         })}
       </div>
 

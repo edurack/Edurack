@@ -24,6 +24,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as MySessionsRouteImport } from './routes/my-sessions'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PurchasesRouteImport } from './routes/purchases'
+import { Route as PyqRouteImport } from './routes/pyq'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TicketsRouteImport } from './routes/tickets'
@@ -130,6 +131,11 @@ const ProfileRoute = ProfileRouteImport.update({
 const PurchasesRoute = PurchasesRouteImport.update({
   id: '/purchases',
   path: '/purchases',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PyqRoute = PyqRouteImport.update({
+  id: '/pyq',
+  path: '/pyq',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -310,6 +316,7 @@ export interface FileRoutesByFullPath {
   '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/pyq': typeof PyqRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -359,6 +366,7 @@ export interface FileRoutesByTo {
   '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/pyq': typeof PyqRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -409,6 +417,7 @@ export interface FileRoutesById {
   '/my-sessions': typeof MySessionsRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
+  '/pyq': typeof PyqRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -460,6 +469,7 @@ export interface FileRouteTypes {
     | '/my-sessions'
     | '/profile'
     | '/purchases'
+    | '/pyq'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -509,6 +519,7 @@ export interface FileRouteTypes {
     | '/my-sessions'
     | '/profile'
     | '/purchases'
+    | '/pyq'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -558,6 +569,7 @@ export interface FileRouteTypes {
     | '/my-sessions'
     | '/profile'
     | '/purchases'
+    | '/pyq'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -608,6 +620,7 @@ export interface RootRouteChildren {
   MySessionsRoute: typeof MySessionsRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
+  PyqRoute: typeof PyqRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
@@ -746,6 +759,13 @@ declare module '@tanstack/react-router' {
       path: '/purchases'
       fullPath: '/purchases'
       preLoaderRoute: typeof PurchasesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pyq': {
+      id: '/pyq'
+      path: '/pyq'
+      fullPath: '/pyq'
+      preLoaderRoute: typeof PyqRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -1002,6 +1022,7 @@ const rootRouteChildren: RootRouteChildren = {
   MySessionsRoute: MySessionsRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
+  PyqRoute: PyqRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,

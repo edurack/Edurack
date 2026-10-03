@@ -1,0 +1,289 @@
+diff -ru orig/src/components/pyq/pyq-practice.tsx w/src/components/pyq/pyq-practice.tsx
+--- orig/src/components/pyq/pyq-practice.tsx	2026-10-03 10:53:25.000000000 +0000
++++ w/src/components/pyq/pyq-practice.tsx	2026-10-03 11:58:52.259744016 +0000
+@@ -12,6 +12,8 @@
+   chapter: string;
+   topic?: string;
+   /** Called when the student finishes the list or taps the back control. */
++  /** Exam the student is browsing (so the list matches the tree). */
++  exam?: string;
+   onExit: () => void;
+ };
+ 
+@@ -21,7 +23,7 @@
+ const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
+ const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+ 
+-export function PyqPractice({ subject, chapter, topic, onExit }: Props) {
++export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
+   const { user } = useAuth();
+   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
+   const [year, setYear] = useState("All");
+@@ -51,6 +53,7 @@
+           data: {
+             token,
+             subject,
++            exam,
+             chapter,
+             topic,
+             difficulty: difficulty === "All" ? undefined : difficulty,
+@@ -71,7 +74,7 @@
+     return () => {
+       cancelled = true;
+     };
+-  }, [user, subject, chapter, topic, difficulty, year, statusF]);
++  }, [user, subject, chapter, topic, exam, difficulty, year, statusF]);
+ 
+   const questions = list?.questions ?? [];
+   const q: PyqQuestion | undefined = questions[idx];
+diff -ru orig/src/lib/pyq-types.ts w/src/lib/pyq-types.ts
+--- orig/src/lib/pyq-types.ts	2026-10-03 10:54:57.000000000 +0000
++++ w/src/lib/pyq-types.ts	2026-10-03 11:58:39.370257620 +0000
+@@ -1,5 +1,6 @@
+ // Types shared by the PYQ practice server functions and UI. Pure — no server imports.
+ import type { PyqSource } from "@/lib/pyq-label";
++import type { ExamKey } from "@/lib/admin-types";
+ 
+ export type OptionKey = "A" | "B" | "C" | "D";
+ export type PyqStatus = "new" | "correct" | "wrong" | "revealed";
+@@ -14,7 +15,7 @@
+ export type PyqTopicNode = Progress & { topic: string };
+ export type PyqChapterNode = Progress & { chapter: string; topics: PyqTopicNode[] };
+ export type PyqSubjectNode = Progress & { subject: string; chapters: PyqChapterNode[] };
+-export type PyqTree = { subjects: PyqSubjectNode[]; totalQuestions: number; totalCorrect: number };
++export type PyqTree = { exam: ExamKey | null; subjects: PyqSubjectNode[]; totalQuestions: number; totalCorrect: number };
+ 
+ /** A question as sent to the student: NO correct answer, NO solution. */
+ export type PyqQuestion = {
+diff -ru orig/src/routes/pyq.tsx w/src/routes/pyq.tsx
+--- orig/src/routes/pyq.tsx	2026-10-03 10:55:22.000000000 +0000
++++ w/src/routes/pyq.tsx	2026-10-03 11:58:52.260246286 +0000
+@@ -8,16 +8,19 @@
+ import { PyqPractice } from "@/components/pyq/pyq-practice";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import type { PyqTree } from "@/lib/pyq-types";
++import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
++import { cn } from "@/lib/utils";
+ 
+ // Everything lives in the URL (?subject=&chapter=&topic=&practice=true) so the
+ // phone's back button walks up one level — Practice → Topics → Chapters →
+ // Subjects — instead of leaving the page.
+-type PyqSearch = { subject?: string; chapter?: string; topic?: string; practice?: boolean };
++type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean };
+ 
+ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
+ 
+ export const Route = createFileRoute("/pyq")({
+   validateSearch: (search: Record<string, unknown>): PyqSearch => ({
++    exam: EXAM_KEYS.find((k) => k === search.exam),
+     subject: str(search.subject),
+     chapter: str(search.chapter),
+     topic: str(search.topic),
+@@ -48,7 +51,7 @@
+     (async () => {
+       try {
+         const token = await user.getIdToken();
+-        const t = await getPyqTree({ data: { token } });
++        const t = await getPyqTree({ data: { token, exam: search.exam } });
+         if (!cancelled) {
+           setTree(t);
+           setError(null);
+@@ -60,10 +63,10 @@
+     return () => {
+       cancelled = true;
+     };
+-  }, [user, search.practice]);
++  }, [user, search.practice, search.exam]);
+ 
+   function go(next: PyqNav) {
+-    navigate({ search: { subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice } });
++    navigate({ search: { exam: search.exam, subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice } });
+     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+   }
+ 
+@@ -81,6 +84,23 @@
+     <div className="relative min-h-screen overflow-hidden">
+       <AppHeader user={user} />
+       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
++          <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Exam">
++            {EXAM_KEYS.map((k) => (
++              <button
++                key={k}
++                role="tab"
++                aria-selected={(tree?.exam ?? search.exam) === k}
++                // Switching exam resets subject/chapter/topic — they belong to the old exam.
++                onClick={() => {
++                  setTree(null);
++                  navigate({ search: { exam: k } });
++                }}
++                className={cn("clay-chip px-4 py-1.5 text-xs font-bold", (tree?.exam ?? search.exam) === k && "ring-2 ring-[var(--sky-deep)]")}
++              >
++                {EXAM_LABELS[k]}
++              </button>
++            ))}
++          </div>
+         {error && !tree ? (
+           <div className="clay mx-auto max-w-md p-8 text-center sm:p-10">
+             <div className="clay-inset mx-auto grid h-16 w-16 place-items-center rounded-2xl">
+@@ -96,6 +116,7 @@
+             subject={search.subject!}
+             chapter={search.chapter!}
+             topic={search.topic}
++            exam={tree?.exam ?? search.exam}
+             onExit={() => go({ subject: search.subject, chapter: search.chapter })}
+           />
+         ) : tree === null ? (
+diff -ru orig/src/server-functions/pyq-practice.ts w/src/server-functions/pyq-practice.ts
+--- orig/src/server-functions/pyq-practice.ts	2026-10-03 10:56:19.000000000 +0000
++++ w/src/server-functions/pyq-practice.ts	2026-10-03 11:58:39.369723226 +0000
+@@ -16,6 +16,7 @@
+ import { getDb } from "@/lib/mongo";
+ import { createTtlCache } from "@/lib/simple-cache";
+ import { buildPyqSource } from "@/lib/pyq-label";
++import { EXAM_KEYS, type ExamKey } from "@/lib/admin-types";
+ import {
+   GENERAL_TOPIC,
+   UNTAGGED_CHAPTER,
+@@ -40,7 +41,7 @@
+ const eligibleBundlesCache = createTtlCache<string[]>(5 * 60_000);
+ const bundleInfoCache = createTtlCache<{ title: string; exam: string | null }>(10 * 60_000);
+ const testNameCache = createTtlCache<string>(10 * 60_000);
+-const treeCache = createTtlCache<TreeRow[]>(10 * 60_000);
++const treeCache = createTtlCache<TreeRow[]>(10 * 60_000); // keyed by exam
+ 
+ type Db = Awaited<ReturnType<typeof getDb>>;
+ type TreeRow = { subject: string; chapter: string; topic: string; chapterKey: string; topicKey: string; count: number };
+@@ -58,16 +59,37 @@
+   }
+ }
+ 
+-/** Bundles whose PYQs may be shown (everything except mentor batch series). */
+-async function eligibleBundleIds(db: Db): Promise<string[]> {
+-  const hit = eligibleBundlesCache.get("ids");
++/** Turn a stored/typed value ("JEE", "jee", "JEE Mains") into an ExamKey, or null. */
++function toExamKey(v: unknown): ExamKey | null {
++  const t = String(v ?? "").toLowerCase();
++  return EXAM_KEYS.find((k) => t.includes(k)) ?? null;
++}
++
++/**
++ * Which exam's PYQs this student should see. An explicit, valid `requested`
++ * exam (the switcher chips) wins; otherwise we use the student's saved
++ * targetExam. null = unknown → show everything (old behaviour).
++ */
++async function resolveExam(db: Db, uid: string, requested?: string): Promise<ExamKey | null> {
++  const asked = toExamKey(requested);
++  if (asked) return asked;
++  const profile = await db.collection("profiles").findOne({ uid }, { projection: { targetExam: 1 } });
++  return toExamKey(profile?.targetExam);
++}
++
++/** Bundles whose PYQs may be shown (never mentor batch series), optionally for ONE exam. */
++async function eligibleBundleIds(db: Db, exam: ExamKey | null = null): Promise<string[]> {
++  const cacheKey = exam ?? "all";
++  const hit = eligibleBundlesCache.get(cacheKey);
+   if (hit) return hit;
+-  const rows = await db
+-    .collection("bundles")
+-    .find({ kind: { $ne: "mentorBatchSeries" } }, { projection: { _id: 1 } })
+-    .toArray();
++  const filter: Record<string, unknown> = { kind: { $ne: "mentorBatchSeries" } };
++  if (exam) {
++    // Old bundles have no `exam` field — the rest of the app treats those as NEET.
++    filter.exam = exam === "neet" ? { $in: ["neet", null] } : exam;
++  }
++  const rows = await db.collection("bundles").find(filter, { projection: { _id: 1 } }).toArray();
+   const ids = rows.map((r) => String(r._id));
+-  eligibleBundlesCache.set("ids", ids);
++  eligibleBundlesCache.set(cacheKey, ids);
+   return ids;
+ }
+ 
+@@ -88,24 +110,26 @@
+   },
+ });
+ 
+-async function pyqMatch(db: Db) {
+-  return { isPYQ: true, bundleId: { $in: await eligibleBundleIds(db) } };
++async function pyqMatch(db: Db, exam: ExamKey | null = null) {
++  return { isPYQ: true, bundleId: { $in: await eligibleBundleIds(db, exam) } };
+ }
+ 
+ // ─── Browse tree with this student's progress ──────────────────────────────
+ export const getPyqTree = createServerFn({ method: "GET" })
+-  .validator((data: { token: string }) => data)
++  .validator((data: { token: string; exam?: string }) => data)
+   .handler(async ({ data }): Promise<PyqTree> => {
+     const decoded = await requireSignedIn(data.token);
+     const db = await getDb();
+     await ensureProgressIndexes(db);
++    const exam = await resolveExam(db, decoded.uid, data.exam);
++    const treeKey = exam ?? "all";
+ 
+-    let rows = treeCache.get("rows");
++    let rows = treeCache.get(treeKey);
+     if (!rows) {
+       const agg = await db
+         .collection("questions")
+         .aggregate([
+-          { $match: await pyqMatch(db) },
++          { $match: await pyqMatch(db, exam) },
+           {
+             $group: {
+               _id: {
+@@ -128,14 +152,14 @@
+         topic: a.topic as string,
+         count: a.count as number,
+       }));
+-      treeCache.set("rows", rows);
++      treeCache.set(treeKey, rows);
+     }
+ 
+     // Per-student progress (never cached).
+     const prog = await db
+       .collection("practiceProgress")
+       .aggregate([
+-        { $match: { uid: decoded.uid } },
++        { $match: { uid: decoded.uid, ...(exam ? { $or: [{ exam }, { exam: { $exists: false } }] } : {}) } },
+         {
+           $group: {
+             _id: { subject: "$subject", chapterKey: "$chapterKey", topicKey: "$topicKey" },
+@@ -185,6 +209,7 @@
+       for (const c of s.chapters) c.topics.sort((a, b) => byName(a.topic, b.topic));
+     }
+     return {
++      exam,
+       subjects: out,
+       totalQuestions: out.reduce((n, s) => n + s.count, 0),
+       totalCorrect: out.reduce((n, s) => n + s.correct, 0),
+@@ -231,17 +256,19 @@
+       difficulty?: Difficulty;
+       year?: string;
+       status?: PyqStatus | "unsolved";
++      exam?: string;
+     }) => data,
+   )
+   .handler(async ({ data }): Promise<PyqList> => {
+     const decoded = await requireSignedIn(data.token);
+     const db = await getDb();
++    const exam = await resolveExam(db, decoded.uid, data.exam);
+ 
+     const and: Record<string, unknown>[] = [
+       { $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), data.chapter.trim().toLowerCase()] } },
+     ];
+     if (data.topic) and.push({ $expr: { $eq: [keyExpr("topic", GENERAL_TOPIC), data.topic.trim().toLowerCase()] } });
+-    const match: Record<string, unknown> = { ...(await pyqMatch(db)), subject: data.subject, $and: and };
++    const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)), subject: data.subject, $and: and };
+     if (data.difficulty) match.difficulty = data.difficulty;
+ 
+     const docs = await db
+@@ -319,7 +346,8 @@
+     const chapter = String(q.chapter ?? "").trim() || UNTAGGED_CHAPTER;
+     const topic = String(q.topic ?? "").trim() || GENERAL_TOPIC;
+     const where = { uid: decoded.uid, questionId: data.questionId };
+-    const keys = { subject: q.subject as string, chapterKey: chapter.toLowerCase(), topicKey: topic.toLowerCase() };
++    const qBundle = await db.collection("bundles").findOne({ _id: new ObjectId(String(q.bundleId)) }, { projection: { exam: 1 } });
++    const keys = { exam: toExamKey(qBundle?.exam) ?? "neet", subject: q.subject as string, chapterKey: chapter.toLowerCase(), topicKey: topic.toLowerCase() };
+     const now = new Date();
+     const col = db.collection("practiceProgress");
+ 
