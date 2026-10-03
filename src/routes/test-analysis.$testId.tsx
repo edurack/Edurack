@@ -6,9 +6,9 @@ import { TrendingDown, AlertTriangle, Target, Repeat } from "lucide-react"; // T
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
 import { useAuth } from "@/lib/auth-context";
 import { getTestAnalysis } from "@/server-functions/test-results";
-import { SmartContent } from "@/lib/smart-content";
 import { AppHeader } from "@/components/app-header";
 import { SubjectBreakdownAccordion, MentorRecommendations } from "@/components/subject-performance";
+import { RecurringMistakeCard } from "@/components/test-question-review";
 
 export const Route = createFileRoute("/test-analysis/$testId")({
   head: () => noindexHead("Test Analysis"),
@@ -316,39 +316,17 @@ function TestAnalysisContent({
       <MentorRecommendations subjects={subjectPerformance.map((s) => ({ subject: s.subject, percent: s.percent }))} />
 
       {recurringMistakes.length > 0 && (
-        <div className="clay p-5 sm:p-6">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+        // Card chrome from sm up only — on phones it just steals width.
+        <section className="sm:clay sm:p-6">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">
             Questions you keep getting wrong
           </p>
-          <div className="space-y-3">
-            {recurringMistakes.map((q) => {
-              const missRate = Math.round((q.wrongCount / Math.max(1, q.totalSeen)) * 100);
-              return (
-                <div key={`${q.subject}-${q.questionNo}`} className="clay-inset rounded-2xl p-4">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-foreground/50">
-                      Q{q.questionNo} · {q.subject}
-                    </span>
-                    <span className="rounded-full bg-[var(--coral-soft)]/60 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-foreground">
-                      Wrong {q.wrongCount} of {q.totalSeen} · {missRate}%
-                    </span>
-                  </div>
-                  <SmartContent value={q.body} className="mb-2 text-sm text-foreground" />
-                  <div className="clay-inset rounded-xl px-3 py-2 text-xs text-foreground/70">
-                    <span className="font-semibold">
-                      Correct answer: {q.type === "mcq" ? q.correctOption : q.correctAnswer}
-                    </span>
-                    {q.solution && (
-                      <div className="mt-1">
-                        <SmartContent value={q.solution} className="text-foreground/70" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="space-y-2.5">
+            {recurringMistakes.map((q) => (
+              <RecurringMistakeCard key={`${q.subject}-${q.questionNo}`} q={q} />
+            ))}
           </div>
-        </div>
+        </section>
       )}
     </>
   );

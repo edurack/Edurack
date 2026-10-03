@@ -4,12 +4,27 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { getExcludedQuestions, type AttemptRule } from "@/lib/attempt-rules";
+import { buildTopicAnalysis } from "@/lib/topic-analysis";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
 }
 
 type OptionKey = "A" | "B" | "C" | "D";
+
+// "Attempt any N of M" rules live on the test (testCores.attemptRules). They
+// are needed again at read time so the review / analysis pages agree with
+// grading about which questions count.
+async function loadAttemptRules(db: Awaited<ReturnType<typeof getDb>>, testId: string): Promise<AttemptRule[]> {
+  try {
+    const { ObjectId } = await import("mongodb");
+    const doc = await db.collection("testCores").findOne({ _id: new ObjectId(testId) }, { projection: { attemptRules: 1 } });
+    return ((doc?.attemptRules as AttemptRule[] | undefined) ?? []);
+  } catch {
+    return [];
+  }
+}
 
 // ─── Full attempt detail + question-by-question review ────────────────────
 export const getTestAttempt = createServerFn({ method: "GET" })
@@ -52,6 +67,13 @@ export const getTestAttempt = createServerFn({ method: "GET" })
       .toArray();
     const questionById = new Map(questionDocs.map((q) => [String(q._id), q]));
 
+    const rules = await loadAttemptRules(db, attempt.testId as string);
+    const { optionalSkipped, countedQuestions, optionalCount } = getExcludedQuestions(
+      questionResults,
+      rules,
+      attempt.totalMarks as number,
+    );
+
     const review = questionResults
       .map((r) => {
         const doc = questionById.get(r.questionId);
@@ -71,6 +93,9 @@ export const getTestAttempt = createServerFn({ method: "GET" })
           isCorrect: r.isCorrect,
           marksAwarded: r.marksAwarded,
           ignored: Boolean(r.ignored),
+          // Unattempted question from an optional "any N of M" group — it was
+          // never part of the score, so the page hides it by default.
+          optionalSkipped: optionalSkipped.has(r.questionId),
         };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null)
@@ -95,10 +120,64 @@ export const getTestAttempt = createServerFn({ method: "GET" })
           unanswered: number;
           marks: number;
         }[],
+        // Score is out of this many questions (e.g. 75, not the 90 shown on
+        // the paper), and this many optional ones were not counted.
+        countedQuestions,
+        optionalCount,
         submittedAt: attempt.submittedAt instanceof Date ? attempt.submittedAt.toISOString() : null,
       },
       review,
     };
+  });
+
+// ─── Topic / chapter analysis of one attempt ───────────────────────────────
+// Joins the attempt's graded results with the `questions` collection (which
+// carries chapter / topic / difficulty) and ranks what cost the student marks.
+export const getTopicAnalysis = createServerFn({ method: "GET" })
+  .validator((data: { token: string; attemptId: string }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await requireSignedIn(data.token);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const attempt = await db.collection("testAttempts").findOne({ _id: new ObjectId(data.attemptId) });
+    if (!attempt) throw new Error("Attempt not found");
+    if (attempt.uid !== decoded.uid) throw new Error("You don't have access to this attempt.");
+
+    const results = (attempt.questionResults ?? []) as {
+      questionId: string;
+      questionNo: number;
+      subject: string;
+      type?: "mcq" | "integer";
+      selectedOption: OptionKey | null;
+      selectedAnswer?: number | null;
+      isCorrect: boolean;
+      marksAwarded: number;
+      ignored?: boolean;
+    }[];
+
+    const rules = await loadAttemptRules(db, attempt.testId as string);
+    const { excluded } = getExcludedQuestions(results, rules, attempt.totalMarks as number);
+
+    const docs = await db
+      .collection("questions")
+      .find(
+        { _id: { $in: results.map((r) => new ObjectId(r.questionId)) } },
+        { projection: { chapter: 1, topic: 1, difficulty: 1 } },
+      )
+      .toArray();
+    const meta = new Map(
+      docs.map((d) => [
+        String(d._id),
+        {
+          chapter: d.chapter as string | undefined,
+          topic: d.topic as string | undefined,
+          difficulty: d.difficulty as string | undefined,
+        },
+      ]),
+    );
+
+    return buildTopicAnalysis(results, meta, excluded);
   });
 
 // ─── This student's own attempts on a test (for the course hub + analysis) ─
@@ -143,6 +222,7 @@ export const getTestAnalysis = createServerFn({ method: "GET" })
     }
 
     const testName = attempts[0].testName as string;
+    const rules = await loadAttemptRules(db, data.testId);
 
     // Aggregate subject-wise totals across every attempt, not just the
     // latest — a student who's always weak in Chemistry should see that
@@ -164,10 +244,19 @@ export const getTestAnalysis = createServerFn({ method: "GET" })
 
       const results = (a.questionResults ?? []) as {
         questionId: string;
+        questionNo: number;
         subject: string;
+        type?: "mcq" | "integer";
+        selectedOption?: OptionKey | null;
+        selectedAnswer?: number | null;
         isCorrect: boolean;
+        ignored?: boolean;
       }[];
+      // Optional questions the student never had to answer (and answers over
+      // the limit) are not mistakes — keep them out of the tally.
+      const { excluded } = getExcludedQuestions(results, rules, a.totalMarks as number);
       for (const r of results) {
+        if (excluded.has(r.questionId)) continue;
         const t = questionTally.get(r.questionId) ?? { wrongCount: 0, totalSeen: 0, subject: r.subject };
         t.totalSeen += 1;
         if (!r.isCorrect) t.wrongCount += 1;
