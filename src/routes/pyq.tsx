@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 // Everything lives in the URL (?subject=&chapter=&topic=&practice=true) so the
 // phone's back button walks up one level — Practice → Topics → Chapters →
 // Subjects — instead of leaving the page.
-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean };
+// `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string };
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
 
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/pyq")({
     subject: str(search.subject),
     chapter: str(search.chapter),
     topic: str(search.topic),
+    weakAttempt: str(search.weakAttempt),
     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
   }),
   head: () => noindexHead("PYQ Practice"),
@@ -78,12 +80,13 @@ function PyqPage() {
     );
   }
 
-  const practising = Boolean(search.practice && search.subject && search.chapter);
+  const practising = Boolean(search.practice && ((search.subject && search.chapter) || search.weakAttempt));
 
   return (
     <div className="relative min-h-screen overflow-hidden">
       <AppHeader user={user} />
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+          {!practising && (
           <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Exam">
             {EXAM_KEYS.map((k) => (
               <button
@@ -101,6 +104,7 @@ function PyqPage() {
               </button>
             ))}
           </div>
+          )}
         {error && !tree ? (
           <div className="clay mx-auto max-w-md p-8 text-center sm:p-10">
             <div className="clay-inset mx-auto grid h-16 w-16 place-items-center rounded-2xl">
@@ -112,12 +116,18 @@ function PyqPage() {
         ) : practising ? (
           <PyqPractice
             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
-            key={`${search.subject}|${search.chapter}|${search.topic ?? ""}`}
-            subject={search.subject!}
-            chapter={search.chapter!}
+            key={`${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
+            subject={search.subject}
+            chapter={search.chapter}
             topic={search.topic}
+            weakAttemptId={search.weakAttempt}
             exam={tree?.exam ?? search.exam}
-            onExit={() => go({ subject: search.subject, chapter: search.chapter })}
+            // A weak-topics session started from a result page returns to that result page.
+            onExit={() =>
+              search.weakAttempt
+                ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })
+                : go({ subject: search.subject, chapter: search.chapter })
+            }
           />
         ) : tree === null ? (
           <div className="space-y-3" aria-live="polite">

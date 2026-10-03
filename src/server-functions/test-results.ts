@@ -4,27 +4,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
-import { getExcludedQuestions, type AttemptRule } from "@/lib/attempt-rules";
-import { buildTopicAnalysis } from "@/lib/topic-analysis";
+import { getExcludedQuestions } from "@/lib/attempt-rules";
+import { loadAttemptRules, loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
 }
 
 type OptionKey = "A" | "B" | "C" | "D";
-
-// "Attempt any N of M" rules live on the test (testCores.attemptRules). They
-// are needed again at read time so the review / analysis pages agree with
-// grading about which questions count.
-async function loadAttemptRules(db: Awaited<ReturnType<typeof getDb>>, testId: string): Promise<AttemptRule[]> {
-  try {
-    const { ObjectId } = await import("mongodb");
-    const doc = await db.collection("testCores").findOne({ _id: new ObjectId(testId) }, { projection: { attemptRules: 1 } });
-    return ((doc?.attemptRules as AttemptRule[] | undefined) ?? []);
-  } catch {
-    return [];
-  }
-}
 
 // ─── Full attempt detail + question-by-question review ────────────────────
 export const getTestAttempt = createServerFn({ method: "GET" })
@@ -144,40 +131,7 @@ export const getTopicAnalysis = createServerFn({ method: "GET" })
     if (!attempt) throw new Error("Attempt not found");
     if (attempt.uid !== decoded.uid) throw new Error("You don't have access to this attempt.");
 
-    const results = (attempt.questionResults ?? []) as {
-      questionId: string;
-      questionNo: number;
-      subject: string;
-      type?: "mcq" | "integer";
-      selectedOption: OptionKey | null;
-      selectedAnswer?: number | null;
-      isCorrect: boolean;
-      marksAwarded: number;
-      ignored?: boolean;
-    }[];
-
-    const rules = await loadAttemptRules(db, attempt.testId as string);
-    const { excluded } = getExcludedQuestions(results, rules, attempt.totalMarks as number);
-
-    const docs = await db
-      .collection("questions")
-      .find(
-        { _id: { $in: results.map((r) => new ObjectId(r.questionId)) } },
-        { projection: { chapter: 1, topic: 1, difficulty: 1 } },
-      )
-      .toArray();
-    const meta = new Map(
-      docs.map((d) => [
-        String(d._id),
-        {
-          chapter: d.chapter as string | undefined,
-          topic: d.topic as string | undefined,
-          difficulty: d.difficulty as string | undefined,
-        },
-      ]),
-    );
-
-    return buildTopicAnalysis(results, meta, excluded);
+    return loadAttemptTopicAnalysis(db, attempt);
   });
 
 // ─── This student's own attempts on a test (for the course hub + analysis) ─

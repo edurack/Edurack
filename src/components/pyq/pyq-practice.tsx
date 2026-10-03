@@ -3,14 +3,17 @@ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { ChevronDown, ChevronLeft, ChevronRight, Lightbulb, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { SmartContent } from "@/lib/smart-content";
-import { listPyqQuestions, submitPyqAnswer } from "@/server-functions/pyq-practice";
+import { listPyqQuestions, listWeakPyqQuestions, submitPyqAnswer } from "@/server-functions/pyq-practice";
 import type { Difficulty, OptionKey, PyqCheckResult, PyqList, PyqQuestion, PyqStatus } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  subject: string;
-  chapter: string;
+  /** Chapter practice (browse mode). Omit when `weakAttemptId` is set. */
+  subject?: string;
+  chapter?: string;
   topic?: string;
+  /** "Practice my weak topics": a mixed session built from this attempt's weak chapters. */
+  weakAttemptId?: string;
   /** Called when the student finishes the list or taps the back control. */
   /** Exam the student is browsing (so the list matches the tree). */
   exam?: string;
@@ -23,11 +26,13 @@ type Local = PyqCheckResult & { chosenOption?: OptionKey; chosenValue?: number }
 const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
 const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
+export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onExit }: Props) {
   const { user } = useAuth();
   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
   const [year, setYear] = useState("All");
-  const [statusF, setStatusF] = useState<StatusFilter>("all");
+  // A weak-topics session starts on questions the student hasn't solved yet.
+  const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : "all";
+  const [statusF, setStatusF] = useState<StatusFilter>(defaultStatus);
   const [showFilters, setShowFilters] = useState(false);
 
   const [list, setList] = useState<PyqList | null>(null);
@@ -49,18 +54,14 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
     (async () => {
       try {
         const token = await user.getIdToken();
-        const res = await listPyqQuestions({
-          data: {
-            token,
-            subject,
-            exam,
-            chapter,
-            topic,
-            difficulty: difficulty === "All" ? undefined : difficulty,
-            year: year === "All" ? undefined : year,
-            status: statusF === "all" ? undefined : statusF === "unsolved" ? "unsolved" : "wrong",
-          },
-        });
+        const filters = {
+          difficulty: difficulty === "All" ? undefined : difficulty,
+          year: year === "All" ? undefined : year,
+          status: statusF === "all" ? undefined : statusF === "unsolved" ? ("unsolved" as const) : ("wrong" as const),
+        };
+        const res = weakAttemptId
+          ? await listWeakPyqQuestions({ data: { token, attemptId: weakAttemptId, ...filters } })
+          : await listPyqQuestions({ data: { token, subject: subject!, exam, chapter: chapter!, topic, ...filters } });
         if (cancelled) return;
         setList(res);
         // Union, not replace: other filters shrink the server's year list, and the
@@ -74,12 +75,12 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [user, subject, chapter, topic, exam, difficulty, year, statusF]);
+  }, [user, subject, chapter, topic, weakAttemptId, exam, difficulty, year, statusF]);
 
   const questions = list?.questions ?? [];
   const q: PyqQuestion | undefined = questions[idx];
   const result = q ? results[q.id] : undefined;
-  const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== "all" ? 1 : 0);
+  const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
 
   const canCheck = useMemo(() => {
     if (!q || result) return false;
@@ -118,7 +119,13 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
     else setIdx((i) => i + 1);
   }
 
-  const heading = topic ? `${chapter} · ${topic}` : chapter;
+  const weakChapters = list?.weak?.chapters.filter((c) => c.count > 0) ?? [];
+  const heading = weakAttemptId ? "Your weak topics" : topic ? `${chapter} · ${topic}` : chapter;
+  const subheading = weakAttemptId
+    ? weakChapters.length > 0
+      ? weakChapters.map((c) => c.chapter).join(" · ")
+      : "From your last test"
+    : subject;
 
   return (
     <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
@@ -133,7 +140,7 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{heading}</p>
-          <p className="text-[11px] text-foreground/50">{subject}</p>
+          <p className="truncate text-[11px] text-foreground/50">{subheading}</p>
         </div>
         <button
           onClick={() => setShowFilters((v) => !v)}
@@ -188,19 +195,28 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
           </button>
         </div>
       ) : !q ? (
-        <div className="clay p-8 text-center">
-          <p className="font-semibold text-foreground">No questions match these filters.</p>
-          <button
-            onClick={() => {
-              setDifficulty("All");
-              setYear("All");
-              setStatusF("all");
-            }}
-            className="clay-btn mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-white"
-          >
-            Clear filters
-          </button>
-        </div>
+        weakAttemptId && statusF === "unsolved" && difficulty === "All" && year === "All" ? (
+          <div className="clay p-8 text-center">
+            <p className="font-semibold text-foreground">You've solved every available PYQ for your weak chapters. Nice work!</p>
+            <button onClick={() => setStatusF("all")} className="clay-btn mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-white">
+              Review them anyway
+            </button>
+          </div>
+        ) : (
+          <div className="clay p-8 text-center">
+            <p className="font-semibold text-foreground">No questions match these filters.</p>
+            <button
+              onClick={() => {
+                setDifficulty("All");
+                setYear("All");
+                setStatusF(defaultStatus);
+              }}
+              className="clay-btn mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-white"
+            >
+              Clear filters
+            </button>
+          </div>
+        )
       ) : (
         <>
           {/* Progress */}
@@ -227,7 +243,7 @@ export function PyqPractice({ subject, chapter, topic, exam, onExit }: Props) {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/50">
               <DifficultyTag d={q.difficulty} />
-              {!topic && q.topic !== "General" && <span>· {q.topic}</span>}
+              {weakAttemptId ? <span>· {q.chapter}</span> : !topic && q.topic !== "General" && <span>· {q.topic}</span>}
               <span>· {q.type === "mcq" ? "+4 / −1" : "+4 / 0"}</span>
             </div>
 

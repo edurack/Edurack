@@ -37,6 +37,15 @@ export type PyqList = {
   years: string[];
   /** Matches before the 300-question cap. */
   total: number;
+  /** Set for "Practice my weak topics" sessions: which chapters were mixed in, and how many questions each. */
+  weak?: { chapters: { subject: string; chapter: string; count: number }[] };
+};
+
+/** How many PYQs exist (and how many the student already solved) for each chapter that cost them marks. */
+export type WeakPyqSummary = {
+  exam: ExamKey | null;
+  chapters: { subject: string; chapter: string; available: number; solved: number }[];
+  totalAvailable: number;
 };
 
 export type PyqAnswer = { option?: OptionKey; value?: number } | null;

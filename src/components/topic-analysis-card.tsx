@@ -1,8 +1,13 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { AlertTriangle, ChevronDown, Lightbulb, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, ChevronDown, Lightbulb, Play, Sparkles, Target } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getTopicAnalysis } from "@/server-functions/test-results";
+import { getWeakPyqSummary } from "@/server-functions/pyq-practice";
+import { weakKey } from "@/lib/pyq-weak";
+import type { WeakPyqSummary } from "@/lib/pyq-types";
+import type { ExamKey } from "@/lib/admin-types";
 import type { ChapterStat, Priority, TopicAnalysis } from "@/lib/topic-analysis";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +27,9 @@ export function TopicAnalysisCard({ attemptId }: { attemptId: string }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TopicAnalysis | null>(null);
+  // Optional extra: how many PYQs exist for each weak chapter. If this fails the
+  // analysis still shows — there just won't be practice buttons.
+  const [weak, setWeak] = useState<WeakPyqSummary | null>(null);
 
   async function run() {
     if (!user) return;
@@ -31,6 +39,9 @@ export function TopicAnalysisCard({ attemptId }: { attemptId: string }) {
       const token = await user.getIdToken();
       setData(await getTopicAnalysis({ data: { token, attemptId } }));
       setPhase("ready");
+      getWeakPyqSummary({ data: { token, attemptId } })
+        .then(setWeak)
+        .catch(() => setWeak(null));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not analyse this attempt.");
       setPhase("error");
@@ -81,12 +92,22 @@ export function TopicAnalysisCard({ attemptId }: { attemptId: string }) {
         </div>
       )}
 
-      {phase === "ready" && data && <AnalysisBody data={data} onHide={() => setPhase("idle")} />}
+      {phase === "ready" && data && <AnalysisBody data={data} attemptId={attemptId} weak={weak} onHide={() => setPhase("idle")} />}
     </section>
   );
 }
 
-function AnalysisBody({ data, onHide }: { data: TopicAnalysis; onHide: () => void }) {
+function AnalysisBody({
+  data,
+  attemptId,
+  weak,
+  onHide,
+}: {
+  data: TopicAnalysis;
+  attemptId: string;
+  weak: WeakPyqSummary | null;
+  onHide: () => void;
+}) {
   const [subject, setSubject] = useState(data.subjects[0]?.subject ?? "");
   const [openChapter, setOpenChapter] = useState<string | null>(null);
   const current = data.subjects.find((s) => s.subject === subject);
@@ -118,6 +139,16 @@ function AnalysisBody({ data, onHide }: { data: TopicAnalysis; onHide: () => voi
       {data.focus.length > 0 ? (
         <div className="mt-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/50">Focus on these first</p>
+          {weak && weak.totalAvailable > 0 && (
+            <Link
+              to="/pyq"
+              search={{ practice: true, weakAttempt: attemptId, exam: weak.exam ?? undefined }}
+              className="clay-btn mb-3 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white sm:w-auto"
+            >
+              <Play className="h-4 w-4" aria-hidden />
+              Practice my weak topics · {weak.totalAvailable} PYQs
+            </Link>
+          )}
           <ol className="space-y-2.5">
             {data.focus.map((f, i) => (
               <li key={`${f.subject}-${f.chapter}`} className="clay-inset rounded-2xl p-3.5">
@@ -142,6 +173,12 @@ function AnalysisBody({ data, onHide }: { data: TopicAnalysis; onHide: () => voi
                         ))}
                       </div>
                     )}
+                    <PracticeLink
+                      item={weak?.chapters.find((c) => weakKey(c.subject, c.chapter) === weakKey(f.subject, f.chapter))}
+                      subject={f.subject}
+                      chapter={f.chapter}
+                      exam={weak?.exam ?? undefined}
+                    />
                   </div>
                 </div>
               </li>
@@ -285,5 +322,32 @@ function Bar({ percent, className, thin }: { percent: number; className: string;
         style={{ width: `${Math.max(3, Math.min(100, percent))}%` }}
       />
     </div>
+  );
+}
+
+function PracticeLink({
+  item,
+  subject,
+  chapter,
+  exam,
+}: {
+  item?: WeakPyqSummary["chapters"][number];
+  subject: string;
+  chapter: string;
+  exam?: ExamKey;
+}) {
+  if (!item) return null; // summary still loading, or failed
+  if (item.available === 0)
+    return <p className="mt-2 text-[11px] text-foreground/40">No PYQs for this chapter in the bank yet.</p>;
+  return (
+    <Link
+      to="/pyq"
+      search={{ subject, chapter, practice: true, exam }}
+      className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--sky-soft)]/70 px-3 py-1.5 text-[11px] font-bold text-foreground hover:bg-[var(--sky-soft)]"
+    >
+      <Play className="h-3 w-3" aria-hidden />
+      Practice {item.available} PYQ{item.available === 1 ? "" : "s"}
+      {item.solved > 0 && <span className="font-semibold text-foreground/50"> · {item.solved} solved</span>}
+    </Link>
   );
 }

@@ -16,6 +16,8 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { createTtlCache } from "@/lib/simple-cache";
 import { buildPyqSource } from "@/lib/pyq-label";
+import { loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
+import { pickWeakQuestions, weakKey } from "@/lib/pyq-weak";
 import { EXAM_KEYS, type ExamKey } from "@/lib/admin-types";
 import {
   GENERAL_TOPIC,
@@ -28,6 +30,7 @@ import {
   type PyqQuestion,
   type PyqStatus,
   type PyqTree,
+  type WeakPyqSummary,
 } from "@/lib/pyq-types";
 
 const MAX_LIST = 300;
@@ -249,6 +252,45 @@ const statusOf = (p?: Record<string, unknown> | null): PyqStatus => {
   return p.revealed === true ? "revealed" : "new";
 };
 
+// What the student is allowed to see about a question — never the answer or solution.
+const QUESTION_PROJECTION = {
+  // Deliberately NOT projected: correctOption, correctAnswer, solution.
+  subject: 1, chapter: 1, topic: 1, type: 1, body: 1, options: 1, difficulty: 1, pyqYear: 1, bundleId: 1, testId: 1,
+} as const;
+
+/** Question docs → what the client gets (source label + this student's status). Shared by every list endpoint. */
+async function buildQuestions(db: Db, uid: string, docs: Record<string, unknown>[]): Promise<PyqQuestion[]> {
+    const sources = await loadSources(db, docs);
+    const progress = await db
+      .collection("practiceProgress")
+      .find({ uid, questionId: { $in: docs.map((d) => String(d._id)) } })
+      .toArray();
+    const progMap = new Map(progress.map((p) => [p.questionId as string, p]));
+
+    return docs.map((d) => {
+      const bundle = sources.bundleInfo(String(d.bundleId ?? ""));
+      const chapter = String(d.chapter ?? "").trim() || UNTAGGED_CHAPTER;
+      const topic = String(d.topic ?? "").trim() || GENERAL_TOPIC;
+      return {
+        id: String(d._id),
+        subject: d.subject as string,
+        chapter,
+        topic,
+        type: (d.type as "mcq" | "integer") ?? "mcq",
+        body: d.body as string,
+        ...(d.type === "mcq" || !d.type ? { options: d.options as Record<OptionKey, string> } : {}),
+        difficulty: d.difficulty as Difficulty,
+        source: buildPyqSource({
+          bundleTitle: bundle?.title,
+          testName: sources.testName(String(d.testId ?? "")),
+          pyqYear: (d.pyqYear as string | undefined) ?? null,
+          examKey: bundle?.exam ?? null,
+        }),
+        status: statusOf(progMap.get(String(d._id))),
+      };
+    });
+}
+
 // ─── Questions for a chapter / topic (no answers, no solutions) ────────────
 export const listPyqQuestions = createServerFn({ method: "GET" })
   .validator(
@@ -277,43 +319,12 @@ export const listPyqQuestions = createServerFn({ method: "GET" })
 
     const docs = await db
       .collection("questions")
-      .find(match, {
-        // Deliberately NOT projected: correctOption, correctAnswer, solution.
-        projection: { subject: 1, chapter: 1, topic: 1, type: 1, body: 1, options: 1, difficulty: 1, pyqYear: 1, bundleId: 1, testId: 1 },
-      })
+      .find(match, { projection: QUESTION_PROJECTION })
       .sort({ _id: 1 })
       .limit(1000)
       .toArray();
 
-    const sources = await loadSources(db, docs);
-    const progress = await db
-      .collection("practiceProgress")
-      .find({ uid: decoded.uid, questionId: { $in: docs.map((d) => String(d._id)) } })
-      .toArray();
-    const progMap = new Map(progress.map((p) => [p.questionId as string, p]));
-
-    let questions: PyqQuestion[] = docs.map((d) => {
-      const bundle = sources.bundleInfo(String(d.bundleId ?? ""));
-      const chapter = String(d.chapter ?? "").trim() || UNTAGGED_CHAPTER;
-      const topic = String(d.topic ?? "").trim() || GENERAL_TOPIC;
-      return {
-        id: String(d._id),
-        subject: d.subject as string,
-        chapter,
-        topic,
-        type: (d.type as "mcq" | "integer") ?? "mcq",
-        body: d.body as string,
-        ...(d.type === "mcq" || !d.type ? { options: d.options as Record<OptionKey, string> } : {}),
-        difficulty: d.difficulty as Difficulty,
-        source: buildPyqSource({
-          bundleTitle: bundle?.title,
-          testName: sources.testName(String(d.testId ?? "")),
-          pyqYear: (d.pyqYear as string | undefined) ?? null,
-          examKey: bundle?.exam ?? null,
-        }),
-        status: statusOf(progMap.get(String(d._id))),
-      };
-    });
+    let questions = await buildQuestions(db, decoded.uid, docs);
 
     const years = [...new Set(questions.map((q) => q.source.year).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
 
@@ -396,4 +407,123 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
     );
     const after = await col.findOne(where);
     return { isCorrect, revealed: false, ...reveal, status: statusOf(after) };
+  });
+
+// ─── "Practice my weak topics" ─────────────────────────────────────────────
+// Turns the chapters that cost a student marks in one attempt into a PYQ
+// practice session. Weak chapters are derived server-side from the attempt
+// itself (the client only sends the attempt id), so the result page and the
+// session always agree, and a student can't ask for someone else's.
+
+async function loadOwnedAttempt(db: Db, uid: string, attemptId: string) {
+  const { ObjectId } = await import("mongodb");
+  if (!/^[a-f0-9]{24}$/i.test(attemptId)) throw new Error("Attempt not found");
+  const attempt = await db.collection("testAttempts").findOne({ _id: new ObjectId(attemptId) });
+  if (!attempt) throw new Error("Attempt not found");
+  if (attempt.uid !== uid) throw new Error("You don't have access to this attempt.");
+  return attempt;
+}
+
+/** The exam this attempt belongs to: its batch's exam, else the student's saved target exam, else null. */
+async function examForAttempt(db: Db, uid: string, attempt: Record<string, unknown>): Promise<ExamKey | null> {
+  try {
+    const { ObjectId } = await import("mongodb");
+    const test = await db.collection("testCores").findOne({ _id: new ObjectId(String(attempt.testId)) }, { projection: { bundleId: 1 } });
+    if (test?.bundleId) {
+      const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(String(test.bundleId)) }, { projection: { exam: 1 } });
+      // Old bundles have no `exam` field — the rest of the app treats those as NEET.
+      if (bundle) return toExamKey(bundle.exam) ?? "neet";
+    }
+  } catch {
+    // fall through to the profile
+  }
+  return resolveExam(db, uid);
+}
+
+const chapterOr = (chapters: { subject: string; chapter: string }[]) =>
+  chapters.map((c) => ({
+    subject: c.subject,
+    $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), c.chapter.trim().toLowerCase()] },
+  }));
+
+// How many PYQs can the student practise for each weak chapter? (Drives the buttons on the result page.)
+export const getWeakPyqSummary = createServerFn({ method: "GET" })
+  .validator((data: { token: string; attemptId: string }) => data)
+  .handler(async ({ data }): Promise<WeakPyqSummary> => {
+    const decoded = await requireSignedIn(data.token);
+    const db = await getDb();
+    const attempt = await loadOwnedAttempt(db, decoded.uid, data.attemptId);
+    const { focus } = await loadAttemptTopicAnalysis(db, attempt);
+    const exam = await examForAttempt(db, decoded.uid, attempt);
+    if (focus.length === 0) return { exam, chapters: [], totalAvailable: 0 };
+
+    const available = await db
+      .collection("questions")
+      .aggregate([
+        { $match: { ...(await pyqMatch(db, exam)), $or: chapterOr(focus) } },
+        { $group: { _id: { subject: "$subject", chapterKey: keyExpr("chapter", UNTAGGED_CHAPTER) }, n: { $sum: 1 } } },
+      ])
+      .toArray();
+    const solved = await db
+      .collection("practiceProgress")
+      .aggregate([
+        { $match: { uid: decoded.uid, $or: focus.map((f) => ({ subject: f.subject, chapterKey: f.chapter.trim().toLowerCase() })) } },
+        { $group: { _id: { subject: "$subject", chapterKey: "$chapterKey" }, n: { $sum: { $cond: ["$correct", 1, 0] } } } },
+      ])
+      .toArray();
+    const availMap = new Map(available.map((a) => [`${a._id.subject}|${a._id.chapterKey}`, a.n as number]));
+    const solvedMap = new Map(solved.map((a) => [`${a._id.subject}|${a._id.chapterKey}`, a.n as number]));
+
+    const chapters = focus.map((f) => {
+      const k = weakKey(f.subject, f.chapter);
+      const n = availMap.get(k) ?? 0;
+      return { subject: f.subject, chapter: f.chapter, available: n, solved: Math.min(solvedMap.get(k) ?? 0, n) };
+    });
+    return { exam, chapters, totalAvailable: chapters.reduce((n, c) => n + c.available, 0) };
+  });
+
+// The mixed practice session itself: PYQs from the weak chapters, interleaved,
+// unseen questions first. Same no-answers-in-the-list rule as everywhere else.
+export const listWeakPyqQuestions = createServerFn({ method: "GET" })
+  .validator(
+    (data: { token: string; attemptId: string; difficulty?: Difficulty; year?: string; status?: PyqStatus | "unsolved" }) => data,
+  )
+  .handler(async ({ data }): Promise<PyqList> => {
+    const decoded = await requireSignedIn(data.token);
+    const db = await getDb();
+    const attempt = await loadOwnedAttempt(db, decoded.uid, data.attemptId);
+    const { focus } = await loadAttemptTopicAnalysis(db, attempt);
+    const exam = await examForAttempt(db, decoded.uid, attempt);
+    if (focus.length === 0) return { questions: [], years: [], total: 0, weak: { chapters: [] } };
+
+    const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)), $or: chapterOr(focus) };
+    if (data.difficulty) match.difficulty = data.difficulty;
+
+    const docs = await db.collection("questions").find(match, { projection: QUESTION_PROJECTION }).sort({ _id: 1 }).limit(1000).toArray();
+    let questions = await buildQuestions(db, decoded.uid, docs);
+
+    const years = [...new Set(questions.map((q) => q.source.year).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
+    if (data.year) questions = questions.filter((q) => q.source.year === data.year);
+    if (data.status === "unsolved") questions = questions.filter((q) => q.status !== "correct");
+    else if (data.status) questions = questions.filter((q) => q.status === data.status);
+
+    // Newest paper first before picking, so "first 12 per chapter" means the most recent ones.
+    questions = questions
+      .map((q, i) => ({ q, i }))
+      .sort((a, b) => (b.q.source.year ?? "").localeCompare(a.q.source.year ?? "") || a.i - b.i)
+      .map((x) => x.q);
+
+    const picked = pickWeakQuestions(focus, questions);
+    return {
+      questions: picked,
+      years,
+      total: questions.length,
+      weak: {
+        chapters: focus.map((f) => ({
+          subject: f.subject,
+          chapter: f.chapter,
+          count: picked.filter((q) => weakKey(q.subject, q.chapter) === weakKey(f.subject, f.chapter)).length,
+        })),
+      },
+    };
   });
