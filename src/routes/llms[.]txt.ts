@@ -13,7 +13,10 @@ import { SITE_URL, SITE_NAME } from "@/lib/seo";
 
 const BODY = `# ${SITE_NAME}
 
-> ${SITE_NAME} is a mock-test and mentorship marketplace for Indian competitive exam aspirants (NEET, JEE, CUET, IPMAT). It combines an exact replica of the NTA's real computer-based-test (CBT) interface with mentors who are verified for the exam rank and institution they claim, and topic-level performance analytics on every attempt.
+> ${SITE_NAME} is a mock-test and mentorship platform for Indian competitive exam aspirants (NEET, JEE, CUET, IPMAT). It combines an exact replica of the NTA's real computer-based-test (CBT) interface with mentors who are verified for the exam rank and institution they claim, and topic-level performance analytics on every attempt.
+
+## What is ${SITE_NAME}?
+A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test analysis, chapter-wise PYQ practice, practice habits, and verified mentors): ${SITE_URL}/blog/what-edurack-offers
 
 ## What this site offers
 - A free, no-signup CBT mock test that replicates the real NTA exam interface: ${SITE_URL}/simulator/live
@@ -30,6 +33,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
 - Homepage: ${SITE_URL}/
 - About: ${SITE_URL}/about
 - Free demo test: ${SITE_URL}/simulator/live
+- What Edurack offers (overview): ${SITE_URL}/blog/what-edurack-offers
 - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
 - FAQ: ${SITE_URL}/faq
 - Help & Support: ${SITE_URL}/help

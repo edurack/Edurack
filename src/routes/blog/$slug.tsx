@@ -2,7 +2,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getPublishedPostBySlug, incrementBlogViewCount, listRelatedPosts } from "@/server-functions/blog-public";
-import { BlogBody, estimateReadingTimeMinutes, extractHeadings } from "@/lib/blog-content";
+import { BlogBody, estimateReadingTimeMinutes, extractFaqItems, extractHeadings } from "@/lib/blog-content";
 import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
 import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MobileTableOfContents, TableOfContentsSidebar } from "@/components/blog/table-of-contents";
@@ -32,6 +32,7 @@ export const Route = createFileRoute("/blog/$slug")({
     }
     const { post } = loaderData;
     const url = `${SITE_URL}/blog/${post.slug}`;
+    const isOrgByline = post.author.name.trim().toLowerCase() === "edurack" && !post.author.mentorId;
     const jsonLd = {
       "@context": "https://schema.org",
       "@type": "BlogPosting",
@@ -40,10 +41,27 @@ export const Route = createFileRoute("/blog/$slug")({
       image: post.coverImageUrl ?? undefined,
       datePublished: post.publishedAt ?? undefined,
       dateModified: post.updatedAt ?? post.publishedAt ?? undefined,
-      author: { "@type": "Person", name: post.author.name },
-      publisher: { "@type": "Organization", name: "Edurack" },
+      // A byline of "Edurack" (with no linked mentor) is the organization
+      // itself, not a person — mark it up as such so search engines tie the
+      // post to the Edurack brand entity.
+      author: isOrgByline
+        ? { "@type": "Organization", name: "Edurack", url: SITE_URL }
+        : { "@type": "Person", name: post.author.name },
+      publisher: { "@type": "Organization", name: "Edurack", url: SITE_URL },
       mainEntityOfPage: url,
     };
+    const faqItems = extractFaqItems(post.bodyMarkdown);
+    const faqJsonLd = faqItems.length
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqItems.map((f) => ({
+            "@type": "Question",
+            name: f.question,
+            acceptedAnswer: { "@type": "Answer", text: f.answer },
+          })),
+        }
+      : null;
     const breadcrumbJsonLd = buildBreadcrumbJsonLd(buildPostBreadcrumbs(post));
     return {
       meta: [
@@ -60,6 +78,7 @@ export const Route = createFileRoute("/blog/$slug")({
       scripts: [
         { type: "application/ld+json", children: JSON.stringify(jsonLd) },
         { type: "application/ld+json", children: JSON.stringify(breadcrumbJsonLd) },
+        ...(faqJsonLd ? [{ type: "application/ld+json", children: JSON.stringify(faqJsonLd) }] : []),
       ],
     };
   },
