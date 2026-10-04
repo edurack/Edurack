@@ -6,6 +6,8 @@ import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashb
 import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
+import { QuestionReportsModule } from "@/components/admin/question-reports-module";
+import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
   listAllPurchasesAdmin, 
@@ -66,6 +68,7 @@ type ModuleKey =
   | "promoters"
   | "blogs" 
   | "interns"
+  | "reports"
   | "internTrials"
   | "dangerZone"
   | "tickets";
@@ -104,7 +107,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
     { key: "internTrials", label: "Intern Trials", icon: FlaskConical as any },
   ],
 },
-  { label: "Support", items: [{ key: "tickets", label: "Tickets", icon: LifeBuoy }] },
+  { label: "Support", items: [{ key: "tickets", label: "Tickets", icon: LifeBuoy }, { key: "reports", label: "Question reports", icon: FlagIcon as any }] },
   { label: "Danger Zone", items: [{ key: "dangerZone", label: "Danger Zone", icon: Trash2 }] },
 ];
 
@@ -368,6 +371,8 @@ function ModuleRouter({
       return <PromoterHubModule adminUser={adminUser} />;
     case "blogs":
       return <BlogHubModule adminUser={adminUser} />;
+    case "reports":
+      return <QuestionReportsModule adminUser={adminUser} />;
     case "interns":
       return <InternHubModule adminUser={adminUser} />;
     case "internTrials":

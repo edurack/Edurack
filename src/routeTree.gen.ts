@@ -22,9 +22,11 @@ import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MySessionsRouteImport } from './routes/my-sessions'
+import { Route as NotebookRouteImport } from './routes/notebook'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as PyqRouteImport } from './routes/pyq'
+import { Route as PyqDrillRouteImport } from './routes/pyq-drill'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TicketsRouteImport } from './routes/tickets'
@@ -123,6 +125,11 @@ const MySessionsRoute = MySessionsRouteImport.update({
   path: '/my-sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NotebookRoute = NotebookRouteImport.update({
+  id: '/notebook',
+  path: '/notebook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -136,6 +143,11 @@ const PurchasesRoute = PurchasesRouteImport.update({
 const PyqRoute = PyqRouteImport.update({
   id: '/pyq',
   path: '/pyq',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PyqDrillRoute = PyqDrillRouteImport.update({
+  id: '/pyq-drill',
+  path: '/pyq-drill',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
@@ -314,9 +326,11 @@ export interface FileRoutesByFullPath {
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
+  '/notebook': typeof NotebookRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
+  '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -364,9 +378,11 @@ export interface FileRoutesByTo {
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
+  '/notebook': typeof NotebookRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
+  '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -415,9 +431,11 @@ export interface FileRoutesById {
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
+  '/notebook': typeof NotebookRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
+  '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
@@ -467,9 +485,11 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
+    | '/notebook'
     | '/profile'
     | '/purchases'
     | '/pyq'
+    | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -517,9 +537,11 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
+    | '/notebook'
     | '/profile'
     | '/purchases'
     | '/pyq'
+    | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -567,9 +589,11 @@ export interface FileRouteTypes {
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
+    | '/notebook'
     | '/profile'
     | '/purchases'
     | '/pyq'
+    | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
@@ -618,9 +642,11 @@ export interface RootRouteChildren {
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
   MySessionsRoute: typeof MySessionsRoute
+  NotebookRoute: typeof NotebookRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
   PyqRoute: typeof PyqRoute
+  PyqDrillRoute: typeof PyqDrillRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
@@ -747,6 +773,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MySessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/notebook': {
+      id: '/notebook'
+      path: '/notebook'
+      fullPath: '/notebook'
+      preLoaderRoute: typeof NotebookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -766,6 +799,13 @@ declare module '@tanstack/react-router' {
       path: '/pyq'
       fullPath: '/pyq'
       preLoaderRoute: typeof PyqRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pyq-drill': {
+      id: '/pyq-drill'
+      path: '/pyq-drill'
+      fullPath: '/pyq-drill'
+      preLoaderRoute: typeof PyqDrillRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/robots.txt': {
@@ -1020,9 +1060,11 @@ const rootRouteChildren: RootRouteChildren = {
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
   MySessionsRoute: MySessionsRoute,
+  NotebookRoute: NotebookRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
   PyqRoute: PyqRoute,
+  PyqDrillRoute: PyqDrillRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,

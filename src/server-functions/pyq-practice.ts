@@ -15,10 +15,26 @@ import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { createTtlCache } from "@/lib/simple-cache";
-import { buildPyqSource } from "@/lib/pyq-label";
+import {
+  type Db,
+  QUESTION_PROJECTION,
+  buildQuestions,
+  chapterOr,
+  displayExpr,
+  eligibleBundleIds,
+  ensureProgressIndexes,
+  examForAttempt,
+  keyExpr,
+  loadOwnedAttempt,
+  practiceKeysFor,
+  pyqMatch,
+  resolveExam,
+  weakChapterAvailability,
+  statusOf,
+} from "@/lib/pyq-server";
 import { loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
+import { recordPracticeOutcomes } from "@/lib/practice-progress";
 import { pickWeakQuestions, weakKey } from "@/lib/pyq-weak";
-import { EXAM_KEYS, type ExamKey } from "@/lib/admin-types";
 import {
   GENERAL_TOPIC,
   UNTAGGED_CHAPTER,
@@ -27,7 +43,6 @@ import {
   type PyqAnswer,
   type PyqCheckResult,
   type PyqList,
-  type PyqQuestion,
   type PyqStatus,
   type PyqTree,
   type WeakPyqSummary,
@@ -41,81 +56,10 @@ async function requireSignedIn(token: string) {
 }
 
 // ─── Public (same-for-everyone) data is cached; per-user data never is ─────
-const eligibleBundlesCache = createTtlCache<string[]>(5 * 60_000);
-const bundleInfoCache = createTtlCache<{ title: string; exam: string | null }>(10 * 60_000);
-const testNameCache = createTtlCache<string>(10 * 60_000);
 const treeCache = createTtlCache<TreeRow[]>(10 * 60_000); // keyed by exam
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 type TreeRow = { subject: string; chapter: string; topic: string; chapterKey: string; topicKey: string; count: number };
-
-let indexesEnsured = false;
-async function ensureProgressIndexes(db: Db) {
-  if (indexesEnsured) return;
-  indexesEnsured = true;
-  try {
-    const c = db.collection("practiceProgress");
-    await c.createIndex({ uid: 1, questionId: 1 }, { unique: true });
-    await c.createIndex({ uid: 1, subject: 1 });
-  } catch {
-    // Index creation is best-effort; reads/writes work without it.
-  }
-}
-
-/** Turn a stored/typed value ("JEE", "jee", "JEE Mains") into an ExamKey, or null. */
-function toExamKey(v: unknown): ExamKey | null {
-  const t = String(v ?? "").toLowerCase();
-  return EXAM_KEYS.find((k) => t.includes(k)) ?? null;
-}
-
-/**
- * Which exam's PYQs this student should see. An explicit, valid `requested`
- * exam (the switcher chips) wins; otherwise we use the student's saved
- * targetExam. null = unknown → show everything (old behaviour).
- */
-async function resolveExam(db: Db, uid: string, requested?: string): Promise<ExamKey | null> {
-  const asked = toExamKey(requested);
-  if (asked) return asked;
-  const profile = await db.collection("profiles").findOne({ uid }, { projection: { targetExam: 1 } });
-  return toExamKey(profile?.targetExam);
-}
-
-/** Bundles whose PYQs may be shown (never mentor batch series), optionally for ONE exam. */
-async function eligibleBundleIds(db: Db, exam: ExamKey | null = null): Promise<string[]> {
-  const cacheKey = exam ?? "all";
-  const hit = eligibleBundlesCache.get(cacheKey);
-  if (hit) return hit;
-  const filter: Record<string, unknown> = { kind: { $ne: "mentorBatchSeries" } };
-  if (exam) {
-    // Old bundles have no `exam` field — the rest of the app treats those as NEET.
-    filter.exam = exam === "neet" ? { $in: ["neet", null] } : exam;
-  }
-  const rows = await db.collection("bundles").find(filter, { projection: { _id: 1 } }).toArray();
-  const ids = rows.map((r) => String(r._id));
-  eligibleBundlesCache.set(cacheKey, ids);
-  return ids;
-}
-
-// Mongo expression: the chapter/topic as a trimmed, lower-cased key, with the
-// "untagged"/"general" fallback — so "Kinematics" and "kinematics " group together.
-const keyExpr = (field: "chapter" | "topic", fallback: string) => ({
-  $toLower: {
-    $let: {
-      vars: { c: { $trim: { input: { $toString: { $ifNull: [`$${field}`, ""] } } } } },
-      in: { $cond: [{ $eq: ["$$c", ""] }, fallback, "$$c"] },
-    },
-  },
-});
-const displayExpr = (field: "chapter" | "topic", fallback: string) => ({
-  $let: {
-    vars: { c: { $trim: { input: { $toString: { $ifNull: [`$${field}`, ""] } } } } },
-    in: { $cond: [{ $eq: ["$$c", ""] }, fallback, "$$c"] },
-  },
-});
-
-async function pyqMatch(db: Db, exam: ExamKey | null = null) {
-  return { isPYQ: true, bundleId: { $in: await eligibleBundleIds(db, exam) } };
-}
 
 // ─── Browse tree with this student's progress ──────────────────────────────
 export const getPyqTree = createServerFn({ method: "GET" })
@@ -220,77 +164,6 @@ export const getPyqTree = createServerFn({ method: "GET" })
   });
 
 // ─── Resolve "JEE Mains 2022 29 June Shift 2" for a set of questions ───────
-async function loadSources(db: Db, docs: Record<string, unknown>[]) {
-  const { ObjectId } = await import("mongodb");
-  const bundleIds = [...new Set(docs.map((d) => String(d.bundleId ?? "")).filter(Boolean))];
-  const testIds = [...new Set(docs.map((d) => String(d.testId ?? "")).filter(Boolean))];
-  const safeOid = (id: string) => (/^[a-f0-9]{24}$/i.test(id) ? new ObjectId(id) : null);
-
-  const missingBundles = bundleIds.filter((id) => !bundleInfoCache.get(id));
-  if (missingBundles.length) {
-    const rows = await db
-      .collection("bundles")
-      .find({ _id: { $in: missingBundles.map(safeOid).filter((x): x is InstanceType<typeof ObjectId> => !!x) } }, { projection: { title: 1, exam: 1 } })
-      .toArray();
-    for (const r of rows) bundleInfoCache.set(String(r._id), { title: (r.title as string) ?? "", exam: (r.exam as string) ?? null });
-  }
-  const missingTests = testIds.filter((id) => testNameCache.get(id) === undefined);
-  if (missingTests.length) {
-    const rows = await db
-      .collection("testCores")
-      .find({ _id: { $in: missingTests.map(safeOid).filter((x): x is InstanceType<typeof ObjectId> => !!x) } }, { projection: { name: 1 } })
-      .toArray();
-    for (const r of rows) testNameCache.set(String(r._id), (r.name as string) ?? "");
-  }
-  return { bundleInfo: (id: string) => bundleInfoCache.get(id), testName: (id: string) => testNameCache.get(id) };
-}
-
-const statusOf = (p?: Record<string, unknown> | null): PyqStatus => {
-  if (!p) return "new";
-  if (p.correct === true) return "correct";
-  if (Number(p.attempts ?? 0) > 0) return "wrong";
-  return p.revealed === true ? "revealed" : "new";
-};
-
-// What the student is allowed to see about a question — never the answer or solution.
-const QUESTION_PROJECTION = {
-  // Deliberately NOT projected: correctOption, correctAnswer, solution.
-  subject: 1, chapter: 1, topic: 1, type: 1, body: 1, options: 1, difficulty: 1, pyqYear: 1, bundleId: 1, testId: 1,
-} as const;
-
-/** Question docs → what the client gets (source label + this student's status). Shared by every list endpoint. */
-async function buildQuestions(db: Db, uid: string, docs: Record<string, unknown>[]): Promise<PyqQuestion[]> {
-    const sources = await loadSources(db, docs);
-    const progress = await db
-      .collection("practiceProgress")
-      .find({ uid, questionId: { $in: docs.map((d) => String(d._id)) } })
-      .toArray();
-    const progMap = new Map(progress.map((p) => [p.questionId as string, p]));
-
-    return docs.map((d) => {
-      const bundle = sources.bundleInfo(String(d.bundleId ?? ""));
-      const chapter = String(d.chapter ?? "").trim() || UNTAGGED_CHAPTER;
-      const topic = String(d.topic ?? "").trim() || GENERAL_TOPIC;
-      return {
-        id: String(d._id),
-        subject: d.subject as string,
-        chapter,
-        topic,
-        type: (d.type as "mcq" | "integer") ?? "mcq",
-        body: d.body as string,
-        ...(d.type === "mcq" || !d.type ? { options: d.options as Record<OptionKey, string> } : {}),
-        difficulty: d.difficulty as Difficulty,
-        source: buildPyqSource({
-          bundleTitle: bundle?.title,
-          testName: sources.testName(String(d.testId ?? "")),
-          pyqYear: (d.pyqYear as string | undefined) ?? null,
-          examKey: bundle?.exam ?? null,
-        }),
-        status: statusOf(progMap.get(String(d._id))),
-      };
-    });
-}
-
 // ─── Questions for a chapter / topic (no answers, no solutions) ────────────
 export const listPyqQuestions = createServerFn({ method: "GET" })
   .validator(
@@ -358,28 +231,19 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
       throw new Error("Question not found.");
     }
 
-    const chapter = String(q.chapter ?? "").trim() || UNTAGGED_CHAPTER;
-    const topic = String(q.topic ?? "").trim() || GENERAL_TOPIC;
-    const where = { uid: decoded.uid, questionId: data.questionId };
-    const qBundle = await db.collection("bundles").findOne({ _id: new ObjectId(String(q.bundleId)) }, { projection: { exam: 1 } });
-    const keys = { exam: toExamKey(qBundle?.exam) ?? "neet", subject: q.subject as string, chapterKey: chapter.toLowerCase(), topicKey: topic.toLowerCase() };
-    const now = new Date();
+    const keys = await practiceKeysFor(db, q);
     const col = db.collection("practiceProgress");
+    const where = { uid: decoded.uid, questionId: data.questionId };
 
     const reveal: Pick<PyqCheckResult, "correctOption" | "correctAnswer" | "solution"> = {
       ...(q.type === "mcq" ? { correctOption: q.correctOption as OptionKey } : { correctAnswer: q.correctAnswer as number }),
       solution: (q.solution as string) ?? "",
     };
 
-    // "Show solution" without answering.
+    // "Show solution" without answering: scheduled for revision, but not a practice day.
     if (data.answer === null) {
-      await col.updateOne(
-        where,
-        { $set: { ...keys, revealed: true, updatedAt: now }, $setOnInsert: { attempts: 0, correct: false, createdAt: now } },
-        { upsert: true },
-      );
-      const after = await col.findOne(where);
-      return { isCorrect: false, revealed: true, ...reveal, status: statusOf(after) };
+      await recordPracticeOutcomes(db, decoded.uid, [{ questionId: data.questionId, outcome: "revealed", keys }]);
+      return { isCorrect: false, revealed: true, ...reveal, status: statusOf(await col.findOne(where)) };
     }
 
     let isCorrect = false;
@@ -396,17 +260,16 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
       lastAnswer = v;
     }
 
-    await col.updateOne(
-      where,
-      {
-        $set: { ...keys, correct: isCorrect, lastAnswer, updatedAt: now },
-        $inc: { attempts: 1 },
-        $setOnInsert: { createdAt: now },
-      },
-      { upsert: true },
-    );
-    const after = await col.findOne(where);
-    return { isCorrect, revealed: false, ...reveal, status: statusOf(after) };
+    const rec = await recordPracticeOutcomes(db, decoded.uid, [
+      { questionId: data.questionId, outcome: isCorrect ? "correct" : "wrong", lastAnswer, keys },
+    ]);
+    return {
+      isCorrect,
+      revealed: false,
+      ...reveal,
+      status: statusOf(await col.findOne(where)),
+      streak: rec ? { current: rec.streak.current, increased: rec.streakIncreased } : undefined,
+    };
   });
 
 // ─── "Practice my weak topics" ─────────────────────────────────────────────
@@ -414,37 +277,6 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
 // practice session. Weak chapters are derived server-side from the attempt
 // itself (the client only sends the attempt id), so the result page and the
 // session always agree, and a student can't ask for someone else's.
-
-async function loadOwnedAttempt(db: Db, uid: string, attemptId: string) {
-  const { ObjectId } = await import("mongodb");
-  if (!/^[a-f0-9]{24}$/i.test(attemptId)) throw new Error("Attempt not found");
-  const attempt = await db.collection("testAttempts").findOne({ _id: new ObjectId(attemptId) });
-  if (!attempt) throw new Error("Attempt not found");
-  if (attempt.uid !== uid) throw new Error("You don't have access to this attempt.");
-  return attempt;
-}
-
-/** The exam this attempt belongs to: its batch's exam, else the student's saved target exam, else null. */
-async function examForAttempt(db: Db, uid: string, attempt: Record<string, unknown>): Promise<ExamKey | null> {
-  try {
-    const { ObjectId } = await import("mongodb");
-    const test = await db.collection("testCores").findOne({ _id: new ObjectId(String(attempt.testId)) }, { projection: { bundleId: 1 } });
-    if (test?.bundleId) {
-      const bundle = await db.collection("bundles").findOne({ _id: new ObjectId(String(test.bundleId)) }, { projection: { exam: 1 } });
-      // Old bundles have no `exam` field — the rest of the app treats those as NEET.
-      if (bundle) return toExamKey(bundle.exam) ?? "neet";
-    }
-  } catch {
-    // fall through to the profile
-  }
-  return resolveExam(db, uid);
-}
-
-const chapterOr = (chapters: { subject: string; chapter: string }[]) =>
-  chapters.map((c) => ({
-    subject: c.subject,
-    $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), c.chapter.trim().toLowerCase()] },
-  }));
 
 // How many PYQs can the student practise for each weak chapter? (Drives the buttons on the result page.)
 export const getWeakPyqSummary = createServerFn({ method: "GET" })
@@ -457,28 +289,7 @@ export const getWeakPyqSummary = createServerFn({ method: "GET" })
     const exam = await examForAttempt(db, decoded.uid, attempt);
     if (focus.length === 0) return { exam, chapters: [], totalAvailable: 0 };
 
-    const available = await db
-      .collection("questions")
-      .aggregate([
-        { $match: { ...(await pyqMatch(db, exam)), $or: chapterOr(focus) } },
-        { $group: { _id: { subject: "$subject", chapterKey: keyExpr("chapter", UNTAGGED_CHAPTER) }, n: { $sum: 1 } } },
-      ])
-      .toArray();
-    const solved = await db
-      .collection("practiceProgress")
-      .aggregate([
-        { $match: { uid: decoded.uid, $or: focus.map((f) => ({ subject: f.subject, chapterKey: f.chapter.trim().toLowerCase() })) } },
-        { $group: { _id: { subject: "$subject", chapterKey: "$chapterKey" }, n: { $sum: { $cond: ["$correct", 1, 0] } } } },
-      ])
-      .toArray();
-    const availMap = new Map(available.map((a) => [`${a._id.subject}|${a._id.chapterKey}`, a.n as number]));
-    const solvedMap = new Map(solved.map((a) => [`${a._id.subject}|${a._id.chapterKey}`, a.n as number]));
-
-    const chapters = focus.map((f) => {
-      const k = weakKey(f.subject, f.chapter);
-      const n = availMap.get(k) ?? 0;
-      return { subject: f.subject, chapter: f.chapter, available: n, solved: Math.min(solvedMap.get(k) ?? 0, n) };
-    });
+    const chapters = await weakChapterAvailability(db, decoded.uid, exam, focus);
     return { exam, chapters, totalAvailable: chapters.reduce((n, c) => n + c.available, 0) };
   });
 

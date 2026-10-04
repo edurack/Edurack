@@ -1,3 +1,4 @@
+import { TodayCard } from "@/components/today-card";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -549,6 +550,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
 
   return (
     <div className="space-y-4">
+      <TodayCard />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* Up next */}
         <section className="ink-section flex min-w-0 flex-col justify-between rounded-3xl p-6 lg:col-span-3">

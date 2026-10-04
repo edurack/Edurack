@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { ChevronDown, ChevronLeft, ChevronRight, Lightbulb, SlidersHorizontal } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Flag, Flame, Lightbulb, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { SmartContent } from "@/lib/smart-content";
 import { listPyqQuestions, listWeakPyqQuestions, submitPyqAnswer } from "@/server-functions/pyq-practice";
-import type { Difficulty, OptionKey, PyqCheckResult, PyqList, PyqQuestion, PyqStatus } from "@/lib/pyq-types";
+import { listPyqSession, togglePyqBookmark } from "@/server-functions/practice-extras";
+import { ReportDialog } from "@/components/pyq/report-dialog";
+import { SessionSummary } from "@/components/pyq/session-summary";
+import { SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -14,6 +17,8 @@ type Props = {
   topic?: string;
   /** "Practice my weak topics": a mixed session built from this attempt's weak chapters. */
   weakAttemptId?: string;
+  /** A ready-made session: today's PYQ, revision that's due, mistakes, or bookmarks. */
+  session?: SessionKind;
   /** Called when the student finishes the list or taps the back control. */
   /** Exam the student is browsing (so the list matches the tree). */
   exam?: string;
@@ -24,9 +29,15 @@ type StatusFilter = "all" | "unsolved" | "wrong";
 type Local = PyqCheckResult & { chosenOption?: OptionKey; chosenValue?: number };
 
 const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
+const EMPTY_SESSION: Record<SessionKind, string> = {
+  daily: "There's no PYQ for today yet. Check back soon.",
+  due: "Nothing is due for revision right now. Nice work — we'll remind you when something is.",
+  wrong: "No mistakes to fix. Keep practising and anything you get wrong will appear here.",
+  bookmarked: "No bookmarks yet. Tap the bookmark icon on any question to save it for later.",
+};
 const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onExit }: Props) {
+export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, onExit }: Props) {
   const { user } = useAuth();
   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
   const [year, setYear] = useState("All");
@@ -44,6 +55,9 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, Local>>({});
   const [busy, setBusy] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [streakNow, setStreakNow] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,7 +73,9 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
           year: year === "All" ? undefined : year,
           status: statusF === "all" ? undefined : statusF === "unsolved" ? ("unsolved" as const) : ("wrong" as const),
         };
-        const res = weakAttemptId
+        const res = session
+          ? await listPyqSession({ data: { token, kind: session, ...filters } })
+          : weakAttemptId
           ? await listWeakPyqQuestions({ data: { token, attemptId: weakAttemptId, ...filters } })
           : await listPyqQuestions({ data: { token, subject: subject!, exam, chapter: chapter!, topic, ...filters } });
         if (cancelled) return;
@@ -75,7 +91,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
     return () => {
       cancelled = true;
     };
-  }, [user, subject, chapter, topic, weakAttemptId, exam, difficulty, year, statusF]);
+  }, [user, subject, chapter, topic, weakAttemptId, session, exam, difficulty, year, statusF]);
 
   const questions = list?.questions ?? [];
   const q: PyqQuestion | undefined = questions[idx];
@@ -97,6 +113,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
       const token = await user.getIdToken();
       const res = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
+      if (res.streak) setStreakNow(res.streak.current);
       // Keep the status chip in sync without refetching the list.
       setList((l) =>
         l ? { ...l, questions: l.questions.map((x) => (x.id === q.id ? { ...x, status: res.status as PyqStatus } : x)) } : l,
@@ -113,22 +130,51 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
     void send(q.type === "mcq" ? { option: picked[q.id] } : { value: Number(typed[q.id]) });
   }
 
+  async function toggleBookmark() {
+    if (!user || !q) return;
+    const value = !q.bookmarked;
+    // Optimistic: the star flips immediately, and flips back if the server says no.
+    const flip = (v: boolean) => setList((l) => (l ? { ...l, questions: l.questions.map((x) => (x.id === q.id ? { ...x, bookmarked: v } : x)) } : l));
+    flip(value);
+    try {
+      const token = await user.getIdToken();
+      await togglePyqBookmark({ data: { token, questionId: q.id, value } });
+    } catch {
+      flip(!value);
+      setActionError("Couldn't update your bookmark. Try again.");
+    }
+  }
+
   const atEnd = idx >= questions.length - 1;
   function next() {
-    if (atEnd) onExit();
+    if (atEnd) setFinished(true);
     else setIdx((i) => i + 1);
   }
 
   const weakChapters = list?.weak?.chapters.filter((c) => c.count > 0) ?? [];
-  const heading = weakAttemptId ? "Your weak topics" : topic ? `${chapter} · ${topic}` : chapter;
-  const subheading = weakAttemptId
+  const heading = session ? SESSION_TITLES[session] : weakAttemptId ? "Your weak topics" : topic ? `${chapter} · ${topic}` : chapter;
+  const subheading = session
+    ? "Practice"
+    : weakAttemptId
     ? weakChapters.length > 0
       ? weakChapters.map((c) => c.chapter).join(" · ")
       : "From your last test"
     : subject;
 
+  if (finished) {
+    const all = Object.values(results);
+    const stats = {
+      answered: all.filter((r) => !r.revealed).length,
+      correct: all.filter((r) => !r.revealed && r.isCorrect).length,
+      wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
+      peeked: all.filter((r) => r.revealed).length,
+    };
+    return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} onDone={onExit} />;
+  }
+
   return (
     <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
+      {reporting && q && <ReportDialog questionId={q.id} onClose={() => setReporting(false)} />}
       {/* Top bar */}
       <div className="mb-3 flex items-center gap-2">
         <button
@@ -195,7 +241,14 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
           </button>
         </div>
       ) : !q ? (
-        weakAttemptId && statusF === "unsolved" && difficulty === "All" && year === "All" ? (
+        session && activeFilters === 0 ? (
+          <div className="clay p-8 text-center">
+            <p className="text-sm font-semibold text-foreground/80">{EMPTY_SESSION[session]}</p>
+            <button onClick={onExit} className="clay-btn mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-white">
+              Back
+            </button>
+          </div>
+        ) : weakAttemptId && statusF === "unsolved" && difficulty === "All" && year === "All" ? (
           <div className="clay p-8 text-center">
             <p className="font-semibold text-foreground">You've solved every available PYQ for your weak chapters. Nice work!</p>
             <button onClick={() => setStatusF("all")} className="clay-btn mt-4 rounded-full px-5 py-2.5 text-sm font-bold text-white">
@@ -238,9 +291,28 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
 
           <article key={q.id} className="clay p-4 animate-in fade-in slide-in-from-right-2 duration-200 motion-reduce:animate-none sm:p-6">
             {/* Where this question came from — e.g. "JEE MAINS 2022 29 JUNE SHIFT 2" */}
-            <p className="inline-flex max-w-full rounded-full bg-[var(--sky-soft)] px-3 py-1 text-[11px] font-bold uppercase leading-snug tracking-wide text-foreground">
-              <span className="truncate">{q.source.label}</span>
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <p className="inline-flex max-w-full rounded-full bg-[var(--sky-soft)] px-3 py-1 text-[11px] font-bold uppercase leading-snug tracking-wide text-foreground">
+                <span className="truncate">{q.source.label}</span>
+              </p>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <button
+                  onClick={() => void toggleBookmark()}
+                  aria-pressed={q.bookmarked}
+                  aria-label={q.bookmarked ? "Remove bookmark" : "Bookmark this question"}
+                  className="grid h-9 w-9 place-items-center rounded-full text-foreground/50 hover:bg-foreground/5"
+                >
+                  <Bookmark className={cn("h-4 w-4", q.bookmarked && "fill-[var(--sky-deep)] text-[var(--sky-deep)]")} aria-hidden />
+                </button>
+                <button
+                  onClick={() => setReporting(true)}
+                  aria-label="Report this question"
+                  className="grid h-9 w-9 place-items-center rounded-full text-foreground/50 hover:bg-foreground/5"
+                >
+                  <Flag className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/50">
               <DifficultyTag d={q.difficulty} />
               {weakAttemptId ? <span>· {q.chapter}</span> : !topic && q.topic !== "General" && <span>· {q.topic}</span>}
@@ -354,6 +426,12 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, exam, onEx
                     role="status"
                   >
                     {result.isCorrect ? "Correct! Nice work." : "Not quite — read the solution below."}
+                  </p>
+                )}
+                {result.streak?.increased && (
+                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-foreground">
+                    <Flame className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden />
+                    {result.streak.current}-day streak!
                   </p>
                 )}
                 {result.solution && <Solution text={result.solution} />}

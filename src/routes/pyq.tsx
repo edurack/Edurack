@@ -10,12 +10,18 @@ import { getPyqTree } from "@/server-functions/pyq-practice";
 import type { PyqTree } from "@/lib/pyq-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
+import { Link } from "@tanstack/react-router";
+import { BookMarked, Timer } from "lucide-react";
+import type { SessionKind } from "@/lib/pyq-types";
 
 // Everything lives in the URL (?subject=&chapter=&topic=&practice=true) so the
 // phone's back button walks up one level — Practice → Topics → Chapters →
 // Subjects — instead of leaving the page.
 // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string };
+// `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind };
+
+const SESSIONS: SessionKind[] = ["daily", "due", "wrong", "bookmarked"];
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
 
@@ -26,6 +32,7 @@ export const Route = createFileRoute("/pyq")({
     chapter: str(search.chapter),
     topic: str(search.topic),
     weakAttempt: str(search.weakAttempt),
+    session: SESSIONS.find((k) => k === search.session),
     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
   }),
   head: () => noindexHead("PYQ Practice"),
@@ -80,7 +87,7 @@ function PyqPage() {
     );
   }
 
-  const practising = Boolean(search.practice && ((search.subject && search.chapter) || search.weakAttempt));
+  const practising = Boolean(search.practice && ((search.subject && search.chapter) || search.weakAttempt || search.session));
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -116,17 +123,22 @@ function PyqPage() {
         ) : practising ? (
           <PyqPractice
             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
-            key={`${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
+            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
             subject={search.subject}
             chapter={search.chapter}
             topic={search.topic}
             weakAttemptId={search.weakAttempt}
+            session={search.session}
             exam={tree?.exam ?? search.exam}
             // A weak-topics session started from a result page returns to that result page.
+            // Sessions go back to where they started: the daily question to the dashboard,
+            // the other sessions to the notebook.
             onExit={() =>
-              search.weakAttempt
-                ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })
-                : go({ subject: search.subject, chapter: search.chapter })
+              search.session
+                ? navigate({ to: search.session === "daily" ? "/dashboard" : "/notebook" })
+                : search.weakAttempt
+                  ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })
+                  : go({ subject: search.subject, chapter: search.chapter })
             }
           />
         ) : tree === null ? (
@@ -139,7 +151,27 @@ function PyqPage() {
             </div>
           </div>
         ) : (
-          <PyqBrowser tree={tree} subject={search.subject} chapter={search.chapter} onNavigate={go} />
+          <>
+            {!search.subject && (
+              <div className="mb-4 grid grid-cols-2 gap-2.5">
+                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined }} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+                  <Timer className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-foreground">Timed drill</span>
+                    <span className="block truncate text-[11px] text-foreground/50">20 questions · 30 min</span>
+                  </span>
+                </Link>
+                <Link to="/notebook" className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+                  <BookMarked className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-foreground">My notebook</span>
+                    <span className="block truncate text-[11px] text-foreground/50">Revise · mistakes · bookmarks</span>
+                  </span>
+                </Link>
+              </div>
+            )}
+            <PyqBrowser tree={tree} subject={search.subject} chapter={search.chapter} onNavigate={go} />
+          </>
         )}
       </main>
     </div>
