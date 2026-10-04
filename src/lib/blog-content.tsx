@@ -428,7 +428,7 @@ const FAQ_HEADING_PATTERN = /frequently asked questions/i;
 // "Frequently Asked Questions", every standalone **bold** paragraph is a
 // question and the paragraph(s) after it are its answer. Stops at the next
 // heading. Markdown (links, bold, code) is stripped to plain text.
-function stripInlineMarkdown(text: string): string {
+function faqPlainText(text: string): string {
   return text
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -455,8 +455,8 @@ export function extractFaqItems(markdown: string): { question: string; answer: s
     if (!inFaq) continue;
     const joined = raw.split("\n").join(" ").trim();
     const q = /^\*\*(.+)\*\*$/.exec(joined);
-    if (q) items.push({ question: stripInlineMarkdown(q[1]), answer: [] });
-    else if (items.length > 0) items[items.length - 1].answer.push(stripInlineMarkdown(joined));
+    if (q) items.push({ question: faqPlainText(q[1]), answer: [] });
+    else if (items.length > 0) items[items.length - 1].answer.push(faqPlainText(joined));
   }
   return items
     .filter((i) => i.answer.length > 0)
