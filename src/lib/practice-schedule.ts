@@ -56,6 +56,25 @@ export function effectiveStreak(s: Streak | null | undefined, today: string) {
   return { current: alive ? st.current : 0, longest: st.longest, doneToday: st.lastDay === today };
 }
 
+// ─── The 7-day strip on the Today card ─────────────────────────────────────
+export type WeekDay = { day: string; label: string; done: boolean; isToday: boolean };
+const WEEKDAY_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
+
+/**
+ * The last 7 days ending today (oldest first). A day is "done" if it's in the
+ * recorded recent practice days, or inside the current streak — which covers
+ * streaks saved before recent days were tracked (a streak's days were, by
+ * definition, all practice days).
+ */
+export function weekStrip(today: string, recentDays: string[] | null | undefined, raw: Streak): WeekDay[] {
+  const practised = new Set(recentDays ?? []);
+  if (raw.lastDay && raw.current > 0) for (let i = 0; i < raw.current; i++) practised.add(addDays(raw.lastDay, -i));
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = addDays(today, i - 6);
+    return { day, label: WEEKDAY_INITIALS[new Date(`${day}T00:00:00Z`).getUTCDay()], done: practised.has(day), isToday: day === today };
+  });
+}
+
 // ─── Daily question: stable per day, spread evenly over the pool ───────────
 export function hashString(s: string): number {
   let h = 2166136261;

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconLock as Lock, IconUser as User, IconPhone as Phone, IconMapPin as MapPin, IconSchool as GraduationCap, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
-import { EyeOff, Target } from "lucide-react"; // TODO: no Tabler mapping found yet
+import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconLock as Lock, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
+import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User as FirebaseUser } from "firebase/auth";
 import { auth, firebaseSignIn, firebaseSignUp, googleAuth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
@@ -362,24 +362,6 @@ function ClayInput({
         {...props}
         className="w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
       />
-    </div>
-  );
-}
-
-function ClaySelect({
-  icon,
-  children,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & { icon?: ReactNode }) {
-  return (
-    <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-      {icon && <span className="text-foreground/50">{icon}</span>}
-      <select
-        {...props}
-        className="w-full appearance-none bg-transparent text-sm text-foreground focus:outline-none"
-      >
-        {children}
-      </select>
     </div>
   );
 }
@@ -849,63 +831,40 @@ function EmailVerificationCard({
   );
 }
 
-// ─── Onboarding — now a 3-step wizard instead of one long form ─────────────
-// Splitting Personal / Academic / Target into separate steps with a progress
-// bar keeps each screen short, which matters a lot on small devices where
-// the old all-at-once form felt cramped and overwhelming.
-const ONBOARDING_STEPS = ["Personal", "Academic", "Target"] as const;
+// ─── Onboarding — single screen, zero keyboard input ───────────────────────
+// Two taps (exam + track) and the user is in. Everything else the backend
+// needs is auto-filled with safe defaults on submit; real phone numbers and
+// other details are collected later, right before premium tests.
+type ExamChoice = "jee" | "neet";
+type TrackChoice = "11th" | "12th" | "Dropper";
+
+const EXAM_OPTIONS: ReadonlyArray<{ value: ExamChoice; title: string; subtitle: string }> = [
+  { value: "jee", title: "JEE", subtitle: "Engineering" },
+  { value: "neet", title: "NEET", subtitle: "Medical" },
+];
+
+const TRACK_OPTIONS: ReadonlyArray<TrackChoice> = ["11th", "12th", "Dropper"];
+
+function currentClassFor(track: TrackChoice): string {
+  if (track === "Dropper") return "Dropper";
+  return track === "11th" ? "Class 11" : "Class 12";
+}
 
 function OnboardingCard({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState<OnboardingProfile>({
-    fullName: "",
-    mobile: "",
-    city: "",
-    currentClass: "",
-    board: "",
-    targetExam: "NEET",
-    track: "",
-    cuetDomainSubjects: [],
-  });
+  const [exam, setExam] = useState<ExamChoice | null>(null);
+  const [track, setTrack] = useState<TrackChoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function set<K extends keyof OnboardingProfile>(k: K, v: OnboardingProfile[K]) {
-    setProfile((p) => ({ ...p, [k]: v }));
-  }
-
-  function validateStep(s: number): string | null {
-    if (s === 0) {
-      if (!profile.fullName.trim()) return "Please enter your full name.";
-      if (!/^\d{10}$/.test(profile.mobile)) return "Enter a valid 10-digit mobile number.";
-      if (!profile.city.trim()) return "Please enter your city or town.";
-    }
-    if (s === 1) {
-      if (!profile.currentClass) return "Select your current class.";
-      if (!profile.board) return "Select your board.";
-    }
-    if (s === 2) {
-      if (!profile.track) return "Pick your track.";
-    }
-    return null;
-  }
-
-  function handleNext() {
-    const err = validateStep(step);
-    if (err) return setError(err);
-    setError(null);
-    setStep((s) => Math.min(s + 1, ONBOARDING_STEPS.length - 1));
-  }
-
-  function handleBack() {
-    setError(null);
-    setStep((s) => Math.max(s - 1, 0));
-  }
+  const canSubmit = exam !== null && track !== null && !loading;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const err = validateStep(2);
-    if (err) return setError(err);
+    if (loading) return;
+    if (!exam || !track) {
+      setError("Pick your exam and your current status to continue.");
+      return;
+    }
 
     const user = auth.currentUser;
     if (!user) {
@@ -917,19 +876,17 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     try {
       const token = await user.getIdToken();
-      const normalizedProfile = {
-        ...profile,
-        targetExam: (() => {
-          const value = profile.targetExam.toLowerCase();
-          if (value.includes("neet")) return "neet";
-          if (value.includes("jee")) return "jee";
-          if (value.includes("cuet")) return "cuet";
-          if (value.includes("ipmat")) return "ipmat";
-          return "";
-        })(),
-        cuetDomainSubjects: profile.cuetDomainSubjects.map((subject) => subject.trim()).filter(Boolean),
+      const profile: OnboardingProfile = {
+        fullName: user.displayName?.trim() || "Student",
+        mobile: "0000000000", // placeholder — collected before premium tests
+        city: "Not Specified",
+        currentClass: currentClassFor(track),
+        board: "CBSE",
+        targetExam: exam,
+        track,
+        cuetDomainSubjects: [],
       };
-      await saveProfile({ data: { token, profile: normalizedProfile } });
+      await saveProfile({ data: { token, profile } });
       onComplete();
     } catch {
       setError("Could not save your profile. Try again.");
@@ -946,222 +903,113 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
           Almost there
         </div>
         <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Tell us about you
+          Set up your prep
         </h2>
         <p className="mt-1 text-sm text-foreground/60">
-          A few quick details so we can tailor your dashboard.
+          Just two taps and your dashboard is ready.
         </p>
       </div>
 
-      {/* Step progress */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          {ONBOARDING_STEPS.map((label, i) => (
-            <div key={label} className="flex flex-1 items-center">
-              <div
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300 ${
-                  i < step
-                    ? "bg-[var(--sky-deep)] text-white"
-                    : i === step
-                      ? "clay-btn text-white"
-                      : "clay-inset text-foreground/40"
-                }`}
-              >
-                {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
-              </div>
-              {i < ONBOARDING_STEPS.length - 1 && (
-                <div className="mx-1.5 h-0.5 flex-1 overflow-hidden rounded-full bg-foreground/10">
-                  <div
-                    className="h-full rounded-full bg-[var(--sky-deep)] transition-all duration-500 ease-out"
-                    style={{ width: i < step ? "100%" : "0%" }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-between text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
-          {ONBOARDING_STEPS.map((label) => (
-            <span key={label}>{label}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Step content — remounts + animates on every step change */}
-      <div key={step} className="animate-in fade-in slide-in-from-right-2 min-h-[13rem] duration-250">
-        {step === 0 && (
-          <Section title="Personal">
-            <ClayInput
-              icon={<User className="h-4 w-4" />}
-              placeholder="Full name"
-              value={profile.fullName}
-              onChange={(e) => set("fullName", e.target.value)}
-              autoComplete="name"
-              required
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ClayInput
-                icon={<Phone className="h-4 w-4" />}
-                type="tel"
-                inputMode="numeric"
-                placeholder="Mobile (10 digits)"
-                value={profile.mobile}
-                onChange={(e) => set("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))}
-                required
+      <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6 duration-300">
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+            I'm preparing for
+          </legend>
+          <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Target exam">
+            {EXAM_OPTIONS.map((opt) => (
+              <ExamCard
+                key={opt.value}
+                active={exam === opt.value}
+                onClick={() => {
+                  setExam(opt.value);
+                  setError(null);
+                }}
+                title={opt.title}
+                subtitle={opt.subtitle}
               />
-              <ClayInput
-                icon={<MapPin className="h-4 w-4" />}
-                placeholder="City / Town / Village"
-                value={profile.city}
-                onChange={(e) => set("city", e.target.value)}
-                autoComplete="address-level2"
-                required
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+            I am a
+          </legend>
+          <div className="clay-inset grid grid-cols-3 gap-2 p-2" role="radiogroup" aria-label="Current status">
+            {TRACK_OPTIONS.map((t) => (
+              <TrackChip
+                key={t}
+                active={track === t}
+                onClick={() => {
+                  setTrack(t);
+                  setError(null);
+                }}
+                label={t}
               />
-            </div>
-          </Section>
-        )}
-
-        {step === 1 && (
-          <Section title="Academic">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ClaySelect
-                icon={<GraduationCap className="h-4 w-4" />}
-                value={profile.currentClass}
-                onChange={(e) => set("currentClass", e.target.value)}
-                required
-              >
-                <option value="">Current class</option>
-                <option>Class 11</option>
-                <option>Class 12</option>
-                <option>Dropper</option>
-              </ClaySelect>
-              <ClaySelect
-                icon={<GraduationCap className="h-4 w-4" />}
-                value={profile.board}
-                onChange={(e) => set("board", e.target.value)}
-                required
-              >
-                <option value="">Board / State board</option>
-                <option>CBSE</option>
-                <option>ICSE</option>
-                <option>Maharashtra</option>
-                <option>Karnataka</option>
-                <option>Tamil Nadu</option>
-                <option>Uttar Pradesh</option>
-                <option>West Bengal</option>
-                <option>Other</option>
-              </ClaySelect>
-            </div>
-          </Section>
-        )}
-
-        {step === 2 && (
-          <Section title="Target">
-            <ClaySelect
-              icon={<Target className="h-4 w-4" />}
-              value={profile.targetExam}
-              onChange={(e) => set("targetExam", e.target.value)}
-            >
-              <optgroup label="NEET">
-                <option>NEET</option>
-                <option>NEET + AIIMS</option>
-              </optgroup>
-              <optgroup label="JEE">
-                <option>JEE Main</option>
-                <option>JEE Main + Advanced</option>
-              </optgroup>
-              <optgroup label="CUET">
-                <option>CUET (UG)</option>
-              </optgroup>
-              <optgroup label="IPMAT">
-                <option>IPMAT</option>
-              </optgroup>
-            </ClaySelect>
-
-            {profile.targetExam.toLowerCase().includes("cuet") && (
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">
-                  CUET domain subjects
-                </p>
-                <input
-                  value={profile.cuetDomainSubjects.join(", ")}
-                  onChange={(e) =>
-                    set(
-                      "cuetDomainSubjects",
-                      e.target.value
-                        .split(",")
-                        .map((subject) => subject.trim())
-                        .filter(Boolean),
-                    )
-                  }
-                  placeholder="Accountancy, General Test"
-                  className="clay-inset w-full rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
-                />
-                <p className="mt-1 text-xs text-foreground/50">Separate multiple subjects with commas.</p>
-              </div>
-            )}
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-foreground/60">
-                I am a
-              </p>
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {(["Dropper", "11th", "12th"] as const).map((t) => (
-                  <TrackChip key={t} active={profile.track === t} onClick={() => set("track", t)} label={t} />
-                ))}
-              </div>
-            </div>
-          </Section>
-        )}
+            ))}
+          </div>
+        </fieldset>
       </div>
 
       {error && (
-        <p className="animate-in fade-in slide-in-from-top-1 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground duration-200">
+        <p
+          role="alert"
+          className="animate-in fade-in slide-in-from-top-1 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground duration-200"
+        >
           {error}
         </p>
       )}
 
-      <div className="flex items-center gap-3">
-        {step > 0 && (
-          <button
-            type="button"
-            onClick={handleBack}
-            className="clay-btn-ghost flex items-center gap-2 rounded-full px-5 py-3.5 text-sm font-semibold text-foreground/70 transition-transform hover:scale-[1.02]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-        )}
-
-        {step < ONBOARDING_STEPS.length - 1 ? (
-          <button
-            type="button"
-            onClick={handleNext}
-            className="clay-btn flex flex-1 items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold transition-transform hover:scale-[1.01]"
-          >
-            <span>Continue</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        className="clay-btn flex w-full items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+      >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <button
-            type="submit"
-            disabled={loading}
-            className="clay-btn flex flex-1 items-center justify-center gap-2 px-6 py-3.5 text-sm font-semibold transition-transform hover:scale-[1.01] disabled:opacity-70 disabled:hover:scale-100"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><span>Finish & Enter Dashboard</span><ArrowRight className="h-4 w-4" /></>}
-          </button>
+          <>
+            <span>Enter Dashboard</span>
+            <ArrowRight className="h-4 w-4" />
+          </>
         )}
-      </div>
+      </button>
     </form>
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function ExamCard({
+  active,
+  onClick,
+  title,
+  subtitle,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  subtitle: string;
+}) {
   return (
-    <div className="space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">{title}</p>
-      <div className="space-y-3">{children}</div>
-    </div>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={
+        "relative flex min-h-28 flex-col items-center justify-center gap-1 rounded-3xl px-4 py-5 text-center transition-all duration-200 active:scale-[0.98] " +
+        (active ? "clay-btn scale-[1.02] text-white" : "clay-btn-ghost text-foreground/80 hover:scale-[1.02]")
+      }
+    >
+      {active && (
+        <span className="animate-in zoom-in-50 absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white/25 duration-200">
+          <Check className="h-3.5 w-3.5" />
+        </span>
+      )}
+      <span className="font-display text-xl font-extrabold tracking-tight">{title}</span>
+      <span className={"text-xs font-medium " + (active ? "text-white/80" : "text-foreground/50")}>
+        ({subtitle})
+      </span>
+    </button>
   );
 }
 
@@ -1169,9 +1017,11 @@ function TrackChip({ active, onClick, label }: { active: boolean; onClick: () =>
   return (
     <button
       type="button"
+      role="radio"
+      aria-checked={active}
       onClick={onClick}
       className={
-        "relative flex items-center justify-center gap-2 rounded-full px-3 py-3 text-sm font-semibold transition-all duration-200 " +
+        "relative flex min-h-12 items-center justify-center gap-1.5 rounded-full px-3 py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] " +
         (active ? "clay-btn scale-[1.02] text-white" : "clay-btn-ghost text-foreground/80 hover:scale-[1.02]")
       }
     >

@@ -15,11 +15,13 @@ import { recordPracticeOutcomes } from "@/lib/practice-progress";
 import {
   balancedPick,
   DRILL_QUESTIONS,
+  EMPTY_STREAK,
   effectiveStreak,
   istDayKey,
   pickDailyIndex,
   remainingSeconds,
   scoreDrill,
+  weekStrip,
   type DrillAnswer,
 } from "@/lib/practice-schedule";
 import {
@@ -121,10 +123,14 @@ export const getTodaySummary = createServerFn({ method: "GET" })
     const exam = await resolveExam(db, uid);
 
     const streakDoc = await db.collection("practiceStreaks").findOne({ uid });
-    const streak = effectiveStreak(
-      streakDoc ? { current: Number(streakDoc.current ?? 0), longest: Number(streakDoc.longest ?? 0), lastDay: (streakDoc.lastDay as string | null) ?? null } : null,
-      istDayKey(now),
-    );
+    const rawStreak = streakDoc
+      ? { current: Number(streakDoc.current ?? 0), longest: Number(streakDoc.longest ?? 0), lastDay: (streakDoc.lastDay as string | null) ?? null }
+      : EMPTY_STREAK;
+    const today = istDayKey(now);
+    const streak = {
+      ...effectiveStreak(rawStreak, today),
+      week: weekStrip(today, Array.isArray(streakDoc?.recentDays) ? (streakDoc!.recentDays as string[]) : null, rawStreak),
+    };
 
     const dailyId = await dailyQuestionId(db, exam, istDayKey(now));
     const dailyDone = dailyId ? Boolean(await db.collection("practiceProgress").findOne({ uid, questionId: dailyId, attempts: { $gt: 0 } })) : false;

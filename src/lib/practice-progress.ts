@@ -74,9 +74,13 @@ export async function bumpStreak(db: Db, uid: string, now: Date = new Date()): P
   const prev: Streak = doc
     ? { current: Number(doc.current ?? 0), longest: Number(doc.longest ?? 0), lastDay: (doc.lastDay as string | null) ?? null }
     : EMPTY_STREAK;
-  const { increased, ...next } = advanceStreak(prev, istDayKey(now));
+  const today = istDayKey(now);
+  const { increased, ...next } = advanceStreak(prev, today);
   if (increased) {
-    await col.updateOne({ uid }, { $set: { ...next, updatedAt: now }, $setOnInsert: { createdAt: now } }, { upsert: true });
+    // Keep the last two weeks of practice days; the Today card draws the last seven.
+    const recent = Array.isArray(doc?.recentDays) ? (doc!.recentDays as string[]) : [];
+    const recentDays = [...new Set([...recent, today])].sort().slice(-14);
+    await col.updateOne({ uid }, { $set: { ...next, recentDays, updatedAt: now }, $setOnInsert: { createdAt: now } }, { upsert: true });
   }
   return { streak: increased ? next : prev, streakIncreased: increased };
 }

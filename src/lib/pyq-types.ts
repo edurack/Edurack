@@ -1,5 +1,6 @@
 // Types shared by the PYQ practice server functions and UI. Pure — no server imports.
 import type { PyqSource } from "@/lib/pyq-label";
+import type { WeekDay } from "@/lib/practice-schedule";
 import type { ExamKey } from "@/lib/admin-types";
 
 export type OptionKey = "A" | "B" | "C" | "D";
@@ -75,7 +76,7 @@ export const SESSION_TITLES: Record<SessionKind, string> = {
 
 export type TodaySummary = {
   exam: ExamKey | null;
-  streak: { current: number; longest: number; doneToday: boolean };
+  streak: { current: number; longest: number; doneToday: boolean; /** Last 7 days, oldest first, for the Today card's week strip. */ week: WeekDay[] };
   /** Today's shared question; `done` once this student has answered it. */
   daily: { available: boolean; done: boolean };
   /** Mistakes whose revision date has arrived. */
