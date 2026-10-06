@@ -1,4 +1,4 @@
-import { TodayCard } from "@/components/today-card";
+import { TodayCard, type UpNextInfo } from "@/components/today-card";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -546,40 +546,29 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
   ];
+  // What the merged Today card shows in its "Up next" row.
+  const upNext: UpNextInfo = next
+    ? {
+        state: "session",
+        date: slotDate(next).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }),
+        meta: `${next.start_time} · ${next.duration_minutes} min · ${untilLabel(slotDate(next))}`,
+        title: next.mentor_session_offerings?.title ?? "Mentor session",
+        joinUrl: next.meeting_link ?? undefined,
+        total: upcoming.length,
+      }
+    : !bookingsLoaded
+      ? { state: "loading" }
+      : {
+          state: "empty",
+          text: freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam.",
+        };
   const tile = "group flex min-h-24 min-w-0 flex-col items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary sm:min-h-20 sm:flex-row sm:items-center";
 
   return (
     <div className="space-y-4">
-      <TodayCard />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* Up next */}
-        <section className="ink-section flex min-w-0 flex-col justify-between rounded-3xl p-6 lg:col-span-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Up next</p>
-          {next ? (
-            <>
-              <div className="mt-4">
-                <p className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl">{slotDate(next).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</p>
-                <p className="mt-1 text-white/70">{next.start_time} · {next.duration_minutes} min · {untilLabel(slotDate(next))}</p>
-                <p className="mt-3 truncate font-display text-lg font-bold">{next.mentor_session_offerings?.title ?? "Mentor session"}</p>
-              </div>
-              <div className="mt-6 flex flex-wrap gap-2">
-                {next.meeting_link && <a href={next.meeting_link} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#ffffff] px-5 text-sm font-bold text-[#141b2b]"><LinkIcon className="h-4 w-4" />Join session</a>}
-                <Link to="/my-sessions" className="inline-flex min-h-11 items-center rounded-full border border-white/25 px-5 text-sm font-semibold text-white hover:border-white/60">{upcoming.length > 1 ? `All ${upcoming.length} sessions` : "My sessions"}</Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mt-4">
-                <p className="font-display text-3xl font-extrabold tracking-tight">{bookingsLoaded ? "Nothing booked yet" : "Checking your calendar…"}</p>
-                <p className="mt-2 max-w-sm text-white/65">{freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam."}</p>
-              </div>
-              <div className="mt-6 flex flex-wrap items-center gap-4">
-                <button type="button" onClick={() => go("sessions")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#ffffff] px-5 text-sm font-bold text-[#141b2b]">Browse sessions <ArrowRight className="h-4 w-4" /></button>
-                <Link to="/my-sessions" className="inline-flex min-h-11 items-center text-sm font-semibold text-white/70 hover:text-white">My sessions</Link>
-              </div>
-            </>
-          )}
-        </section>
+        {/* Today + Up next, merged into one card: practice streak, what's due, and the next mentor session. */}
+        <TodayCard className="lg:col-span-3" upNext={upNext} onBrowseSessions={() => go("sessions")} />
 
         {/* Performance */}
         <Panel title="Your performance" className="lg:col-span-2">
