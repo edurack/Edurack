@@ -1,16 +1,24 @@
-// Default JEE syllabus (Physics, Chemistry, Mathematics) split by NCERT
-// Class 11 / Class 12 → chapter → topics.
+// Default syllabi, split by NCERT Class 11 / Class 12 → chapter → topics.
+//   • JEE  (Physics, Chemistry, Mathematics)        — defined below
+//   • NEET (Physics, Chemistry, Botany, Zoology)    — lib/neet-syllabus.ts,
+//     built from the Edurack NEET PYQ Blueprint PDFs
 //
-// This file is only the *seed*. The first time the admin opens question
-// ingestion, getSyllabus (server-functions/admin.ts) copies it into the
-// `syllabus` collection once; after that the database copy is what every
-// screen reads. Edit the DB copy (or bump SYLLABUS_VERSION and re-seed) if the
+// These files are only the *seed*. The first time the admin opens question
+// ingestion, getSyllabus (server-functions/admin.ts) copies the exam's seed
+// into the `syllabus` collection once; after that the database copy is what
+// every screen reads. Edit the DB copy (or bump the version and re-seed) if the
 // chapter list ever needs to change.
+import { NEET_SYLLABUS, NEET_SYLLABUS_KEY, NEET_SYLLABUS_VERSION } from "@/lib/neet-syllabus";
 
-export type SyllabusSubject = "Physics" | "Chemistry" | "Mathematics";
+export type SyllabusSubject = "Physics" | "Chemistry" | "Mathematics" | "Botany" | "Zoology" | "Biology";
 export type ClassLevel = "11" | "12";
-export type SyllabusChapter = { chapter: string; topics: string[] };
-export type Syllabus = Record<SyllabusSubject, Record<ClassLevel, SyllabusChapter[]>>;
+export type SyllabusChapter = { chapter: string; topics: string[]; /** Other spellings accepted when matching a chapter tag. */ aliases?: string[] };
+// Partial: JEE has no Botany/Zoology, NEET has no Mathematics, and "Biology"
+// is never stored (it is Botany + Zoology, see chaptersFor).
+export type Syllabus = Partial<Record<SyllabusSubject, Record<ClassLevel, SyllabusChapter[]>>>;
+
+/** Exams that have a built-in syllabus. Others (CUET, IPMAT) fall back to free-text tagging. */
+export type SyllabusExam = "jee" | "neet";
 
 export const SYLLABUS_KEY = "jee-default";
 export const SYLLABUS_VERSION = 1;
@@ -119,11 +127,95 @@ export const JEE_SYLLABUS: Syllabus = {
   },
 };
 
-/** Maps a test's free-text subject tag ("Physics", "Maths", "Chemistry (JEE)") to a syllabus key. */
+export { NEET_SYLLABUS };
+
+/** Seed + stored-document id + version, per exam. */
+export const SYLLABUS_SEEDS: Record<SyllabusExam, { key: string; version: number; syllabus: Syllabus }> = {
+  jee: { key: SYLLABUS_KEY, version: SYLLABUS_VERSION, syllabus: JEE_SYLLABUS },
+  neet: { key: NEET_SYLLABUS_KEY, version: NEET_SYLLABUS_VERSION, syllabus: NEET_SYLLABUS },
+};
+
+/** An exam key (or anything else) → the exam whose syllabus applies, or null (no built-in syllabus). */
+export function toSyllabusExam(exam: unknown): SyllabusExam | null {
+  const t = String(exam ?? "").toLowerCase();
+  if (t.includes("neet")) return "neet";
+  if (t.includes("jee")) return "jee";
+  return null;
+}
+
+/** Maps a test's free-text subject tag ("Physics", "Maths", "Chemistry (JEE)", "Biology") to a syllabus key. */
 export function toSyllabusSubject(subject: string): SyllabusSubject | null {
   const s = subject.trim().toLowerCase();
   if (s.startsWith("phys")) return "Physics";
   if (s.startsWith("chem")) return "Chemistry";
   if (s.startsWith("math")) return "Mathematics";
+  if (s.startsWith("bot")) return "Botany";
+  if (s.startsWith("zoo")) return "Zoology";
+  if (s.startsWith("bio")) return "Biology";
   return null;
+}
+
+/** Chapters of one subject/class. "Biology" = Botany + Zoology. [] when this syllabus doesn't cover the subject. */
+export function chaptersFor(syllabus: Syllabus | null | undefined, subject: SyllabusSubject | null, cls: ClassLevel): SyllabusChapter[] {
+  if (!syllabus || !subject) return [];
+  if (subject === "Biology") return [...(syllabus.Botany?.[cls] ?? []), ...(syllabus.Zoology?.[cls] ?? [])];
+  return syllabus[subject]?.[cls] ?? [];
+}
+
+/** True when the syllabus has any chapters for this subject (so tags can be judged). */
+export function syllabusCovers(syllabus: Syllabus | null | undefined, subject: SyllabusSubject | null): boolean {
+  return chaptersFor(syllabus, subject, "11").length + chaptersFor(syllabus, subject, "12").length > 0;
+}
+
+// ─── Out of Syllabus ────────────────────────────────────────────────────────
+/** Chapter AND topic of any question whose tag isn't in the exam's syllabus. */
+export const OUT_OF_SYLLABUS = "Out of Syllabus";
+
+/** Case/punctuation/spacing-insensitive key ("Work, Energy and Power" = "Work Energy & Power"). */
+export function syllabusKey(s: string): string {
+  return s.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9φχμπ]/g, "");
+}
+
+export type SyllabusTagResult = {
+  classLevel?: ClassLevel;
+  chapter?: string;
+  topic?: string;
+  /** True when the chapter or topic was not in the syllabus and was replaced by "Out of Syllabus". */
+  outOfSyllabus: boolean;
+};
+
+/**
+ * Judges a question's chapter/topic tag against the syllabus (pure — used by
+ * the server on every save, and mirrored by the form's dropdowns).
+ *   • subject not covered / no chapter given → left untouched (can't judge; blank stays "Not yet tagged")
+ *   • chapter in the syllabus               → canonical chapter name + its class; topic canonicalised,
+ *                                             or "Out of Syllabus" if that topic isn't listed under it
+ *   • anything else                         → chapter and topic both "Out of Syllabus"
+ */
+export function classifySyllabusTag(
+  syllabus: Syllabus | null | undefined,
+  subjectText: string,
+  tag: { classLevel?: ClassLevel; chapter?: string; topic?: string },
+): SyllabusTagResult {
+  const subject = toSyllabusSubject(subjectText);
+  const chapter = tag.chapter?.trim() || undefined;
+  const topic = tag.topic?.trim() || undefined;
+  if (!syllabusCovers(syllabus, subject) || !chapter) return { classLevel: tag.classLevel, chapter, topic, outOfSyllabus: false };
+
+  const oos: SyllabusTagResult = { classLevel: undefined, chapter: OUT_OF_SYLLABUS, topic: OUT_OF_SYLLABUS, outOfSyllabus: true };
+  const want = syllabusKey(chapter);
+  if (want === syllabusKey(OUT_OF_SYLLABUS)) return oos;
+
+  for (const cls of ["11", "12"] as const) {
+    const hit = chaptersFor(syllabus, subject, cls).find(
+      (c) => syllabusKey(c.chapter) === want || (c.aliases ?? []).some((a) => syllabusKey(a) === want),
+    );
+    if (!hit) continue;
+    if (!topic) return { classLevel: cls, chapter: hit.chapter, topic: undefined, outOfSyllabus: false };
+    const t = hit.topics.find((x) => syllabusKey(x) === syllabusKey(topic));
+    return t
+      ? { classLevel: cls, chapter: hit.chapter, topic: t, outOfSyllabus: false }
+      : { classLevel: cls, chapter: hit.chapter, topic: OUT_OF_SYLLABUS, outOfSyllabus: true };
+  }
+  return oos;
 }

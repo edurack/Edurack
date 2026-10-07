@@ -1,6 +1,7 @@
 // Pure topic/chapter analysis for one finished attempt. No server imports —
 // server-functions/test-results.ts feeds it the attempt's graded results and
 // the matching `questions` documents (which carry chapter / topic / difficulty).
+import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
 import { MARKS_PER_QUESTION, wasAnswered, type AttemptResultLike } from "@/lib/attempt-rules";
 
 export type Priority = "high" | "medium" | "strong";
@@ -137,7 +138,8 @@ export function buildTopicAnalysis(
 
   const focus: FocusItem[] = subjects
     .flatMap((s) => s.chapters.map((c) => ({ s, c })))
-    .filter(({ c }) => c.priority !== "strong" && c.lostMarks > 0)
+    // "Out of Syllabus" isn't a chapter a student can study — never recommend it.
+    .filter(({ c }) => c.chapter !== OUT_OF_SYLLABUS && c.priority !== "strong" && c.lostMarks > 0)
     .sort((a, b) => b.c.lostMarks - a.c.lostMarks || a.c.scorePercent - b.c.scorePercent)
     .slice(0, 5)
     .map(({ s, c }) => ({
@@ -147,7 +149,7 @@ export function buildTopicAnalysis(
       lostMarks: c.lostMarks,
       scorePercent: c.scorePercent,
       weakTopics: c.topics
-        .filter((t) => t.lostMarks > 0 && t.topic !== "General")
+        .filter((t) => t.lostMarks > 0 && t.topic !== "General" && t.topic !== OUT_OF_SYLLABUS)
         .slice(0, 3)
         .map((t) => t.topic),
     }));

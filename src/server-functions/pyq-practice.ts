@@ -11,6 +11,7 @@
 //    from the network tab in one request.
 //  • Progress lives in its own collection (practiceProgress) and never touches
 //    testAttempts, leaderboards or ranks.
+import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
@@ -144,8 +145,8 @@ export const getPyqTree = createServerFn({ method: "GET" })
 
     const byName = (a: string, b: string) => {
       // The untagged bucket always sits last.
-      if (a === UNTAGGED_CHAPTER) return 1;
-      if (b === UNTAGGED_CHAPTER) return -1;
+      if (a === UNTAGGED_CHAPTER || a === OUT_OF_SYLLABUS) return 1;
+      if (b === UNTAGGED_CHAPTER || b === OUT_OF_SYLLABUS) return -1;
       if (a === GENERAL_TOPIC) return 1;
       if (b === GENERAL_TOPIC) return -1;
       return a.localeCompare(b);

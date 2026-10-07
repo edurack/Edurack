@@ -1,6 +1,7 @@
 import { ChevronRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UNTAGGED_CHAPTER, type PyqTree } from "@/lib/pyq-types";
+import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
 
 export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean };
 
@@ -63,7 +64,7 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
               <Row
                 key={c.chapter}
                 title={c.chapter}
-                muted={c.chapter === UNTAGGED_CHAPTER}
+                muted={c.chapter === UNTAGGED_CHAPTER || c.chapter === OUT_OF_SYLLABUS}
                 meta={`${c.count} question${c.count === 1 ? "" : "s"}${c.topics.length > 1 ? ` · ${c.topics.length} topics` : ""}`}
                 count={c.count}
                 attempted={c.attempted}

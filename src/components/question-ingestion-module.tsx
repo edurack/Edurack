@@ -10,7 +10,7 @@ import {
   saveAttemptRules,
 } from "@/server-functions/admin";
 import { ImageInsertField } from "./admin/image-insert-field";
-import { toSyllabusSubject, type ClassLevel, type Syllabus } from "@/lib/ncert-syllabus";
+import { OUT_OF_SYLLABUS, chaptersFor, toSyllabusExam, toSyllabusSubject, type ClassLevel, type Syllabus } from "@/lib/ncert-syllabus";
 import { ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 
 type AdminUser = { getIdToken: () => Promise<string> };
@@ -19,7 +19,7 @@ type DifficultyLevel = "Easy" | "Medium" | "Hard";
 type OptionKey = "A" | "B" | "C" | "D";
 type QuestionType = "mcq" | "integer";
 
-type BundleOption = { id: string; title: string };
+type BundleOption = { id: string; title: string; exam: string };
 
 // Carries everything the numbering/subject logic needs — not just id/name
 // like before, so the subject list and per-subject thresholds always come
@@ -111,10 +111,17 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // Set when the server replaced the tag with "Out of Syllabus" on the last save.
+  const [savedOutOfSyllabus, setSavedOutOfSyllabus] = useState(false);
 
   const selectedTest = tests?.find((t) => t.id === testId) ?? null;
   const syllabusSubject = subject ? toSyllabusSubject(subject) : null;
-  const chapterList = syllabusSubject && syllabus ? syllabus[syllabusSubject][classLevel] : [];
+  // The syllabus follows the selected bundle's exam (NEET bundles → NEET chapters, JEE → JEE).
+  const bundleExam = toSyllabusExam(bundles?.find((b) => b.id === bundleId)?.exam ?? "neet");
+  // Biology tests read Botany + Zoology together. A subject the exam's syllabus
+  // doesn't cover (e.g. Mathematics on NEET) has no chapters → free-text tagging.
+  const chapterList = syllabusSubject && syllabus ? chaptersFor(syllabus, syllabusSubject, classLevel) : [];
+  const hasSyllabus = chapterList.length > 0 || (!!syllabusSubject && !!syllabus && chaptersFor(syllabus, syllabusSubject, classLevel === "11" ? "12" : "11").length > 0);
   const topicList = chapterList.find((c) => c.chapter === chapter)?.topics ?? [];
   const subjectRules = (selectedTest?.attemptRules ?? []).filter((r) => r.subject === subject);
 
@@ -123,25 +130,33 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     (async () => {
       const token = await adminUser.getIdToken();
       const { bundles: rows } = await listBundles({ data: { token } });
-      setBundles(rows.map((b) => ({ id: b.id, title: b.title })));
+      setBundles(rows.map((b) => ({ id: b.id, title: b.title, exam: b.exam })));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUser]);
 
-  // ─── Load the syllabus once (seeded on the server the first time) ──────
+  // ─── Load the syllabus of the selected bundle's exam (seeded server-side on first use)
   useEffect(() => {
+    if (!bundleId) {
+      setSyllabus(null);
+      return;
+    }
+    let cancelled = false;
     (async () => {
       try {
         const token = await adminUser.getIdToken();
-        const { syllabus: s } = await getSyllabus({ data: { token } });
-        setSyllabus(s);
+        const { syllabus: s } = await getSyllabus({ data: { token, exam: bundleExam ?? undefined } });
+        if (!cancelled) setSyllabus(s);
       } catch {
-        // Non-fatal: chapter/topic fall back to free-text inputs.
-        setSyllabus(null);
+        // Non-fatal: chapter/topic fall back to free-text inputs (the server still checks them on save).
+        if (!cancelled) setSyllabus(null);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminUser]);
+  }, [adminUser, bundleId, bundleExam]);
 
   // ─── Load tests (with their real subjects + weightage) when bundle changes
   useEffect(() => {
@@ -232,14 +247,15 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     e.preventDefault();
     setError(null);
     setSuccess(false);
+    setSavedOutOfSyllabus(false);
 
     if (!bundleId) return setError("Select a parent bundle.");
     if (!testId) return setError("Select a test within that bundle.");
     if (!subject) return setError("Select a subject.");
     if (nextNumber === null) return setError("Still working out the question number — try again in a moment.");
-    if (syllabusSubject && syllabus) {
-      if (!chapter) return setError("Select the chapter this question belongs to.");
-      if (!topic) return setError("Select the topic this question belongs to.");
+    if (syllabusSubject && syllabus && hasSyllabus) {
+      if (!chapter) return setError("Select the chapter this question belongs to, or choose \"Out of Syllabus\".");
+      if (!topic) return setError("Select the topic this question belongs to, or choose \"Out of Syllabus\".");
     }
     if (!questionBody.trim()) return setError("Enter the question body.");
 
@@ -264,7 +280,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     setSaving(true);
     try {
       const token = await adminUser.getIdToken();
-      await createQuestion({
+      const saved = await createQuestion({
         data: {
           token,
           question: {
@@ -291,13 +307,14 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             difficulty,
             isPYQ,
             pyqYear: isPYQ ? pyqYear.trim() : undefined,
-            classLevel: syllabusSubject && chapter ? classLevel : undefined,
+            classLevel: syllabusSubject && chapter && chapter !== OUT_OF_SYLLABUS ? classLevel : undefined,
             chapter: chapter.trim() || undefined,
             topic: topic.trim() || undefined,
           },
         },
       });
       setSuccess(true);
+      setSavedOutOfSyllabus(saved.outOfSyllabus);
       setSubjectQs((prev) => [...prev, { questionNo: nextNumber, type: questionType }]);
       resetQuestionFields();
       // Advance the counter locally for fast serial entry — no need to
@@ -557,7 +574,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
 
           <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
             {/* ── Chapter & topic ────────────────────────────────────── */}
-            {syllabusSubject && syllabus ? (
+            {syllabusSubject && syllabus && hasSyllabus ? (
               <div className="space-y-3">
                 <div>
                   <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
@@ -588,7 +605,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                       value={chapter}
                       onChange={(e) => {
                         setChapter(e.target.value);
-                        setTopic("");
+                        setTopic(e.target.value === OUT_OF_SYLLABUS ? OUT_OF_SYLLABUS : "");
                       }}
                       className={inputClass + " appearance-none"}
                     >
@@ -598,13 +615,14 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                           {c.chapter}
                         </option>
                       ))}
+                      <option value={OUT_OF_SYLLABUS}>{OUT_OF_SYLLABUS}</option>
                     </select>
                   </ClayField>
                   <ClayField label="Topic">
                     <select
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
-                      disabled={!chapter}
+                      disabled={!chapter || chapter === OUT_OF_SYLLABUS}
                       className={inputClass + " appearance-none disabled:opacity-50"}
                     >
                       <option value="">{chapter ? "Select topic" : "Select a chapter first"}</option>
@@ -613,10 +631,13 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
                           {t}
                         </option>
                       ))}
+                      {chapter && <option value={OUT_OF_SYLLABUS}>{OUT_OF_SYLLABUS}</option>}
                     </select>
                   </ClayField>
                 </div>
-                <p className="text-xs text-foreground/40">Chapter and topic stay selected after saving, so you can enter a whole chapter in a row.</p>
+                <p className="text-xs text-foreground/40">
+                  Chapter and topic stay selected after saving, so you can enter a whole chapter in a row. Anything that isn't in this exam's syllabus is saved as "Out of Syllabus" automatically.
+                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -802,6 +823,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           {success && (
             <p className="mt-4 rounded-2xl bg-[var(--mint-soft)]/60 px-4 py-2 text-xs font-medium text-foreground">
               Question saved. Numbering advanced automatically for the next one.
+              {savedOutOfSyllabus && ' It was not in the syllabus, so it was marked "Out of Syllabus".'}
             </p>
           )}
 

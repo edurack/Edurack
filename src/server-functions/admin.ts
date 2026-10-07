@@ -3,7 +3,8 @@ import { sendMail, sendMailBatch } from "@/lib/mailer";
 import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import type { AttemptRule } from "@/lib/attempt-rules";
-import { JEE_SYLLABUS, SYLLABUS_KEY, SYLLABUS_VERSION, type Syllabus } from "@/lib/ncert-syllabus";
+import { SYLLABUS_SEEDS, classifySyllabusTag, toSyllabusExam, type Syllabus, type SyllabusExam, type ClassLevel } from "@/lib/ncert-syllabus";
+import { createTtlCache } from "@/lib/simple-cache";
 import type { ExamKey, Track } from "@/lib/admin-types";
 import { PLATFORM_COMMISSION_PERCENT, DEFAULT_BATCH_PROMOTION_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
 
@@ -498,13 +499,17 @@ export const createQuestion = createServerFn({ method: "POST" })
     }
 
     const db = await getDb();
+    // Anything outside the exam's syllabus is saved as "Out of Syllabus" — automatically.
+    const tag = await applySyllabusCheck(db, q);
     const result = await db.collection("questions").insertOne({
       ...data.question,
-      chapter: q.chapter?.trim() || undefined,
-      topic: q.topic?.trim() || undefined,
+      classLevel: tag.classLevel,
+      chapter: tag.chapter,
+      topic: tag.topic,
+      ...(tag.outOfSyllabus ? { outOfSyllabus: true } : {}),
       createdAt: new Date(),
     });
-    return { ok: true, id: String(result.insertedId) };
+    return { ok: true, id: String(result.insertedId), outOfSyllabus: tag.outOfSyllabus, chapter: tag.chapter, topic: tag.topic };
   });
 
 export const listQuestionsForTestSubject = createServerFn({ method: "GET" })
@@ -571,9 +576,26 @@ export const updateQuestion = createServerFn({ method: "POST" })
       }
     }
 
+    const patch: Record<string, unknown> = { ...data.question };
+    const unset: Record<string, ""> = {};
+    // Re-check the syllabus whenever the tag (or the subject it's judged under) changes.
+    if (["chapter", "topic", "classLevel", "subject"].some((k) => k in data.question)) {
+      const tag = await applySyllabusCheck(db, {
+        bundleId: (data.question.bundleId ?? existing.bundleId) as string | undefined,
+        subject: (data.question.subject ?? existing.subject) as string,
+        classLevel: ("classLevel" in data.question ? data.question.classLevel : existing.classLevel) as ClassLevel | undefined,
+        chapter: ("chapter" in data.question ? data.question.chapter : existing.chapter) as string | undefined,
+        topic: ("topic" in data.question ? data.question.topic : existing.topic) as string | undefined,
+      });
+      for (const k of ["classLevel", "chapter", "topic"] as const) {
+        if (tag[k] === undefined) { delete patch[k]; unset[k] = ""; } else patch[k] = tag[k];
+      }
+      if (tag.outOfSyllabus) patch.outOfSyllabus = true;
+      else unset.outOfSyllabus = "";
+    }
     await db.collection("questions").updateOne(
       { _id: new ObjectId(data.id) },
-      { $set: { ...data.question } },
+      { $set: patch, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
     );
     return { ok: true };
   });
@@ -613,22 +635,64 @@ export const listQuestionsForTest = createServerFn({ method: "GET" })
   });
 
 
-// ─── Syllabus (NCERT chapters + topics) ─────────────────────────────────────
-// Seeded from lib/ncert-syllabus.ts exactly once; after that the stored copy
-// is the single source of truth, so the same chapter/topic lists are reused by
-// every ingestion session.
+// ─── Syllabus (NCERT chapters + topics, per exam) ───────────────────────────
+// Each exam (JEE, NEET) is seeded from lib/ncert-syllabus.ts / neet-syllabus.ts
+// into its own `syllabus` document. After that the stored copy is the single
+// source of truth, so the same chapter/topic lists are reused by every
+// ingestion session — and by the Out-of-Syllabus check on every question save.
+// A seed with a higher version replaces the stored copy (that is how the list
+// gets updated); same version → the stored copy (and any edits) is kept.
+const syllabusCache = createTtlCache<Syllabus>(60_000);
+
+async function loadSyllabus(db: Awaited<ReturnType<typeof getDb>>, exam: SyllabusExam): Promise<Syllabus> {
+  const hit = syllabusCache.get(exam);
+  if (hit) return hit;
+  const seed = SYLLABUS_SEEDS[exam];
+  const col = db.collection<{ _id: string; version: number; syllabus: Syllabus }>("syllabus");
+  let doc = await col.findOne({ _id: seed.key });
+  if (!doc || (doc.version ?? 0) < seed.version) {
+    doc = { _id: seed.key, version: seed.version, syllabus: seed.syllabus };
+    await col.replaceOne({ _id: seed.key }, doc, { upsert: true });
+  }
+  syllabusCache.set(exam, doc.syllabus);
+  return doc.syllabus;
+}
+
+/** The exam a bundle belongs to — old bundles have no `exam` field and count as NEET, like the rest of the app. */
+async function examForBundleId(db: Awaited<ReturnType<typeof getDb>>, bundleId: string | undefined): Promise<SyllabusExam | null> {
+  if (!bundleId || !/^[a-f0-9]{24}$/i.test(bundleId)) return null;
+  const { ObjectId } = await import("mongodb");
+  const b = await db.collection("bundles").findOne({ _id: new ObjectId(bundleId) }, { projection: { exam: 1 } });
+  if (!b) return null;
+  return toSyllabusExam(b.exam ?? "neet");
+}
+
+/**
+ * Applies the Out-of-Syllabus rule to a question about to be saved: if its
+ * chapter/topic isn't in the bundle's exam syllabus it is stored as
+ * "Out of Syllabus" (with outOfSyllabus: true) instead. Exams without a
+ * syllabus, and subjects the syllabus doesn't cover, are left as typed.
+ */
+async function applySyllabusCheck(
+  db: Awaited<ReturnType<typeof getDb>>,
+  q: { bundleId?: string; subject: string; classLevel?: ClassLevel; chapter?: string; topic?: string },
+) {
+  const exam = await examForBundleId(db, q.bundleId);
+  if (!exam) return { classLevel: q.classLevel, chapter: q.chapter?.trim() || undefined, topic: q.topic?.trim() || undefined, outOfSyllabus: false };
+  const syllabus = await loadSyllabus(db, exam);
+  return classifySyllabusTag(syllabus, q.subject, q);
+}
+
 export const getSyllabus = createServerFn({ method: "GET" })
-  .validator((data: { token: string }) => data)
+  .validator((data: { token: string; exam?: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    // No exam given → JEE, which is what this endpoint served before NEET existed.
+    const exam = data.exam === undefined ? "jee" : toSyllabusExam(data.exam);
+    // CUET / IPMAT etc.: no built-in syllabus → empty, the form falls back to free-text tags.
+    if (!exam) return { syllabus: {} as Syllabus, exam: null };
     const db = await getDb();
-    const col = db.collection<{ _id: string; version: number; syllabus: Syllabus }>("syllabus");
-    let doc = await col.findOne({ _id: SYLLABUS_KEY });
-    if (!doc) {
-      doc = { _id: SYLLABUS_KEY, version: SYLLABUS_VERSION, syllabus: JEE_SYLLABUS };
-      await col.updateOne({ _id: SYLLABUS_KEY }, { $setOnInsert: doc }, { upsert: true });
-    }
-    return { syllabus: doc.syllabus as Syllabus };
+    return { syllabus: await loadSyllabus(db, exam), exam };
   });
 
 // ─── "Attempt any N of M" groups ────────────────────────────────────────────
