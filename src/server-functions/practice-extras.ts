@@ -29,6 +29,7 @@ import {
   chapterOr,
   displayExpr,
   eligibleBundleIds,
+  ensureQuestionIndexes,
   examForAttempt,
   loadOwnedAttempt,
   practiceKeysFor,
@@ -48,7 +49,6 @@ import {
   type NotebookSummary,
   type OptionKey,
   type PyqList,
-  type PyqStatus,
   type SessionKind,
   type TodaySummary,
   type UpsellBundle,
@@ -168,12 +168,11 @@ export const getNotebookSummary = createServerFn({ method: "GET" })
 
 // A ready-made session: today's PYQ, revision that's due, mistakes, or bookmarks.
 export const listPyqSession = createServerFn({ method: "GET" })
-  .validator(
-    (data: { token: string; kind: SessionKind; difficulty?: Difficulty; year?: string; status?: PyqStatus | "unsolved" }) => data,
-  )
+  .validator((data: { token: string; kind: SessionKind; difficulty?: Difficulty }) => data)
   .handler(async ({ data }): Promise<PyqList> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
+    await ensureQuestionIndexes(db);
     const uid = decoded.uid;
     const now = new Date();
     const col = db.collection("practiceProgress");
@@ -202,12 +201,10 @@ export const listPyqSession = createServerFn({ method: "GET" })
     const docs = await db.collection("questions").find(match, { projection: QUESTION_PROJECTION }).toArray();
     const order = new Map(ids.map((id, i) => [id, i]));
     docs.sort((a, b) => (order.get(String(a._id)) ?? 0) - (order.get(String(b._id)) ?? 0)); // keep the session's own order
-    let questions = await buildQuestions(db, uid, docs);
+    const questions = await buildQuestions(db, uid, docs);
 
+    // "year" and "status" are applied client-side — see listPyqQuestions in pyq-practice.ts.
     const years = [...new Set(questions.map((q) => q.source.year).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
-    if (data.year) questions = questions.filter((q) => q.source.year === data.year);
-    if (data.status === "unsolved") questions = questions.filter((q) => q.status !== "correct");
-    else if (data.status) questions = questions.filter((q) => q.status === data.status);
     return { questions: questions.slice(0, MAX_SESSION), years, total: questions.length };
   });
 
@@ -270,6 +267,7 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
     await ensureExtrasIndexes(db);
+    await ensureQuestionIndexes(db);
     const uid = decoded.uid;
     const now = new Date();
     const col = db.collection("pyqDrills");
@@ -408,6 +406,7 @@ export const getWeakUpsell = createServerFn({ method: "GET" })
   .handler(async ({ data }): Promise<WeakUpsell> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
+    await ensureQuestionIndexes(db);
     const { ObjectId } = await import("mongodb");
     const uid = decoded.uid;
     const attempt = await loadOwnedAttempt(db, uid, data.attemptId);

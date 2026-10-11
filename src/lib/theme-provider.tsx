@@ -1,65 +1,47 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, type ReactNode } from "react";
 
-type Theme = "light" | "dark" | "system";
-type ResolvedTheme = "light" | "dark";
-
+// The site is light-only, always. We deliberately ignore the visitor's OS
+// dark-mode setting and any previously saved "edurackin-theme" value, because
+// the whole product (landing page, PYQ practice, tests) is designed and
+// checked in light. The `.dark` CSS tokens in styles.css stay in the file but
+// are never switched on.
+//
+// The provider/hook API is kept so existing `useTheme()` callers don't break.
 type ThemeProviderState = {
-  theme: Theme;
-  resolvedTheme: ResolvedTheme;
-  setTheme: (theme: Theme) => void;
+  theme: "light";
+  resolvedTheme: "light";
 };
+
+const ThemeProviderContext = createContext<ThemeProviderState>({ theme: "light", resolvedTheme: "light" });
 
 const STORAGE_KEY = "edurackin-theme";
 
-const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undefined);
-
-function getSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyTheme(theme: Theme): ResolvedTheme {
-  const resolved = theme === "system" ? getSystemTheme() : theme;
+function pinLight() {
   const root = document.documentElement;
-  root.classList.toggle("dark", resolved === "dark");
-  root.style.colorScheme = resolved;
-  return resolved;
+  root.classList.remove("dark");
+  root.style.colorScheme = "light";
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "system";
-    return (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? "system";
-  });
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    typeof window === "undefined" ? "light" : applyTheme(theme)
-  );
+  useLayoutEffect(() => {
+    pinLight();
+    try {
+      // Drop any old saved choice (e.g. "dark" or "system") so it can never come back.
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // storage can be blocked; nothing to clean up then
+    }
+    // Belt and braces: if anything re-adds the `dark` class, strip it again.
+    const observer = new MutationObserver(() => {
+      if (document.documentElement.classList.contains("dark")) pinLight();
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
-  useEffect(() => {
-    setResolvedTheme(applyTheme(theme));
-    if (theme !== "system") return;
-
-    // Live-follow OS theme changes while in "system" mode
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => setResolvedTheme(applyTheme("system"));
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [theme]);
-
-  function setTheme(next: Theme) {
-    localStorage.setItem(STORAGE_KEY, next);
-    setThemeState(next);
-  }
-
-  return (
-    <ThemeProviderContext.Provider value={{ theme, resolvedTheme, setTheme }}>
-      {children}
-    </ThemeProviderContext.Provider>
-  );
+  return <ThemeProviderContext.Provider value={{ theme: "light", resolvedTheme: "light" }}>{children}</ThemeProviderContext.Provider>;
 }
 
 export function useTheme() {
-  const ctx = useContext(ThemeProviderContext);
-  if (!ctx) throw new Error("useTheme must be used within a ThemeProvider");
-  return ctx;
+  return useContext(ThemeProviderContext);
 }

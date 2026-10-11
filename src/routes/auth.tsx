@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconLock as Lock, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
 import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User as FirebaseUser } from "firebase/auth";
@@ -11,8 +11,11 @@ import { recordSession } from "@/server-functions/sessions";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
 
 export const Route = createFileRoute("/auth")({
-  validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup" } => ({
+  validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
     tab: search.tab === "signup" ? "signup" : search.tab === "signin" ? "signin" : undefined,
+    // Where to send the student after they sign in (e.g. back to the question
+    // they were reading). Same-site paths only: "/x" yes, "//evil.com" and "https://..." no.
+    redirect: typeof search.redirect === "string" && /^\/(?![\/\\])/.test(search.redirect) ? search.redirect : undefined,
   }),
   head: () => ({
     meta: [
@@ -70,11 +73,19 @@ async function completeLogin(user: FirebaseUser, provider: "password" | "google.
 
 function AuthPage() {
   const { user, loading } = useAuth();
-  const initialTab = Route.useSearch().tab;
+  const { tab: initialTab, redirect: redirectTo } = Route.useSearch();
   const [tab, setTab] = useState<Tab>(initialTab ?? "signin");
   const [stage, setStage] = useState<Stage>("checking");
   const [pendingEmail, setPendingEmail] = useState("");
   const navigate = useNavigate();
+  const router = useRouter();
+
+  // After sign-in: back to the page that sent the student here, else the dashboard.
+  // useCallback so the sign-in effect below doesn't re-run on every render.
+  const goAfterLogin = useCallback(() => {
+    if (redirectTo) router.history.push(redirectTo);
+    else navigate({ to: "/dashboard" });
+  }, [redirectTo, router, navigate]);
 
   useEffect(() => {
     if (loading) return;
@@ -107,7 +118,7 @@ function AuthPage() {
         if (incomplete) {
           setStage("onboarding");
         } else {
-          navigate({ to: "/dashboard" });
+          goAfterLogin();
         }
       } catch (err) {
         console.error("Auth redirect error:", err);
@@ -118,7 +129,7 @@ function AuthPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, loading, navigate]);
+  }, [user, loading, goAfterLogin]);
 
   async function handleVerified() {
     const current = auth.currentUser;
@@ -131,7 +142,7 @@ function AuthPage() {
     if (incomplete) {
       setStage("onboarding");
     } else {
-      navigate({ to: "/dashboard" });
+      goAfterLogin();
     }
   }
 
@@ -226,7 +237,7 @@ function AuthPage() {
             <AuthCard
               tab={tab}
               setTab={setTab}
-              onSignedIn={() => navigate({ to: "/dashboard" })}
+              onSignedIn={goAfterLogin}
               onSignedUp={() => setStage("onboarding")}
               onNeedsVerification={(email) => {
                 setPendingEmail(email);
@@ -242,7 +253,7 @@ function AuthPage() {
             />
           )}
           {stage === "onboarding" && (
-            <OnboardingCard onComplete={() => navigate({ to: "/dashboard" })} />
+            <OnboardingCard onComplete={goAfterLogin} />
           )}
         </div>
 

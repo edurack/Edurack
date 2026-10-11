@@ -4,6 +4,7 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/mongo";
+import { listSitemapQuestions } from "@/lib/pyq-public-server";
 
 const SITE_URL = "https://www.edurack.in";
 
@@ -14,6 +15,7 @@ const SITE_URL = "https://www.edurack.in";
 const staticRoutes: { path: string; lastmod: string; priority: number; changefreq?: string }[] = [
   { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
+  { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
   { path: "/join-intern", lastmod: "2026-09-28", priority: 0.5, changefreq: "monthly" },
@@ -50,6 +52,21 @@ function urlEntry(loc: string, lastmod: string, priority: number, changefreq?: s
     `    <lastmod>${lastmod}</lastmod>`,
     changefreq ? `    <changefreq>${changefreq}</changefreq>` : "",
     `    <priority>${priority.toFixed(1)}</priority>`,
+    "  </url>",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// Public question pages (/question/...) have no reliable edit date on the
+// question document, so lastmod is left out when we don't know it rather than
+// being faked with today's date (which would change on every request).
+function questionEntry(loc: string, lastmod: string | null): string {
+  return [
+    "  <url>",
+    `    <loc>${escapeXml(loc)}</loc>`,
+    lastmod ? `    <lastmod>${lastmod}</lastmod>` : "",
+    "    <priority>0.5</priority>",
     "  </url>",
   ]
     .filter(Boolean)
@@ -96,6 +113,12 @@ export const Route = createFileRoute("/sitemap.xml")({
             )
             .toArray();
 
+          // Indexable PYQ pages. A failure here must not take the rest of the sitemap down.
+          const questionRows = await listSitemapQuestions(db).catch((err) => {
+            console.error("[sitemap] question urls failed:", err);
+            return [];
+          });
+
           const staticEntries = staticRoutes.map((r) =>
             urlEntry(`${SITE_URL}${r.path}`, r.lastmod, r.priority, r.changefreq),
           );
@@ -127,6 +150,8 @@ export const Route = createFileRoute("/sitemap.xml")({
             ),
           );
 
+          const questionEntries = questionRows.map((r) => questionEntry(`${SITE_URL}${r.path}`, r.lastmod));
+
           const xml = [
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -134,6 +159,7 @@ export const Route = createFileRoute("/sitemap.xml")({
             ...mentorEntries,
             ...mentorshipBatchEntries,
             ...blogEntries,
+            ...questionEntries,
             "</urlset>",
           ].join("\n");
 

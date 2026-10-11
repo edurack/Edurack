@@ -157,9 +157,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "format-detection", content: "telephone=no" },
       { name: "referrer", content: "strict-origin-when-cross-origin" },
 
-      // Browser UI colour, matched to light/dark
-      { name: "theme-color", content: "#ffffff", media: "(prefers-color-scheme: light)" },
-      { name: "theme-color", content: "#0b0b0b", media: "(prefers-color-scheme: dark)" },
+      // Browser UI colour. The site is light-only, so there is no dark variant.
+      { name: "theme-color", content: "#ffffff" },
+      { name: "color-scheme", content: "light" },
 
       // Open Graph (WhatsApp, Facebook, LinkedIn, Telegram, Slack…)
       { property: "og:site_name", content: SITE_NAME },
@@ -195,11 +195,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-const themeInitScript = `(function(){try{var s=localStorage.getItem('edurackin-theme');var t=(s==='light'||s==='dark')?s:'system';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;document.documentElement.classList.toggle('dark',r==='dark');document.documentElement.style.colorScheme=r;}catch(e){}})();`;
+const themeInitScript = `(function(){try{document.documentElement.classList.remove('dark');document.documentElement.style.colorScheme='light';}catch(e){}})();`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en-IN">
+    <html lang="en-IN" style={{ colorScheme: "light" }}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <HeadContent />

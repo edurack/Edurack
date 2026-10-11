@@ -71,17 +71,17 @@ export const Route = createFileRoute("/")({
   // WebSite nodes __root.tsx already sets for every page.
   head: () =>
     pageHead({
-      title: "Edurack: Mock Tests, Mentors & Batches for NEET, JEE, CUET",
+      title: "NEET PYQs 2020-2026: Chapter-wise CBT Practice | Edurack",
       rawTitle: true,
       path: "/",
       description:
-        "Practice with real exam-style CBT mock tests, learn from mentors reviewed by our team and join live batches for NEET, JEE, CUET and IPMAT — with deep analytics on every attempt.",
+        "Practice every NEET UG previous year question from 2020 to 2026, chapter-wise and topic-wise, in real CBT mode with detailed solutions. Free.",
       jsonLd: {
         "@context": "https://schema.org",
         "@type": "WebPage",
         "@id": "https://www.edurack.in/#webpage",
         url: "https://www.edurack.in/",
-        name: "Edurack: Mock Tests, Mentors & Batches for NEET, JEE, CUET",
+        name: "NEET PYQs 2020-2026: Chapter-wise CBT Practice | Edurack",
         isPartOf: { "@id": "https://www.edurack.in/#website" },
         about: { "@id": "https://www.edurack.in/#organization" },
         mainEntity: { "@id": "https://www.edurack.in/#organization" },
@@ -533,7 +533,7 @@ function SimulatorSection() {
             <h3 className="font-display text-3xl tracking-tight sm:text-4xl"><span className="font-light">Your mock doesn't end</span> <span className="font-extrabold">when you submit.</span></h3>
             <p className="mt-4 max-w-md text-muted-foreground">See where you lose marks and what to work on next, then get matched with someone who can help.</p>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Link to="/simulator/live" className={PREMIUM_BTN}>Take a free mock <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/simulator/live" className={PREMIUM_BTN}>Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
               <a href="#mentors" className={GHOST_BTN}>Find a mentor</a>
             </div>
           </Rise>
@@ -752,9 +752,9 @@ function FinalCta() {
     <section className="py-20 sm:py-28">
       <Rise className={`${WRAP} text-center`}>
         <h2 className="font-display text-5xl leading-[1.02] tracking-tight sm:text-7xl"><span className="block font-light">Stop guessing.</span><span className="block font-extrabold">Start fixing.</span></h2>
-        <p className="mx-auto mt-5 max-w-md text-lg text-muted-foreground">Your first mock is free. See exactly where your marks go.</p>
+        <p className="mx-auto mt-5 max-w-md text-lg text-muted-foreground">Practise every NEET PYQ free, then see exactly where your marks go.</p>
         <div className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
-          <Link to="/simulator/live" className={PREMIUM_BTN}>Take a free mock <ArrowRight className="h-4 w-4" /></Link>
+          <Link to="/simulator/live" className={PREMIUM_BTN}>Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
           <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>Create free account</Link>
         </div>
       </Rise>

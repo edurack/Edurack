@@ -166,3 +166,6 @@ export type QuestionReportGroup = {
     where: string;
   } | null;
 };
+
+/** How many PYQs a logged-out visitor can try before we ask them to sign up (also the per-chapter cap served to guests). */
+export const GUEST_PYQ_LIMIT = 5;

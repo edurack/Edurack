@@ -11,22 +11,21 @@
 //    from the network tab in one request.
 //  • Progress lives in its own collection (practiceProgress) and never touches
 //    testAttempts, leaderboards or ranks.
-import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
-import { createTtlCache } from "@/lib/simple-cache";
 import {
-  type Db,
   QUESTION_PROJECTION,
+  assembleTree,
   buildQuestions,
   chapterOr,
-  displayExpr,
   eligibleBundleIds,
   ensureProgressIndexes,
+  ensureQuestionIndexes,
   examForAttempt,
   keyExpr,
   loadOwnedAttempt,
+  loadTreeRows,
   practiceKeysFor,
   pyqMatch,
   resolveExam,
@@ -44,7 +43,6 @@ import {
   type PyqAnswer,
   type PyqCheckResult,
   type PyqList,
-  type PyqStatus,
   type PyqTree,
   type WeakPyqSummary,
 } from "@/lib/pyq-types";
@@ -56,12 +54,6 @@ async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
 }
 
-// ─── Public (same-for-everyone) data is cached; per-user data never is ─────
-const treeCache = createTtlCache<TreeRow[]>(10 * 60_000); // keyed by exam
-
-type Db = Awaited<ReturnType<typeof getDb>>;
-type TreeRow = { subject: string; chapter: string; topic: string; chapterKey: string; topicKey: string; count: number };
-
 // ─── Browse tree with this student's progress ──────────────────────────────
 export const getPyqTree = createServerFn({ method: "GET" })
   .validator((data: { token: string; exam?: string }) => data)
@@ -69,39 +61,9 @@ export const getPyqTree = createServerFn({ method: "GET" })
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
     await ensureProgressIndexes(db);
+    await ensureQuestionIndexes(db);
     const exam = await resolveExam(db, decoded.uid, data.exam);
-    const treeKey = exam ?? "all";
-
-    let rows = treeCache.get(treeKey);
-    if (!rows) {
-      const agg = await db
-        .collection("questions")
-        .aggregate([
-          { $match: await pyqMatch(db, exam) },
-          {
-            $group: {
-              _id: {
-                subject: "$subject",
-                chapterKey: keyExpr("chapter", UNTAGGED_CHAPTER),
-                topicKey: keyExpr("topic", GENERAL_TOPIC),
-              },
-              chapter: { $first: displayExpr("chapter", UNTAGGED_CHAPTER) },
-              topic: { $first: displayExpr("topic", GENERAL_TOPIC) },
-              count: { $sum: 1 },
-            },
-          },
-        ])
-        .toArray();
-      rows = agg.map((a) => ({
-        subject: a._id.subject as string,
-        chapterKey: a._id.chapterKey as string,
-        topicKey: a._id.topicKey as string,
-        chapter: a.chapter as string,
-        topic: a.topic as string,
-        count: a.count as number,
-      }));
-      treeCache.set(treeKey, rows);
-    }
+    const rows = await loadTreeRows(db, exam);
 
     // Per-student progress (never cached).
     const prog = await db
@@ -121,47 +83,7 @@ export const getPyqTree = createServerFn({ method: "GET" })
       prog.map((p) => [`${p._id.subject}|${p._id.chapterKey}|${p._id.topicKey}`, { attempted: p.attempted as number, correct: p.correct as number }]),
     );
 
-    const subjects = new Map<string, PyqTree["subjects"][number]>();
-    for (const r of rows) {
-      const p = progMap.get(`${r.subject}|${r.chapterKey}|${r.topicKey}`) ?? { attempted: 0, correct: 0 };
-      // Progress can outlive a deleted question; never show more than exists.
-      const attempted = Math.min(p.attempted, r.count);
-      const correct = Math.min(p.correct, r.count);
-
-      const s = subjects.get(r.subject) ?? { subject: r.subject, count: 0, attempted: 0, correct: 0, chapters: [] };
-      subjects.set(r.subject, s);
-      let c = s.chapters.find((x) => x.chapter.toLowerCase() === r.chapter.toLowerCase());
-      if (!c) {
-        c = { chapter: r.chapter, count: 0, attempted: 0, correct: 0, topics: [] };
-        s.chapters.push(c);
-      }
-      c.topics.push({ topic: r.topic, count: r.count, attempted, correct });
-      for (const n of [c, s]) {
-        n.count += r.count;
-        n.attempted += attempted;
-        n.correct += correct;
-      }
-    }
-
-    const byName = (a: string, b: string) => {
-      // The untagged bucket always sits last.
-      if (a === UNTAGGED_CHAPTER || a === OUT_OF_SYLLABUS) return 1;
-      if (b === UNTAGGED_CHAPTER || b === OUT_OF_SYLLABUS) return -1;
-      if (a === GENERAL_TOPIC) return 1;
-      if (b === GENERAL_TOPIC) return -1;
-      return a.localeCompare(b);
-    };
-    const out = Array.from(subjects.values()).sort((a, b) => a.subject.localeCompare(b.subject));
-    for (const s of out) {
-      s.chapters.sort((a, b) => byName(a.chapter, b.chapter));
-      for (const c of s.chapters) c.topics.sort((a, b) => byName(a.topic, b.topic));
-    }
-    return {
-      exam,
-      subjects: out,
-      totalQuestions: out.reduce((n, s) => n + s.count, 0),
-      totalCorrect: out.reduce((n, s) => n + s.correct, 0),
-    };
+    return assembleTree(rows, progMap, exam);
   });
 
 // ─── Resolve "JEE Mains 2022 29 June Shift 2" for a set of questions ───────
@@ -174,14 +96,13 @@ export const listPyqQuestions = createServerFn({ method: "GET" })
       chapter: string;
       topic?: string;
       difficulty?: Difficulty;
-      year?: string;
-      status?: PyqStatus | "unsolved";
       exam?: string;
     }) => data,
   )
   .handler(async ({ data }): Promise<PyqList> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
+    await ensureQuestionIndexes(db);
     const exam = await resolveExam(db, decoded.uid, data.exam);
 
     const and: Record<string, unknown>[] = [
@@ -200,11 +121,10 @@ export const listPyqQuestions = createServerFn({ method: "GET" })
 
     let questions = await buildQuestions(db, decoded.uid, docs);
 
+    // "year" and "status" (the paper-year and solved/wrong chips) don't change
+    // this match at all — they're applied client-side instead, so flipping them
+    // doesn't trigger a brand-new (and expensive) fetch. See pyq-practice.tsx.
     const years = [...new Set(questions.map((q) => q.source.year).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
-
-    if (data.year) questions = questions.filter((q) => q.source.year === data.year);
-    if (data.status === "unsolved") questions = questions.filter((q) => q.status !== "correct");
-    else if (data.status) questions = questions.filter((q) => q.status === data.status);
 
     // Newest paper first; stable within a paper.
     questions = questions
@@ -297,12 +217,11 @@ export const getWeakPyqSummary = createServerFn({ method: "GET" })
 // The mixed practice session itself: PYQs from the weak chapters, interleaved,
 // unseen questions first. Same no-answers-in-the-list rule as everywhere else.
 export const listWeakPyqQuestions = createServerFn({ method: "GET" })
-  .validator(
-    (data: { token: string; attemptId: string; difficulty?: Difficulty; year?: string; status?: PyqStatus | "unsolved" }) => data,
-  )
+  .validator((data: { token: string; attemptId: string; difficulty?: Difficulty }) => data)
   .handler(async ({ data }): Promise<PyqList> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
+    await ensureQuestionIndexes(db);
     const attempt = await loadOwnedAttempt(db, decoded.uid, data.attemptId);
     const { focus } = await loadAttemptTopicAnalysis(db, attempt);
     const exam = await examForAttempt(db, decoded.uid, attempt);
@@ -314,10 +233,9 @@ export const listWeakPyqQuestions = createServerFn({ method: "GET" })
     const docs = await db.collection("questions").find(match, { projection: QUESTION_PROJECTION }).sort({ _id: 1 }).limit(1000).toArray();
     let questions = await buildQuestions(db, decoded.uid, docs);
 
+    // "year" and "status" are applied client-side (see listPyqQuestions above);
+    // pickWeakQuestions below already ranks unsolved questions first regardless.
     const years = [...new Set(questions.map((q) => q.source.year).filter((y): y is string => !!y))].sort((a, b) => b.localeCompare(a));
-    if (data.year) questions = questions.filter((q) => q.source.year === data.year);
-    if (data.status === "unsolved") questions = questions.filter((q) => q.status !== "correct");
-    else if (data.status) questions = questions.filter((q) => q.status === data.status);
 
     // Newest paper first before picking, so "first 12 per chapter" means the most recent ones.
     questions = questions

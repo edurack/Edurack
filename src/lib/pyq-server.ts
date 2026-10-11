@@ -7,13 +7,16 @@ import type { getDb } from "@/lib/mongo";
 import { createTtlCache } from "@/lib/simple-cache";
 import { buildPyqSource } from "@/lib/pyq-label";
 import { EXAM_KEYS, type ExamKey } from "@/lib/admin-types";
+import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
 import {
   GENERAL_TOPIC,
+  GUEST_PYQ_LIMIT,
   UNTAGGED_CHAPTER,
   type Difficulty,
   type OptionKey,
   type PyqQuestion,
   type PyqStatus,
+  type PyqTree,
 } from "@/lib/pyq-types";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
@@ -33,6 +36,29 @@ export async function ensureProgressIndexes(db: Db) {
     const c = db.collection("practiceProgress");
     await c.createIndex({ uid: 1, questionId: 1 }, { unique: true });
     await c.createIndex({ uid: 1, subject: 1 });
+  } catch {
+    // Index creation is best-effort; reads/writes work without it.
+  }
+}
+
+let questionIndexesEnsured = false;
+
+/**
+ * Every PYQ list endpoint matches on `isPYQ` + `bundleId` (+ usually `subject`),
+ * then narrows further with an `$expr` over chapter/topic that can't use an
+ * index on its own. Without these, Mongo has no way to use an index at all and
+ * falls back to a full collection scan of `questions` on every request — the
+ * main cause of slow/frozen PYQ practice loads. These let it jump straight to
+ * the matching subject within the eligible bundles before evaluating the
+ * (unindexable) chapter/topic expression on a much smaller candidate set.
+ */
+export async function ensureQuestionIndexes(db: Db) {
+  if (questionIndexesEnsured) return;
+  questionIndexesEnsured = true;
+  try {
+    const c = db.collection("questions");
+    await c.createIndex({ isPYQ: 1, bundleId: 1, subject: 1 });
+    await c.createIndex({ bundleId: 1, isPYQ: 1 });
   } catch {
     // Index creation is best-effort; reads/writes work without it.
   }
@@ -255,4 +281,129 @@ export async function weakChapterAvailability(
     const n = availMap.get(key(f.subject, f.chapter)) ?? 0;
     return { subject: f.subject, chapter: f.chapter, available: n, solved: Math.min(solvedMap.get(key(f.subject, f.chapter)) ?? 0, n) };
   });
+}
+
+// ─── Browse tree (shared by the signed-in and the guest endpoints) ─────────
+export type TreeRow = { subject: string; chapter: string; topic: string; chapterKey: string; topicKey: string; count: number };
+
+// Same for every caller (per exam), so it is cached. Per-student progress never is.
+const treeRowsCache = createTtlCache<TreeRow[]>(10 * 60_000); // keyed by exam
+
+export async function loadTreeRows(db: Db, exam: ExamKey | null): Promise<TreeRow[]> {
+  const treeKey = exam ?? "all";
+  const hit = treeRowsCache.get(treeKey);
+  if (hit) return hit;
+  const agg = await db
+    .collection("questions")
+    .aggregate([
+      { $match: await pyqMatch(db, exam) },
+      {
+        $group: {
+          _id: {
+            subject: "$subject",
+            chapterKey: keyExpr("chapter", UNTAGGED_CHAPTER),
+            topicKey: keyExpr("topic", GENERAL_TOPIC),
+          },
+          chapter: { $first: displayExpr("chapter", UNTAGGED_CHAPTER) },
+          topic: { $first: displayExpr("topic", GENERAL_TOPIC) },
+          count: { $sum: 1 },
+        },
+      },
+    ])
+    .toArray();
+  const rows = agg.map((a) => ({
+    subject: a._id.subject as string,
+    chapterKey: a._id.chapterKey as string,
+    topicKey: a._id.topicKey as string,
+    chapter: a.chapter as string,
+    topic: a.topic as string,
+    count: a.count as number,
+  }));
+  treeRowsCache.set(treeKey, rows);
+  return rows;
+}
+
+/** Rows (+ optional per-student progress keyed "subject|chapterKey|topicKey") → the Subject → Chapter → Topic tree. */
+export function assembleTree(
+  rows: TreeRow[],
+  progMap: Map<string, { attempted: number; correct: number }>,
+  exam: ExamKey | null,
+): PyqTree {
+  const subjects = new Map<string, PyqTree["subjects"][number]>();
+  for (const r of rows) {
+    const p = progMap.get(`${r.subject}|${r.chapterKey}|${r.topicKey}`) ?? { attempted: 0, correct: 0 };
+    // Progress can outlive a deleted question; never show more than exists.
+    const attempted = Math.min(p.attempted, r.count);
+    const correct = Math.min(p.correct, r.count);
+
+    const s = subjects.get(r.subject) ?? { subject: r.subject, count: 0, attempted: 0, correct: 0, chapters: [] };
+    subjects.set(r.subject, s);
+    let c = s.chapters.find((x) => x.chapter.toLowerCase() === r.chapter.toLowerCase());
+    if (!c) {
+      c = { chapter: r.chapter, count: 0, attempted: 0, correct: 0, topics: [] };
+      s.chapters.push(c);
+    }
+    c.topics.push({ topic: r.topic, count: r.count, attempted, correct });
+    for (const n of [c, s]) {
+      n.count += r.count;
+      n.attempted += attempted;
+      n.correct += correct;
+    }
+  }
+
+  const byName = (a: string, b: string) => {
+    // The untagged bucket always sits last.
+    if (a === UNTAGGED_CHAPTER || a === OUT_OF_SYLLABUS) return 1;
+    if (b === UNTAGGED_CHAPTER || b === OUT_OF_SYLLABUS) return -1;
+    if (a === GENERAL_TOPIC) return 1;
+    if (b === GENERAL_TOPIC) return -1;
+    return a.localeCompare(b);
+  };
+  const out = Array.from(subjects.values()).sort((a, b) => a.subject.localeCompare(b.subject));
+  for (const s of out) {
+    s.chapters.sort((a, b) => byName(a.chapter, b.chapter));
+    for (const c of s.chapters) c.topics.sort((a, b) => byName(a.topic, b.topic));
+  }
+  return {
+    exam,
+    subjects: out,
+    totalQuestions: out.reduce((n, s) => n + s.count, 0),
+    totalCorrect: out.reduce((n, s) => n + s.correct, 0),
+  };
+}
+
+// ─── Guest (logged-out) practice ───────────────────────────────────────────
+// A guest only ever sees the first GUEST_PYQ_LIMIT questions of a chapter (or
+// of a topic), newest paper first. The same rule decides which questions a
+// guest may submit an answer for, so the answer endpoint can't be used to pull
+// solutions for the rest of the bank.
+
+/** Mongo filter for one chapter (and optionally one topic) of a subject, within an exam's PYQ bundles. */
+export async function scopeMatch(db: Db, exam: ExamKey | null, subject: string, chapter: string, topic?: string) {
+  const and: Record<string, unknown>[] = [{ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), chapter.trim().toLowerCase()] } }];
+  if (topic) and.push({ $expr: { $eq: [keyExpr("topic", GENERAL_TOPIC), topic.trim().toLowerCase()] } });
+  return { ...(await pyqMatch(db, exam)), subject, $and: and } as Record<string, unknown>;
+}
+
+/** The (at most GUEST_PYQ_LIMIT) question docs a guest may see for a scope. */
+export async function guestScopeDocs(db: Db, match: Record<string, unknown>, projection?: Record<string, 0 | 1>) {
+  return db
+    .collection("questions")
+    .find(match, projection ? { projection } : undefined)
+    .sort({ pyqYear: -1, _id: 1 })
+    .limit(GUEST_PYQ_LIMIT)
+    .toArray();
+}
+
+/** May a guest answer this question? True if it is in the free slice of its chapter or of its topic. */
+export async function isGuestQuestion(db: Db, exam: ExamKey | null, q: Record<string, unknown>): Promise<boolean> {
+  const id = String(q._id);
+  const subject = q.subject as string;
+  const chapter = String(q.chapter ?? "").trim() || UNTAGGED_CHAPTER;
+  const topic = String(q.topic ?? "").trim() || GENERAL_TOPIC;
+  for (const t of [undefined, topic]) {
+    const docs = await guestScopeDocs(db, await scopeMatch(db, exam, subject, chapter, t), { _id: 1 });
+    if (docs.some((d) => String(d._id) === id)) return true;
+  }
+  return false;
 }

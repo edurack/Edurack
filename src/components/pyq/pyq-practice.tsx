@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Flag, Flame, Lightbulb, SlidersHorizontal } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
+import { bumpGuestPyqCount, getGuestPyqCount } from "@/lib/guest-pyq";
 import { SmartContent } from "@/lib/smart-content";
 import { listPyqQuestions, listWeakPyqQuestions, submitPyqAnswer } from "@/server-functions/pyq-practice";
+import { checkGuestPyqAnswer, listGuestPyqQuestions } from "@/server-functions/pyq-guest";
 import { listPyqSession, togglePyqBookmark } from "@/server-functions/practice-extras";
 import { ReportDialog } from "@/components/pyq/report-dialog";
 import { SessionSummary } from "@/components/pyq/session-summary";
-import { SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
+import { GUEST_PYQ_LIMIT, SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -22,6 +25,8 @@ type Props = {
   /** Called when the student finishes the list or taps the back control. */
   /** Exam the student is browsing (so the list matches the tree). */
   exam?: string;
+  /** Logged-out visitor: free preview via the guest endpoints, nothing saved, sign-up prompt after a few questions. */
+  guest?: boolean;
   onExit: () => void;
 };
 
@@ -37,8 +42,11 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
 };
 const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, onExit }: Props) {
-  const { user } = useAuth();
+export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, onExit }: Props) {
+  const { user: authUser } = useAuth();
+  // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
+  const user = guest ? null : authUser;
+  const [gated, setGated] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
   const [year, setYear] = useState("All");
   // A weak-topics session starts on questions the student hasn't solved yet.
@@ -60,24 +68,37 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   const [streakNow, setStreakNow] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Already used the free questions on an earlier visit? Go straight to the sign-up prompt.
   useEffect(() => {
-    if (!user) return;
+    if (guest && getGuestPyqCount() >= GUEST_PYQ_LIMIT) setGated(true);
+  }, [guest]);
+
+  // Only these actually change what the server has to fetch (a different
+  // chapter/topic/exam, or the difficulty match). "year" and "status" are
+  // applied to the already-loaded list below instead of round-tripping —
+  // they used to be sent to the server too, but the server only ever used
+  // them to filter the list it had already built, so toggling them re-ran
+  // the whole (slow) query for no reason and flashed the loading skeleton.
+  useEffect(() => {
+    if (!user && !guest) return;
     let cancelled = false;
     setList(null);
     setLoadError(null);
     (async () => {
       try {
-        const token = await user.getIdToken();
-        const filters = {
-          difficulty: difficulty === "All" ? undefined : difficulty,
-          year: year === "All" ? undefined : year,
-          status: statusF === "all" ? undefined : statusF === "unsolved" ? ("unsolved" as const) : ("wrong" as const),
-        };
-        const res = session
-          ? await listPyqSession({ data: { token, kind: session, ...filters } })
-          : weakAttemptId
-          ? await listWeakPyqQuestions({ data: { token, attemptId: weakAttemptId, ...filters } })
-          : await listPyqQuestions({ data: { token, subject: subject!, exam, chapter: chapter!, topic, ...filters } });
+        const difficultyFilter = difficulty === "All" ? undefined : difficulty;
+        let res: PyqList;
+        if (user) {
+          const token = await user.getIdToken();
+          res = session
+            ? await listPyqSession({ data: { token, kind: session, difficulty: difficultyFilter } })
+            : weakAttemptId
+            ? await listWeakPyqQuestions({ data: { token, attemptId: weakAttemptId, difficulty: difficultyFilter } })
+            : await listPyqQuestions({ data: { token, subject: subject!, exam, chapter: chapter!, topic, difficulty: difficultyFilter } });
+        } else {
+          // Guest: chapter/topic practice only (sessions and weak-topic runs need an account).
+          res = await listGuestPyqQuestions({ data: { subject: subject!, chapter: chapter!, topic, exam } });
+        }
         if (cancelled) return;
         setList(res);
         // Union, not replace: other filters shrink the server's year list, and the
@@ -91,9 +112,20 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     return () => {
       cancelled = true;
     };
-  }, [user, subject, chapter, topic, weakAttemptId, session, exam, difficulty, year, statusF]);
+  }, [user, guest, subject, chapter, topic, weakAttemptId, session, exam, difficulty]);
 
-  const questions = list?.questions ?? [];
+  // Year/status chips just re-filter the list already in memory — no fetch.
+  useEffect(() => {
+    setIdx(0);
+  }, [year, statusF]);
+
+  const questions = useMemo(() => {
+    let qs = list?.questions ?? [];
+    if (year !== "All") qs = qs.filter((x) => x.source.year === year);
+    if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
+    else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
+    return qs;
+  }, [list, year, statusF]);
   const q: PyqQuestion | undefined = questions[idx];
   const result = q ? results[q.id] : undefined;
   const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
@@ -106,12 +138,18 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   }, [q, result, picked, typed]);
 
   async function send(answer: { option?: OptionKey; value?: number } | null) {
-    if (!user || !q || busy) return;
+    if ((!user && !guest) || !q || busy) return;
     setBusy(true);
     setActionError(null);
     try {
-      const token = await user.getIdToken();
-      const res = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
+      let res: PyqCheckResult;
+      if (user) {
+        const token = await user.getIdToken();
+        res = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
+      } else {
+        res = await checkGuestPyqAnswer({ data: { questionId: q.id, answer } });
+        bumpGuestPyqCount();
+      }
       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
       if (res.streak) setStreakNow(res.streak.current);
       // Keep the status chip in sync without refetching the list.
@@ -131,7 +169,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   }
 
   async function toggleBookmark() {
-    if (!user || !q) return;
+    if (!q) return;
+    if (!user) {
+      setActionError("Log in or create a free account to bookmark questions.");
+      return;
+    }
     const value = !q.bookmarked;
     // Optimistic: the star flips immediately, and flips back if the server says no.
     const flip = (v: boolean) => setList((l) => (l ? { ...l, questions: l.questions.map((x) => (x.id === q.id ? { ...x, bookmarked: v } : x)) } : l));
@@ -147,6 +189,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
 
   const atEnd = idx >= questions.length - 1;
   function next() {
+    // Guests hit the sign-up prompt at the end of their free slice, or once their free questions are used up.
+    if (guest && (atEnd || getGuestPyqCount() >= GUEST_PYQ_LIMIT)) {
+      setGated(true);
+      return;
+    }
     if (atEnd) setFinished(true);
     else setIdx((i) => i + 1);
   }
@@ -160,6 +207,17 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
       ? weakChapters.map((c) => c.chapter).join(" · ")
       : "From your last test"
     : subject;
+
+  if (gated) {
+    const all = Object.values(results);
+    return (
+      <GuestGate
+        answered={all.filter((r) => !r.revealed).length}
+        correct={all.filter((r) => !r.revealed && r.isCorrect).length}
+        onBack={onExit}
+      />
+    );
+  }
 
   if (finished) {
     const all = Object.values(results);
@@ -287,6 +345,15 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
                 style={{ width: `${((idx + 1) / questions.length) * 100}%` }}
               />
             </div>
+            {guest && (
+              <p className="mt-1.5 text-[11px] text-foreground/50">
+                Free preview: {GUEST_PYQ_LIMIT} questions without logging in.{" "}
+                <Link to="/auth" search={{ tab: "signup" }} className="font-bold text-[var(--sky-deep)] underline-offset-2 hover:underline">
+                  Sign up free
+                </Link>{" "}
+                to practise the full chapter.
+              </p>
+            )}
           </div>
 
           <article key={q.id} className="clay p-4 animate-in fade-in slide-in-from-right-2 duration-200 motion-reduce:animate-none sm:p-6">
@@ -304,13 +371,15 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
                 >
                   <Bookmark className={cn("h-4 w-4", q.bookmarked && "fill-[var(--sky-deep)] text-[var(--sky-deep)]")} aria-hidden />
                 </button>
-                <button
-                  onClick={() => setReporting(true)}
-                  aria-label="Report this question"
-                  className="grid h-9 w-9 place-items-center rounded-full text-foreground/50 hover:bg-foreground/5"
-                >
-                  <Flag className="h-4 w-4" aria-hidden />
-                </button>
+                {!guest && (
+                  <button
+                    onClick={() => setReporting(true)}
+                    aria-label="Report this question"
+                    className="grid h-9 w-9 place-items-center rounded-full text-foreground/50 hover:bg-foreground/5"
+                  >
+                    <Flag className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/50">
@@ -486,6 +555,35 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function GuestGate({ answered, correct, onBack }: { answered: number; correct: number; onBack: () => void }) {
+  return (
+    <div className="clay animate-in fade-in p-6 text-center duration-300 motion-reduce:animate-none sm:p-8" role="status">
+      <p className="font-display text-xl font-bold text-foreground sm:text-2xl">
+        {answered > 0 ? "Nice start. Keep going with a free account." : "You've used your free questions."}
+      </p>
+      {answered > 0 && (
+        <p className="mt-2 text-sm font-semibold text-foreground/70">
+          You got {correct} of {answered} right.
+        </p>
+      )}
+      <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-foreground/60">
+        Create a free account to continue this chapter, practise every NEET PYQ with detailed solutions, and save your progress.
+      </p>
+      <div className="mx-auto mt-6 flex max-w-xs flex-col gap-2.5">
+        <Link to="/auth" search={{ tab: "signup" }} className="clay-btn inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-bold text-white">
+          Create free account
+        </Link>
+        <Link to="/auth" search={{ tab: "signin" }} className="clay-chip inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-bold text-foreground/80">
+          I already have an account
+        </Link>
+        <button onClick={onBack} className="mt-1 text-xs font-semibold text-foreground/50 underline-offset-2 hover:text-foreground hover:underline">
+          Back to chapters
+        </button>
+      </div>
     </div>
   );
 }

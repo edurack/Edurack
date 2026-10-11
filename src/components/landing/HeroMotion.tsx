@@ -259,31 +259,44 @@ export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_.95fr]">
         <div>
           <motion.p {...rise(0)} className="inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-foreground/80">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET, JEE, CUET and IPMAT
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET aspirants
           </motion.p>
           <motion.h1 {...rise(1)} className="mt-5 font-display text-[2.4rem] leading-[1.06] tracking-tight text-foreground sm:text-6xl">
-            <span className="block font-light">Take the mock.</span>
-            <span className="block font-extrabold">Fix what costs you marks.</span>
+            <span className="block font-light">Every NEET PYQ, 2020 to 2026.</span>
+            <span className="block font-extrabold">Solved in real CBT mode.</span>
           </motion.h1>
           <motion.p {...rise(2)} className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Exam-format tests, a clear read on where you lose marks, and mentors who have cleared the
-            same exam. Not more preparation. Better-aimed preparation.
+            Practise subject-wise, chapter-wise and topic-wise, with a detailed solution for every
+            question. Free.
           </motion.p>
 
           <motion.div {...rise(3)} ref={ctaRef} className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Link to="/simulator/live" className={`${PREMIUM_BTN} sm:min-w-[220px]`}>
-              <Play className="h-4 w-4" /> Take a free mock
+            <Link to="/pyq" search={{ exam: "neet" }} className={`${PREMIUM_BTN} sm:min-w-[240px]`}>
+              <Play className="h-4 w-4" /> Start free PYQ practice
             </Link>
             <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>
               Create free account <ArrowRight className="h-4 w-4" />
             </Link>
           </motion.div>
           <motion.p {...rise(4)} className="mt-4 text-sm text-muted-foreground">
-            Already have an account?{" "}
+            Try your first 5 questions without logging in. A free account saves your progress and unlocks the rest.{" "}
             <Link to="/auth" search={{ tab: "signin" }} className="inline-flex min-h-11 items-center font-bold text-primary underline-offset-4 hover:underline">
               Log in
             </Link>
           </motion.p>
+
+          <motion.ul {...rise(5)} className="mt-6 grid max-w-xl gap-2.5 text-sm text-foreground/80 sm:grid-cols-3">
+            {[
+              "2020-2026 papers, every question",
+              "Chapter and topic wise, so you practise what you're weak at",
+              "Step-by-step solutions, not just answer keys",
+            ].map((t) => (
+              <li key={t} className="flex items-start gap-2">
+                <Checks className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span>{t}</span>
+              </li>
+            ))}
+          </motion.ul>
         </div>
 
         <div className="relative mx-auto flex flex-col items-center gap-5 lg:min-h-[520px] lg:justify-center">

@@ -1,7 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
-import { Palette } from "lucide-react"; // TODO: no Tabler mapping found yet
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   IconLoader2 as Loader2,
@@ -430,14 +428,6 @@ function ProfilePage() {
               </ul>
             </>
           )}
-        </SectionCard>
-
-        {/* ── Appearance ─────────────────────────────────────────────────── */}
-        <SectionCard icon={Palette} title="Appearance">
-          <p className="mb-4 text-sm text-foreground/60">
-            Choose how Edurack looks on this device. "System" matches your device's theme automatically.
-          </p>
-          <ThemeToggle />
         </SectionCard>
 
         {/* ── Device management ───────────────────────────────────────────── */}

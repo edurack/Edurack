@@ -3,7 +3,7 @@ import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
 import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps, IconUserCheck as UserCheck, IconFlask as FlaskConical } from "@tabler/icons-react";
-import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall } from "lucide-react";
+import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, Flame, History } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
@@ -460,6 +460,9 @@ type Analytics = {
   monthlyRevenue: number;
   totalPurchases: number;
   mockTestsTaken: number;
+  /** The free, no-signup CBT demos (landing page + /simulator/live). Anonymous by
+   * design, so this is a site-wide count only — it can't be tied to a student. */
+  demoTestsTaken: number;
   recentPurchases: RecentPurchase[];
   topBundles: { title: string; revenue: number; purchaseCount: number }[];
 };
@@ -681,7 +684,7 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
     <div>
       <ModuleHeader title="Executive Analytics" subtitle="Platform-wide numbers at a glance." />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard
           icon={Users2}
           accent="sky"
@@ -718,6 +721,14 @@ function OverviewModule({ adminUser }: { adminUser: { getIdToken: () => Promise<
           label="Total Purchases"
           loading={loading}
           value={analytics ? analytics.totalPurchases.toLocaleString() : "—"}
+        />
+        <MetricCard
+          icon={FlaskConical as any}
+          accent="coral"
+          label="Demo Tests Taken"
+          loading={loading}
+          value={analytics ? analytics.demoTestsTaken.toLocaleString() : "—"}
+          sub="Anonymous — landing + /simulator/live"
         />
       </div>
 
@@ -998,7 +1009,7 @@ type StudentFullProfile = {
     joinedAt: string | null;
   };
   purchases: {
-    itemType: "bundle" | "mentorship";
+    itemType: "bundle" | "mentorship" | "mentorTest" | "mentorSession";
     itemId: string;
     title: string;
     amount: number;
@@ -1012,6 +1023,43 @@ type StudentFullProfile = {
     totalAttempts: number;
     averagePercent: number;
     bestPercent: number;
+  }[];
+  /** Every individual attempt, newest first — which test, when, what score. */
+  testHistory: {
+    attemptId: string;
+    testId: string;
+    testName: string;
+    bundleId: string | null;
+    bundleTitle: string | null;
+    attemptNumber: number;
+    score: number;
+    totalMarks: number;
+    percent: number;
+    correctCount: number;
+    incorrectCount: number;
+    unansweredCount: number;
+    timeTakenMinutes: number | null;
+    submittedAt: string | null;
+  }[];
+  /** PYQ practice engagement — streak, notebook, drills. */
+  practice: {
+    streak: { current: number; longest: number; lastDay: string | null };
+    questionsAttempted: number;
+    questionsCorrect: number;
+    bookmarked: number;
+    mastered: number;
+    dueForRevision: number;
+    drillsTaken: number;
+    drillsInProgress: number;
+  };
+  /** Booked 1:1 mentor sessions (Supabase-backed, separate from mentorship batches). */
+  mentorSessions: {
+    bookingId: string;
+    title: string;
+    durationMinutes: number | null;
+    sessionDate: string | null;
+    startTime: string | null;
+    status: string;
   }[];
   devices: { deviceId: string; deviceLabel: string; ip: string; lastSeenAt: string | null }[];
   tickets: {
@@ -1226,6 +1274,85 @@ function StudentProfileDrawer({
                           style={{ width: `${b.averagePercent}%` }}
                         />
                       </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DrawerSection>
+
+            {/* Test history — every individual attempt: which test, when, what score */}
+            <DrawerSection icon={History as any} title={`Test history (${data.testHistory.length})`}>
+              {data.testHistory.length === 0 ? (
+                <p className="text-sm text-foreground/60">No test attempts yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.testHistory.slice(0, 50).map((t) => (
+                    <li key={t.attemptId} className="clay-inset px-3.5 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{t.testName}</p>
+                          <p className="truncate text-xs text-foreground/50">
+                            {t.bundleTitle ? `${t.bundleTitle} · ` : ""}Attempt {t.attemptNumber} · {formatDateTime(t.submittedAt)}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-bold text-foreground">
+                            {t.score}/{t.totalMarks}
+                          </p>
+                          <p className="text-[11px] text-foreground/50">{t.percent}%</p>
+                        </div>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-3 text-[11px] text-foreground/50">
+                        <span>✓ {t.correctCount} correct</span>
+                        <span>✗ {t.incorrectCount} wrong</span>
+                        <span>– {t.unansweredCount} skipped</span>
+                        {t.timeTakenMinutes != null && <span>{t.timeTakenMinutes} min</span>}
+                      </div>
+                    </li>
+                  ))}
+                  {data.testHistory.length > 50 && (
+                    <p className="pt-1 text-center text-xs text-foreground/40">+{data.testHistory.length - 50} more attempts</p>
+                  )}
+                </ul>
+              )}
+            </DrawerSection>
+
+            {/* PYQ practice — streak, notebook, drills */}
+            <DrawerSection icon={Flame as any} title="PYQ practice">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <PracticeStat label="Streak" value={`${data.practice.streak.current}d`} sub={`best ${data.practice.streak.longest}d`} />
+                <PracticeStat label="Attempted" value={data.practice.questionsAttempted} />
+                <PracticeStat label="Correct" value={data.practice.questionsCorrect} />
+                <PracticeStat label="Bookmarked" value={data.practice.bookmarked} />
+                <PracticeStat label="Mastered" value={data.practice.mastered} />
+                <PracticeStat label="Due now" value={data.practice.dueForRevision} />
+                <PracticeStat label="Drills done" value={data.practice.drillsTaken} />
+                {data.practice.drillsInProgress > 0 && <PracticeStat label="Drill running" value={data.practice.drillsInProgress} />}
+              </div>
+            </DrawerSection>
+
+            {/* Booked 1:1 mentor sessions (separate from mentorship batch purchases) */}
+            <DrawerSection icon={PhoneCall as any} title={`Mentor sessions (${data.mentorSessions.length})`}>
+              {data.mentorSessions.length === 0 ? (
+                <p className="text-sm text-foreground/60">No sessions booked.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.mentorSessions.map((s) => (
+                    <li key={s.bookingId} className="clay-inset flex items-center justify-between gap-2 px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{s.title}</p>
+                        <p className="truncate text-xs text-foreground/50">
+                          {s.sessionDate ?? "—"} {s.startTime ?? ""}
+                          {s.durationMinutes ? ` · ${s.durationMinutes}m` : ""}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          s.status === "cancelled" ? "bg-[var(--coral-soft)]/60 text-foreground" : "bg-[var(--mint-soft)] text-foreground"
+                        }`}
+                      >
+                        {s.status}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -1458,6 +1585,16 @@ function DrawerSection({
         <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-foreground/50">{title}</h3>
       </div>
       {children}
+    </div>
+  );
+}
+
+function PracticeStat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="clay-inset px-3 py-2.5 text-center">
+      <p className="font-display text-lg font-bold text-foreground">{value}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/50">{label}</p>
+      {sub && <p className="text-[10px] text-foreground/40">{sub}</p>}
     </div>
   );
 }

@@ -540,7 +540,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
   const next = upcoming[0];
   const continueCount = ownedListings.length + ownedTests.length;
   const actions = [
-    { icon: Play, label: "Take a free mock", sub: "Exam-format practice", to: "/simulator/live" },
+    { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
     { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq" },
     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
@@ -577,7 +577,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
           ) : avg === null ? (
             <div>
               <p className="text-sm text-muted-foreground">No scored attempts in your courses yet. Take a test to see your average and where marks leak.</p>
-              <Link to="/simulator/live" className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">Take a free mock <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/simulator/live" className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
             </div>
           ) : (
             <>

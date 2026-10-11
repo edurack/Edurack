@@ -51,6 +51,7 @@ import { Route as MentorSessionOfferingIdRouteImport } from './routes/mentor-ses
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
 import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
+import { Route as QuestionIdRouteImport } from './routes/question.$id'
 import { Route as SimulatorLiveRouteImport } from './routes/simulator/live'
 import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
 import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
@@ -271,6 +272,11 @@ const PromoterDashboardRoute = PromoterDashboardRouteImport.update({
   path: '/promoter/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const QuestionIdRoute = QuestionIdRouteImport.update({
+  id: '/question/$id',
+  path: '/question/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SimulatorLiveRoute = SimulatorLiveRouteImport.update({
   id: '/simulator/live',
   path: '/simulator/live',
@@ -354,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
+  '/question/$id': typeof QuestionIdRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
@@ -406,6 +413,7 @@ export interface FileRoutesByTo {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
+  '/question/$id': typeof QuestionIdRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
@@ -459,6 +467,7 @@ export interface FileRoutesById {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
+  '/question/$id': typeof QuestionIdRoute
   '/simulator/live': typeof SimulatorLiveRoute
   '/sold-test/$id': typeof SoldTestIdRoute
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
@@ -513,6 +522,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
+    | '/question/$id'
     | '/simulator/live'
     | '/sold-test/$id'
     | '/test-analysis/$testId'
@@ -565,6 +575,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
+    | '/question/$id'
     | '/simulator/live'
     | '/sold-test/$id'
     | '/test-analysis/$testId'
@@ -617,6 +628,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/promoter/auth'
     | '/promoter/dashboard'
+    | '/question/$id'
     | '/simulator/live'
     | '/sold-test/$id'
     | '/test-analysis/$testId'
@@ -670,6 +682,7 @@ export interface RootRouteChildren {
   MentorDashboardRoute: typeof MentorDashboardRoute
   PromoterAuthRoute: typeof PromoterAuthRoute
   PromoterDashboardRoute: typeof PromoterDashboardRoute
+  QuestionIdRoute: typeof QuestionIdRoute
   SimulatorLiveRoute: typeof SimulatorLiveRoute
   SoldTestIdRoute: typeof SoldTestIdRoute
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
@@ -976,6 +989,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PromoterDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/question/$id': {
+      id: '/question/$id'
+      path: '/question/$id'
+      fullPath: '/question/$id'
+      preLoaderRoute: typeof QuestionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/simulator/live': {
       id: '/simulator/live'
       path: '/simulator/live'
@@ -1088,6 +1108,7 @@ const rootRouteChildren: RootRouteChildren = {
   MentorDashboardRoute: MentorDashboardRoute,
   PromoterAuthRoute: PromoterAuthRoute,
   PromoterDashboardRoute: PromoterDashboardRoute,
+  QuestionIdRoute: QuestionIdRoute,
   SimulatorLiveRoute: SimulatorLiveRoute,
   SoldTestIdRoute: SoldTestIdRoute,
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,

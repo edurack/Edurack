@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { sendMail, sendMailBatch } from "@/lib/mailer";
 import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { supabase } from "@/lib/supabase";
 import type { AttemptRule } from "@/lib/attempt-rules";
 import { SYLLABUS_SEEDS, classifySyllabusTag, toSyllabusExam, type Syllabus, type SyllabusExam, type ClassLevel } from "@/lib/ncert-syllabus";
 import { createTtlCache } from "@/lib/simple-cache";
@@ -1043,12 +1044,18 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [totalStudents, allPurchases, monthlyPurchases, mockTestsTaken] = await Promise.all([
+    const [totalStudents, allPurchases, monthlyPurchases, mockTestsTaken, landingDemoCount, simulatorLiveCount] = await Promise.all([
       db.collection("profiles").countDocuments({}),
       db.collection("purchases").find({}).toArray(),
       db.collection("purchases").find({ purchasedAt: { $gte: startOfMonth } }).toArray(),
       db.collection("testAttempts").countDocuments({}),
+      // The two free, no-signup-required CBT demos (landing page + /simulator/live).
+      // These are deliberately anonymous (see landing-demo.ts) — there's no uid to
+      // attribute them to, so this is a site-wide count only, not per-student.
+      db.collection("landingDemoAttempts").countDocuments({}),
+      db.collection("simulatorLiveAttempts").countDocuments({}),
     ]);
+    const demoTestsTaken = landingDemoCount + simulatorLiveCount;
 
     const totalRevenue = allPurchases.reduce((sum, p) => sum + (p.amount as number), 0);
     const monthlyRevenue = monthlyPurchases.reduce((sum, p) => sum + (p.amount as number), 0);
@@ -1118,6 +1125,7 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
       monthlyRevenue,
       totalPurchases: allPurchases.length,
       mockTestsTaken,
+      demoTestsTaken,
       recentPurchases,
       topBundles,
     };
@@ -1131,33 +1139,68 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
     await requireAdmin(data.token);
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
+    const safeOid = (id: string) => (/^[a-f0-9]{24}$/i.test(id) ? new ObjectId(id) : null);
 
-    const [profile, authUser, purchases, attempts, sessions, tickets] = await Promise.all([
+    const [profile, authUser, purchases, attempts, sessions, tickets, streakDoc, progressDocs, drills, bookedSessionsRes] = await Promise.all([
       db.collection("profiles").findOne({ uid: data.uid }),
       adminAuth.getUser(data.uid).catch(() => null),
       db.collection("purchases").find({ uid: data.uid }).sort({ purchasedAt: -1 }).toArray(),
-      db.collection("testAttempts").find({ uid: data.uid }).toArray(),
+      // Newest first — this doubles as the per-test attempt history below, not just the per-bundle rollup.
+      db.collection("testAttempts").find({ uid: data.uid }).sort({ submittedAt: -1 }).toArray(),
       // NOTE: guessing the session collection is named "sessions" to match
       // listSessions/forgetDevice's shape used elsewhere — rename if different.
       db.collection("sessions").find({ uid: data.uid }).toArray(),
       db.collection("supportTickets").find({ uid: data.uid }).sort({ createdAt: -1 }).toArray(),
+      // PYQ practice (streak / notebook / drills) — same collections as practice-extras.ts.
+      db.collection("practiceStreaks").findOne({ uid: data.uid }),
+      db.collection("practiceProgress").find({ uid: data.uid }).toArray(),
+      db.collection("pyqDrills").find({ uid: data.uid }).sort({ startedAt: -1 }).toArray(),
+      // One-on-one mentor sessions the student booked — lives in Supabase
+      // (mentor_session_bookings), not Mongo. See student-sessions.ts.
+      supabase
+        .from("mentor_session_bookings")
+        .select("*, mentor_session_offerings(title, duration_minutes)")
+        .eq("student_uid", data.uid)
+        .order("session_date", { ascending: false })
+        .order("start_time", { ascending: false }),
     ]);
 
-    const bundleIds = purchases.filter((p) => p.itemType === "bundle").map((p) => new ObjectId(p.itemId as string));
-    const mentorshipIds = purchases.filter((p) => p.itemType === "mentorship").map((p) => new ObjectId(p.itemId as string));
-    const [bundles, mentorshipBatches] = await Promise.all([
+    const bundleIds = purchases.filter((p) => p.itemType === "bundle").map((p) => safeOid(p.itemId as string)).filter((x): x is InstanceType<typeof ObjectId> => !!x);
+    const mentorshipIds = purchases.filter((p) => p.itemType === "mentorship").map((p) => safeOid(p.itemId as string)).filter((x): x is InstanceType<typeof ObjectId> => !!x);
+    // "mentorTest" purchases (a single paid test bought standalone) resolve
+    // against EITHER testCores (mentor's own batch-series tests) or soldTests
+    // (platform-approved individually-sold tests) — see lookupItemPriceAndTitle
+    // in payments.ts, which is the source of truth for this split.
+    const mentorTestIds = purchases.filter((p) => p.itemType === "mentorTest").map((p) => safeOid(p.itemId as string)).filter((x): x is InstanceType<typeof ObjectId> => !!x);
+    const [bundles, mentorshipBatches, mentorTestCores, soldTests] = await Promise.all([
       bundleIds.length ? db.collection("bundles").find({ _id: { $in: bundleIds } }).toArray() : [],
       mentorshipIds.length ? db.collection("mentorshipBatches").find({ _id: { $in: mentorshipIds } }).toArray() : [],
+      mentorTestIds.length ? db.collection("testCores").find({ _id: { $in: mentorTestIds } }).toArray() : [],
+      mentorTestIds.length ? db.collection("soldTests").find({ _id: { $in: mentorTestIds } }).toArray() : [],
     ]);
     const bundleById = new Map(bundles.map((b) => [String(b._id), b]));
     const mentorshipById = new Map(mentorshipBatches.map((b) => [String(b._id), b]));
+    const mentorTestNameById = new Map<string, string>([
+      ...mentorTestCores.map((t) => [String(t._id), (t.name as string) ?? "Test"] as const),
+      ...soldTests.map((t) => [String(t._id), (t.name as string) ?? "Test"] as const),
+    ]);
+    // "mentorSession" purchases (a single booked 1:1 slot) carry their own
+    // title already, from Supabase's mentor_session_offerings — see below.
+    const sessionOfferingTitleByBookingId = new Map(
+      (bookedSessionsRes.data ?? []).map((b: any) => [String(b.id), (b.mentor_session_offerings?.title as string) ?? "Mentor session"]),
+    );
 
-        const purchaseRows = purchases.map((p) => {
-      const item = p.itemType === "bundle" ? bundleById.get(p.itemId as string) : mentorshipById.get(p.itemId as string);
+    const purchaseRows = purchases.map((p) => {
+      const itemType = p.itemType as "bundle" | "mentorship" | "mentorTest" | "mentorSession";
+      let title = "Item no longer available";
+      if (itemType === "bundle") title = (bundleById.get(p.itemId as string)?.title as string) ?? title;
+      else if (itemType === "mentorship") title = (mentorshipById.get(p.itemId as string)?.name as string) ?? title;
+      else if (itemType === "mentorTest") title = mentorTestNameById.get(p.itemId as string) ?? title;
+      else if (itemType === "mentorSession") title = sessionOfferingTitleByBookingId.get(p.itemId as string) ?? "Mentor session";
       return {
-        itemType: p.itemType as "bundle" | "mentorship",
+        itemType,
         itemId: p.itemId as string,
-        title: item ? ((p.itemType === "bundle" ? item.title : item.name) as string) : "Item no longer available",
+        title,
         amount: p.amount as number,
         razorpayPaymentId: (p.razorpayPaymentId as string | null) ?? null,
         purchasedAt: p.purchasedAt instanceof Date ? p.purchasedAt.toISOString() : null,
@@ -1168,6 +1211,7 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
     const byBundleId = new Map<string, { testIds: Set<string>; attemptCount: number; totalPercent: number; bestPercent: number }>();
     for (const a of attempts) {
       const bundleId = a.bundleId as string;
+      if (!bundleId) continue; // sold/mentor tests have no bundle — they're still in testHistory below
       const entry = byBundleId.get(bundleId) ?? { testIds: new Set<string>(), attemptCount: 0, totalPercent: 0, bestPercent: 0 };
       entry.testIds.add(a.testId as string);
       entry.attemptCount += 1;
@@ -1185,6 +1229,55 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
       bestPercent: Math.round(stats.bestPercent),
     }));
 
+    // Every individual test attempt — "which test, when, what score" — newest
+    // first. This is what batchPerformance above rolls up; admins asking for
+    // the full history want the raw rows, not just the per-bundle average.
+    const testHistory = attempts.map((a) => ({
+      attemptId: String(a._id),
+      testId: a.testId as string,
+      testName: (a.testName as string) ?? "Test",
+      bundleId: (a.bundleId as string | null) ?? null,
+      bundleTitle: a.bundleId ? ((bundleById.get(a.bundleId as string)?.title as string) ?? "Bundle") : null,
+      attemptNumber: (a.attemptNumber as number) ?? 1,
+      score: a.score as number,
+      totalMarks: a.totalMarks as number,
+      percent: a.totalMarks > 0 ? Math.round(((a.score as number) / (a.totalMarks as number)) * 100) : 0,
+      correctCount: (a.correctCount as number) ?? 0,
+      incorrectCount: (a.incorrectCount as number) ?? 0,
+      unansweredCount: (a.unansweredCount as number) ?? 0,
+      timeTakenMinutes: (a.timeTakenMinutes as number) ?? null,
+      submittedAt: a.submittedAt instanceof Date ? a.submittedAt.toISOString() : null,
+    }));
+
+    // PYQ practice engagement — same shape/collections as the student-facing
+    // Today/Notebook cards in practice-extras.ts, just read for this one uid.
+    const now = new Date();
+    const practice = {
+      streak: {
+        current: Number(streakDoc?.current ?? 0),
+        longest: Number(streakDoc?.longest ?? 0),
+        lastDay: (streakDoc?.lastDay as string | null) ?? null,
+      },
+      questionsAttempted: progressDocs.filter((p) => Number(p.attempts ?? 0) > 0).length,
+      questionsCorrect: progressDocs.filter((p) => p.correct === true).length,
+      bookmarked: progressDocs.filter((p) => p.bookmarked === true).length,
+      mastered: progressDocs.filter((p) => p.mastered === true).length,
+      dueForRevision: progressDocs.filter((p) => p.nextReviewAt instanceof Date && p.nextReviewAt <= now && p.mastered !== true).length,
+      drillsTaken: drills.filter((d) => d.submittedAt).length,
+      drillsInProgress: drills.filter((d) => !d.submittedAt).length,
+    };
+
+    // Booked 1:1 mentor sessions (Supabase) — separate from the Mongo-side
+    // mentorship batches above; see student-sessions.ts for the booking flow.
+    const mentorSessions = (bookedSessionsRes.data ?? []).map((b: any) => ({
+      bookingId: String(b.id),
+      title: (b.mentor_session_offerings?.title as string) ?? "Mentor session",
+      durationMinutes: (b.mentor_session_offerings?.duration_minutes as number) ?? null,
+      sessionDate: (b.session_date as string) ?? null,
+      startTime: (b.start_time as string) ?? null,
+      status: (b.status as string) ?? "booked",
+    }));
+
     return {
       profile: {
         uid: data.uid,
@@ -1200,6 +1293,9 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
       },
       purchases: purchaseRows,
       batchPerformance,
+      testHistory,
+      practice,
+      mentorSessions,
       devices: sessions.map((s) => ({
         deviceId: s.deviceId as string,
         deviceLabel: s.deviceLabel as string,
