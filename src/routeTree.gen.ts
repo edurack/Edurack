@@ -60,6 +60,9 @@ import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certificateId'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
+import { Route as NeetChapterWiseWeightageIndexRouteImport } from './routes/neet.chapter-wise-weightage.index'
+import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
+import { Route as NeetChapterWiseWeightageSubjectChapterRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -317,6 +320,24 @@ const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
   path: '/intern/trial/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NeetChapterWiseWeightageIndexRoute =
+  NeetChapterWiseWeightageIndexRouteImport.update({
+    id: '/neet/chapter-wise-weightage/',
+    path: '/neet/chapter-wise-weightage/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const NeetChapterWiseWeightageSubjectIndexRoute =
+  NeetChapterWiseWeightageSubjectIndexRouteImport.update({
+    id: '/neet/chapter-wise-weightage/$subject/',
+    path: '/neet/chapter-wise-weightage/$subject/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const NeetChapterWiseWeightageSubjectChapterRoute =
+  NeetChapterWiseWeightageSubjectChapterRouteImport.update({
+    id: '/neet/chapter-wise-weightage/$subject/$chapter',
+    path: '/neet/chapter-wise-weightage/$subject/$chapter',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -370,6 +391,9 @@ export interface FileRoutesByFullPath {
   '/blog/': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -423,6 +447,9 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/chapter-wise-weightage': typeof NeetChapterWiseWeightageIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/chapter-wise-weightage/$subject': typeof NeetChapterWiseWeightageSubjectIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -477,6 +504,9 @@ export interface FileRoutesById {
   '/blog/': typeof BlogIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -532,6 +562,9 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/chapter-wise-weightage/'
+    | '/neet/chapter-wise-weightage/$subject/$chapter'
+    | '/neet/chapter-wise-weightage/$subject/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -585,6 +618,9 @@ export interface FileRouteTypes {
     | '/blog'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/chapter-wise-weightage'
+    | '/neet/chapter-wise-weightage/$subject/$chapter'
+    | '/neet/chapter-wise-weightage/$subject'
   id:
     | '__root__'
     | '/'
@@ -638,6 +674,9 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/chapter-wise-weightage/'
+    | '/neet/chapter-wise-weightage/$subject/$chapter'
+    | '/neet/chapter-wise-weightage/$subject/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -691,6 +730,9 @@ export interface RootRouteChildren {
   BlogIndexRoute: typeof BlogIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
+  NeetChapterWiseWeightageIndexRoute: typeof NeetChapterWiseWeightageIndexRoute
+  NeetChapterWiseWeightageSubjectChapterRoute: typeof NeetChapterWiseWeightageSubjectChapterRoute
+  NeetChapterWiseWeightageSubjectIndexRoute: typeof NeetChapterWiseWeightageSubjectIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1052,6 +1094,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InternTrialCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/neet/chapter-wise-weightage/': {
+      id: '/neet/chapter-wise-weightage/'
+      path: '/neet/chapter-wise-weightage'
+      fullPath: '/neet/chapter-wise-weightage/'
+      preLoaderRoute: typeof NeetChapterWiseWeightageIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/neet/chapter-wise-weightage/$subject/': {
+      id: '/neet/chapter-wise-weightage/$subject/'
+      path: '/neet/chapter-wise-weightage/$subject'
+      fullPath: '/neet/chapter-wise-weightage/$subject/'
+      preLoaderRoute: typeof NeetChapterWiseWeightageSubjectIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/neet/chapter-wise-weightage/$subject/$chapter': {
+      id: '/neet/chapter-wise-weightage/$subject/$chapter'
+      path: '/neet/chapter-wise-weightage/$subject/$chapter'
+      fullPath: '/neet/chapter-wise-weightage/$subject/$chapter'
+      preLoaderRoute: typeof NeetChapterWiseWeightageSubjectChapterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1117,6 +1180,11 @@ const rootRouteChildren: RootRouteChildren = {
   BlogIndexRoute: BlogIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
+  NeetChapterWiseWeightageIndexRoute: NeetChapterWiseWeightageIndexRoute,
+  NeetChapterWiseWeightageSubjectChapterRoute:
+    NeetChapterWiseWeightageSubjectChapterRoute,
+  NeetChapterWiseWeightageSubjectIndexRoute:
+    NeetChapterWiseWeightageSubjectIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

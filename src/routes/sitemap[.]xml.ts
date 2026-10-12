@@ -5,6 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/mongo";
 import { listSitemapQuestions } from "@/lib/pyq-public-server";
+import { allBlueprintPaths } from "@/lib/neet-blueprint";
 
 const SITE_URL = "https://www.edurack.in";
 
@@ -73,11 +74,20 @@ function questionEntry(loc: string, lastmod: string | null): string {
     .join("\n");
 }
 
+// NEET chapter-wise weightage pages (hub, subjects, chapters) — static data, so
+// they're always listed. lastmod is the date the dataset was last regenerated.
+const BLUEPRINT_LASTMOD = "2026-10-12";
+const BLUEPRINT_PRIORITY = { hub: 0.9, subject: 0.8, chapter: 0.7 } as const;
+function blueprintEntries(): string[] {
+  return allBlueprintPaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, BLUEPRINT_LASTMOD, BLUEPRINT_PRIORITY[p.kind], "monthly"));
+}
+
 function buildStaticOnlyXml(): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...staticRoutes.map((r) => urlEntry(`${SITE_URL}${r.path}`, r.lastmod, r.priority, r.changefreq)),
+    ...blueprintEntries(),
     "</urlset>",
   ].join("\n");
 }
@@ -156,6 +166,7 @@ export const Route = createFileRoute("/sitemap.xml")({
             '<?xml version="1.0" encoding="UTF-8"?>',
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
             ...staticEntries,
+            ...blueprintEntries(),
             ...mentorEntries,
             ...mentorshipBatchEntries,
             ...blogEntries,

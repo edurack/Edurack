@@ -513,6 +513,284 @@ export const createQuestion = createServerFn({ method: "POST" })
     return { ok: true, id: String(result.insertedId), outOfSyllabus: tag.outOfSyllabus, chapter: tag.chapter, topic: tag.topic };
   });
 
+// ─── Bulk JSON upload ───────────────────────────────────────────────────────
+// Lets an admin drop the same JSON file they would otherwise import into the
+// `questions` collection (Compass / mongoimport) straight into the ingestion
+// screen. Every row goes through the SAME rules as createQuestion — shape per
+// type, auto-numbering after the existing questions, weightage cap, and the
+// Out-of-Syllabus tagging — and the upload is all-or-nothing: if any row is
+// invalid, nothing is written and every problem is reported with its row number.
+// A file may cover several subjects: each row can carry its own `subject`, and each
+// subject is numbered and weightage-checked separately.
+const BULK_MAX_QUESTIONS = 1000;
+const OPTION_KEYS = ["A", "B", "C", "D"] as const;
+
+/** mongoexport / Compass "extended JSON" numbers ({"$numberInt":"5"}) → plain numbers. */
+function unwrapExtendedNumber(v: unknown): unknown {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    for (const k of ["$numberInt", "$numberLong", "$numberDouble", "$numberDecimal"]) {
+      if (k in o) return Number(o[k]);
+    }
+  }
+  return v;
+}
+
+type BulkRow = {
+  body: string;
+  type: "mcq" | "integer";
+  options?: { A: string; B: string; C: string; D: string };
+  correctOption?: "A" | "B" | "C" | "D";
+  correctAnswer?: number;
+  solution: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  isPYQ: boolean;
+  pyqYear?: string;
+  classLevel?: ClassLevel;
+  chapter?: string;
+  topic?: string;
+};
+
+function normalizeBulkRow(raw: unknown): { row?: BulkRow; errors: string[] } {
+  const errors: string[] = [];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { errors: ["Not a JSON object."] };
+  }
+  const r = raw as Record<string, unknown>;
+
+  const body = typeof r.body === "string" ? r.body.trim() : "";
+  if (!body) errors.push("`body` (the question text) is missing.");
+
+  const answerRaw = unwrapExtendedNumber(r.correctAnswer);
+  let type: "mcq" | "integer" | null = null;
+  if (typeof r.type === "string") {
+    const t = r.type.trim().toLowerCase();
+    if (t === "mcq" || t === "integer") type = t;
+    else errors.push(`\`type\` must be "mcq" or "integer" (got "${r.type}").`);
+  } else if (r.type === undefined) {
+    // Older documents have no `type` — they were all MCQs.
+    type = r.options !== undefined ? "mcq" : answerRaw !== undefined ? "integer" : "mcq";
+  } else {
+    errors.push("`type` must be a string.");
+  }
+
+  let options: BulkRow["options"];
+  let correctOption: BulkRow["correctOption"];
+  let correctAnswer: number | undefined;
+
+  if (type === "mcq") {
+    const o = r.options;
+    const pick = (k: (typeof OPTION_KEYS)[number], i: number): unknown =>
+      Array.isArray(o) ? o[i] : o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined;
+    const vals = OPTION_KEYS.map((k, i) => {
+      const v = pick(k, i);
+      return typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : "";
+    });
+    if (vals.some((v) => !v)) errors.push("MCQ needs all four options A–D, none empty.");
+    else options = { A: vals[0], B: vals[1], C: vals[2], D: vals[3] };
+
+    const co = typeof r.correctOption === "string" ? r.correctOption.trim().toUpperCase() : "";
+    if (co === "A" || co === "B" || co === "C" || co === "D") correctOption = co;
+    else errors.push("`correctOption` must be A, B, C or D.");
+  } else if (type === "integer") {
+    const n = typeof answerRaw === "string" && answerRaw.trim() !== "" ? Number(answerRaw) : answerRaw;
+    if (typeof n === "number" && Number.isFinite(n)) correctAnswer = n;
+    else errors.push("Integer questions need a numeric `correctAnswer`.");
+  }
+
+  const solution = typeof r.solution === "string" ? r.solution.trim() : "";
+  if (!solution) errors.push("`solution` is missing.");
+
+  let difficulty: BulkRow["difficulty"] = "Medium";
+  if (r.difficulty !== undefined) {
+    const d = typeof r.difficulty === "string" ? r.difficulty.trim().toLowerCase() : "";
+    if (d === "easy") difficulty = "Easy";
+    else if (d === "medium") difficulty = "Medium";
+    else if (d === "hard") difficulty = "Hard";
+    else errors.push("`difficulty` must be Easy, Medium or Hard.");
+  }
+
+  const isPYQ = r.isPYQ === true || r.isPYQ === "true";
+  const yearRaw = unwrapExtendedNumber(r.pyqYear);
+  const pyqYear = typeof yearRaw === "number" ? String(yearRaw) : typeof yearRaw === "string" ? yearRaw.trim() : "";
+  if (isPYQ && !pyqYear) errors.push("`isPYQ` is true but `pyqYear` is missing.");
+
+  let classLevel: ClassLevel | undefined;
+  if (r.classLevel !== undefined && r.classLevel !== null && r.classLevel !== "") {
+    const c = String(unwrapExtendedNumber(r.classLevel));
+    if (c === "11" || c === "12") classLevel = c;
+    else errors.push("`classLevel` must be 11 or 12.");
+  }
+
+  const chapter = typeof r.chapter === "string" ? r.chapter.trim() || undefined : undefined;
+  const topic = typeof r.topic === "string" ? r.topic.trim() || undefined : undefined;
+
+  if (errors.length > 0 || !type) return { errors };
+  return {
+    errors,
+    row: {
+      body, type, options, correctOption, correctAnswer, solution, difficulty, isPYQ,
+      pyqYear: isPYQ ? pyqYear : undefined,
+      classLevel, chapter, topic,
+    },
+  };
+}
+
+export const bulkCreateQuestions = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      token: string;
+      bundleId: string; // "" for Sold Tests (they have no bundle)
+      testId: string;
+      /** Default subject for rows that don't name one. May be "" when the file names a subject on every row. */
+      subject: string;
+      questions: unknown[];
+      /** Apply Test Core's subjects + per-subject weightage as a hard cap (not used for Sold Tests). */
+      enforceThreshold?: boolean;
+      /** Validate and report only — write nothing. */
+      dryRun?: boolean;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+
+    if (!Array.isArray(data.questions) || data.questions.length === 0) {
+      throw new Error("The file doesn't contain any questions.");
+    }
+    if (data.questions.length > BULK_MAX_QUESTIONS) {
+      throw new Error(`Too many questions in one upload (${data.questions.length}). Split the file into batches of ${BULK_MAX_QUESTIONS} or fewer.`);
+    }
+
+    const db = await getDb();
+    const { ObjectId } = await import("mongodb");
+
+    // Subjects + weightage come from the stored test, never from the client.
+    let testSubjects: string[] | null = null;
+    const thresholds = new Map<string, number>();
+    if (data.enforceThreshold) {
+      if (!/^[a-f0-9]{24}$/i.test(data.testId)) throw new Error("Invalid test.");
+      const test = await db.collection("testCores").findOne({ _id: new ObjectId(data.testId) });
+      if (!test) throw new Error("Test not found.");
+      testSubjects = (test.subjects as string[] | undefined) ?? [];
+      for (const w of (test.weightage as { subject: string; questionCount: number }[] | undefined) ?? []) {
+        thresholds.set(w.subject, w.questionCount);
+      }
+    }
+    const canonicalSubject = (s: string): string | null => {
+      const t = s.trim();
+      if (!t) return null;
+      if (!testSubjects) return t;
+      return testSubjects.find((x) => x.trim().toLowerCase() === t.toLowerCase()) ?? null;
+    };
+
+    // Validate every row first; collect all problems so the admin can fix the file in one go.
+    const rowErrors: { row: number; messages: string[] }[] = [];
+    const items: { subject: string; row: BulkRow }[] = [];
+    let counted = 0; // rows (valid or not) that resolved to a subject — used for numbering
+    const perSubjectRows = new Map<string, number>();
+    data.questions.forEach((raw, i) => {
+      const res = normalizeBulkRow(raw);
+      const messages = [...res.errors];
+
+      const named = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).subject : undefined;
+      const wanted = typeof named === "string" && named.trim() ? named : data.subject;
+      let subject: string | null = null;
+      if (!wanted || !wanted.trim()) {
+        messages.push("No `subject` on this question, and no default subject was selected.");
+      } else {
+        subject = canonicalSubject(wanted);
+        if (!subject) {
+          messages.push(`Subject "${wanted}" isn't a subject of this test${testSubjects?.length ? ` (${testSubjects.join(", ")})` : ""}.`);
+        }
+      }
+
+      if (subject) {
+        counted++;
+        perSubjectRows.set(subject, (perSubjectRows.get(subject) ?? 0) + 1);
+        if (res.row) items.push({ subject, row: res.row });
+      }
+      if (messages.length > 0) rowErrors.push({ row: i + 1, messages });
+    });
+
+    // Numbering continues after what's already there, per subject (max guards against gaps left by deletions).
+    const subjectsInFile = [...perSubjectRows.keys()];
+    const existingRows = subjectsInFile.length
+      ? await db
+          .collection("questions")
+          .find({ testId: data.testId, subject: { $in: subjectsInFile } }, { projection: { questionNo: 1, subject: 1 } })
+          .toArray()
+      : [];
+    const startBySubject = new Map<string, number>();
+    const messagesOut: string[] = [];
+    const bySubject = subjectsInFile.map((subject) => {
+      const mine = existingRows.filter((e) => e.subject === subject);
+      const startNo = Math.max(mine.length, ...mine.map((e) => Number(e.questionNo) || 0)) + 1;
+      const count = perSubjectRows.get(subject) ?? 0;
+      const endNo = startNo + count - 1;
+      startBySubject.set(subject, startNo);
+      const cap = thresholds.get(subject);
+      if (cap !== undefined && endNo > cap) {
+        messagesOut.push(
+          `${subject} has ${mine.length} of ${cap} questions from Test Core's weightage — this file adds ${count}, which would exceed it. Update the weightage in Test Core first if that's intentional.`,
+        );
+      }
+      return { subject, count, startNo, endNo };
+    });
+
+    const summary = {
+      total: data.questions.length,
+      mcq: items.filter((r) => r.row.type === "mcq").length,
+      integer: items.filter((r) => r.row.type === "integer").length,
+      bySubject,
+    };
+    const message = messagesOut.length ? messagesOut.join(" ") : null;
+
+    if (rowErrors.length > 0 || message || counted !== data.questions.length) {
+      return { ok: false as const, dryRun: Boolean(data.dryRun), inserted: 0, outOfSyllabus: 0, ...summary, errors: rowErrors, message };
+    }
+
+    // Out-of-Syllabus tagging — same rule as createQuestion, with the syllabus loaded once.
+    const exam = await examForBundleId(db, data.bundleId);
+    const syllabus = exam ? await loadSyllabus(db, exam) : null;
+    const now = new Date();
+    const nextNo = new Map(startBySubject);
+    let oos = 0;
+    const docs = items.map(({ subject, row: r }) => {
+      const tag = syllabus
+        ? classifySyllabusTag(syllabus, subject, r)
+        : { classLevel: r.classLevel, chapter: r.chapter, topic: r.topic, outOfSyllabus: false };
+      if (tag.outOfSyllabus) oos++;
+      const questionNo = nextNo.get(subject)!;
+      nextNo.set(subject, questionNo + 1);
+      const doc: Record<string, unknown> = {
+        bundleId: data.bundleId,
+        testId: data.testId,
+        subject,
+        questionNo,
+        body: r.body,
+        type: r.type,
+        ...(r.type === "mcq" ? { options: r.options, correctOption: r.correctOption } : { correctAnswer: r.correctAnswer }),
+        solution: r.solution,
+        difficulty: r.difficulty,
+        isPYQ: r.isPYQ,
+        ...(r.pyqYear ? { pyqYear: r.pyqYear } : {}),
+        ...(tag.classLevel ? { classLevel: tag.classLevel } : {}),
+        ...(tag.chapter ? { chapter: tag.chapter } : {}),
+        ...(tag.topic ? { topic: tag.topic } : {}),
+        ...(tag.outOfSyllabus ? { outOfSyllabus: true } : {}),
+        createdAt: now,
+      };
+      return doc;
+    });
+
+    if (data.dryRun) {
+      return { ok: true as const, dryRun: true, inserted: 0, outOfSyllabus: oos, ...summary, errors: [], message: null };
+    }
+
+    await db.collection("questions").insertMany(docs, { ordered: true });
+    return { ok: true as const, dryRun: false, inserted: docs.length, outOfSyllabus: oos, ...summary, errors: [], message: null };
+  });
+
 export const listQuestionsForTestSubject = createServerFn({ method: "GET" })
   .validator((data: { token: string; testId: string; subject: string }) => data)
   .handler(async ({ data }) => {

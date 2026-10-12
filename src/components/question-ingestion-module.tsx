@@ -10,6 +10,7 @@ import {
   saveAttemptRules,
 } from "@/server-functions/admin";
 import { ImageInsertField } from "./admin/image-insert-field";
+import { QuestionJsonUpload } from "./admin/question-json-upload";
 import { OUT_OF_SYLLABUS, chaptersFor, toSyllabusExam, toSyllabusSubject, type ClassLevel, type Syllabus } from "@/lib/ncert-syllabus";
 import { ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 
@@ -227,6 +228,16 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testId, subject]);
+
+  // After a JSON upload: re-read this subject's questions so the counter, the
+  // "x / y" indicator and the attempt-group picker all reflect the new rows.
+  async function refreshSubjectQuestions() {
+    if (!testId || !subject) return;
+    const token = await adminUser.getIdToken();
+    const { questions } = await listQuestionsForTestSubject({ data: { token, testId, subject } });
+    setNextNumber(questions.length + 1);
+    setSubjectQs(questions.map((q) => ({ questionNo: q.questionNo, type: q.type })));
+  }
 
   function resetQuestionFields() {
     setQuestionType("mcq");
@@ -490,6 +501,17 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
             </div>
           )}
         </div>
+
+        {/* ── Bulk JSON upload ────────────────────────────────────────── */}
+        {bundleId && testId && (
+          <QuestionJsonUpload
+            adminUser={adminUser}
+            bundleId={bundleId}
+            testId={testId}
+            subject={subject}
+            onImported={refreshSubjectQuestions}
+          />
+        )}
 
         {/* ── Optional-attempt group ("attempt any N of M") ─────────── */}
         {contextReady && (
