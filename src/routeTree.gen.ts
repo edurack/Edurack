@@ -30,12 +30,15 @@ import { Route as PyqDrillRouteImport } from './routes/pyq-drill'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TicketsRouteImport } from './routes/tickets'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as CronBlogPublishRouteImport } from './routes/cron.blog-publish'
+import { Route as CronOutreachRouteImport } from './routes/cron.outreach'
+import { Route as CronStreakRemindersRouteImport } from './routes/cron.streak-reminders'
 import { Route as InternAuthRouteImport } from './routes/intern/auth'
 import { Route as InternCertificateRouteImport } from './routes/intern/certificate'
 import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
@@ -169,6 +172,11 @@ const TicketsRoute = TicketsRouteImport.update({
   path: '/tickets',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VerifyRoute = VerifyRouteImport.update({
   id: '/verify',
   path: '/verify',
@@ -197,6 +205,16 @@ const BlogSlugRoute = BlogSlugRouteImport.update({
 const CronBlogPublishRoute = CronBlogPublishRouteImport.update({
   id: '/cron/blog-publish',
   path: '/cron/blog-publish',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronOutreachRoute = CronOutreachRouteImport.update({
+  id: '/cron/outreach',
+  path: '/cron/outreach',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronStreakRemindersRoute = CronStreakRemindersRouteImport.update({
+  id: '/cron/streak-reminders',
+  path: '/cron/streak-reminders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InternAuthRoute = InternAuthRouteImport.update({
@@ -361,11 +379,14 @@ export interface FileRoutesByFullPath {
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/outreach': typeof CronOutreachRoute
+  '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -417,11 +438,14 @@ export interface FileRoutesByTo {
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/outreach': typeof CronOutreachRoute
+  '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -474,11 +498,14 @@ export interface FileRoutesById {
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/outreach': typeof CronOutreachRoute
+  '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
   '/intern/dashboard': typeof InternDashboardRoute
@@ -532,11 +559,14 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
+    | '/unsubscribe'
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/blog/$slug'
     | '/cron/blog-publish'
+    | '/cron/outreach'
+    | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -588,11 +618,14 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
+    | '/unsubscribe'
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/blog/$slug'
     | '/cron/blog-publish'
+    | '/cron/outreach'
+    | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -644,11 +677,14 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/sitemap.xml'
     | '/tickets'
+    | '/unsubscribe'
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
     | '/blog/$slug'
     | '/cron/blog-publish'
+    | '/cron/outreach'
+    | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
     | '/intern/dashboard'
@@ -701,11 +737,14 @@ export interface RootRouteChildren {
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   VerifyRoute: typeof VerifyRouteWithChildren
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   BlogSlugRoute: typeof BlogSlugRoute
   CronBlogPublishRoute: typeof CronBlogPublishRoute
+  CronOutreachRoute: typeof CronOutreachRoute
+  CronStreakRemindersRoute: typeof CronStreakRemindersRoute
   InternAuthRoute: typeof InternAuthRoute
   InternCertificateRoute: typeof InternCertificateRoute
   InternDashboardRoute: typeof InternDashboardRoute
@@ -884,6 +923,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TicketsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/verify': {
       id: '/verify'
       path: '/verify'
@@ -924,6 +970,20 @@ declare module '@tanstack/react-router' {
       path: '/cron/blog-publish'
       fullPath: '/cron/blog-publish'
       preLoaderRoute: typeof CronBlogPublishRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/outreach': {
+      id: '/cron/outreach'
+      path: '/cron/outreach'
+      fullPath: '/cron/outreach'
+      preLoaderRoute: typeof CronOutreachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/streak-reminders': {
+      id: '/cron/streak-reminders'
+      path: '/cron/streak-reminders'
+      fullPath: '/cron/streak-reminders'
+      preLoaderRoute: typeof CronStreakRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/intern/auth': {
@@ -1151,11 +1211,14 @@ const rootRouteChildren: RootRouteChildren = {
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   VerifyRoute: VerifyRouteWithChildren,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   BlogSlugRoute: BlogSlugRoute,
   CronBlogPublishRoute: CronBlogPublishRoute,
+  CronOutreachRoute: CronOutreachRoute,
+  CronStreakRemindersRoute: CronStreakRemindersRoute,
   InternAuthRoute: InternAuthRoute,
   InternCertificateRoute: InternCertificateRoute,
   InternDashboardRoute: InternDashboardRoute,

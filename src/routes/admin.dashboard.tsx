@@ -7,6 +7,8 @@ import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, Ref
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
+import { OutreachModule } from "@/components/admin/outreach-module";
+import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
   getAdminAnalytics,
@@ -63,6 +65,7 @@ type ModuleKey =
   | "sellTests"
   | "inspector"
   | "students"
+  | "outreach"
   | "applications"
   | "mentors"
   | "promoters"
@@ -100,6 +103,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
   label: "People",
   items: [
     { key: "students", label: "Students", icon: Users },
+    { key: "outreach", label: "Outreach", icon: Mail as any },
     { key: "applications", label: "Applications", icon: FileCheck as any},
     { key: "mentors", label: "Mentors", icon: GraduationCap },
     { key: "promoters", label: "Promoters", icon: Megaphone },  // ← add (Megaphone already imported)
@@ -363,6 +367,8 @@ function ModuleRouter({
       return <SellTestsAdminModule adminUser={adminUser} />;
     case "students":
       return <StudentsModule adminUser={adminUser} />;
+    case "outreach":
+      return <OutreachModule adminUser={adminUser} />;
     case "applications":
       return <ApplicationsModule adminUser={adminUser} />;
     case "mentors":
@@ -1328,6 +1334,9 @@ function StudentProfileDrawer({
                 <PracticeStat label="Due now" value={data.practice.dueForRevision} />
                 <PracticeStat label="Drills done" value={data.practice.drillsTaken} />
                 {data.practice.drillsInProgress > 0 && <PracticeStat label="Drill running" value={data.practice.drillsInProgress} />}
+              </div>
+              <div className="mt-4">
+                <StudentPracticeActivity uid={uid} adminUser={adminUser} />
               </div>
             </DrawerSection>
 

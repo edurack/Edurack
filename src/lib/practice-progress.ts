@@ -63,6 +63,13 @@ export async function recordPracticeOutcomes(
   });
   await col.bulkWrite(ops, { ordered: false });
 
+  // Append-only history: practiceProgress only keeps each question's LATEST state,
+  // so without this the admin can't see what was solved when, or the streak
+  // reminder recap. Best-effort — never blocks or fails a student's answer.
+  db.collection("practiceEvents")
+    .insertMany(entries.map((e) => ({ uid, questionId: e.questionId, outcome: e.outcome, answer: e.lastAnswer ?? null, ...e.keys, at: now })))
+    .catch((err) => console.error("[practiceEvents] insert failed:", err));
+
   // Peeking at a solution isn't practice; only real answers keep a streak alive.
   if (!entries.some((e) => e.outcome !== "revealed")) return null;
   return bumpStreak(db, uid, now);
@@ -76,11 +83,16 @@ export async function bumpStreak(db: Db, uid: string, now: Date = new Date()): P
     : EMPTY_STREAK;
   const today = istDayKey(now);
   const { increased, ...next } = advanceStreak(prev, today);
+  // Exact time of the latest answer — the streak reminder is sent at this clock time.
+  // (Written on every answer, not just the first of the day, so it tracks when they usually practise.)
+  if (!increased) {
+    await col.updateOne({ uid }, { $set: { lastPracticedAt: now } });
+  }
   if (increased) {
     // Keep the last two weeks of practice days; the Today card draws the last seven.
     const recent = Array.isArray(doc?.recentDays) ? (doc!.recentDays as string[]) : [];
     const recentDays = [...new Set([...recent, today])].sort().slice(-14);
-    await col.updateOne({ uid }, { $set: { ...next, recentDays, updatedAt: now }, $setOnInsert: { createdAt: now } }, { upsert: true });
+    await col.updateOne({ uid }, { $set: { ...next, recentDays, lastPracticedAt: now, updatedAt: now }, $setOnInsert: { createdAt: now } }, { upsert: true });
   }
   return { streak: increased ? next : prev, streakIncreased: increased };
 }
