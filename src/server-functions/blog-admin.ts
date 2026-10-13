@@ -13,8 +13,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { estimateReadingTimeMinutes } from "@/lib/blog-content";
-import type { BlogPost, BlogPostInput, BlogPostStatus, BlogCategory, BlogPromoSettings } from "@/lib/blog-types";
-import { BLOG_PROMO_AUDIENCES, DEFAULT_BLOG_PROMO_SETTINGS } from "@/lib/blog-types";
+import type { BlogPost, BlogPostInput, BlogPostStatus, BlogCategory, BlogPromoSettings, BlogDocument } from "@/lib/blog-types";
+import { BLOG_PROMO_AUDIENCES, DEFAULT_BLOG_PROMO_SETTINGS, MAX_BLOG_DOCUMENTS } from "@/lib/blog-types";
 import type { ExamKey, Track } from "@/lib/admin-types";
 
 async function requireAdmin(token: string) {
@@ -33,6 +33,46 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+// ─── Attached documents ───────────────────────────────────────────────────
+// Everything the editor sends is re-validated here: ids, names and storage
+// locations end up in download responses and Content-Disposition headers, so
+// nothing from the client is trusted as-is.
+function cleanDocuments(raw: unknown): BlogDocument[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BlogDocument[] = [];
+  const seen = new Set<string>();
+  for (const r of raw.slice(0, MAX_BLOG_DOCUMENTS)) {
+    if (!r || typeof r !== "object") continue;
+    const d = r as Record<string, unknown>;
+    const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+    const id = str(d.id, 40);
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(id) || seen.has(id)) continue;
+
+    const bucket = str(d.bucket, 63);
+    const path = str(d.path, 300);
+    const hasStorage = /^[a-z0-9][a-z0-9._-]{1,62}$/.test(bucket) && path.length > 0 && !path.startsWith("/") && !path.includes("..");
+    const externalUrl = str(d.externalUrl, 600);
+    const hasExternal = /^https:\/\//i.test(externalUrl);
+    if (!hasStorage && !hasExternal) continue;
+
+    const fileName = str(d.fileName, 120).replace(/[^\w.\- ()]/g, "-") || "document";
+    seen.add(id);
+    out.push({
+      id,
+      title: str(d.title, 120) || fileName,
+      description: str(d.description, 300),
+      fileName,
+      mimeType: str(d.mimeType, 100) || "application/octet-stream",
+      sizeBytes: typeof d.sizeBytes === "number" && d.sizeBytes >= 0 ? Math.floor(d.sizeBytes) : 0,
+      bucket: hasStorage ? bucket : null,
+      path: hasStorage ? path : null,
+      externalUrl: !hasStorage && hasExternal ? externalUrl : null,
+    });
+  }
+  return out;
 }
 
 function toIso(value: unknown): string | null {
@@ -60,6 +100,7 @@ function mapDocToAdminPost(r: any): BlogPost {
     pinned: Boolean(r.pinned),
     relatedBundleId: (r.relatedBundleId as string | null) ?? null,
     relatedBatchId: (r.relatedBatchId as string | null) ?? null,
+    documents: cleanDocuments(r.documents),
     seoTitleOverride: (r.seoTitleOverride as string | null) ?? null,
     seoDescriptionOverride: (r.seoDescriptionOverride as string | null) ?? null,
     viewCount: (r.viewCount as number) ?? 0,
@@ -127,6 +168,7 @@ export const createBlogPost = createServerFn({ method: "POST" })
     const now = new Date();
     const result = await db.collection("blogPosts").insertOne({
       ...data.post,
+      documents: cleanDocuments(data.post.documents),
       slug,
       status: "draft" satisfies BlogPostStatus,
       readingTimeMinutes: estimateReadingTimeMinutes(data.post.bodyMarkdown),
@@ -152,6 +194,7 @@ export const updateBlogPost = createServerFn({ method: "POST" })
     if (!existing) throw new Error("Post not found.");
 
     const patch: Record<string, unknown> = { ...data.post };
+    if ("documents" in patch) patch.documents = cleanDocuments(patch.documents);
 
     // Slug immutability: once a post has ever been published, its slug is
     // locked. Silently ignoring a slug change here (rather than throwing)

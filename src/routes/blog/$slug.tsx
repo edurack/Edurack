@@ -1,11 +1,13 @@
 // src/routes/blog/$slug.tsx
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getPublishedPostBySlug, incrementBlogViewCount, listRelatedPosts } from "@/server-functions/blog-public";
+import { getBlogSidebarData, getPublishedPostBySlug, incrementBlogViewCount } from "@/server-functions/blog-public";
 import { BlogBody, estimateReadingTimeMinutes, extractFaqItems, extractHeadings } from "@/lib/blog-content";
 import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
-import type { PublicBlogPostSummary } from "@/lib/blog-types";
-import { MobileTableOfContents, TableOfContentsSidebar } from "@/components/blog/table-of-contents";
+import { MobileTableOfContents } from "@/components/blog/table-of-contents";
+import { BlogSidebar, EMPTY_SIDEBAR } from "@/components/blog/blog-sidebar";
+import { BlogDocumentsCard } from "@/components/blog/blog-documents";
+import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { BlogBreadcrumbs, buildBreadcrumbJsonLd, buildPostBreadcrumbs } from "@/components/blog/blog-breadcrumbs";
 import { FreeTestPopup } from "@/components/blog/free-test-popup";
 import { BlogCallbackSection } from "@/components/blog/blog-callback-section";
@@ -21,10 +23,19 @@ import {
 const SITE_URL = "https://www.edurack.in";
 
 export const Route = createFileRoute("/blog/$slug")({
+  // ?download=<documentId> is how a student returns from the login page: the
+  // post then starts that download by itself. The canonical URL (below) never
+  // includes it, so it can't create duplicate pages in search results.
+  validateSearch: (search: Record<string, unknown>): { download?: string } => ({
+    download: typeof search.download === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(search.download) ? search.download : undefined,
+  }),
   loader: async ({ params }) => {
     const { post } = await getPublishedPostBySlug({ data: { slug: params.slug } });
     if (!post) throw notFound();
-    return { post };
+    // Fetched here (server-side) so the sidebar and "Keep reading" links are in
+    // the HTML crawlers receive. A sidebar failure must never break the post.
+    const sidebar = await getBlogSidebarData({ data: { postId: post.id, category: post.category, examKey: post.examKey } }).catch(() => EMPTY_SIDEBAR);
+    return { post, sidebar };
   },
   head: ({ loaderData }) => {
     if (!loaderData?.post) {
@@ -144,15 +155,13 @@ function initials(name: string): string {
 }
 
 function BlogPostPage() {
-  const { post } = Route.useLoaderData();
-  const [related, setRelated] = useState<PublicBlogPostSummary[]>([]);
+  const { post, sidebar } = Route.useLoaderData();
+  const { download } = Route.useSearch();
+  const related = sidebar.related;
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     incrementBlogViewCount({ data: { slug: post.slug } }).catch(() => {});
-    listRelatedPosts({ data: { postId: post.id, category: post.category, examKey: post.examKey } })
-      .then((r) => setRelated(r.posts))
-      .catch(() => {});
   }, [post.id]);
 
   const shareUrl = `${SITE_URL}/blog/${post.slug}`;
@@ -166,6 +175,8 @@ function BlogPostPage() {
     : "";
 
   return (
+    <>
+    <SiteHeader backLabel="Back to home" />
     <div className="mx-auto max-w-6xl px-4 pb-20 pt-8 sm:pt-12">
       <ReadingProgress targetId="post-body" />
       {/* key: a fresh 10s timer for every post, even when navigating post → post */}
@@ -223,8 +234,11 @@ function BlogPostPage() {
         )}
 
         {/* ── Body + sticky table of contents ── */}
-        <div className="mt-10 lg:grid lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start lg:gap-14">
+        <div className="mt-10 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-12">
           <div className="min-w-0 max-w-[46rem]">
+            {/* Login-gated downloads (PDFs/notes the admin attached). */}
+            <BlogDocumentsCard slug={post.slug} documents={post.documents} autoDownloadId={download} />
+
             {/* Mobile-only: collapsed by default, sits inline in the reading flow. */}
             <MobileTableOfContents headings={headings} className="mb-8 lg:hidden" />
 
@@ -275,8 +289,9 @@ function BlogPostPage() {
             )}
           </div>
 
-          {/* Desktop-only sticky sidebar; the mobile disclosure above covers small screens. */}
-          <TableOfContentsSidebar headings={headings} className="hidden lg:block" />
+          {/* Right rail: contents, NEET guides, most-read, latest, topics. On small
+              screens it stacks below the article, so the links are always in the page. */}
+          <BlogSidebar post={post} headings={headings} data={sidebar} />
         </div>
       </article>
 
@@ -317,5 +332,7 @@ function BlogPostPage() {
       {/* ── Very end of the page: request a call back ── */}
       <BlogCallbackSection examKey={post.examKey} category={post.category} postSlug={post.slug} className="mt-12" />
     </div>
+    <SiteFooter />
+    </>
   );
 }

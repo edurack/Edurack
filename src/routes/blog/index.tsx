@@ -7,6 +7,7 @@ import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from 
 import type { BlogCategory, PublicBlogPostSummary } from "@/lib/blog-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import { FreeTestPopup } from "@/components/blog/free-test-popup";
+import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { BlogCallbackSection } from "@/components/blog/blog-callback-section";
 import type { ExamKey } from "@/lib/admin-types";
 
@@ -54,6 +55,8 @@ function BlogIndexPage() {
   }
 
   return (
+    <>
+    <SiteHeader backLabel="Back to home" />
     <div className="mx-auto max-w-5xl px-4 py-14">
       {/* Filtering by JEE/NEET switches to that exam's link; otherwise general. */}
       <FreeTestPopup audience={resolveBlogPromoAudience({ examKey: search.examKey, category: search.category })} />
@@ -137,8 +140,31 @@ function BlogIndexPage() {
         </nav>
       )}
 
+      {/* Always-on links into the NEET guides — crawlable from the main blog page. */}
+      <nav aria-label="NEET chapter-wise weightage guides" className="mt-14 rounded-3xl bg-[#141b2b] p-6 text-white">
+        <p className="font-display text-lg font-extrabold tracking-tight">NEET chapter-wise weightage, 2020–2026</p>
+        <p className="mt-1 text-sm text-white/65">Which chapters and topics NEET actually asks from — ranked, paper by paper.</p>
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {[
+            ["All subjects", "/neet/chapter-wise-weightage"],
+            ["Physics", "/neet/chapter-wise-weightage/physics"],
+            ["Chemistry", "/neet/chapter-wise-weightage/chemistry"],
+            ["Botany", "/neet/chapter-wise-weightage/botany"],
+            ["Zoology", "/neet/chapter-wise-weightage/zoology"],
+          ].map(([label, to]) => (
+            <li key={to}>
+              <Link to={to} className="inline-flex rounded-full border border-white/25 px-4 py-2 text-sm font-semibold transition hover:bg-white/10">
+                {label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
       <BlogCallbackSection examKey={search.examKey} category={search.category} className="mt-16" />
     </div>
+    <SiteFooter />
+    </>
   );
 }
 

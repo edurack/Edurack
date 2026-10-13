@@ -35,6 +35,7 @@ import {
 import { uploadBlogImage } from "@/lib/blog-image-upload";
 import { BlogImageInsertField } from "@/components/admin/blog-image-insert-field";
 import { BlogPromoSettingsPanel } from "@/components/admin/blog-promo-settings";
+import { BlogDocumentsPanel } from "@/components/admin/blog-documents-panel";
 import { BlogBody } from "@/lib/blog-content";
 import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
 import type { BlogPost, BlogPostInput, BlogCategory } from "@/lib/blog-types";
@@ -58,6 +59,7 @@ const EMPTY_FORM: BlogPostInput = {
   pinned: false,
   relatedBundleId: null,
   relatedBatchId: null,
+  documents: [],
   seoTitleOverride: null,
   seoDescriptionOverride: null,
   substantiveUpdate: false,
@@ -270,6 +272,7 @@ function BlogEditor({
           pinned: post.pinned,
           relatedBundleId: post.relatedBundleId,
           relatedBatchId: post.relatedBatchId,
+          documents: post.documents ?? [],
           seoTitleOverride: post.seoTitleOverride,
           seoDescriptionOverride: post.seoDescriptionOverride,
           substantiveUpdate: false,
@@ -653,6 +656,8 @@ function BlogEditor({
               className="clay-inset w-full rounded-xl px-3 py-2 text-xs font-mono focus:outline-none"
             />
           </div>
+
+          <BlogDocumentsPanel documents={form.documents ?? []} onChange={(docs) => set("documents", docs)} />
 
           {status !== "draft" && (
             <label className="clay flex items-start gap-2 p-4 text-xs font-medium text-foreground/70">

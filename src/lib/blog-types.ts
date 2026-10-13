@@ -54,6 +54,30 @@ export type BlogAuthor = {
   mentorId: string | null; // optional link back to an existing mentor profile
 };
 
+// ─── Downloadable documents ────────────────────────────────────────────────
+// Files (PDFs, notes, sheets) an admin attaches to a post. Students download
+// them from the post page — logged-in only. The storage location (bucket /
+// path / external URL) lives ONLY on the server side of this type: the public
+// site receives PublicBlogDocument, and the real file URL is handed out one
+// request at a time by getBlogDocumentDownload after the caller's login is
+// verified (see server-functions/blog-documents.ts).
+export type BlogDocument = {
+  id: string;
+  title: string;
+  description: string;
+  /** Name the file is saved as on the student's device. */
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  bucket: string | null; // Supabase Storage bucket
+  path: string | null; // object path inside that bucket
+  externalUrl: string | null; // https:// link, only when the file isn't in Supabase Storage
+};
+
+export type PublicBlogDocument = Pick<BlogDocument, "id" | "title" | "description" | "fileName" | "mimeType" | "sizeBytes">;
+
+export const MAX_BLOG_DOCUMENTS = 10;
+
 export type BlogPost = {
   id: string;
   slug: string; // immutable after first publish — see requestSlugChange note in blog-admin.ts
@@ -75,6 +99,8 @@ export type BlogPost = {
   pinned: boolean;
   relatedBundleId: string | null;
   relatedBatchId: string | null;
+
+  documents: BlogDocument[];
 
   seoTitleOverride: string | null;
   seoDescriptionOverride: string | null;
@@ -107,6 +133,7 @@ export type BlogPostInput = {
   pinned: boolean;
   relatedBundleId: string | null;
   relatedBatchId: string | null;
+  documents?: BlogDocument[];
   seoTitleOverride: string | null;
   seoDescriptionOverride: string | null;
   substantiveUpdate: boolean;
@@ -135,6 +162,7 @@ export type PublicBlogPost = {
   relatedBatchId: string | null;
   seoTitle: string; // resolved: override ?? title
   seoDescription: string; // resolved: override ?? excerpt
+  documents: PublicBlogDocument[]; // metadata only — never the file location
   viewCount: number;
   publishedAt: string | null;
   updatedAt: string | null;
@@ -143,7 +171,7 @@ export type PublicBlogPost = {
 
 // Lightweight card shape for index/related-posts grids — avoids shipping
 // the full markdown body to a page that only renders a thumbnail grid.
-export type PublicBlogPostSummary = Omit<PublicBlogPost, "bodyMarkdown" | "seoTitle" | "seoDescription">;
+export type PublicBlogPostSummary = Omit<PublicBlogPost, "bodyMarkdown" | "seoTitle" | "seoDescription" | "documents">;
 
 export type BlogRevision = {
   id: string;

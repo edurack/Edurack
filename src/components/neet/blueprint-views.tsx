@@ -24,7 +24,20 @@ import {
   type Subject,
   type Topic,
 } from "@/lib/neet-blueprint";
+import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { DATA_NOTE, chapterFaq, chapterSummary, hubFaq, subjectFaq, subjectIntro, subjectYearTotals, type Faq } from "@/lib/neet-blueprint-copy";
+
+// Shared page frame: the site header (with links to the blog, PYQ practice and
+// these guides) and footer, so no page here is a dead end.
+function Page({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <SiteHeader backLabel="Back to home" />
+      <main className="mx-auto max-w-5xl px-4 py-10 sm:py-14">{children}</main>
+      <SiteFooter />
+    </>
+  );
+}
 
 // ── Small building blocks ──────────────────────────────────────────────────
 function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
@@ -207,7 +220,7 @@ export function ChapterView({ subjectKey, slug }: { subjectKey: string; slug: st
   const others = getSubjects().filter((s) => s.key !== subjectKey).map((s) => s.chapters[0]);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
+    <Page>
       <Crumbs
         items={[
           { label: "Home", to: <Link to="/" className="hover:underline">Home</Link> },
@@ -306,7 +319,7 @@ export function ChapterView({ subjectKey, slug }: { subjectKey: string; slug: st
         </div>
       </div>
       <DataNote />
-    </div>
+    </Page>
   );
 }
 
@@ -318,7 +331,7 @@ export function SubjectView({ subjectKey }: { subjectKey: string }) {
   const yearTotals = subjectYearTotals(s);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
+    <Page>
       <Crumbs
         items={[
           { label: "Home", to: <Link to="/" className="hover:underline">Home</Link> },
@@ -402,7 +415,7 @@ export function SubjectView({ subjectKey }: { subjectKey: string }) {
           ))}
       </ul>
       <DataNote />
-    </div>
+    </Page>
   );
 }
 
@@ -415,7 +428,7 @@ export function HubView() {
   const faqs = hubFaq();
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
+    <Page>
       <Crumbs
         items={[
           { label: "Home", to: <Link to="/" className="hover:underline">Home</Link> },
@@ -494,6 +507,6 @@ export function HubView() {
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={faqs} />
       <DataNote />
-    </div>
+    </Page>
   );
 }

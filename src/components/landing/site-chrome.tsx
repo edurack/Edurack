@@ -76,6 +76,14 @@ export function Title({
 // on-page anchor sections to link to, so the middle nav is swapped for a
 // single "Back to home" link — everything else (logo, auth buttons, mobile
 // menu behaviour) matches routes/index.tsx exactly.
+// Links every secondary page shows in its header — so the blog and the NEET
+// weightage guides are reachable from anywhere, not only from the homepage.
+const HEADER_LINKS: { label: string; to: string }[] = [
+  { label: "NEET weightage", to: "/neet/chapter-wise-weightage" },
+  { label: "PYQ practice", to: "/pyq" },
+  { label: "Blog", to: "/blog" },
+];
+
 export function SiteHeader({ backLabel = "Back to home" }: { backLabel?: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -104,6 +112,15 @@ export function SiteHeader({ backLabel = "Back to home" }: { backLabel?: string 
             <ArrowLeft className="h-3.5 w-3.5" />
             {backLabel}
           </Link>
+          {HEADER_LINKS.map((l) => (
+            <Link
+              key={l.to}
+              to={l.to}
+              className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground"
+            >
+              {l.label}
+            </Link>
+          ))}
         </nav>
         <div className="flex shrink-0 items-center gap-1">
           <Link
@@ -144,6 +161,16 @@ export function SiteHeader({ backLabel = "Back to home" }: { backLabel?: string 
             <ArrowLeft className="h-3.5 w-3.5" />
             {backLabel}
           </Link>
+          {HEADER_LINKS.map((l) => (
+            <Link
+              key={l.to}
+              to={l.to}
+              onClick={() => setOpen(false)}
+              className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground"
+            >
+              {l.label}
+            </Link>
+          ))}
         </nav>
       </div>
     </header>
@@ -163,6 +190,18 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Dashboard", to: "/dashboard" },
       { label: "Become a mentor", to: "/join-mentor" },
       { label: "Internships", to: "/join-intern" },
+      { label: "Blog", to: "/blog" },
+    ],
+  },
+  {
+    title: "NEET guides",
+    links: [
+      { label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" },
+      { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" },
+      { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" },
+      { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" },
+      { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" },
+      { label: "PYQ practice", to: "/pyq" },
     ],
   },
   {
@@ -197,7 +236,7 @@ export function SiteFooter() {
   return (
     <footer className={`${INK} pb-10 pt-16`}>
       <div className={WRAP}>
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2">
               <img

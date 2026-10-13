@@ -108,7 +108,7 @@ export function MobileTableOfContents({ headings, className }: { headings: BlogH
   );
 }
 
-export function TableOfContentsSidebar({ headings, className }: { headings: BlogHeading[]; className?: string }) {
+export function TableOfContentsSidebar({ headings, className, sticky = true }: { headings: BlogHeading[]; className?: string; sticky?: boolean }) {
   const [activeId, setActiveId] = useActiveHeading(headings);
   if (headings.length < 2) return null;
 
@@ -118,7 +118,7 @@ export function TableOfContentsSidebar({ headings, className }: { headings: Blog
 
   return (
     <nav aria-label="Table of contents" className={className}>
-      <div className="clay sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto p-4">
+      <div className={sticky ? "clay sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto p-4" : "clay p-4"}>
         <p className="mb-3 font-display text-sm font-bold text-foreground">Table of contents</p>
         <TocList headings={headings} activeId={activeId} onJump={onJump} />
       </div>

@@ -206,6 +206,7 @@ const navLinks: NavLink[] = [
   { label: "Why Edurack", type: "anchor", href: "#about" },
   { label: "Connect", type: "anchor", href: "#connect" },
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
+  { label: "NEET Weightage", type: "route", to: "/neet/chapter-wise-weightage" },
   { label: "Blog", type: "route", to: "/blog" },
   { label: "Contact", type: "route", to: "/contact" },
 ];
@@ -386,7 +387,7 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
   );
 }
 
-const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "Blog", "Contact"].includes(l.label));
+const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Blog", "Contact"].includes(l.label));
 
 function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
   const cls = "inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground";
@@ -766,6 +767,7 @@ function FinalCta() {
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
   { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }] },
+  { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
 ];
@@ -774,7 +776,7 @@ function Footer() {
   return (
     <footer className={`${INK} pb-10 pt-16`}>
       <div className={WRAP}>
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2"><img src="/edurack-logo.webp" alt="EDURACK" width={160} height={160} className="h-10 w-auto object-contain" /><span className="font-display text-xl font-extrabold">edurack</span></Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.</p>

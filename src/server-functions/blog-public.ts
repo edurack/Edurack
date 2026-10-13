@@ -9,7 +9,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { getCurrentRequest } from "@/lib/get-request";
-import type { BlogCategory, BlogPromoAudience, BlogPromoConfig, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
+import type { BlogCategory, BlogDocument, BlogPromoAudience, BlogPromoConfig, PublicBlogDocument, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
 import { DEFAULT_BLOG_PROMO_SETTINGS } from "@/lib/blog-types";
 import type { ExamKey } from "@/lib/admin-types";
 
@@ -58,10 +58,26 @@ function mapToSummary(r: any): PublicBlogPostSummary {
   };
 }
 
+// Metadata only. The bucket/path/externalUrl of a document must never be part
+// of a public response — the file is released one request at a time by
+// getBlogDocumentDownload, after the caller's login is verified.
+function toPublicDocuments(raw: unknown): PublicBlogDocument[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as BlogDocument[]).map((d) => ({
+    id: String(d.id),
+    title: String(d.title ?? d.fileName ?? "Document"),
+    description: String(d.description ?? ""),
+    fileName: String(d.fileName ?? "document"),
+    mimeType: String(d.mimeType ?? "application/octet-stream"),
+    sizeBytes: typeof d.sizeBytes === "number" ? d.sizeBytes : 0,
+  }));
+}
+
 function mapToFull(r: any): PublicBlogPost {
   const summary = mapToSummary(r);
   return {
     ...summary,
+    documents: toPublicDocuments(r.documents),
     bodyMarkdown: r.bodyMarkdown ?? "",
     seoTitle: (r.seoTitleOverride as string) || r.title,
     seoDescription: (r.seoDescriptionOverride as string) || r.excerpt || "",
@@ -113,40 +129,83 @@ export const getPublishedPostBySlug = createServerFn({ method: "GET" })
     return { post: mapToFull(row) };
   });
 
+// Shared by listRelatedPosts and getBlogSidebarData.
+async function queryRelated(db: any, ObjectId: any, data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) {
+  // Same category first; top up with same-exam posts if the category
+  // alone doesn't yield enough — a niche category (e.g. ipmatStrategy)
+  // shouldn't leave the rail looking sparse when there's decent
+  // same-exam content available instead.
+  const byCategory = await db
+    .collection("blogPosts")
+    .find({ ...PUBLISHED_FILTER, category: data.category, _id: { $ne: new ObjectId(data.postId) } })
+    .project({ bodyMarkdown: 0 })
+    .sort({ publishedAt: -1 })
+    .limit(4)
+    .toArray();
+
+  let combined = byCategory;
+  if (combined.length < 4 && data.examKey) {
+    const seen = new Set(combined.map((r: any) => String(r._id)));
+    const byExam = await db
+      .collection("blogPosts")
+      .find({
+        ...PUBLISHED_FILTER,
+        examKey: data.examKey,
+        _id: { $ne: new ObjectId(data.postId), $nin: [...seen].map((id) => new ObjectId(id as string)) },
+      })
+      .project({ bodyMarkdown: 0 })
+      .sort({ publishedAt: -1 })
+      .limit(4 - combined.length)
+      .toArray();
+    combined = [...combined, ...byExam];
+  }
+  return combined.slice(0, 4).map(mapToSummary);
+}
+
 export const listRelatedPosts = createServerFn({ method: "GET" })
   .validator((data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) => data)
   .handler(async ({ data }) => {
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
+    return { posts: await queryRelated(db, ObjectId, data) };
+  });
 
-    // Same category first; top up with same-exam posts if the category
-    // alone doesn't yield enough — a niche category (e.g. ipmatStrategy)
-    // shouldn't leave the rail looking sparse when there's decent
-    // same-exam content available instead.
-    const byCategory = await db
+// ─── Blog post sidebar ────────────────────────────────────────────────────
+// Everything the right-hand rail and the "Keep reading" row show, fetched in
+// the route LOADER so it is part of the server-rendered HTML. That is the point:
+// crawlers that read a post also follow the links to related, latest and
+// popular posts and to each category — instead of seeing an empty rail that
+// only fills in after JavaScript runs.
+export const getBlogSidebarData = createServerFn({ method: "GET" })
+  .validator((data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) => data)
+  .handler(async ({ data }) => {
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const exclude = new ObjectId(data.postId);
+
+    const [related, latestRows, categoryRows] = await Promise.all([
+      queryRelated(db, ObjectId, data),
+      db.collection("blogPosts").find({ ...PUBLISHED_FILTER, _id: { $ne: exclude } }).project({ bodyMarkdown: 0 }).sort({ publishedAt: -1 }).limit(5).toArray(),
+      db.collection("blogPosts").aggregate([{ $match: PUBLISHED_FILTER }, { $group: { _id: "$category", n: { $sum: 1 } } }]).toArray(),
+    ]);
+
+    // "Most read" skips anything already shown under "Latest" so the two lists never repeat.
+    const popularRows = await db
       .collection("blogPosts")
-      .find({ ...PUBLISHED_FILTER, category: data.category, _id: { $ne: new ObjectId(data.postId) } })
-      .sort({ publishedAt: -1 })
-      .limit(4)
+      .find({ ...PUBLISHED_FILTER, _id: { $nin: [exclude, ...latestRows.map((r: any) => r._id)] } })
+      .project({ bodyMarkdown: 0 })
+      .sort({ viewCount: -1, publishedAt: -1 })
+      .limit(5)
       .toArray();
 
-    let combined = byCategory;
-    if (combined.length < 4 && data.examKey) {
-      const seen = new Set(combined.map((r) => String(r._id)));
-      const byExam = await db
-        .collection("blogPosts")
-        .find({
-          ...PUBLISHED_FILTER,
-          examKey: data.examKey,
-          _id: { $ne: new ObjectId(data.postId), $nin: [...seen].map((id) => new ObjectId(id)) },
-        })
-        .sort({ publishedAt: -1 })
-        .limit(4 - combined.length)
-        .toArray();
-      combined = [...combined, ...byExam];
-    }
-
-    return { posts: combined.slice(0, 4).map(mapToSummary) };
+    return {
+      related,
+      latest: latestRows.map(mapToSummary),
+      popular: popularRows.map(mapToSummary),
+      categories: categoryRows
+        .map((r: any) => ({ category: r._id as BlogCategory, count: r.n as number }))
+        .sort((a: any, b: any) => b.count - a.count),
+    };
   });
 
 // Throttled to once per (post, browser) per call from the client — the

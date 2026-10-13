@@ -139,6 +139,14 @@ export const MAX_SESSION_ARTWORK_BYTES = 20 * 1024 * 1024; // 20MB
 export const BLOG_ASSETS_BUCKET = "blog-assets";
 export const MAX_BLOG_IMAGE_BYTES = 20 * 1024 * 1024;
 
+// ─── Blog downloadable documents (PDFs, notes) — login-gated ─────────────
+// Create this bucket as PRIVATE (not Public) and add the insert policy in
+// db/blog-documents-setup.sql. Students never get a permanent link: the
+// server verifies their login and hands out a short-lived signed URL, which
+// needs SUPABASE_SERVICE_ROLE_KEY in the SERVER env (never a VITE_ var).
+export const BLOG_DOCUMENTS_BUCKET = "blog-documents";
+export const MAX_BLOG_DOCUMENT_BYTES = 50 * 1024 * 1024; // Supabase Free caps uploads at 50MB
+
 
 // Shared helper — uploads a single File to the given bucket under a
 // collision-proof generated name, and returns its public URL. Every
