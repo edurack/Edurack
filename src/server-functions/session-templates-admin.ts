@@ -6,6 +6,7 @@
 // rather than imported, matching that file's own stated convention of
 // keeping each identity check self-contained rather than cross-importing.
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { supabase } from "@/lib/supabase";
 import type { SessionTemplate } from "@/lib/session-types";
@@ -44,6 +45,7 @@ export const createSessionTemplate = createServerFn({ method: "POST" })
   .validator((d: { token: string; title: string; description: string; thumbnailUrl: string }) => d)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createSessionTemplate", data, "Session templates");
     if (!data.title.trim() || !data.thumbnailUrl.trim()) {
       throw new Error("Title and thumbnail are required.");
     }
@@ -61,6 +63,7 @@ export const setSessionTemplateEnabled = createServerFn({ method: "POST" })
   .validator((d: { token: string; templateId: string; enabled: boolean }) => d)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "setSessionTemplateEnabled", data, "Session templates");
     const sb = supabase;
     const { error } = await sb
       .from("session_templates")
@@ -74,6 +77,7 @@ export const deleteSessionTemplate = createServerFn({ method: "POST" })
   .validator((d: { token: string; templateId: string }) => d)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "deleteSessionTemplate", data, "Session templates");
     const sb = supabase;
     const { error } = await sb.from("session_templates").delete().eq("id", data.templateId);
     if (error) throw new Error(error.message);

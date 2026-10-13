@@ -5,6 +5,7 @@
 // same way mentor-auth.ts duplicates requireSuperAdmin rather than
 // importing it from admin.ts.
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import type {
@@ -35,6 +36,7 @@ export const createPromoterInvite = createServerFn({ method: "POST" })
   .validator((data: { token: string; name: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createPromoterInvite", data, "Promoters");
     if (!data.name.trim()) throw new Error("Enter the promoter's name.");
 
     const db = await getDb();
@@ -90,6 +92,7 @@ export const suspendPromoter = createServerFn({ method: "POST" })
   .validator((data: { token: string; promoterId: string; suspended: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "suspendPromoter", data, "Promoters");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("promoters").updateOne(
@@ -157,6 +160,7 @@ export const reviewPromoterCouponRequest = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "reviewPromoterCouponRequest", data, "Promoters");
     if (data.decision === "approved" && !data.couponCode?.trim()) {
       throw new Error("Enter a coupon code to approve this request.");
     }
@@ -224,6 +228,7 @@ export const reviewPromoterPayoutRequest = createServerFn({ method: "POST" })
   .validator((data: { token: string; requestId: string; decision: "approved" | "rejected" }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "reviewPromoterPayoutRequest", data, "Promoters");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -266,6 +271,7 @@ export const resolvePromoterPasswordReset = createServerFn({ method: "POST" })
   .validator((data: { token: string; requestId: string; newPassword: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "resolvePromoterPasswordReset", data, "Promoters");
     if (data.newPassword.length < 8) throw new Error("Password must be at least 8 characters.");
 
     const { ObjectId } = await import("mongodb");
@@ -335,6 +341,7 @@ export const respondToPromoterTicket = createServerFn({ method: "POST" })
   .validator((data: { token: string; ticketId: string; adminResponse: string; status: PromoterTicketStatus }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "respondToPromoterTicket", data, "Promoters");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 

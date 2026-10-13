@@ -3,6 +3,7 @@
 // requireSuperAdmin duplicated per the mentor-auth.ts/promoter-auth.ts
 // convention (keep each identity/domain file independent).
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { InternTaskInput } from "@/lib/intern-types";
@@ -31,6 +32,7 @@ export const assignInternTask = createServerFn({ method: "POST" })
   .validator((data: { token: string; task: InternTaskInput }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);
+    await logAdminAction(data.token, "assignInternTask", data, "Interns");
     const db = await getDb();
     const { ObjectId } = await import("mongodb");
 
@@ -180,6 +182,7 @@ export const approveDraft = createServerFn({ method: "POST" })
   .validator((data: { token: string; draftId: string; adminFeedback?: string }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);
+    await logAdminAction(data.token, "approveDraft", data, "Interns");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -266,6 +269,7 @@ export const rejectDraft = createServerFn({ method: "POST" })
   .validator((data: { token: string; draftId: string; adminFeedback: string }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);
+    await logAdminAction(data.token, "rejectDraft", data, "Interns");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 

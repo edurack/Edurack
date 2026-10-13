@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { isTeamEmail, logAdminAction, teamDomain } from "@/lib/team-core";
 import { sendMail, sendMailBatch } from "@/lib/mailer";
 import { bundleAnnouncementEmailHtml, platformAnnouncementEmailHtml, mentorApprovedEmailHtml, mentorRejectedEmailHtml } from "@/lib/email-templates";import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
@@ -53,6 +54,14 @@ export const verifyAdminAccess = createServerFn({ method: "POST" })
     const decoded = await adminAuth.verifyIdToken(data.token);
     if (decoded.admin === true) {
       return { ok: true, alreadyAdmin: true };
+    }
+
+    // New team members must use their company address (existing admins are untouched).
+    // ADMIN_ALLOWED_DOMAIN overrides the default "edurack.in"; ADMIN_EXTRA_EMAILS (comma-separated)
+    // allows named exceptions such as a founder's personal address.
+    const extra = (process.env.ADMIN_EXTRA_EMAILS ?? "").toLowerCase().split(",").map((e) => e.trim()).filter(Boolean);
+    if (!isTeamEmail(decoded.email) && !extra.includes((decoded.email ?? "").toLowerCase())) {
+      throw new Error(`Use your @${teamDomain()} email to register as a team member.`);
     }
 
     await adminAuth.setCustomUserClaims(decoded.uid, { admin: true });
@@ -126,6 +135,7 @@ export const adminTerminateDeviceSession = createServerFn({ method: "POST" })
   .validator((data: { token: string; uid: string; deviceId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "adminTerminateDeviceSession", data, "Students");
     const db = await getDb();
     const result = await db.collection("sessions").deleteOne({ uid: data.uid, deviceId: data.deviceId });
     if (result.deletedCount === 0) throw new Error("Device session not found — it may have already been removed.");
@@ -145,6 +155,7 @@ export const createTestSeries = createServerFn({ method: "POST" })
   .validator((data: { token: string; testSeries: TestSeriesInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createTestSeries", data, "Tests");
     const db = await getDb();
     await db.collection("testSeries").insertOne({
       ...data.testSeries,
@@ -199,6 +210,7 @@ export const createBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundle: BundleInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createBundle", data, "Bundles");
     const db = await getDb();
     const now = new Date();
     const result = await db.collection("bundles").insertOne({
@@ -245,6 +257,7 @@ export const updateBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; bundle: Partial<BundleInput> }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateBundle", data, "Bundles");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("bundles").updateOne(
@@ -270,6 +283,7 @@ export const postBundleAnnouncement = createServerFn({ method: "POST" })
   .validator((data: { token: string; announcement: BundleAnnouncementInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "postBundleAnnouncement", data, "Bundles");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
  
@@ -365,6 +379,7 @@ export const createTestCore = createServerFn({ method: "POST" })
   .validator((data: { token: string; testCore: TestCoreInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createTestCore", data, "Tests");
     const db = await getDb();
     const result = await db.collection("testCores").insertOne({
       ...data.testCore,
@@ -407,6 +422,7 @@ export const updateTestCore = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; testCore: Partial<TestCoreInput> }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateTestCore", data, "Tests");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("testCores").updateOne(
@@ -481,6 +497,7 @@ export const createQuestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; question: QuestionInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createQuestion", data, "Questions");
 
     const q = data.question;
     if (q.type === "mcq") {
@@ -653,6 +670,7 @@ export const bulkCreateQuestions = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "bulkCreateQuestions", data, "Questions");
 
     if (!Array.isArray(data.questions) || data.questions.length === 0) {
       throw new Error("The file doesn't contain any questions.");
@@ -830,6 +848,7 @@ export const updateQuestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; question: Partial<QuestionInput> }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateQuestion", data, "Questions");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -983,6 +1002,7 @@ export const saveAttemptRules = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string; subject: string; rules: AttemptRule[] }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "saveAttemptRules", data, "Tests");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -1027,6 +1047,7 @@ export const deleteQuestion = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "deleteQuestion", data, "Questions");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("questions").deleteOne({ _id: new ObjectId(data.id) });
@@ -1054,6 +1075,7 @@ export const createMentor = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentor: MentorOnboardingInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createMentor", data, "Mentors");
     const db = await getDb();
 
     const existing = await db.collection("mentors").findOne({ username: data.mentor.username });
@@ -1125,6 +1147,7 @@ export const updateMentorProfile = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateMentorProfile", data, "Mentors");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("mentors").updateOne({ _id: new ObjectId(data.id) }, { $set: data.profile });
@@ -1147,6 +1170,7 @@ export const createMentorshipBatch = createServerFn({ method: "POST" })
   .validator((data: { token: string; batch: MentorshipBatchInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createMentorshipBatch", data, "Mentors");
     const db = await getDb();
     const result = await db.collection("mentorshipBatches").insertOne({
       ...data.batch,
@@ -1183,6 +1207,7 @@ export const updateMentorshipBatch = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; batch: Partial<MentorshipBatchInput> }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateMentorshipBatch", data, "Mentors");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("mentorshipBatches").updateOne(
@@ -1199,6 +1224,7 @@ export const postAnnouncement = createServerFn({ method: "POST" })
   .validator((data: { token: string; message: string; track: AnnouncementTrack; sendEmail?: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "postAnnouncement", data, "Announcements");
     const db = await getDb();
     await db.collection("announcements").insertOne({
       message: data.message,
@@ -1295,6 +1321,7 @@ export const respondToMentorTicket = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "respondToMentorTicket", data, "Mentors");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -1649,6 +1676,7 @@ export const replyToTicket = createServerFn({ method: "POST" })
   .validator((data: { token: string; ticketId: string; reply: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "replyToTicket", data, "Tickets");
     if (!data.reply.trim()) throw new Error("Reply can't be empty.");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
@@ -1664,6 +1692,7 @@ export const updateTicketStatus = createServerFn({ method: "POST" })
   .validator((data: { token: string; ticketId: string; status: "open" | "resolved" }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateTicketStatus", data, "Tickets");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db
@@ -1723,6 +1752,7 @@ export const approveCreatorApplication = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "approveCreatorApplication", data, "Applications");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -1768,6 +1798,7 @@ export const rejectCreatorApplication = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string; reason: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "rejectCreatorApplication", data, "Applications");
     if (!data.reason.trim()) throw new Error("A rejection reason is required.");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
@@ -1804,6 +1835,7 @@ export const reopenCreatorApplication = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "reopenCreatorApplication", data, "Applications");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("creatorApplications").updateOne(
@@ -1824,6 +1856,7 @@ export const updateApplicationVerification = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string; agreementDone: boolean; userVerified: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateApplicationVerification", data, "Applications");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -1899,6 +1932,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "deleteBundle", data, "Bundles");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -1975,6 +2009,7 @@ export const deleteTestCore = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "deleteTestCore", data, "Tests");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -2150,6 +2185,7 @@ export const setMentorAccountStatus = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentorId: string; terminated: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "setMentorAccountStatus", data, "Mentors");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const result = await db.collection("mentors").updateOne(
@@ -2264,6 +2300,7 @@ export const resetMentorPasswordEmail = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "resetMentorPasswordEmail", data, "Mentors");
     const { ObjectId } = await import("mongodb");
     const { scryptSync, randomBytes } = await import("node:crypto");
     const db = await getDb();
@@ -2365,6 +2402,7 @@ export const sendSoldTestToMentorForReview = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "sendSoldTestToMentorForReview", data, "Sell tests");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 
@@ -2411,6 +2449,7 @@ export const setSellTestsAccess = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentorId: string; granted: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "setSellTestsAccess", data, "Sell tests");
     const db = await getDb();
     await db.collection("sellTestsAccessRequests").updateOne(
       { mentorId: data.mentorId },
@@ -2461,6 +2500,7 @@ export const approveSoldTestPrice = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; approvedPrice: number }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "approveSoldTestPrice", data, "Sell tests");
     if (!data.approvedPrice || data.approvedPrice <= 0) throw new Error("Enter a valid price.");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();

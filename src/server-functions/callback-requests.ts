@@ -2,6 +2,7 @@
 // visitor asking to be called back isn't a platform user yet. Mirrors the
 // same "public write, admin-only read" pattern as submitCreatorApplication.
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 
@@ -71,6 +72,7 @@ export const markCallbackRequestContacted = createServerFn({ method: "POST" })
   .validator((data: { token: string; requestId: string; contacted: boolean }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "markCallbackRequestContacted", data, "Callbacks");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const result = await db.collection("callbackRequests").updateOne(

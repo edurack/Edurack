@@ -8,6 +8,10 @@ import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
 import { OutreachModule } from "@/components/admin/outreach-module";
+import { TeamModule } from "@/components/admin/team-module";
+import { getTeamOverview } from "@/server-functions/team";
+import { GrowthHubModule } from "@/components/admin/growth-hub-module";
+import { IconTrendingUp as TrendingUpIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";import {
@@ -66,6 +70,8 @@ type ModuleKey =
   | "inspector"
   | "students"
   | "outreach"
+  | "growth"
+  | "team"
   | "applications"
   | "mentors"
   | "promoters"
@@ -83,7 +89,7 @@ type ModuleDef = { key: ModuleKey; label: string; icon: typeof LayoutDashboard }
 // posted somewhere the student dashboard doesn't read yet. Keeping either
 // around just meant admins could enter data with no visible effect.
 const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
-  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }] },
+  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }, { key: "growth", label: "Growth Hub", icon: TrendingUpIcon as any }] },
   {
     label: "Content",
     items: [
@@ -102,6 +108,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
   {
   label: "People",
   items: [
+    { key: "team", label: "Team", icon: TeamIcon as any },
     { key: "students", label: "Students", icon: Users },
     { key: "outreach", label: "Outreach", icon: Mail as any },
     { key: "applications", label: "Applications", icon: FileCheck as any},
@@ -176,6 +183,12 @@ function AdminDashboardPage() {
       navigate({ to: "/admin/auth" });
     }
   }, [loading, adminUser, isAdmin, navigate]);
+
+  // Creates/refreshes this person's team profile the moment they land on the dashboard.
+  useEffect(() => {
+    if (!adminUser || !isAdmin) return;
+    adminUser.getIdToken().then((token) => getTeamOverview({ data: { token } })).catch(() => {});
+  }, [adminUser, isAdmin]);
 
   function setActiveModule(key: ModuleKey) {
     navigate({ to: "/admin/dashboard", search: { tab: key }, replace: true });
@@ -255,13 +268,13 @@ function AdminDashboardPage() {
           )}
 
           <main className="min-w-0 flex-1 px-4 py-6">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} />
+            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} onNavigate={(k) => setActiveModule(k as ModuleKey)} />
           </main>
         </div>
 
         <main className="hidden min-w-0 flex-1 px-8 py-8 md:block">
           <div className="mx-auto max-w-5xl">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} />
+            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} onNavigate={(k) => setActiveModule(k as ModuleKey)} />
           </div>
         </main>
       </div>
@@ -345,10 +358,12 @@ function ModuleRouter({
   activeModule,
   adminUser,
   ticketId,
+  onNavigate,
 }: {
   activeModule: ModuleKey;
   adminUser: { getIdToken: () => Promise<string> };
   ticketId?: string;
+  onNavigate?: (tab: string) => void;
 }) {
   switch (activeModule) {
     case "overview":
@@ -369,6 +384,10 @@ function ModuleRouter({
       return <StudentsModule adminUser={adminUser} />;
     case "outreach":
       return <OutreachModule adminUser={adminUser} />;
+    case "growth":
+      return <GrowthHubModule adminUser={adminUser} onNavigate={onNavigate} />;
+    case "team":
+      return <TeamModule adminUser={adminUser} />;
     case "applications":
       return <ApplicationsModule adminUser={adminUser} />;
     case "mentors":

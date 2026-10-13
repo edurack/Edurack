@@ -186,6 +186,7 @@ function friendlyAdminError(err: unknown): string {
   const code = (err as { code?: string })?.code ?? "";
   const message = (err as { message?: string })?.message ?? "";
   if (message.includes("Invalid passkey")) return "Incorrect security passkey.";
+  if (message.includes("team member")) return message.replace(/^.*?(Use your)/, "$1");
   if (message.includes("ADMIN_PASSKEY")) return "Admin portal is not configured yet. Contact the developer.";
   switch (code) {
     case "auth/invalid-credential":

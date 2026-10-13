@@ -5,6 +5,7 @@
 // convention as blog-admin.ts / promoter-admin.ts (sharing it across
 // server-function files previously broke client-bundle stripping).
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { eligibleBundleIds, practiceKeysFor } from "@/lib/pyq-server";
@@ -136,6 +137,7 @@ export const resolveQuestionReports = createServerFn({ method: "POST" })
   .validator((data: { token: string; questionId: string; status: ReportStatus; adminNote?: string }) => data)
   .handler(async ({ data }): Promise<{ updated: number }> => {
     const decoded = await requireAdmin(data.token);
+    await logAdminAction(data.token, "resolveQuestionReports", data, "Question reports");
     const db = await getDb();
     if (!["open", "fixed", "dismissed"].includes(data.status)) throw new Error("Invalid status.");
     if (!OID.test(data.questionId)) throw new Error("Question not found.");

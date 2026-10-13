@@ -7,6 +7,7 @@
 // is a manual admin action, deliberately not automatic, since scoring a
 // candidate is a judgment call.
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { getDb } from "@/lib/mongo";
 import { adminAuth } from "@/lib/firebase-admin";
 import type { TrialAssignmentInput, TrialQuestionAnswer, TrialReviewInput } from "@/lib/intern-types";
@@ -47,6 +48,7 @@ export const createTrialAssignment = createServerFn({ method: "POST" })
   .validator((data: { token: string; assignment: TrialAssignmentInput }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);
+    await logAdminAction(data.token, "createTrialAssignment", data, "Intern trials");
     const { randomBytes } = await import("node:crypto");
     const db = await getDb();
 
@@ -111,6 +113,7 @@ export const reviewTrialAssignment = createServerFn({ method: "POST" })
   .validator((data: { token: string; assignmentId: string; review: TrialReviewInput }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);
+    await logAdminAction(data.token, "reviewTrialAssignment", data, "Intern trials");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
 

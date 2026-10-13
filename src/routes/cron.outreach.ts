@@ -1,7 +1,7 @@
 // GET /cron/outreach?key=<CRON_SECRET> — finishes outreach jobs left "running" (e.g. admin closed the tab).
 // Schedule every 5–10 minutes alongside the streak-reminder cron. Fails closed without CRON_SECRET.
 import { createFileRoute } from "@tanstack/react-router";
-import { processOutreachJobs } from "@/server-functions/outreach";
+import { processOutreachJobs } from "@/lib/outreach-core";
 
 export const Route = createFileRoute("/cron/outreach")({
   server: {

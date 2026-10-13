@@ -10,6 +10,7 @@
 // client-bundle stripping of node:crypto. Every file duplicates its own
 // private check instead.
 import { createServerFn } from "@tanstack/react-start";
+import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { estimateReadingTimeMinutes } from "@/lib/blog-content";
@@ -135,6 +136,7 @@ export const suggestBlogSlug = createServerFn({ method: "POST" })
   .validator((data: { token: string; title: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "suggestBlogSlug", data, "Blog");
     const db = await getDb();
     const base = slugify(data.title) || "post";
     let candidate = base;
@@ -158,6 +160,7 @@ export const createBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; post: BlogPostInput }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "createBlogPost", data, "Blog");
     const db = await getDb();
 
     const slug = slugify(data.post.slug || data.post.title);
@@ -186,6 +189,7 @@ export const updateBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; post: Partial<BlogPostInput> }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const _id = new ObjectId(data.id);
@@ -269,6 +273,7 @@ export const publishBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "publishBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const _id = new ObjectId(data.id);
@@ -313,6 +318,7 @@ export const bulkUpdateBlogPosts = createServerFn({ method: "POST" })
   .validator((data: { token: string; action: BulkBlogAction; ids: string[]; featuredIds?: string[] }) => data)
   .handler(async ({ data }): Promise<{ results: BulkBlogResult[] }> => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "bulkUpdateBlogPosts", data, "Blog");
     if (!["publish", "draft", "archive", "setFeatured"].includes(data.action)) throw new Error("Unknown action.");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
@@ -385,6 +391,7 @@ export const scheduleBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; publishAt: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "scheduleBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     const _id = new ObjectId(data.id);
@@ -408,6 +415,7 @@ export const revertBlogPostToDraft = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "revertBlogPostToDraft", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("blogPosts").updateOne(
@@ -421,6 +429,7 @@ export const archiveBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "archiveBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("blogPosts").updateOne(
@@ -438,6 +447,7 @@ export const softDeleteBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "softDeleteBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("blogPosts").updateOne(
@@ -451,6 +461,7 @@ export const restoreBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "restoreBlogPost", data, "Blog");
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     await db.collection("blogPosts").updateOne(
@@ -532,6 +543,7 @@ export const saveBlogPromoSettings = createServerFn({ method: "POST" })
   .validator((data: { token: string; settings: BlogPromoSettings }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
+    await logAdminAction(data.token, "saveBlogPromoSettings", data, "Blog");
     const settings = cleanPromoSettings(data.settings);
     for (const key of BLOG_PROMO_AUDIENCES) {
       const c = settings[key];
