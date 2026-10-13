@@ -244,3 +244,9 @@ export function resolveBlogPromoAudience(input: {
   if (input.examKey === "neet" || input.category === "neetStrategy") return "neet";
   return "general";
 }
+
+
+// How many featured posts the public blog index shows at once. The admin
+// bulk dialog warns when more than this are ticked; the public query caps
+// at this number regardless (newest first).
+export const MAX_FEATURED_POSTS = 6;

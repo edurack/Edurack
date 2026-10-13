@@ -17,6 +17,8 @@ import {
   IconAlertCircle as AlertCircle,
   IconPhoto as ImageIcon,
   IconRestore as Restore,
+  IconStar as Star,
+  IconX as X,
 } from "@tabler/icons-react";
 import {
   createBlogPost,
@@ -31,13 +33,15 @@ import {
   restoreBlogPost,
   suggestBlogSlug,
   checkBlogSlugAvailable,
+  bulkUpdateBlogPosts,
 } from "@/server-functions/blog-admin";
+import type { BulkBlogAction } from "@/server-functions/blog-admin";
 import { uploadBlogImage } from "@/lib/blog-image-upload";
 import { BlogImageInsertField } from "@/components/admin/blog-image-insert-field";
 import { BlogPromoSettingsPanel } from "@/components/admin/blog-promo-settings";
 import { BlogDocumentsPanel } from "@/components/admin/blog-documents-panel";
 import { BlogBody } from "@/lib/blog-content";
-import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
+import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
 import type { BlogPost, BlogPostInput, BlogCategory } from "@/lib/blog-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import type { ExamKey, Track } from "@/lib/admin-types";
@@ -65,6 +69,20 @@ const EMPTY_FORM: BlogPostInput = {
   substantiveUpdate: false,
 };
 
+// Mirrors assertPublishReady on the server (cover image is optional; alt text
+// only matters when one is attached). The server stays the authority — this
+// just lets the bulk dialog warn before the click instead of after.
+function missingForPublish(p: BlogPost): string[] {
+  const m: string[] = [];
+  if (!p.title?.trim()) m.push("title");
+  if (!p.excerpt?.trim()) m.push("excerpt");
+  if (p.coverImageUrl && !p.coverImageAlt?.trim()) m.push("cover alt text");
+  if (!p.bodyMarkdown?.trim()) m.push("body");
+  return m;
+}
+
+type StatusFilter = "all" | BlogPost["status"];
+
 function statusPill(status: BlogPost["status"]) {
   const styles: Record<BlogPost["status"], string> = {
     draft: "bg-foreground/10 text-foreground/60",
@@ -81,6 +99,11 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const [listStatus, setListStatus] = useState<"loading" | "ready" | "error">("loading");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showPromo, setShowPromo] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dialog, setDialog] = useState<null | "publish" | "feature">(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   async function loadList() {
     setListStatus("loading");
@@ -112,6 +135,67 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   function backToList() {
     setView("list");
     loadList();
+  }
+
+  const visiblePosts = useMemo(
+    () => (posts ?? []).filter((p) => statusFilter === "all" || p.status === statusFilter),
+    [posts, statusFilter],
+  );
+  const selectedPosts = useMemo(() => (posts ?? []).filter((p) => selected.has(p.id)), [posts, selected]);
+  const allVisibleSelected = visiblePosts.length > 0 && visiblePosts.every((p) => selected.has(p.id));
+  const featuredCount = useMemo(() => (posts ?? []).filter((p) => p.pinned && p.status === "published").length, [posts]);
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visiblePosts.forEach((p) => next.delete(p.id));
+      else visiblePosts.forEach((p) => next.add(p.id));
+      return next;
+    });
+  }
+
+  // Runs one bulk call, then summarises per-post failures so a partial
+  // success ("6 of 8 published") is never silently reported as full success.
+  async function runBulk(action: BulkBlogAction, ids: string[], featuredIds?: string[], skippedIds: string[] = []) {
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    setBulkMsg(null);
+    try {
+      const token = await adminUser.getIdToken();
+      const { results } = await bulkUpdateBlogPosts({ data: { token, action, ids, featuredIds } });
+      const failed = results.filter((r) => !r.ok);
+      const titleOf = (id: string) => posts?.find((p) => p.id === id)?.title || "(untitled)";
+      const verb = { publish: "Published", draft: "Moved to draft", archive: "Archived", setFeatured: "Updated featured for" }[action];
+      if (failed.length === 0) {
+        const skippedNote = skippedIds.length > 0 ? ` ${skippedIds.length} not ready — still selected; fix them in the editor.` : "";
+        setBulkMsg({ kind: "ok", text: `${verb} ${results.length} post${results.length === 1 ? "" : "s"}.${skippedNote}` });
+        setSelected(new Set(skippedIds));
+      } else {
+        setBulkMsg({
+          kind: "error",
+          text: `${results.length - failed.length} done, ${failed.length} failed — ${failed
+            .map((f) => `"${titleOf(f.id)}": ${f.error}`)
+            .join(" · ")}`,
+        });
+        // Leave only the failures selected so the admin can fix and retry.
+        setSelected(new Set([...failed.map((f) => f.id), ...skippedIds]));
+      }
+      setDialog(null);
+      await loadList();
+    } catch (err) {
+      setBulkMsg({ kind: "error", text: err instanceof Error ? err.message : "Bulk action failed." });
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   const totalViews = useMemo(
@@ -154,6 +238,88 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
 
       {showPromo && <BlogPromoSettingsPanel adminUser={adminUser} />}
 
+      {posts && posts.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {(["all", "draft", "scheduled", "published", "archived"] as StatusFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setStatusFilter(f)}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-bold capitalize ${statusFilter === f ? "bg-foreground text-background" : "clay-chip text-foreground/60"}`}
+            >
+              {f}
+              <span className="ml-1.5 opacity-60">{f === "all" ? posts.length : posts.filter((p) => p.status === f).length}</span>
+            </button>
+          ))}
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-foreground/50">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+            {featuredCount} featured on index (max {MAX_FEATURED_POSTS} shown)
+          </span>
+        </div>
+      )}
+
+      {bulkMsg && (
+        <div
+          className={`clay mb-3 flex items-start gap-2 border p-3 text-xs font-medium ${bulkMsg.kind === "ok" ? "border-emerald-300/40 text-emerald-700" : "border-rose-300/40 text-rose-600"}`}
+        >
+          {bulkMsg.kind === "ok" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+          <span className="flex-1">{bulkMsg.text}</span>
+          <button onClick={() => setBulkMsg(null)} aria-label="Dismiss">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <div className="clay mb-3 flex flex-wrap items-center gap-2 p-3">
+          <span className="text-xs font-bold text-foreground">{selected.size} selected</span>
+          <button onClick={() => setDialog("publish")} disabled={bulkBusy} className="clay-btn rounded-full px-4 py-1.5 text-xs font-bold disabled:opacity-60">
+            Publish…
+          </button>
+          <button onClick={() => setDialog("feature")} disabled={bulkBusy} className="clay-chip flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60">
+            <Star className="h-3.5 w-3.5" /> Set featured…
+          </button>
+          <button
+            onClick={() => runBulk("draft", [...selected])}
+            disabled={bulkBusy}
+            className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60"
+          >
+            Move to draft
+          </button>
+          <button
+            onClick={() => runBulk("archive", [...selected])}
+            disabled={bulkBusy}
+            className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60"
+          >
+            Archive
+          </button>
+          <button onClick={() => setSelected(new Set())} className="ml-auto text-xs font-semibold text-foreground/50 hover:underline">
+            Clear
+          </button>
+        </div>
+      )}
+
+      {dialog && (
+        <BulkPublishDialog
+          mode={dialog}
+          selectedPosts={selectedPosts}
+          allPosts={posts ?? []}
+          busy={bulkBusy}
+          onClose={() => setDialog(null)}
+          onConfirm={(featuredIds) => {
+            if (dialog === "feature") {
+              // Un-published posts can't be featured yet; leave their flag alone.
+              const ids = selectedPosts.filter((p) => p.status === "published").map((p) => p.id);
+              return runBulk("setFeatured", ids, featuredIds);
+            }
+            // Publish: act only on posts that are already live or ready to go;
+            // the rest are skipped (and stay selected) instead of failing.
+            const ready = selectedPosts.filter((p) => p.status === "published" || missingForPublish(p).length === 0);
+            const skipped = selectedPosts.filter((p) => !ready.includes(p)).map((p) => p.id);
+            return runBulk("publish", ready.map((p) => p.id), featuredIds, skipped);
+          }}
+        />
+      )}
+
       {listStatus === "loading" ? (
         <div className="flex justify-center py-10">
           <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
@@ -167,6 +333,9 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-foreground/10 text-left text-[11px] uppercase tracking-wide text-foreground/40">
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible posts" />
+                </th>
                 <th className="px-4 py-3 font-semibold">Title</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold">Category</th>
@@ -176,12 +345,16 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
               </tr>
             </thead>
             <tbody>
-              {posts.map((p) => (
-                <tr key={p.id} className="border-b border-foreground/5 last:border-0 hover:bg-foreground/5">
+              {visiblePosts.map((p) => (
+                <tr key={p.id} className={`border-b border-foreground/5 last:border-0 hover:bg-foreground/5 ${selected.has(p.id) ? "bg-foreground/5" : ""}`}>
+                  <td className="px-4 py-3">
+                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} aria-label={`Select ${p.title || "untitled post"}`} />
+                  </td>
                   <td className="px-4 py-3">
                     <button onClick={() => openEdit(p.id)} className="text-left font-semibold text-foreground hover:underline">
                       {p.title || "(untitled)"}
                     </button>
+                    {p.pinned && <span className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Star className="h-3 w-3 fill-current" />Featured</span>}
                     <p className="text-[11px] text-foreground/40">/blog/{p.slug}</p>
                   </td>
                   
@@ -197,6 +370,16 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                     {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
+                    {p.status === "published" && (
+                      <button
+                        onClick={() => runBulk("setFeatured", [p.id], p.pinned ? [] : [p.id])}
+                        disabled={bulkBusy}
+                        title={p.pinned ? "Remove from featured" : "Feature on blog index"}
+                        className="mr-2 inline-flex align-middle text-foreground/40 hover:text-amber-500 disabled:opacity-50"
+                      >
+                        <Star className={`h-4 w-4 ${p.pinned ? "fill-amber-400 text-amber-500" : ""}`} />
+                      </button>
+                    )}
                     {p.status === "published" && (
                       <a href={`/blog/${p.slug}`} target="_blank" rel="noreferrer" className="mr-2 inline-flex text-foreground/40 hover:text-foreground/70">
                         <Eye className="h-4 w-4" />
@@ -220,6 +403,138 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Bulk publish / feature dialog ────────────────────────────────────────
+// Opened from the list's action bar. Lists exactly the selected posts and,
+// per post, asks whether it should be featured on the public blog index —
+// so publishing a batch and choosing what's featured is one step.
+//   mode "publish": publishes the not-yet-published, publish-ready posts;
+//                   posts that aren't ready are shown with what's missing
+//                   and are skipped.
+//   mode "feature": only edits the featured flag.
+function BulkPublishDialog({
+  mode,
+  selectedPosts,
+  allPosts,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  mode: "publish" | "feature";
+  selectedPosts: BlogPost[];
+  allPosts: BlogPost[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (featuredIds: string[]) => void;
+}) {
+  const rows = selectedPosts.map((p) => {
+    const missing = p.status === "published" ? [] : missingForPublish(p);
+    return { p, missing, willPublish: mode === "publish" && p.status !== "published" && missing.length === 0 };
+  });
+  // A post that can't be published right now can't be featured by this
+  // dialog (it wouldn't show on the index anyway).
+  const canFeature = (r: (typeof rows)[number]) => r.p.status === "published" || r.willPublish;
+
+  const [featuredPick, setFeaturedPick] = useState<Set<string>>(
+    () => new Set(rows.filter((r) => r.p.pinned && canFeature(r)).map((r) => r.p.id)),
+  );
+
+  const publishCount = rows.filter((r) => r.willPublish).length;
+  const skipped = rows.filter((r) => mode === "publish" && r.p.status !== "published" && r.missing.length > 0).length;
+
+  // Total that would be featured on the index after this action: featured
+  // posts outside the selection that are live, plus what's ticked here.
+  const selectedIds = new Set(selectedPosts.map((p) => p.id));
+  const featuredOutside = allPosts.filter((p) => !selectedIds.has(p.id) && p.pinned && p.status === "published").length;
+  const featuredAfter = featuredOutside + featuredPick.size;
+
+  function toggle(id: string) {
+    setFeaturedPick((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const featuredChanged = rows.some((r) => canFeature(r) && Boolean(r.p.pinned) !== featuredPick.has(r.p.id));
+  const nothingToDo = publishCount === 0 && !featuredChanged;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+      <div className="clay flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden bg-background">
+        <div className="flex items-start justify-between border-b border-foreground/10 p-5">
+          <div>
+            <h2 className="font-display text-lg font-bold text-foreground">
+              {mode === "publish" ? `Publish ${publishCount} post${publishCount === 1 ? "" : "s"}` : "Choose featured posts"}
+            </h2>
+            <p className="mt-1 text-xs text-foreground/60">
+              {mode === "publish"
+                ? "Tick the posts you also want featured at the top of the blog index."
+                : "Ticked posts are featured at the top of the blog index. Unticked selected posts are un-featured."}
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-foreground/40 hover:text-foreground">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <ul className="flex-1 divide-y divide-foreground/5 overflow-y-auto">
+          {rows.map((r) => (
+            <li key={r.p.id} className="flex items-center gap-3 px-5 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{r.p.title || "(untitled)"}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {statusPill(r.p.status)}
+                  {mode === "publish" && r.p.status !== "published" && r.missing.length > 0 && (
+                    <span className="text-[11px] font-medium text-rose-600">Will be skipped — missing {r.missing.join(", ")}</span>
+                  )}
+                  {r.willPublish && <span className="text-[11px] font-medium text-emerald-700">Ready to publish</span>}
+                </div>
+              </div>
+              <label className={`flex shrink-0 items-center gap-1.5 text-xs font-semibold ${canFeature(r) ? "text-foreground/70" : "text-foreground/30"}`}>
+                <input
+                  type="checkbox"
+                  disabled={!canFeature(r)}
+                  checked={featuredPick.has(r.p.id)}
+                  onChange={() => toggle(r.p.id)}
+                />
+                <Star className="h-3.5 w-3.5" /> Featured
+              </label>
+            </li>
+          ))}
+        </ul>
+
+        <div className="border-t border-foreground/10 p-5">
+          {featuredAfter > MAX_FEATURED_POSTS && (
+            <p className="mb-3 flex items-start gap-1.5 text-xs font-medium text-amber-700">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {featuredAfter} posts would be featured, but the index only shows the newest {MAX_FEATURED_POSTS}. Untick some to choose which ones appear.
+            </p>
+          )}
+          {mode === "publish" && skipped > 0 && (
+            <p className="mb-3 text-xs text-foreground/60">
+              {skipped} post{skipped === 1 ? "" : "s"} can't be published yet and will be left as they are — fix them in the editor, then publish again.
+            </p>
+          )}
+          <div className="flex items-center justify-end gap-3">
+            <button onClick={onClose} className="text-xs font-semibold text-foreground/60 hover:underline">
+              Cancel
+            </button>
+            <button
+              onClick={() => onConfirm([...featuredPick])}
+              disabled={busy || nothingToDo}
+              className="clay-btn flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {mode === "publish" ? (publishCount > 0 ? `Publish ${publishCount}` : "Save featured") : "Save featured"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -632,7 +947,7 @@ function BlogEditor({
             </div>
             <label className="flex items-center gap-2 text-xs font-medium text-foreground/70">
               <input type="checkbox" checked={form.pinned} onChange={(e) => set("pinned", e.target.checked)} />
-              Pin to top of blog index
+              Feature on blog index (several posts can be featured)
             </label>
           </div>
 

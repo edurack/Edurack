@@ -294,6 +294,93 @@ export const publishBlogPost = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ─── Bulk actions (select posts in the list, act without opening each) ────
+// One call, many posts. Each post succeeds or fails on its own and the
+// per-post result is returned, so "publish 8" where 2 are missing an
+// excerpt publishes 6 and tells the admin exactly which 2 and why.
+//
+//   publish      → publish every selected post that's publish-ready.
+//                  If `featuredIds` is given, the featured flag of every
+//                  selected post that didn't fail is set to match it.
+//   draft        → move selected posts back to draft
+//   archive      → archive selected posts
+//   setFeatured  → only touch the featured flag: selected posts in
+//                  `featuredIds` become featured, the rest un-featured.
+export type BulkBlogAction = "publish" | "draft" | "archive" | "setFeatured";
+export type BulkBlogResult = { id: string; ok: boolean; error?: string };
+
+export const bulkUpdateBlogPosts = createServerFn({ method: "POST" })
+  .validator((data: { token: string; action: BulkBlogAction; ids: string[]; featuredIds?: string[] }) => data)
+  .handler(async ({ data }): Promise<{ results: BulkBlogResult[] }> => {
+    await requireAdmin(data.token);
+    if (!["publish", "draft", "archive", "setFeatured"].includes(data.action)) throw new Error("Unknown action.");
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+
+    const ids = Array.from(new Set((Array.isArray(data.ids) ? data.ids : []).map(String))).slice(0, 100);
+    if (ids.length === 0) throw new Error("Select at least one post.");
+    const featured = new Set((data.featuredIds ?? []).map(String));
+
+    const results: BulkBlogResult[] = [];
+    const objectIds: any[] = [];
+    for (const id of ids) {
+      if (/^[a-f0-9]{24}$/i.test(id)) objectIds.push(new ObjectId(id));
+      else results.push({ id, ok: false, error: "Invalid post id." });
+    }
+
+    const docs = await db.collection("blogPosts").find({ _id: { $in: objectIds }, deletedAt: null }).toArray();
+    const byId = new Map(docs.map((d) => [String(d._id), d]));
+
+    for (const id of ids) {
+      if (results.some((r) => r.id === id)) continue; // already failed validation
+      const doc = byId.get(id);
+      if (!doc) {
+        results.push({ id, ok: false, error: "Post not found." });
+        continue;
+      }
+      try {
+        const now = new Date();
+        const set: Record<string, unknown> = {};
+
+        if (data.action === "publish") {
+          if (doc.status !== "published") {
+            assertPublishReady(doc);
+            set.status = "published" satisfies BlogPostStatus;
+            set.publishAt = null;
+            set.updatedAt = now;
+            // Same rule as the single publish: the first-ever publish time
+            // is the post's one true "went live" timestamp.
+            if (!doc.publishedAt) set.publishedAt = now;
+          }
+        } else if (data.action === "draft") {
+          set.status = "draft" satisfies BlogPostStatus;
+          set.publishAt = null;
+          set.updatedAt = now;
+        } else if (data.action === "archive") {
+          set.status = "archived" satisfies BlogPostStatus;
+          set.updatedAt = now;
+        }
+
+        // Featured flag. Pin-only changes deliberately don't bump
+        // updatedAt — featuring isn't an edit to the post.
+        if (data.action === "setFeatured" || (data.action === "publish" && data.featuredIds)) {
+          set.pinned = featured.has(id);
+        }
+        // Un-publishing/archiving a post shouldn't leave a stale featured
+        // flag that silently re-appears if it's published again later.
+        if (data.action === "draft" || data.action === "archive") set.pinned = false;
+
+        if (Object.keys(set).length > 0) {
+          await db.collection("blogPosts").updateOne({ _id: doc._id }, { $set: set });
+        }
+        results.push({ id, ok: true });
+      } catch (err) {
+        results.push({ id, ok: false, error: err instanceof Error ? err.message : "Failed." });
+      }
+    }
+    return { results };
+  });
+
 export const scheduleBlogPost = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string; publishAt: string }) => data)
   .handler(async ({ data }) => {

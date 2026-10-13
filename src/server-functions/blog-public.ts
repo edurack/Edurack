@@ -10,7 +10,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { getCurrentRequest } from "@/lib/get-request";
 import type { BlogCategory, BlogDocument, BlogPromoAudience, BlogPromoConfig, PublicBlogDocument, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
-import { DEFAULT_BLOG_PROMO_SETTINGS } from "@/lib/blog-types";
+import { DEFAULT_BLOG_PROMO_SETTINGS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
 import type { ExamKey } from "@/lib/admin-types";
 
 // Same header-based lookup used for session/device tracking elsewhere
@@ -96,7 +96,7 @@ export const listPublishedPosts = createServerFn({ method: "GET" })
     if (data.category) query.category = data.category;
     if (data.examKey) query.examKey = data.examKey;
 
-    const [rows, total, pinned] = await Promise.all([
+    const [rows, total, featured] = await Promise.all([
       db
         .collection("blogPosts")
         .find(query)
@@ -106,13 +106,18 @@ export const listPublishedPosts = createServerFn({ method: "GET" })
         .toArray(),
       db.collection("blogPosts").countDocuments(query),
       page === 1 && !data.category && !data.examKey
-        ? db.collection("blogPosts").findOne({ ...PUBLISHED_FILTER, pinned: true })
-        : Promise.resolve(null),
+        ? db
+            .collection("blogPosts")
+            .find({ ...PUBLISHED_FILTER, pinned: true })
+            .sort({ publishedAt: -1 })
+            .limit(MAX_FEATURED_POSTS)
+            .toArray()
+        : Promise.resolve([]),
     ]);
 
     return {
       posts: rows.map(mapToSummary),
-      pinned: pinned ? mapToSummary(pinned) : null,
+      featured: featured.map(mapToSummary),
       page,
       totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
     };

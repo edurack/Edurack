@@ -89,17 +89,30 @@ function BlogIndexPage() {
         </div>
       </div>
 
-      {data.pinned && (
-        <Link to="/blog/$slug" params={{ slug: data.pinned.slug }} className="clay mb-8 flex flex-col overflow-hidden sm:flex-row">
-          {data.pinned.coverImageUrl && (
-            <img src={data.pinned.coverImageUrl} alt={data.pinned.coverImageAlt} className="h-48 w-full object-cover sm:h-auto sm:w-64" />
-          )}
-          <div className="p-6">
-            <span className="clay-chip inline-block rounded-full px-3 py-1 text-[11px] font-semibold text-foreground/60">Featured</span>
-            <p className="mt-2 text-lg font-bold text-foreground">{data.pinned.title}</p>
-            <p className="mt-1 text-sm text-foreground/60">{data.pinned.excerpt}</p>
-          </div>
-        </Link>
+      {data.featured.length > 0 && (
+        <div className={`mb-8 grid gap-5 ${data.featured.length > 1 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"}`}>
+          {data.featured.map((f) => (
+            <Link
+              key={f.id}
+              to="/blog/$slug"
+              params={{ slug: f.slug }}
+              className={`clay flex flex-col overflow-hidden ${data.featured.length === 1 ? "sm:flex-row" : ""}`}
+            >
+              {f.coverImageUrl && (
+                <img
+                  src={f.coverImageUrl}
+                  alt={f.coverImageAlt}
+                  className={`w-full object-cover ${data.featured.length === 1 ? "h-48 sm:h-auto sm:w-64" : "aspect-video"}`}
+                />
+              )}
+              <div className="p-6">
+                <span className="clay-chip inline-block rounded-full px-3 py-1 text-[11px] font-semibold text-foreground/60">Featured</span>
+                <p className="mt-2 text-lg font-bold text-foreground">{f.title}</p>
+                <p className="mt-1 line-clamp-3 text-sm text-foreground/60">{f.excerpt}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
       )}
 
       {loading ? (
