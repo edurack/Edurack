@@ -11,6 +11,7 @@ import {
 } from "@/server-functions/admin";
 import { ImageInsertField } from "./admin/image-insert-field";
 import { QuestionJsonUpload } from "./admin/question-json-upload";
+import { SmartContent } from "@/lib/smart-content";
 import { OUT_OF_SYLLABUS, chaptersFor, toSyllabusExam, toSyllabusSubject, type ClassLevel, type Syllabus } from "@/lib/ncert-syllabus";
 import { ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 
@@ -699,7 +700,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
               </div>
             </div>
 
-            <ClayField label="Question body (text, LaTeX $…$/$$…$$, or diagram)">
+            <ClayField label="Question body (text, LaTeX $…$/$$…$$, **bold**, *italic*, or diagram)">
               <ImageInsertField value={questionBody} onChange={setQuestionBody} rows={4} className={textareaClass}
                 placeholder="e.g. The velocity of a particle is given by $v = u + at$. Find…" />
             </ClayField>
@@ -773,7 +774,7 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
           </div>
 
           <fieldset disabled={!contextReady || nextNumber === null} className="space-y-4">
-            <ClayField label="Step-by-step solution (LaTeX enabled)">
+            <ClayField label="Step-by-step solution (LaTeX, **bold**, *italic* enabled)">
               <ImageInsertField
                 value={solution}
                 onChange={setSolution}
@@ -836,6 +837,43 @@ export function QuestionIngestionModule({ adminUser }: { adminUser: AdminUser })
               </div>
             </div>
           </fieldset>
+
+          {/* Live preview — rendered by the same SmartContent the student
+              pages use, so **bold**, *italic*, LaTeX and diagrams look here
+              exactly as they will in the test and answer-review screens. */}
+          {(questionBody.trim() || solution.trim()) && (
+            <div className="clay-inset mt-5 rounded-2xl p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/50">
+                Preview — as students will see it
+              </p>
+              {questionBody.trim() && <SmartContent value={questionBody} className="text-sm leading-relaxed text-foreground" />}
+              {questionType === "mcq" && (
+                <div className="mt-2 space-y-1">
+                  {(
+                    [
+                      ["A", optionA],
+                      ["B", optionB],
+                      ["C", optionC],
+                      ["D", optionD],
+                    ] as const
+                  ).map(([k, v]) =>
+                    v.trim() ? (
+                      <div key={k} className="flex gap-2 text-sm text-foreground">
+                        <span className="font-semibold text-foreground/50">{k}.</span>
+                        <SmartContent value={v} className="min-w-0" />
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              )}
+              {solution.trim() && (
+                <div className="mt-3 border-t border-foreground/10 pt-2">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/40">Solution</p>
+                  <SmartContent value={solution} className="text-sm leading-relaxed text-foreground/80" />
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <p className="mt-4 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2 text-xs font-medium text-foreground">

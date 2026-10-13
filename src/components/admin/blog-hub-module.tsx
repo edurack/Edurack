@@ -423,8 +423,8 @@ function BlogEditor({
     const items: string[] = [];
     if (!form.title.trim()) items.push("Title");
     if (!form.excerpt.trim()) items.push("Excerpt");
-    if (!form.coverImageUrl) items.push("Cover image");
-    if (!form.coverImageAlt.trim()) items.push("Cover image alt text");
+    // Cover image is optional; alt text is only needed if one is attached.
+    if (form.coverImageUrl && !form.coverImageAlt.trim()) items.push("Cover image alt text");
     if (!form.bodyMarkdown.trim()) items.push("Body");
     return items;
   }, [form]);
@@ -537,7 +537,7 @@ function BlogEditor({
 
         <div className="space-y-4">
           <div className="clay p-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/50">Cover image</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/50">Cover image <span className="font-normal normal-case text-foreground/40">(optional)</span></p>
             {form.coverImageUrl ? (
               <img src={form.coverImageUrl} alt="" className="mb-2 h-32 w-full rounded-xl object-cover" />
             ) : (
@@ -556,10 +556,22 @@ function BlogEditor({
               }}
               className="text-xs text-foreground/70"
             />
+            {form.coverImageUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  set("coverImageUrl", null);
+                  set("coverImageAlt", "");
+                }}
+                className="mt-1 block text-xs font-semibold text-rose-600 hover:underline"
+              >
+                Remove cover image
+              </button>
+            )}
             <input
               value={form.coverImageAlt}
               onChange={(e) => set("coverImageAlt", e.target.value)}
-              placeholder="Alt text (required to publish)"
+              placeholder="Alt text (required if a cover image is added)"
               className="clay-inset mt-2 w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
             />
           </div>

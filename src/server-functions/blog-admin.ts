@@ -255,8 +255,10 @@ function assertPublishReady(doc: any) {
   const missing: string[] = [];
   if (!doc.title?.trim()) missing.push("title");
   if (!doc.excerpt?.trim()) missing.push("excerpt");
-  if (!doc.coverImageUrl) missing.push("cover image");
-  if (!doc.coverImageAlt?.trim()) missing.push("cover image alt text");
+  // Cover image is optional. Alt text is only required when a cover is
+  // actually attached (an image without alt text is an accessibility gap;
+  // no image means nothing to describe).
+  if (doc.coverImageUrl && !doc.coverImageAlt?.trim()) missing.push("cover image alt text");
   if (!doc.bodyMarkdown?.trim()) missing.push("body");
   if (missing.length > 0) {
     throw new Error(`Can't publish — missing: ${missing.join(", ")}.`);

@@ -1,40 +1,43 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { PH_OPEN, PH_CLOSE, formatWithChunks } from "@/lib/inline-format";
 
 const MATH_PATTERN = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
 
+// Math is rendered first and swapped for a placeholder, then the surrounding
+// text gets inline formatting (**bold**, *italic*, ...), then the rendered
+// math is dropped back in. That way formatting can span an equation
+// ("**Find $x$ now**") and the equation's own characters are never touched.
 export function renderMixedLatexHtml(text: string): string {
-  let html = "";
+  const chunks: string[] = [];
+  let withPlaceholders = "";
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   MATH_PATTERN.lastIndex = 0;
   while ((match = MATH_PATTERN.exec(text)) !== null) {
-    html += escapeHtml(text.slice(lastIndex, match.index));
+    withPlaceholders += text.slice(lastIndex, match.index);
     const isDisplay = match[1] !== undefined;
     const expr = (match[1] ?? match[2] ?? "").trim();
+    let rendered: string;
     try {
-      const rendered = katex.renderToString(expr, { throwOnError: false, displayMode: isDisplay });
+      const html = katex.renderToString(expr, { throwOnError: false, displayMode: isDisplay });
       // Display-mode ($$...$$) equations render as one unbreakable block —
-      // KaTeX never wraps or shrinks them to fit. A long derivation (the
-      // exact "Mgh = ... + 1/2(2/5 M..." case) would otherwise just keep
-      // extending past its card and drag the whole page into horizontal
-      // scroll with it. Giving only the display ones their own
-      // overflow-x:auto strip, capped to the available width, lets a long
-      // equation scroll sideways in place instead — inline ($...$) math
-      // is left alone since it's short by nature and sits inside normal
-      // wrapping text.
-      html += isDisplay ? `<div style="overflow-x:auto;max-width:100%;">${rendered}</div>` : rendered;
+      // KaTeX never wraps or shrinks them to fit. A long derivation would
+      // otherwise extend past its card and drag the whole page into
+      // horizontal scroll. Giving only the display ones their own
+      // overflow-x:auto strip lets a long equation scroll in place instead.
+      rendered = isDisplay ? `<div style="overflow-x:auto;max-width:100%;">${html}</div>` : html;
     } catch {
-      html += escapeHtml(match[0]);
+      // Unrenderable math: show the source as plain text, still escaped.
+      rendered = match[0].replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
+    chunks.push(rendered);
+    withPlaceholders += `${PH_OPEN}m${chunks.length - 1}${PH_CLOSE}`;
     lastIndex = match.index + match[0].length;
   }
-  html += escapeHtml(text.slice(lastIndex));
-  return html;
+  withPlaceholders += text.slice(lastIndex);
+  return formatWithChunks(withPlaceholders, chunks);
 }
 
 // Admin-inserted diagrams look like ![alt](url) — see image-insert-field.tsx

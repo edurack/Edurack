@@ -1,7 +1,7 @@
 // Renders a question/option/solution body the way it's actually meant to
 // look: markdown images (![alt](url)) become real <img> tags, $inline$
 // and $$display$$ LaTeX become real KaTeX-rendered equations, everything
-// else stays as plain wrapped text. Used anywhere someone (admin or
+// else stays as wrapped text with inline formatting (**bold**, *italic*, ...). Used anywhere someone (admin or
 // intern) needs to SEE a question the way it'll finally render, not the
 // raw source string.
 //
@@ -13,6 +13,7 @@
 // Requires the `katex` package: `npm install katex`.
 import { useEffect, useMemo, useState } from "react";
 import "katex/dist/katex.min.css";
+import { formatInlineHtml } from "@/lib/inline-format";
 
 type Segment =
   | { type: "text"; value: string }
@@ -91,7 +92,7 @@ export function QuestionContentRenderer({ content, className }: { content: strin
   return (
     <div className={`whitespace-pre-wrap break-words text-sm text-foreground ${className ?? ""}`}>
       {segments.map((seg, i) => {
-        if (seg.type === "text") return <span key={i}>{seg.value}</span>;
+        if (seg.type === "text") return <span key={i} dangerouslySetInnerHTML={{ __html: formatInlineHtml(seg.value) }} />;
         if (seg.type === "mathInline") return <MathSpan key={i} latex={seg.value} display={false} />;
         if (seg.type === "mathDisplay") return <MathSpan key={i} latex={seg.value} display />;
         return (
