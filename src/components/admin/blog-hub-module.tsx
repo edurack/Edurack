@@ -1,77 +1,34 @@
 // src/components/admin/blog-hub-module.tsx
 //
-// The "Blog" tab in admin.dashboard.tsx — list of posts + an editor view,
-// same two-view shape as the other content-authoring admin modules. Own
-// file per project convention; wired into admin.dashboard.tsx's
-// ModuleRouter the same way PromoterHubModule / MentorHubModule are.
+// The "Blog" tab in admin.dashboard.tsx: a post library (cards, search, status
+// tabs, bulk actions) and the full-screen editor in blog-editor.tsx.
 import { useEffect, useMemo, useState } from "react";
 import {
   IconLoader2 as Loader2,
   IconPlus as Plus,
   IconTrash as Trash2,
   IconEye as Eye,
-  IconClock as Clock,
-  IconArchive as Archive,
-  IconArrowLeft as ArrowLeft,
   IconCircleCheck as CheckCircle2,
   IconAlertCircle as AlertCircle,
   IconPhoto as ImageIcon,
-  IconRestore as Restore,
   IconStar as Star,
   IconX as X,
+  IconSearch as Search,
+  IconCopy as Copy,
+  IconExternalLink as ExternalLink,
+  IconClock as Clock,
 } from "@tabler/icons-react";
-import {
-  createBlogPost,
-  updateBlogPost,
-  listBlogPostsAdmin,
-  getBlogPostAdmin,
-  publishBlogPost,
-  scheduleBlogPost,
-  revertBlogPostToDraft,
-  archiveBlogPost,
-  softDeleteBlogPost,
-  restoreBlogPost,
-  suggestBlogSlug,
-  checkBlogSlugAvailable,
-  bulkUpdateBlogPosts,
-} from "@/server-functions/blog-admin";
+import { listBlogPostsAdmin, softDeleteBlogPost, bulkUpdateBlogPosts } from "@/server-functions/blog-admin";
 import type { BulkBlogAction } from "@/server-functions/blog-admin";
-import { uploadBlogImage } from "@/lib/blog-image-upload";
-import { BlogImageInsertField } from "@/components/admin/blog-image-insert-field";
 import { BlogPromoSettingsPanel } from "@/components/admin/blog-promo-settings";
-import { BlogDocumentsPanel } from "@/components/admin/blog-documents-panel";
-import { BlogBody } from "@/lib/blog-content";
+import { BlogEditor, StatusPill } from "@/components/admin/blog-editor";
+import { BLOG_STARTERS } from "@/lib/blog-starters";
 import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
 import type { BlogPost, BlogPostInput, BlogCategory } from "@/lib/blog-types";
-import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
-import type { ExamKey, Track } from "@/lib/admin-types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
-const TRACKS: Track[] = ["11th", "12th", "Dropper", "All"];
-
-const EMPTY_FORM: BlogPostInput = {
-  title: "",
-  slug: "",
-  excerpt: "",
-  category: "platformUpdates",
-  tags: [],
-  examKey: null,
-  track: null,
-  coverImageUrl: null,
-  coverImageAlt: "",
-  bodyMarkdown: "",
-  author: { name: "Edurack Team", photoUrl: null, bio: null, mentorId: null },
-  pinned: false,
-  relatedBundleId: null,
-  relatedBatchId: null,
-  documents: [],
-  seoTitleOverride: null,
-  seoDescriptionOverride: null,
-  substantiveUpdate: false,
-};
-
-// Mirrors assertPublishReady on the server (cover image is optional; alt text
-// only matters when one is attached). The server stays the authority — this
-// just lets the bulk dialog warn before the click instead of after.
+// Mirrors assertPublishReady on the server. The server stays the authority;
+// this just lets the bulk dialog warn before the click instead of after.
 function missingForPublish(p: BlogPost): string[] {
   const m: string[] = [];
   if (!p.title?.trim()) m.push("title");
@@ -82,15 +39,20 @@ function missingForPublish(p: BlogPost): string[] {
 }
 
 type StatusFilter = "all" | BlogPost["status"];
+const STATUS_TABS: StatusFilter[] = ["all", "published", "draft", "scheduled", "archived"];
 
-function statusPill(status: BlogPost["status"]) {
-  const styles: Record<BlogPost["status"], string> = {
-    draft: "bg-foreground/10 text-foreground/60",
-    scheduled: "bg-amber-400/20 text-amber-700",
-    published: "bg-[var(--mint-soft)] text-foreground",
-    archived: "bg-foreground/10 text-foreground/40",
-  };
-  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${styles[status]}`}>{status}</span>;
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function Stat({ label, value, tone }: { label: string; value: string | number; tone: string }) {
+  return (
+    <div className="clay-inset flex-1 min-w-[120px] rounded-2xl p-3.5" style={{ background: tone }}>
+      <p className="font-display text-2xl font-bold text-foreground">{value}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">{label}</p>
+    </div>
+  );
 }
 
 export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Promise<string> } }) {
@@ -98,8 +60,12 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
   const [listStatus, setListStatus] = useState<"loading" | "ready" | "error">("loading");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [initial, setInitial] = useState<Partial<BlogPostInput> | undefined>(undefined);
   const [showPromo, setShowPromo] = useState(false);
+  const [chooser, setChooser] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [category, setCategory] = useState<BlogCategory | "all">("all");
+  const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<null | "publish" | "feature">(null);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -122,14 +88,37 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function openNew() {
+  function openNew(starter?: Partial<BlogPostInput>) {
     setEditingId(null);
+    setInitial(starter);
+    setChooser(false);
     setView("editor");
   }
 
   function openEdit(id: string) {
     setEditingId(id);
+    setInitial(undefined);
     setView("editor");
+  }
+
+  // A duplicate is just a new post pre-filled from an existing one: nothing is
+  // saved until the admin saves it, and the slug is regenerated from the title.
+  function duplicate(p: BlogPost) {
+    openNew({
+      title: `${p.title} (copy)`,
+      excerpt: p.excerpt,
+      category: p.category,
+      tags: p.tags,
+      examKey: p.examKey,
+      track: p.track,
+      coverImageUrl: p.coverImageUrl,
+      coverImageAlt: p.coverImageAlt,
+      bodyMarkdown: p.bodyMarkdown,
+      author: p.author,
+      documents: p.documents,
+      seoTitleOverride: p.seoTitleOverride,
+      seoDescriptionOverride: p.seoDescriptionOverride,
+    });
   }
 
   function backToList() {
@@ -137,13 +126,26 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
     loadList();
   }
 
-  const visiblePosts = useMemo(
-    () => (posts ?? []).filter((p) => statusFilter === "all" || p.status === statusFilter),
-    [posts, statusFilter],
-  );
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: posts?.length ?? 0, draft: 0, scheduled: 0, published: 0, archived: 0 };
+    (posts ?? []).forEach((p) => (c[p.status] = (c[p.status] ?? 0) + 1));
+    return c;
+  }, [posts]);
+
+  const visiblePosts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (posts ?? []).filter(
+      (p) =>
+        (statusFilter === "all" || p.status === statusFilter) &&
+        (category === "all" || p.category === category) &&
+        (!q || p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q))),
+    );
+  }, [posts, statusFilter, category, query]);
+
   const selectedPosts = useMemo(() => (posts ?? []).filter((p) => selected.has(p.id)), [posts, selected]);
   const allVisibleSelected = visiblePosts.length > 0 && visiblePosts.every((p) => selected.has(p.id));
   const featuredCount = useMemo(() => (posts ?? []).filter((p) => p.pinned && p.status === "published").length, [posts]);
+  const totalViews = useMemo(() => (posts ?? []).reduce((sum, p) => sum + (p.viewCount ?? 0), 0), [posts]);
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -182,9 +184,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
       } else {
         setBulkMsg({
           kind: "error",
-          text: `${results.length - failed.length} done, ${failed.length} failed — ${failed
-            .map((f) => `"${titleOf(f.id)}": ${f.error}`)
-            .join(" · ")}`,
+          text: `${results.length - failed.length} done, ${failed.length} failed — ${failed.map((f) => `"${titleOf(f.id)}": ${f.error}`).join(" · ")}`,
         });
         // Leave only the failures selected so the admin can fix and retry.
         setSelected(new Set([...failed.map((f) => f.id), ...skippedIds]));
@@ -198,29 +198,32 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
     }
   }
 
-  const totalViews = useMemo(
-    () => (posts ?? []).reduce((sum, p) => sum + (p.viewCount ?? 0), 0),
-    [posts],
-  );
+  async function trash(p: BlogPost) {
+    if (!confirm(`Move "${p.title || "(untitled)"}" to trash? It won't be publicly reachable anymore.`)) return;
+    try {
+      const token = await adminUser.getIdToken();
+      await softDeleteBlogPost({ data: { token, id: p.id } });
+      setSelected((s) => {
+        const n = new Set(s);
+        n.delete(p.id);
+        return n;
+      });
+      loadList();
+    } catch (err) {
+      setBulkMsg({ kind: "error", text: err instanceof Error ? err.message : "Couldn't move to trash." });
+    }
+  }
 
   if (view === "editor") {
-    return <BlogEditor adminUser={adminUser} postId={editingId} onBack={backToList} />;
+    return <BlogEditor adminUser={adminUser} postId={editingId} initial={initial} onBack={backToList} />;
   }
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Blog</h1>
-          <p className="mt-1 text-sm text-foreground/60">
-            Write, schedule, and publish posts to edurack.in/blog.
-            {posts && posts.length > 0 && (
-              <>
-                {" "}· <span className="font-semibold text-foreground/80">{totalViews.toLocaleString()}</span> total
-                views (unique visitors, admin-only)
-              </>
-            )}
-          </p>
+          <p className="mt-1 text-sm text-foreground/60">Write, schedule and publish posts to edurack.in/blog.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -229,7 +232,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
           >
             Free test popup
           </button>
-          <button onClick={openNew} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
+          <button onClick={() => setChooser(true)} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
             <Plus className="h-4 w-4" />
             New post
           </button>
@@ -239,28 +242,70 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
       {showPromo && <BlogPromoSettingsPanel adminUser={adminUser} />}
 
       {posts && posts.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {(["all", "draft", "scheduled", "published", "archived"] as StatusFilter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
-              className={`rounded-full px-3 py-1.5 text-[11px] font-bold capitalize ${statusFilter === f ? "bg-foreground text-background" : "clay-chip text-foreground/60"}`}
+        <div className="mb-4 flex flex-wrap gap-2.5">
+          <Stat label="Published" value={counts.published} tone="#CDF0DD" />
+          <Stat label="Drafts" value={counts.draft} tone="#E4E9F1" />
+          <Stat label="Scheduled" value={counts.scheduled} tone="#F7ECC4" />
+          <Stat label="Total views" value={totalViews.toLocaleString()} tone="#DCEAFB" />
+        </div>
+      )}
+
+      {posts && posts.length > 0 && (
+        <div className="mb-3 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="clay-inset flex min-w-[200px] flex-1 items-center gap-2 rounded-full px-3.5 py-2">
+              <Search className="h-4 w-4 text-foreground/40" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search title, slug or tag"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-foreground/40"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} aria-label="Clear search">
+                  <X className="h-3.5 w-3.5 text-foreground/40" />
+                </button>
+              )}
+            </div>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as BlogCategory | "all")}
+              className="clay-chip rounded-full px-3 py-2 text-xs font-semibold text-foreground/70 outline-none"
+              aria-label="Filter by category"
             >
-              {f}
-              <span className="ml-1.5 opacity-60">{f === "all" ? posts.length : posts.filter((p) => p.status === f).length}</span>
-            </button>
-          ))}
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-foreground/50">
-            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
-            {featuredCount} featured on index (max {MAX_FEATURED_POSTS} shown)
-          </span>
+              <option value="all">All categories</option>
+              {BLOG_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {BLOG_CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {STATUS_TABS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-bold capitalize ${statusFilter === f ? "bg-foreground text-background" : "clay-chip text-foreground/60"}`}
+              >
+                {f}
+                <span className="ml-1.5 opacity-60">{counts[f] ?? 0}</span>
+              </button>
+            ))}
+            <label className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-foreground/50">
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible posts" />
+              Select all
+            </label>
+            <span className="flex items-center gap-1 text-[11px] text-foreground/50">
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
+              {featuredCount} featured (index shows {MAX_FEATURED_POSTS})
+            </span>
+          </div>
         </div>
       )}
 
       {bulkMsg && (
-        <div
-          className={`clay mb-3 flex items-start gap-2 border p-3 text-xs font-medium ${bulkMsg.kind === "ok" ? "border-emerald-300/40 text-emerald-700" : "border-rose-300/40 text-rose-600"}`}
-        >
+        <div className={`clay mb-3 flex items-start gap-2 border p-3 text-xs font-medium ${bulkMsg.kind === "ok" ? "border-emerald-300/40 text-emerald-700" : "border-rose-300/40 text-rose-600"}`}>
           {bulkMsg.kind === "ok" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
           <span className="flex-1">{bulkMsg.text}</span>
           <button onClick={() => setBulkMsg(null)} aria-label="Dismiss">
@@ -270,7 +315,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
       )}
 
       {selected.size > 0 && (
-        <div className="clay mb-3 flex flex-wrap items-center gap-2 p-3">
+        <div className="clay sticky top-2 z-10 mb-3 flex flex-wrap items-center gap-2 p-3">
           <span className="text-xs font-bold text-foreground">{selected.size} selected</span>
           <button onClick={() => setDialog("publish")} disabled={bulkBusy} className="clay-btn rounded-full px-4 py-1.5 text-xs font-bold disabled:opacity-60">
             Publish…
@@ -278,18 +323,10 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
           <button onClick={() => setDialog("feature")} disabled={bulkBusy} className="clay-chip flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60">
             <Star className="h-3.5 w-3.5" /> Set featured…
           </button>
-          <button
-            onClick={() => runBulk("draft", [...selected])}
-            disabled={bulkBusy}
-            className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60"
-          >
+          <button onClick={() => runBulk("draft", [...selected])} disabled={bulkBusy} className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60">
             Move to draft
           </button>
-          <button
-            onClick={() => runBulk("archive", [...selected])}
-            disabled={bulkBusy}
-            className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60"
-          >
+          <button onClick={() => runBulk("archive", [...selected])} disabled={bulkBusy} className="clay-chip rounded-full px-3 py-1.5 text-xs font-bold text-foreground/70 disabled:opacity-60">
             Archive
           </button>
           <button onClick={() => setSelected(new Set())} className="ml-auto text-xs font-semibold text-foreground/50 hover:underline">
@@ -320,88 +357,131 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
         />
       )}
 
-      {listStatus === "loading" ? (
+      <Dialog open={chooser} onOpenChange={setChooser}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Start a new post</DialogTitle>
+            <DialogDescription>Pick a starting point. Everything is editable, and you can switch category any time.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {BLOG_STARTERS.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => openNew(s.form)}
+                className="clay flex items-start gap-3 p-4 text-left transition hover:-translate-y-0.5"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl" style={{ background: s.tint }}>
+                  {s.emoji}
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-foreground">{s.title}</span>
+                  <span className="block text-xs text-foreground/60">{s.blurb}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {listStatus === "loading" && !posts ? (
         <div className="flex justify-center py-10">
           <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
         </div>
       ) : listStatus === "error" ? (
-        <div className="clay p-8 text-center text-sm text-foreground/60">Couldn't load posts.</div>
-      ) : !posts || posts.length === 0 ? (
-        <div className="clay p-8 text-center text-sm text-foreground/60">No posts yet — write your first one.</div>
-      ) : (
-        <div className="clay overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-[11px] uppercase tracking-wide text-foreground/40">
-                <th className="w-10 px-4 py-3">
-                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible posts" />
-                </th>
-                <th className="px-4 py-3 font-semibold">Title</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Category</th>
-                <th className="px-4 py-3 font-semibold">Views</th>
-                <th className="px-4 py-3 font-semibold">Updated</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePosts.map((p) => (
-                <tr key={p.id} className={`border-b border-foreground/5 last:border-0 hover:bg-foreground/5 ${selected.has(p.id) ? "bg-foreground/5" : ""}`}>
-                  <td className="px-4 py-3">
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} aria-label={`Select ${p.title || "untitled post"}`} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => openEdit(p.id)} className="text-left font-semibold text-foreground hover:underline">
-                      {p.title || "(untitled)"}
-                    </button>
-                    {p.pinned && <span className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Star className="h-3 w-3 fill-current" />Featured</span>}
-                    <p className="text-[11px] text-foreground/40">/blog/{p.slug}</p>
-                  </td>
-                  
-                  <td className="px-4 py-3">{statusPill(p.status)}</td>
-                  <td className="px-4 py-3 text-foreground/60">{BLOG_CATEGORY_LABELS[p.category]}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-foreground/80">
-                      <Eye className="h-3.5 w-3.5 text-foreground/40" />
-                      {(p.viewCount ?? 0).toLocaleString()}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-foreground/40">
-                    {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {p.status === "published" && (
-                      <button
-                        onClick={() => runBulk("setFeatured", [p.id], p.pinned ? [] : [p.id])}
-                        disabled={bulkBusy}
-                        title={p.pinned ? "Remove from featured" : "Feature on blog index"}
-                        className="mr-2 inline-flex align-middle text-foreground/40 hover:text-amber-500 disabled:opacity-50"
-                      >
-                        <Star className={`h-4 w-4 ${p.pinned ? "fill-amber-400 text-amber-500" : ""}`} />
-                      </button>
-                    )}
-                    {p.status === "published" && (
-                      <a href={`/blog/${p.slug}`} target="_blank" rel="noreferrer" className="mr-2 inline-flex text-foreground/40 hover:text-foreground/70">
-                        <Eye className="h-4 w-4" />
-                      </a>
-                    )}
-                    <button
-                      onClick={async () => {
-                        if (!confirm(`Move "${p.title}" to trash? It won't be publicly reachable anymore.`)) return;
-                        const token = await adminUser.getIdToken();
-                        await softDeleteBlogPost({ data: { token, id: p.id } });
-                        loadList();
-                      }}
-                      className="text-foreground/40 hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="clay p-8 text-center text-sm text-foreground/60">
+          Couldn't load posts.{" "}
+          <button onClick={loadList} className="font-semibold underline">
+            Retry
+          </button>
         </div>
+      ) : !posts || posts.length === 0 ? (
+        <div className="clay p-10 text-center">
+          <p className="text-3xl">✍️</p>
+          <p className="mt-2 text-sm font-semibold text-foreground">No posts yet</p>
+          <p className="mt-1 text-xs text-foreground/60">Pick a starter and write your first one.</p>
+          <button onClick={() => setChooser(true)} className="clay-btn mt-4 rounded-full px-5 py-2.5 text-xs font-bold">
+            New post
+          </button>
+        </div>
+      ) : visiblePosts.length === 0 ? (
+        <div className="clay p-8 text-center text-sm text-foreground/60">No posts match these filters.</div>
+      ) : (
+        <ul className="space-y-2.5">
+          {visiblePosts.map((p) => (
+            <li key={p.id} className={`clay flex items-stretch gap-3 p-3 ${selected.has(p.id) ? "ring-2 ring-foreground/30" : ""}`}>
+              <input
+                type="checkbox"
+                className="mt-1 self-start"
+                checked={selected.has(p.id)}
+                onChange={() => toggleOne(p.id)}
+                aria-label={`Select ${p.title || "untitled post"}`}
+              />
+              <button onClick={() => openEdit(p.id)} className="hidden h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-foreground/5 sm:block" aria-label="Edit post">
+                {p.coverImageUrl ? (
+                  <img src={p.coverImageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-foreground/25">
+                    <ImageIcon className="h-6 w-6" />
+                  </span>
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill status={p.status} />
+                  {p.pinned && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                      <Star className="h-3 w-3 fill-current" />
+                      Featured
+                    </span>
+                  )}
+                  <span className="text-[11px] font-semibold text-foreground/50">{BLOG_CATEGORY_LABELS[p.category]}</span>
+                </div>
+                <button onClick={() => openEdit(p.id)} className="mt-1 block max-w-full truncate text-left text-sm font-bold text-foreground hover:underline">
+                  {p.title || "(untitled)"}
+                </button>
+                <p className="truncate text-[11px] text-foreground/40">/blog/{p.slug}</p>
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-foreground/50">
+                  <span className="inline-flex items-center gap-1">
+                    <Eye className="h-3.5 w-3.5" />
+                    {(p.viewCount ?? 0).toLocaleString()}
+                  </span>
+                  {p.status === "scheduled" && p.publishAt ? (
+                    <span className="inline-flex items-center gap-1 text-amber-700">
+                      <Clock className="h-3.5 w-3.5" />
+                      Goes live {new Date(p.publishAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                    </span>
+                  ) : (
+                    <span>Updated {fmtDate(p.updatedAt ?? p.createdAt)}</span>
+                  )}
+                  {p.readingTimeMinutes > 0 && <span>{p.readingTimeMinutes} min read</span>}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-start gap-2.5 text-foreground/40">
+                {p.status === "published" && (
+                  <button
+                    onClick={() => runBulk("setFeatured", [p.id], p.pinned ? [] : [p.id])}
+                    disabled={bulkBusy}
+                    title={p.pinned ? "Remove from featured" : "Feature on blog index"}
+                    className="hover:text-amber-500 disabled:opacity-50"
+                  >
+                    <Star className={`h-4 w-4 ${p.pinned ? "fill-amber-400 text-amber-500" : ""}`} />
+                  </button>
+                )}
+                {p.status === "published" && (
+                  <a href={`/blog/${p.slug}`} target="_blank" rel="noreferrer" title="View live" className="hover:text-foreground/70">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                )}
+                <button onClick={() => duplicate(p)} title="Duplicate as new post" className="hover:text-foreground/70">
+                  <Copy className="h-4 w-4" />
+                </button>
+                <button onClick={() => trash(p)} title="Move to trash" className="hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -488,7 +568,7 @@ function BulkPublishDialog({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{r.p.title || "(untitled)"}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  {statusPill(r.p.status)}
+                  <StatusPill status={r.p.status} />
                   {mode === "publish" && r.p.status !== "published" && r.missing.length > 0 && (
                     <span className="text-[11px] font-medium text-rose-600">Will be skipped — missing {r.missing.join(", ")}</span>
                   )}
@@ -532,543 +612,6 @@ function BulkPublishDialog({
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {mode === "publish" ? (publishCount > 0 ? `Publish ${publishCount}` : "Save featured") : "Save featured"}
             </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Editor ────────────────────────────────────────────────────────────────
-
-function BlogEditor({
-  adminUser,
-  postId,
-  onBack,
-}: {
-  adminUser: { getIdToken: () => Promise<string> };
-  postId: string | null;
-  onBack: () => void;
-}) {
-  const [loading, setLoading] = useState(Boolean(postId));
-  const [id, setId] = useState<string | null>(postId);
-  const [status, setStatus] = useState<BlogPost["status"]>("draft");
-  const [form, setForm] = useState<BlogPostInput>(EMPTY_FORM);
-  const [slugTouched, setSlugTouched] = useState(Boolean(postId));
-  const [slugWarning, setSlugWarning] = useState<string | null>(null);
-  const [tagsInput, setTagsInput] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [coverUploading, setCoverUploading] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [scheduleAt, setScheduleAt] = useState("");
-  const [preview, setPreview] = useState(false);
-
-  useEffect(() => {
-    if (!postId) return;
-    (async () => {
-      try {
-        const token = await adminUser.getIdToken();
-        const { post } = await getBlogPostAdmin({ data: { token, id: postId } });
-        setForm({
-          title: post.title,
-          slug: post.slug,
-          excerpt: post.excerpt,
-          category: post.category,
-          tags: post.tags,
-          examKey: post.examKey,
-          track: post.track,
-          coverImageUrl: post.coverImageUrl,
-          coverImageAlt: post.coverImageAlt,
-          bodyMarkdown: post.bodyMarkdown,
-          author: post.author,
-          pinned: post.pinned,
-          relatedBundleId: post.relatedBundleId,
-          relatedBatchId: post.relatedBatchId,
-          documents: post.documents ?? [],
-          seoTitleOverride: post.seoTitleOverride,
-          seoDescriptionOverride: post.seoDescriptionOverride,
-          substantiveUpdate: false,
-        });
-        setTagsInput(post.tags.join(", "));
-        setStatus(post.status);
-      } catch {
-        setError("Couldn't load this post.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId]);
-
-  const isPublishedOrPast = status === "published" || status === "archived";
-
-  function set<K extends keyof BlogPostInput>(key: K, value: BlogPostInput[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function handleTitleChange(title: string) {
-    set("title", title);
-    if (!slugTouched && !isPublishedOrPast) {
-      try {
-        const token = await adminUser.getIdToken();
-        const { slug } = await suggestBlogSlug({ data: { token, title } });
-        set("slug", slug);
-      } catch {
-        // Slug suggestion is a convenience, not a requirement — the
-        // server re-derives/validates a slug from the title on save
-        // regardless, so a failed suggestion here is a non-event.
-      }
-    }
-  }
-
-  async function handleSlugBlur() {
-    if (!form.slug || isPublishedOrPast) return;
-    try {
-      const token = await adminUser.getIdToken();
-      const { available } = await checkBlogSlugAvailable({ data: { token, slug: form.slug, excludeId: id ?? undefined } });
-      setSlugWarning(available ? null : "That slug is already taken.");
-    } catch {
-      setSlugWarning(null);
-    }
-  }
-
-  async function handleCoverUpload(file: File) {
-    setCoverUploading(true);
-    setError(null);
-    try {
-      const url = await uploadBlogImage(file);
-      set("coverImageUrl", url);
-    } catch {
-      setError("Cover image upload failed.");
-    } finally {
-      setCoverUploading(false);
-    }
-  }
-
-  function currentInput(): BlogPostInput {
-    return { ...form, tags: tagsInput.split(",").map((t) => t.trim()).filter(Boolean) };
-  }
-
-  async function saveDraft(): Promise<string | null> {
-    setSaving(true);
-    setError(null);
-    try {
-      const token = await adminUser.getIdToken();
-      const input = currentInput();
-      if (id) {
-        await updateBlogPost({ data: { token, id, post: input } });
-        setNotice("Draft saved.");
-        return id;
-      } else {
-        const { id: newId } = await createBlogPost({ data: { token, post: input } });
-        setId(newId);
-        setNotice("Draft saved.");
-        return newId;
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save.");
-      return null;
-    } finally {
-      setSaving(false);
-      setTimeout(() => setNotice(null), 2500);
-    }
-  }
-
-  async function handlePublish() {
-    setPublishing(true);
-    setError(null);
-    try {
-      const savedId = await saveDraft();
-      if (!savedId) return;
-      const token = await adminUser.getIdToken();
-      await publishBlogPost({ data: { token, id: savedId } });
-      setStatus("published");
-      setNotice("Published.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't publish — check the checklist below.");
-    } finally {
-      setPublishing(false);
-    }
-  }
-
-  async function handleSchedule() {
-    if (!scheduleAt) return;
-    setPublishing(true);
-    setError(null);
-    try {
-      const savedId = await saveDraft();
-      if (!savedId) return;
-      const token = await adminUser.getIdToken();
-      await scheduleBlogPost({ data: { token, id: savedId, publishAt: new Date(scheduleAt).toISOString() } });
-      setStatus("scheduled");
-      setNotice(`Scheduled for ${new Date(scheduleAt).toLocaleString()}.`);
-      setShowSchedule(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't schedule.");
-    } finally {
-      setPublishing(false);
-    }
-  }
-
-  async function handleUnpublish() {
-    if (!id) return;
-    const token = await adminUser.getIdToken();
-    await revertBlogPostToDraft({ data: { token, id } });
-    setStatus("draft");
-  }
-
-  async function handleArchive() {
-    if (!id) return;
-    const token = await adminUser.getIdToken();
-    await archiveBlogPost({ data: { token, id } });
-    setStatus("archived");
-  }
-
-  async function handleRestore() {
-    if (!id) return;
-    const token = await adminUser.getIdToken();
-    await restoreBlogPost({ data: { token, id } });
-    setStatus("draft");
-  }
-
-  const checklist = useMemo(() => {
-    const items: string[] = [];
-    if (!form.title.trim()) items.push("Title");
-    if (!form.excerpt.trim()) items.push("Excerpt");
-    // Cover image is optional; alt text is only needed if one is attached.
-    if (form.coverImageUrl && !form.coverImageAlt.trim()) items.push("Cover image alt text");
-    if (!form.bodyMarkdown.trim()) items.push("Body");
-    return items;
-  }, [form]);
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="mb-5 flex items-center justify-between">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-foreground/60 hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-          Back to posts
-        </button>
-        <div className="flex items-center gap-2">
-          {notice && (
-            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              {notice}
-            </span>
-          )}
-          {statusPill(status)}
-        </div>
-      </div>
-
-      {error && (
-        <div className="clay mb-4 flex items-center gap-2 border border-rose-300/40 p-3 text-xs font-medium text-rose-600">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-4">
-          <div className="clay p-5">
-            <input
-              value={form.title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Post title"
-              className="clay-inset w-full rounded-2xl px-4 py-3 text-base font-semibold focus:outline-none"
-            />
-            <div className="mt-2 flex items-center gap-2 text-xs text-foreground/50">
-              <span>/blog/</span>
-              <input
-                value={form.slug}
-                disabled={isPublishedOrPast}
-                onChange={(e) => {
-                  setSlugTouched(true);
-                  set("slug", e.target.value);
-                }}
-                onBlur={handleSlugBlur}
-                className="clay-inset flex-1 rounded-xl px-3 py-1.5 font-mono text-xs focus:outline-none disabled:opacity-50"
-              />
-            </div>
-            {slugWarning && <p className="mt-1 text-[11px] font-medium text-rose-500">{slugWarning}</p>}
-            {isPublishedOrPast && <p className="mt-1 text-[11px] text-foreground/40">Slug is locked once a post has been published.</p>}
-
-            <textarea
-              value={form.excerpt}
-              onChange={(e) => set("excerpt", e.target.value)}
-              placeholder="Excerpt — one or two sentences shown on the blog index and in search/social previews. Write this by hand, don't rely on a truncated body."
-              rows={3}
-              className="clay-inset mt-3 w-full resize-none rounded-2xl px-4 py-3 text-sm focus:outline-none"
-            />
-          </div>
-
-          <div className="clay p-5">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Body</p>
-              <button onClick={() => setPreview((v) => !v)} className="clay-chip rounded-full px-3 py-1 text-[11px] font-semibold text-foreground/60">
-                {preview ? "Edit" : "Preview"}
-              </button>
-            </div>
-            {preview ? (
-              <div className="clay-inset min-h-[300px] rounded-2xl px-4 py-4">
-                <BlogBody markdown={form.bodyMarkdown} />
-              </div>
-            ) : (
-              <BlogImageInsertField
-                value={form.bodyMarkdown}
-                onChange={(v) => set("bodyMarkdown", v)}
-                placeholder="Write in markdown — # heading, **bold**, - list, > quote, [link](url), ![](image), $x^2$ math, <svg> code, :::tip callouts…"
-                className="clay-inset w-full resize-y rounded-2xl px-4 py-3 text-sm leading-relaxed focus:outline-none"
-              />
-            )}
-          </div>
-
-          <div className="clay p-5">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/50">SEO overrides (optional)</p>
-            <input
-              value={form.seoTitleOverride ?? ""}
-              onChange={(e) => set("seoTitleOverride", e.target.value || null)}
-              placeholder={`Search/share title — defaults to "${form.title || "post title"}"`}
-              className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
-            />
-            <textarea
-              value={form.seoDescriptionOverride ?? ""}
-              onChange={(e) => set("seoDescriptionOverride", e.target.value || null)}
-              placeholder="Search/share description — defaults to the excerpt above"
-              rows={2}
-              className="clay-inset mt-2 w-full resize-none rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="clay p-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/50">Cover image <span className="font-normal normal-case text-foreground/40">(optional)</span></p>
-            {form.coverImageUrl ? (
-              <img src={form.coverImageUrl} alt="" className="mb-2 h-32 w-full rounded-xl object-cover" />
-            ) : (
-              <div className="mb-2 flex h-32 w-full items-center justify-center rounded-xl bg-foreground/5 text-foreground/30">
-                <ImageIcon className="h-6 w-6" />
-              </div>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              disabled={coverUploading}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleCoverUpload(file);
-                e.target.value = "";
-              }}
-              className="text-xs text-foreground/70"
-            />
-            {form.coverImageUrl && (
-              <button
-                type="button"
-                onClick={() => {
-                  set("coverImageUrl", null);
-                  set("coverImageAlt", "");
-                }}
-                className="mt-1 block text-xs font-semibold text-rose-600 hover:underline"
-              >
-                Remove cover image
-              </button>
-            )}
-            <input
-              value={form.coverImageAlt}
-              onChange={(e) => set("coverImageAlt", e.target.value)}
-              placeholder="Alt text (required if a cover image is added)"
-              className="clay-inset mt-2 w-full rounded-xl px-3 py-2 text-xs focus:outline-none"
-            />
-          </div>
-
-          <div className="clay space-y-3 p-5">
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Category</p>
-              <select
-                value={form.category}
-                onChange={(e) => set("category", e.target.value as BlogCategory)}
-                className="clay-inset w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
-              >
-                {BLOG_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {BLOG_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Exam (optional)</p>
-              <select
-                value={form.examKey ?? ""}
-                onChange={(e) => set("examKey", (e.target.value || null) as ExamKey | null)}
-                className="clay-inset w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
-              >
-                <option value="">Not exam-specific</option>
-                {EXAM_KEYS.map((k) => (
-                  <option key={k} value={k}>
-                    {EXAM_LABELS[k]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Track (optional)</p>
-              <select
-                value={form.track ?? ""}
-                onChange={(e) => set("track", (e.target.value || null) as Track | null)}
-                className="clay-inset w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
-              >
-                <option value="">Any</option>
-                {TRACKS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Tags</p>
-              <input
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="comma, separated, tags"
-                className="clay-inset w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-xs font-medium text-foreground/70">
-              <input type="checkbox" checked={form.pinned} onChange={(e) => set("pinned", e.target.checked)} />
-              Feature on blog index (several posts can be featured)
-            </label>
-          </div>
-
-          <div className="clay space-y-3 p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Byline</p>
-            <input
-              value={form.author.name}
-              onChange={(e) => set("author", { ...form.author, name: e.target.value })}
-              placeholder="Author name"
-              className="clay-inset w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
-            />
-            <textarea
-              value={form.author.bio ?? ""}
-              onChange={(e) => set("author", { ...form.author, bio: e.target.value || null })}
-              placeholder="Short bio (optional)"
-              rows={2}
-              className="clay-inset w-full resize-none rounded-xl px-3 py-2 text-sm focus:outline-none"
-            />
-          </div>
-
-          <div className="clay space-y-3 p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/50">Related CTA (optional)</p>
-            <input
-              value={form.relatedBundleId ?? ""}
-              onChange={(e) => set("relatedBundleId", e.target.value || null)}
-              placeholder="Related bundle ID"
-              className="clay-inset w-full rounded-xl px-3 py-2 text-xs font-mono focus:outline-none"
-            />
-            <input
-              value={form.relatedBatchId ?? ""}
-              onChange={(e) => set("relatedBatchId", e.target.value || null)}
-              placeholder="Related mentorship batch ID"
-              className="clay-inset w-full rounded-xl px-3 py-2 text-xs font-mono focus:outline-none"
-            />
-          </div>
-
-          <BlogDocumentsPanel documents={form.documents ?? []} onChange={(docs) => set("documents", docs)} />
-
-          {status !== "draft" && (
-            <label className="clay flex items-start gap-2 p-4 text-xs font-medium text-foreground/70">
-              <input type="checkbox" checked={form.substantiveUpdate} onChange={(e) => set("substantiveUpdate", e.target.checked)} className="mt-0.5" />
-              This edit is substantive — show an "Updated" badge to readers
-            </label>
-          )}
-
-          {checklist.length > 0 && (
-            <div className="clay border border-amber-300/40 p-4">
-              <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-700">
-                <AlertCircle className="h-3.5 w-3.5" />
-                Needed to publish
-              </p>
-              <ul className="space-y-0.5 text-xs text-foreground/60">
-                {checklist.map((c) => (
-                  <li key={c}>• {c}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="clay space-y-2 p-5">
-            <button
-              onClick={saveDraft}
-              disabled={saving}
-              className="clay-chip flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-foreground/70 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save draft
-            </button>
-
-            {status === "draft" || status === "scheduled" ? (
-              <>
-                <button
-                  onClick={handlePublish}
-                  disabled={publishing || checklist.length > 0}
-                  className="clay-btn flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Publish now
-                </button>
-                <button
-                  onClick={() => setShowSchedule((v) => !v)}
-                  disabled={checklist.length > 0}
-                  className="clay-chip flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-foreground/70 disabled:opacity-50"
-                >
-                  <Clock className="h-4 w-4" />
-                  {status === "scheduled" ? "Reschedule" : "Schedule…"}
-                </button>
-                {showSchedule && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="datetime-local"
-                      value={scheduleAt}
-                      onChange={(e) => setScheduleAt(e.target.value)}
-                      className="clay-inset flex-1 rounded-xl px-3 py-2 text-xs focus:outline-none"
-                    />
-                    <button onClick={handleSchedule} disabled={!scheduleAt || publishing} className="clay-btn rounded-full px-3 py-2 text-xs font-bold disabled:opacity-50">
-                      Set
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : null}
-
-            {status === "published" && (
-              <button onClick={handleUnpublish} className="clay-chip flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-foreground/70">
-                Unpublish to draft
-              </button>
-            )}
-
-            {status !== "archived" && id && (
-              <button onClick={handleArchive} className="flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-foreground/40 hover:text-foreground/70">
-                <Archive className="h-3.5 w-3.5" />
-                Archive
-              </button>
-            )}
-            {status === "archived" && (
-              <button onClick={handleRestore} className="flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-foreground/40 hover:text-foreground/70">
-                <Restore className="h-3.5 w-3.5" />
-                Restore to draft
-              </button>
-            )}
           </div>
         </div>
       </div>
