@@ -9,23 +9,24 @@
 // --sky-soft/--mint-soft/--coral-soft/--sky-deep CSS vars) rather than
 // inventing new ones — nothing here requires a global CSS change.
 import { useRef, useState } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video, IconHelpCircle as HelpCircle } from "@tabler/icons-react";
 import { Inbox, Camera } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { uploadMentorImage, uploadSessionArtwork, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
 
+// Any icon component works here — callers pass both Tabler and Lucide icons.
+export type IconType = ComponentType<{ className?: string }>;
+
 // ─── Shared input styling ──────────────────────────────────────────────
+// Focus ring added so keyboard users can always see where they are.
 export const inputClass =
-  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
+  "clay-inset w-full rounded-2xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 transition-colors focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
 
 export const textareaClass =
-  "clay-inset w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 focus:outline-none";
+  "clay-inset w-full resize-none rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-foreground/40 transition-colors focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
 
-// ─── Page header — supports an optional right-side action (e.g. a "New"
-// button) and an optional `onHelp` (replays that module's onboarding tour
-// — see components/shared/onboarding-tour.tsx). One button here instead
-// of every module hand-rolling its own, same reasoning as everything else
-// in this file. ──────────────────────────────────────────────────────────
+// ─── Page header — optional right-side action and an optional `onHelp`
+// (replays that module's onboarding tour). ─────────────────────────────────
 export function ModuleHeader({
   title,
   subtitle,
@@ -39,19 +40,21 @@ export function ModuleHeader({
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-        <p className="mt-1 text-sm text-foreground/60">{subtitle}</p>
+      <div className="min-w-0 max-w-2xl">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground text-balance sm:text-[1.75rem]">
+          {title}
+        </h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-foreground/60">{subtitle}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {onHelp && (
           <button
             type="button"
             onClick={onHelp}
-            className="clay-btn-ghost flex items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/60"
+            className="clay-btn-ghost flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-foreground/60"
           >
             <HelpCircle className="h-3.5 w-3.5" />
-            Help
+            Tour
           </button>
         )}
         {action}
@@ -60,8 +63,7 @@ export function ModuleHeader({
   );
 }
 
-// ─── Field wrapper — adds an optional hint line under the input, which no
-// version of this component had before despite several forms needing one. ─
+// ─── Field wrapper — label, control, optional hint. ─────────────────────
 export function ClayField({
   label,
   hint,
@@ -73,17 +75,16 @@ export function ClayField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-foreground/50">
-        {label}
-      </span>
+      <span className="mb-1.5 block text-xs font-semibold text-foreground/60">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-[11px] text-foreground/40">{hint}</span>}
+      {hint && <span className="mt-1 block text-[11px] text-foreground/45">{hint}</span>}
     </label>
   );
 }
 
-// ─── Panel — the "icon + uppercase title + card" wrapper that appeared,
-// slightly differently written, in every single module. One version now. ──
+// ─── Panel — the titled card every module uses. The icon is optional and
+// sits in a tinted tile (same treatment as the admin MetricCard) so a page
+// of panels scans by title, not by a wall of tracked uppercase. ───────────
 export function Panel({
   icon: Icon,
   title,
@@ -91,36 +92,39 @@ export function Panel({
   children,
   className = "",
 }: {
-  icon: LucideIcon;
+  icon?: IconType;
   title: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
-    <div className={`clay p-5 sm:p-6 ${className}`}>
+    <section className={`clay p-5 sm:p-6 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-          <Icon className="h-4 w-4" />
-          {title}
+        <h2 className="flex min-w-0 items-center gap-2.5 text-sm font-bold text-foreground">
+          {Icon && (
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+          )}
+          <span className="truncate">{title}</span>
         </h2>
         {action}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-// ─── Stat chip — now with a `tone` prop so a metric can read as
-// good/attention-needed/neutral at a glance instead of everything looking
-// the same regardless of what the number means. ─────────────────────────
+// ─── Stat chip — compact metric with a `tone` so a number can read as
+// good / needs-attention / neutral at a glance. ───────────────────────────
 export function StatChip({
   icon: Icon,
   label,
   value,
   tone = "neutral",
 }: {
-  icon: LucideIcon;
+  icon: IconType;
   label: string;
   value: string | number;
   tone?: "neutral" | "sky" | "mint" | "coral";
@@ -133,40 +137,133 @@ export function StatChip({
   }[tone];
   return (
     <div className={`clay-inset px-3 py-2.5 ${bg}`}>
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/50">
         <Icon className="h-3 w-3" />
         {label}
       </div>
-      <p className="mt-0.5 text-sm font-bold text-foreground">{value}</p>
+      <p className="mt-0.5 text-base font-bold tabular-nums text-foreground">{value}</p>
     </div>
   );
 }
 
-// ─── Loading / empty / error / success states — every module hand-rolled
-// its own spinner div and its own banner styling with tiny inconsistencies
-// (different padding, different icon-or-no-icon). One version now. ──────
+// ─── StatStrip — several headline numbers in ONE bordered surface divided
+// by hairlines, instead of N separate cards. `value: null` renders a
+// skeleton so each cell can load on its own. ─────────────────────────────
+export type StatStripItem = {
+  label: string;
+  value: string | number | null;
+  hint?: string | null;
+  hintTone?: "good" | "warn" | "muted";
+  onClick?: () => void;
+};
+
+export function StatStrip({ items, className = "" }: { items: StatStripItem[]; className?: string }) {
+  const hintClass = {
+    good: "text-emerald-600",
+    warn: "text-amber-600",
+    muted: "text-foreground/45",
+  };
+  return (
+    <div className={`clay grid grid-cols-2 gap-px overflow-hidden bg-border sm:grid-cols-4 ${className}`}>
+      {items.map((it) => {
+        const body = (
+          <>
+            <p className="text-xs font-medium text-foreground/55">{it.label}</p>
+            {it.value === null ? (
+              <Skeleton className="mt-2 h-8 w-24" />
+            ) : (
+              <p className="mt-1 font-display text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.7rem]">
+                {it.value}
+              </p>
+            )}
+            {it.hint && it.value !== null && (
+              <p className={`mt-0.5 truncate text-[11px] font-medium ${hintClass[it.hintTone ?? "muted"]}`}>{it.hint}</p>
+            )}
+          </>
+        );
+        return it.onClick ? (
+          <button
+            key={it.label}
+            type="button"
+            onClick={it.onClick}
+            className="bg-card px-4 py-4 text-left transition-colors hover:bg-secondary sm:px-5"
+          >
+            {body}
+          </button>
+        ) : (
+          <div key={it.label} className="bg-card px-4 py-4 sm:px-5">
+            {body}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Small status primitives ────────────────────────────────────────────
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div aria-hidden className={`animate-pulse rounded-xl bg-foreground/[0.07] ${className}`} />;
+}
+
+// Pulsing dot for "live / happening now".
+export function LiveDot({ className = "" }: { className?: string }) {
+  return (
+    <span className={`relative inline-flex h-2.5 w-2.5 ${className}`} aria-hidden>
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+    </span>
+  );
+}
+
+// ─── Loading / empty / error / success states ───────────────────────────
+// Skeleton rows instead of a lone spinner — the page keeps its shape while
+// it loads.
 export function LoadingBlock({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`flex justify-center ${compact ? "py-6" : "py-12"}`}>
-      <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+    <div role="status" aria-label="Loading" className={`space-y-2.5 ${compact ? "py-1" : "py-4"}`}>
+      <Skeleton className="h-12 w-full rounded-2xl" />
+      <Skeleton className="h-12 w-full rounded-2xl" />
+      {!compact && <Skeleton className="h-12 w-2/3 rounded-2xl" />}
     </div>
   );
 }
 
-export function EmptyState({ icon: Icon = Inbox, message }: { icon?: LucideIcon; message: string }) {
+// An empty screen is an invitation to act — pass `action` when there is an
+// obvious next step.
+export function EmptyState({
+  icon: Icon = Inbox,
+  message,
+  action,
+}: {
+  icon?: IconType;
+  message: string;
+  action?: { label: string; onClick: () => void };
+}) {
   return (
-    <div className="flex flex-col items-center gap-2 py-8 text-center">
+    <div className="flex flex-col items-center gap-2.5 py-8 text-center">
       <div className="clay-inset grid h-12 w-12 place-items-center rounded-2xl">
-        <Icon className="h-5 w-5 text-foreground/30" />
+        <Icon className="h-5 w-5 text-foreground/35" />
       </div>
-      <p className="text-sm text-foreground/60">{message}</p>
+      <p className="max-w-xs text-sm text-foreground/60">{message}</p>
+      {action && (
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="clay-btn mt-1 rounded-full px-4 py-2 text-xs font-semibold"
+        >
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }
 
 export function ErrorBanner({ message }: { message: string }) {
   return (
-    <p className="clay-inset flex items-center gap-2 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2.5 text-xs font-medium text-foreground">
+    <p
+      role="alert"
+      className="clay-inset flex items-center gap-2 rounded-2xl bg-[var(--coral-soft)]/50 px-4 py-2.5 text-xs font-medium text-foreground"
+    >
       <AlertCircle className="h-3.5 w-3.5 shrink-0" />
       {message}
     </p>
@@ -175,7 +272,10 @@ export function ErrorBanner({ message }: { message: string }) {
 
 export function SuccessBanner({ message }: { message: string }) {
   return (
-    <p className="clay-inset flex items-center gap-2 rounded-2xl bg-[var(--mint-soft)]/60 px-4 py-2.5 text-xs font-medium text-foreground">
+    <p
+      role="status"
+      className="clay-inset flex items-center gap-2 rounded-2xl bg-[var(--mint-soft)]/60 px-4 py-2.5 text-xs font-medium text-foreground"
+    >
       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
       {message}
     </p>
