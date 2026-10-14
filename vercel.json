@@ -1,11 +1,14 @@
 {
-  "crons": [
-    {
-      "path": "/cron/outreach?key=YOUR_CRON_SECRET",
-      "schedule": "*/10 * * * *"
-    }
-  ],
   "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [
@@ -17,3 +20,4 @@
     }
   ]
 }
+
