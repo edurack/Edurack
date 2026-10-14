@@ -1,4 +1,6 @@
 import { TodayCard, type UpNextInfo } from "@/components/today-card";
+import { PyqHero } from "@/components/dashboard/pyq-hero";
+import { StreakPopup } from "@/components/dashboard/streak-popup";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -406,11 +408,16 @@ function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader user={user} displayName={profile?.fullName} />
+      <StreakPopup />
 
       <div className="mx-auto flex max-w-7xl gap-10 px-4 sm:px-6">
         {/* ── Sidebar (desktop) ─────────────────────────────── */}
         <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-56 shrink-0 flex-col justify-between py-8 md:flex">
           <nav className="space-y-1">
+            <Link to="/pyq" className="mb-3 flex min-h-12 items-center gap-3 rounded-2xl bg-primary px-3 text-sm font-extrabold text-primary-foreground shadow-md transition-transform hover:-translate-y-0.5">
+              <ClipboardList className="h-[18px] w-[18px]" />PYQ Practice
+              <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Free</span>
+            </Link>
             {nav.map((n) => (
               <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${view === n.key ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-secondary"}`}>
                 <n.icon className="h-[18px] w-[18px]" />{n.label}
@@ -539,9 +546,9 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
   const navigate = useNavigate();
   const next = upcoming[0];
   const continueCount = ownedListings.length + ownedTests.length;
-  const actions = [
+  const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
+    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq", highlight: true },
     { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
-    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq" },
     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
@@ -566,9 +573,12 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
 
   return (
     <div className="space-y-4">
+      {/* PYQ practice comes first: streak, milestones and a tile per subject. */}
+      <PyqHero />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* Today + Up next, merged into one card: practice streak, what's due, and the next mentor session. */}
-        <TodayCard className="lg:col-span-3" upNext={upNext} onBrowseSessions={() => go("sessions")} />
+        {/* The next mentor session (the practice part lives in the hero above). */}
+        <TodayCard className="lg:col-span-3" upNext={upNext} upNextOnly onBrowseSessions={() => go("sessions")} />
 
         {/* Performance */}
         <Panel title="Your performance" className="lg:col-span-2">
@@ -601,9 +611,10 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
       {/* Quick actions */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {actions.map((a, i) => {
-          const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
-          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 lg:col-span-1` : tile;
-          return a.to ? <Link key={a.label} to={a.to} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
+          const inner = (<><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${a.highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}{a.highlight && <span className="ml-1.5 rounded-full bg-amber-300 px-1.5 py-0.5 align-middle text-[9px] font-extrabold uppercase text-amber-950">Free</span>}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
+          const base = a.highlight ? `${tile} border-primary/60 bg-primary/5` : tile;
+          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${base} col-span-2 lg:col-span-1` : base;
+          return a.to ? <Link key={a.label} to={a.to as "/pyq"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
         })}
       </div>
 

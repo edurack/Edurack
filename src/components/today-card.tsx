@@ -265,13 +265,13 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
 }
 
 /** Fetches the practice summary and renders the merged card. If the summary fails the card still shows "Up next". */
-export function TodayCard({ upNext, onBrowseSessions, className }: { upNext?: UpNextInfo; onBrowseSessions?: () => void; className?: string }) {
+export function TodayCard({ upNext, onBrowseSessions, className, upNextOnly = false }: { upNext?: UpNextInfo; onBrowseSessions?: () => void; className?: string; /** Skip the practice part (the dashboard's PYQ hero already shows it). */ upNextOnly?: boolean }) {
   const { user } = useAuth();
   const [t, setT] = useState<TodaySummary | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || upNextOnly) return;
     let cancelled = false;
     (async () => {
       try {
@@ -285,9 +285,9 @@ export function TodayCard({ upNext, onBrowseSessions, className }: { upNext?: Up
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, upNextOnly]);
 
   // Nothing to show at all (summary failed and no Up next info): don't leave an empty card on the dashboard.
-  if (failed && !upNext) return null;
-  return <TodayView t={t} failed={failed} upNext={upNext} onBrowseSessions={onBrowseSessions} className={className} />;
+  if ((failed || upNextOnly) && !upNext) return null;
+  return <TodayView t={t} failed={failed || upNextOnly} upNext={upNext} onBrowseSessions={onBrowseSessions} className={className} />;
 }

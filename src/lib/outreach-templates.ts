@@ -6,11 +6,20 @@
 //   "> text"            → highlighted callout box
 //   {{name}}            → student's first name (subject + message)
 import type { OutreachCampaign } from "@/lib/outreach-types";
+import { TEMPLATES_A } from "@/lib/outreach-templates-a";
+import { TEMPLATES_B } from "@/lib/outreach-templates-b";
+import { TEMPLATES_C } from "@/lib/outreach-templates-c";
 
 const SITE = "https://www.edurack.in";
 
-export type TemplateCategory = "Welcome" | "Habit" | "Strategy" | "By class" | "Growth";
-export const TEMPLATE_CATEGORIES: TemplateCategory[] = ["Welcome", "Habit", "Strategy", "By class", "Growth"];
+export type TemplateCategory =
+  | "Welcome" | "Habit" | "Strategy" | "By class" | "Growth"
+  | "By exam" | "Exam countdown" | "Tests & results" | "Win-back" | "Live & mentors" | "Parents"
+  | "Community" | "Updates" | "Sales" | "Support" | "Motivation" | "Hinglish";
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
+  "Welcome", "Habit", "Strategy", "By exam", "By class", "Exam countdown", "Tests & results", "Win-back",
+  "Live & mentors", "Parents", "Community", "Updates", "Sales", "Support", "Motivation", "Hinglish", "Growth",
+];
 
 export type OutreachTemplate = {
   key: string;
@@ -23,12 +32,14 @@ export type OutreachTemplate = {
   sendWhen: string;
   /** Soft pastel used on the card header. */
   tint: string;
+  /** True when subject/message still contain [blanks] the admin must fill in before sending. */
+  needsEdit?: boolean;
   campaign: Omit<OutreachCampaign, "id" | "lastSentAt">;
 };
 
 const aud = (exam: OutreachCampaign["audience"]["exam"], track: OutreachCampaign["audience"]["track"] = "any") => ({ exam, track, nonBuyersOnly: false });
 
-export const OUTREACH_TEMPLATES: OutreachTemplate[] = [
+const CORE_TEMPLATES: OutreachTemplate[] = [
   {
     key: "welcome-pyq",
     emoji: "📚",
@@ -260,6 +271,11 @@ export const OUTREACH_TEMPLATES: OutreachTemplate[] = [
     },
   },
 ];
+
+const hasBlanks = (t: OutreachTemplate) => /\[[^\]]+\]/.test(t.campaign.subject + t.campaign.message);
+
+/** Full library: the original starter set + the extended ones. Keys must be unique (checked in tests/). */
+export const OUTREACH_TEMPLATES: OutreachTemplate[] = [...CORE_TEMPLATES, ...TEMPLATES_A, ...TEMPLATES_B, ...TEMPLATES_C].map((t) => ({ ...t, needsEdit: t.needsEdit ?? hasBlanks(t) }));
 
 export const BLANK_CAMPAIGN: Omit<OutreachCampaign, "id" | "lastSentAt"> = {
   name: "",

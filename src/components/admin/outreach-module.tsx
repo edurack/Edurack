@@ -41,6 +41,7 @@ export function OutreachModule({ adminUser }: { adminUser: AdminUser }) {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<"templates" | "campaigns">("templates");
   const [cat, setCat] = useState<TemplateCategory | "All">("All");
+  const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -64,7 +65,19 @@ export function OutreachModule({ adminUser }: { adminUser: AdminUser }) {
 
   const totalSent = useMemo(() => Object.values(sentBy).reduce((a, b) => a + b, 0), [sentBy]);
   const lastSend = useMemo(() => campaigns.map((c) => c.lastSentAt).filter(Boolean).sort().pop() ?? null, [campaigns]);
-  const templates = OUTREACH_TEMPLATES.filter((t) => cat === "All" || t.category === cat);
+  const templates = useMemo(() => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    return OUTREACH_TEMPLATES.filter((t) => {
+      if (cat !== "All" && t.category !== cat) return false;
+      const hay = `${t.title} ${t.tagline} ${t.category} ${t.sendWhen} ${t.campaign.subject} ${t.campaign.message}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+  }, [cat, query]);
+  const catCount = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const t of OUTREACH_TEMPLATES) m[t.category] = (m[t.category] ?? 0) + 1;
+    return m;
+  }, []);
   const running = (id: string) => jobs.find((j) => j.campaignId === id && j.status === "running");
 
   // ── send flow ──
@@ -153,11 +166,18 @@ export function OutreachModule({ adminUser }: { adminUser: AdminUser }) {
       {/* ── template gallery ── */}
       {tab === "templates" && (
         <div>
+          <input
+            value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${OUTREACH_TEMPLATES.length} templates: streak, JEE, parents, PDF, Hinglish…`}
+            className="mb-3 w-full rounded-2xl border border-border bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/40 focus:border-primary focus:outline-none"
+          />
           <div className="mb-4 flex flex-wrap gap-2">
             {(["All", ...TEMPLATE_CATEGORIES] as const).map((c) => (
-              <button key={c} type="button" onClick={() => setCat(c)} className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${cat === c ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground/70 hover:border-foreground/40"}`}>{c}</button>
+              <button key={c} type="button" onClick={() => setCat(c)} className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${cat === c ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground/70 hover:border-foreground/40"}`}>
+                {c} <span className="opacity-60">{c === "All" ? OUTREACH_TEMPLATES.length : catCount[c] ?? 0}</span>
+              </button>
             ))}
           </div>
+          {templates.length === 0 && <p className="mb-4 text-sm text-foreground/60">No templates match "{query}". Try a shorter word, or start from a blank campaign.</p>}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {templates.map((t) => (
               <button
@@ -174,6 +194,7 @@ export function OutreachModule({ adminUser }: { adminUser: AdminUser }) {
                   <div className="mt-3 space-y-1 text-xs text-foreground/50">
                     <p>🎯 {audienceText(t.campaign.audience)}</p>
                     <p>🕒 {t.sendWhen}</p>
+                    {t.needsEdit && <p className="font-semibold text-amber-600">✏️ Fill in the [blanks] before sending</p>}
                   </div>
                   <span className="mt-4 text-sm font-bold text-primary group-hover:underline">Use this template →</span>
                 </div>
