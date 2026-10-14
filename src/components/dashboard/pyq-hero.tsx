@@ -1,7 +1,7 @@
 // The first thing a student sees on the dashboard: one clear PYQ action, a streak,
 // a short quest path, and a tile per subject. For a brand-new student it turns into
 // "Solve your first question", because that first answer is what makes people stay.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { ArrowRight, Check, Flame, Lock, Sparkles, Trophy } from "lucide-react";
@@ -10,6 +10,7 @@ import { getTodaySummary } from "@/server-functions/practice-extras";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
 import { pickStartHere, headlineFor } from "@/components/today-card";
+import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
 import { cn } from "@/lib/utils";
 
 const EXAM_NAME: Record<string, string> = { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" };
@@ -67,19 +68,24 @@ export function PyqHero({ className }: { className?: string }) {
   const [tree, setTree] = useState<PyqTree | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async (isCancelled: () => boolean = () => false) => {
     if (!user) return;
-    let cancelled = false;
-    (async () => {
-      const token = await user.getIdToken();
-      const [a, b] = await Promise.allSettled([getTodaySummary({ data: { token } }), getPyqTree({ data: { token } })]);
-      if (cancelled) return;
-      if (a.status === "fulfilled") setT(a.value);
-      if (b.status === "fulfilled") setTree(b.value);
-      setLoaded(true);
-    })();
-    return () => { cancelled = true; };
+    const token = await user.getIdToken();
+    const [a, b] = await Promise.allSettled([getTodaySummary({ data: { token } }), getPyqTree({ data: { token } })]);
+    if (isCancelled()) return;
+    if (a.status === "fulfilled") setT(a.value);
+    if (b.status === "fulfilled") setTree(b.value);
+    setLoaded(true);
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void load(() => cancelled);
+    // After an answer is saved in the streak popup, refetch so the flame, week strip and ring update at once.
+    const onAnswered = () => void load(() => cancelled);
+    window.addEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
+    return () => { cancelled = true; window.removeEventListener(PRACTICE_ANSWERED_EVENT, onAnswered); };
+  }, [load]);
 
   const exam = t?.exam ?? tree?.exam ?? null;
   const examName = exam ? EXAM_NAME[exam] ?? exam.toUpperCase() : "PYQ";

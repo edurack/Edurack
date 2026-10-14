@@ -1,0 +1,23 @@
+--- a/src/server-functions/outreach.ts	2026-10-13 23:09:47.000000000 +0000
++++ b/src/server-functions/outreach.ts	2026-10-14 18:53:39.150843422 +0000
+@@ -73,8 +73,9 @@
+     const db = await getDb();
+     const doc = await db.collection("outreachCampaigns").findOne({ _id: await oid(data.campaignId) });
+     if (!doc) throw new Error("Campaign not found.");
+-    const { total, pendingCount, batch } = await pendingRecipients(db, data.campaignId, doc.audience, 5);
+-    return { inAudience: total, willReceive: pendingCount, alreadySent: total - pendingCount, sample: batch.map((p) => ({ name: (p.fullName as string) || "—", email: p.email as string })) };
++    const { total, pendingCount, batch, alreadySent, suppressed, recent, gapDays } = await pendingRecipients(db, data.campaignId, doc.audience, 5);
++    const { isQuietHour } = await import("@/lib/email-policy");
++    return { inAudience: total, willReceive: pendingCount, alreadySent, suppressed, recent, gapDays, quiet: isQuietHour(new Date()), sample: batch.map((p) => ({ name: (p.fullName as string) || "—", email: p.email as string })) };
+   });
+ 
+ export const startOutreachSend = createServerFn({ method: "POST" })
+@@ -118,6 +119,8 @@
+     if (!cDoc) throw new Error("Campaign not found.");
+     if (!p?.email) throw new Error("This student has no email on file.");
+     if (p.emailOptOut?.marketing) throw new Error("This student unsubscribed from Edurack emails.");
++    const { suppressedSet } = await import("@/lib/email-guard");
++    if ((await suppressedSet(db, [p.email as string])).size > 0) throw new Error("This address bounced or reported spam earlier, so it's blocked. Unblock it in Email health if that was a mistake.");
+     try {
+       await db.collection("outreachLog").insertOne({ campaignId: data.campaignId, uid: data.uid, email: p.email, status: "sending", createdAt: new Date() });
+     } catch (e: any) {

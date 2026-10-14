@@ -1,0 +1,83 @@
+--- a/src/lib/outreach-core.ts	2026-10-13 22:54:23.000000000 +0000
++++ b/src/lib/outreach-core.ts	2026-10-14 18:54:13.252574268 +0000
+@@ -7,6 +7,8 @@
+ import { firstName, outreachEmailHtml, safeUrl } from "@/lib/growth-emails";
+ import { unsubscribeUrl } from "@/lib/unsubscribe";
+ import type { OutreachAudience, OutreachCampaign, OutreachJobView } from "@/lib/outreach-types";
++import { classifyRecipients, isQuietHour, normalizeEmail, parseGapDays } from "@/lib/email-policy";
++import { ensureGuardIndexes, recentlyEmailedUids, suppressedSet } from "@/lib/email-guard";
+ 
+ export type Db = Awaited<ReturnType<typeof getDb>>;
+ export const CHUNK = 40; // ≈ 22 s of sending at Resend's 2 req/s — safely inside a serverless timeout
+@@ -19,6 +21,7 @@
+     await db.collection("outreachLog").createIndex({ campaignId: 1, uid: 1 }, { unique: true });
+     await db.collection("outreachJobs").createIndex({ status: 1, startedAt: -1 });
+   } catch { /* best-effort */ }
++  await ensureGuardIndexes(db);
+   indexesReady = true;
+ }
+ 
+@@ -39,9 +42,10 @@
+   lastSentAt: d.lastSentAt instanceof Date ? d.lastSentAt.toISOString() : null,
+ });
+ 
+-export const toJob = (j: any): OutreachJobView => ({
++export const toJob = (j: any, waiting?: OutreachJobView["waiting"]): OutreachJobView => ({
+   id: String(j._id), campaignId: j.campaignId, status: j.status, total: j.total, sent: j.sent, failed: j.failed,
+   startedAt: (j.startedAt as Date).toISOString(),
++  ...(waiting ? { waiting } : {}),
+ });
+ 
+ /** Mongo filter for "who is this campaign for". Respects the marketing opt-out. */
+@@ -60,12 +64,35 @@
+   return { $and: and };
+ }
+ 
+-/** Audience members not yet emailed for this campaign. */
++export type Recipient = { uid: string; email: string; fullName?: string };
++
++/**
++ * Audience members who can be emailed now for this campaign. On top of "not already sent this campaign" it drops
++ *  - addresses on the suppression list (bounced / reported spam), and
++ *  - students who got ANY marketing email in the last OUTREACH_MIN_GAP_DAYS days (frequency cap; default 3, 0 = off).
++ * `pendingCount` counts only the people who will actually be emailed, so a job can finish even with skipped students.
++ */
+ export async function pendingRecipients(db: Db, campaignId: string, a: OutreachAudience, limit: number) {
+   const done = new Set((await db.collection("outreachLog").find({ campaignId }, { projection: { uid: 1 } }).toArray()).map((d) => d.uid as string));
+   const profiles = await db.collection("profiles").find(await audienceFilter(db, a), { projection: { uid: 1, fullName: 1, email: 1 } }).sort({ _id: 1 }).limit(MAX_AUDIENCE).toArray();
+-  const pending = profiles.filter((p) => !done.has(p.uid as string));
+-  return { total: profiles.length, pendingCount: pending.length, batch: pending.slice(0, limit) };
++  const notYet = profiles.filter((p) => !done.has(p.uid as string));
++
++  const gapDays = parseGapDays(process.env.OUTREACH_MIN_GAP_DAYS);
++  const [blockedEmails, recentUids] = await Promise.all([
++    suppressedSet(db, notYet.map((p) => normalizeEmail(p.email as string))),
++    gapDays > 0 ? recentlyEmailedUids(db, notYet.map((p) => p.uid as string), new Date(Date.now() - gapDays * 864e5)) : Promise.resolve(new Set<string>()),
++  ]);
++  const candidates: Recipient[] = notYet.map((p) => ({ uid: p.uid as string, email: p.email as string, fullName: p.fullName as string | undefined }));
++  const { eligible, blocked, recent } = classifyRecipients(candidates, blockedEmails, recentUids);
++  return {
++    total: profiles.length,
++    pendingCount: eligible.length,
++    batch: eligible.slice(0, limit),
++    alreadySent: profiles.length - notYet.length,
++    suppressed: blocked.length,
++    recent: recent.length,
++    gapDays,
++  };
+ }
+ 
+ export function validateCampaign(c: Pick<OutreachCampaign, "name" | "subject" | "message" | "assets">) {
+@@ -92,6 +119,12 @@
+ export async function runChunk(db: Db, jobId: string): Promise<OutreachJobView> {
+   const _id = await oid(jobId);
+   const now = new Date();
++  // Quiet hours (22:00–08:00 IST): don't email students at night. The job stays "running" and /cron/outreach
++  // picks it up after 08:00.
++  if (isQuietHour(now)) {
++    const waiting = await db.collection("outreachJobs").findOne({ _id });
++    if (waiting && waiting.status === "running") return toJob(waiting, "quiet_hours");
++  }
+   const job = await db.collection("outreachJobs").findOneAndUpdate(
+     { _id, status: "running", $or: [{ lockedUntil: null }, { lockedUntil: { $lt: now } }] },
+     { $set: { lockedUntil: new Date(now.getTime() + 90_000) } },

@@ -11,6 +11,7 @@ import { addDays, istDayKey } from "@/lib/practice-schedule";
 import { formatIstMinute, hoursLeftToday, isReminderDue, reminderMinuteFor } from "@/lib/streak-reminder-rules";
 import { firstName, SITE_URL, streakReminderEmailHtml, streakReminderSubject } from "@/lib/growth-emails";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
+import { suppressedSet } from "@/lib/email-guard";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -77,11 +78,12 @@ export async function sendStreakReminders(now: Date = new Date(), opts: { dryRun
     .find({ uid: { $in: candidates.map((c) => c.s.uid as string) } }, { projection: { uid: 1, fullName: 1, email: 1, emailOptOut: 1 } })
     .toArray();
   const profileByUid = new Map(profiles.map((p) => [p.uid as string, p]));
+  const blocked = await suppressedSet(db, profiles.map((p) => String(p.email ?? ""))); // bounced / reported spam
 
   for (const { s, lastAt } of candidates) {
     const uid = s.uid as string;
     const profile = profileByUid.get(uid);
-    if (!profile?.email || profile.emailOptOut?.streak) {
+    if (!profile?.email || profile.emailOptOut?.streak || blocked.has(String(profile.email).trim().toLowerCase())) {
       result.skipped++;
       continue;
     }

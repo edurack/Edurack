@@ -14,6 +14,8 @@ import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib
 import { cn } from "@/lib/utils";
 
 const OPTS: OptionKey[] = ["A", "B", "C", "D"];
+/** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
+export const PRACTICE_ANSWERED_EVENT = "edurack:practice-answered";
 const dayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
 function seenKey(uid: string) {
@@ -66,7 +68,10 @@ export function StreakPopup() {
     try {
       const token = await user.getIdToken();
       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
-      setResult(await submitPyqAnswer({ data: { token, questionId: q.id, answer } }));
+      const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
+      setResult(out);
+      // The dashboard hero (flame, week strip, progress ring) lives outside this dialog: tell it to refresh.
+      window.dispatchEvent(new Event(PRACTICE_ANSWERED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't check that. Try again.");
     } finally {
@@ -122,7 +127,7 @@ export function StreakPopup() {
 
           {q.type === "mcq" && q.options ? (
             <ul className="space-y-2">
-              {OPTS.map((k) => {
+              {OPTS.filter((k) => q.options?.[k]).map((k) => {
                 const isPick = pick === k;
                 const isRight = result && result.correctOption === k;
                 const isWrongPick = result && isPick && !result.isCorrect;
@@ -136,7 +141,7 @@ export function StreakPopup() {
                       )}
                     >
                       <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-extrabold", isPick || isRight ? "bg-primary text-primary-foreground" : "bg-secondary")}>{k}</span>
-                      <SmartContent value={q.options![k]} className="min-w-0 flex-1" />
+                      <SmartContent value={q.options?.[k] ?? ""} className="min-w-0 flex-1" />
                     </button>
                   </li>
                 );
@@ -160,8 +165,8 @@ export function StreakPopup() {
                 </div>
               )}
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Link to="/pyq" search={{ practice: true } as never} onClick={() => setOpen(false)} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
-                  Keep practising <ArrowRight className="h-4 w-4" />
+                <Link to="/pyq" search={{ subject: q.subject, chapter: q.chapter, practice: true, exam: today?.exam ?? undefined }} onClick={() => setOpen(false)} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
+                  More from {q.chapter || q.subject} <ArrowRight className="h-4 w-4" />
                 </Link>
                 <button type="button" onClick={() => setOpen(false)} className="min-h-11 rounded-full px-5 text-sm font-bold text-muted-foreground hover:bg-secondary">Done for now</button>
               </div>

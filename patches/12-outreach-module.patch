@@ -1,0 +1,67 @@
+--- a/src/components/admin/outreach-module.tsx	2026-10-14 08:43:14.000000000 +0000
++++ b/src/components/admin/outreach-module.tsx	2026-10-14 18:53:39.151881942 +0000
+@@ -1,5 +1,6 @@
+ // Admin → Outreach. Pick a ready-made template (or start blank), preview the real email,
+ // send yourself a test, then send to a whole audience with one confirmed tap.
++import { DeliverabilityCard } from "@/components/admin/deliverability-card";
+ import { useEffect, useMemo, useState } from "react";
+ import {
+   continueOutreachJob, deleteOutreachCampaign, listOutreachCampaigns, previewOutreachAudience, saveOutreachCampaign, startOutreachSend,
+@@ -10,7 +11,7 @@
+ import { OutreachComposer, type Draft } from "./outreach-composer";
+ 
+ type AdminUser = { getIdToken: () => Promise<string> };
+-type Preview = { inAudience: number; willReceive: number; alreadySent: number; sample: { name: string; email: string }[] };
++type Preview = { inAudience: number; willReceive: number; alreadySent: number; suppressed?: number; recent?: number; gapDays?: number; quiet?: boolean; sample: { name: string; email: string }[] };
+ type Stage = "checking" | "confirm" | "sending" | "done" | "error";
+ 
+ const ago = (iso: string | null) => {
+@@ -97,7 +98,8 @@
+     try {
+       let j = await startOutreachSend({ data: { token: await token(), campaignId: target.id } });
+       setJob(j);
+-      while (j.status === "running") {
++      // `waiting` = paused for quiet hours; stop looping (the background job resumes it after 8 AM IST).
++      while (j.status === "running" && !j.waiting) {
+         j = await continueOutreachJob({ data: { token: await token(), jobId: j.id } });
+         setJob(j);
+       }
+@@ -144,6 +146,8 @@
+         <button type="button" onClick={() => setDraft({ ...BLANK_CAMPAIGN, assets: [], audience: { ...BLANK_CAMPAIGN.audience } })} className="clay-btn px-5 py-2.5 text-sm">+ Blank campaign</button>
+       </div>
+ 
++      <DeliverabilityCard adminUser={adminUser} />
++
+       <div className="mb-6 grid grid-cols-3 gap-3">
+         <Stat label="Campaigns" value={String(campaigns.length)} />
+         <Stat label="Emails sent" value={totalSent.toLocaleString("en-IN")} />
+@@ -275,6 +279,9 @@
+                       <div className="space-y-1 text-xs text-foreground/60">
+                         <p>🎯 {audienceText(target.audience)}</p>
+                         {preview.alreadySent > 0 && <p>⏭ {preview.alreadySent.toLocaleString("en-IN")} already received it and are skipped</p>}
++                        {!!preview.recent && <p>🕒 {preview.recent.toLocaleString("en-IN")} skipped: emailed in the last {preview.gapDays} days</p>}
++                        {!!preview.suppressed && <p>🚫 {preview.suppressed.toLocaleString("en-IN")} skipped: address bounced or reported spam</p>}
++                        {preview.quiet && <p className="text-amber-700">🌙 Quiet hours (10 PM to 8 AM IST): sending will start automatically at 8 AM.</p>}
+                         {preview.sample.length > 0 && <p>📬 e.g. {preview.sample.map((s) => s.email).join(", ")}</p>}
+                         <p>⏱ About {Math.max(1, Math.ceil((preview.willReceive * 0.55) / 60))} min to finish. You can leave this tab open and keep working.</p>
+                       </div>
+@@ -297,8 +304,17 @@
+ 
+               {stage === "done" && job && (
+                 <div className="space-y-4 text-center">
+-                  <p className="font-display text-4xl font-bold text-foreground">{job.sent.toLocaleString("en-IN")}</p>
+-                  <p className="text-sm text-foreground/60">emails sent{job.failed ? ` · ${job.failed} failed (check your Resend dashboard)` : ""}</p>
++                  {job.waiting ? (
++                    <>
++                      <p className="font-display text-2xl font-bold text-foreground">Queued for the morning</p>
++                      <p className="text-sm text-foreground/60">It's quiet hours, so nothing was sent. Sending starts by itself after 8 AM IST (needs the /cron/outreach job to be scheduled).</p>
++                    </>
++                  ) : (
++                    <>
++                      <p className="font-display text-4xl font-bold text-foreground">{job.sent.toLocaleString("en-IN")}</p>
++                      <p className="text-sm text-foreground/60">emails sent{job.failed ? ` · ${job.failed} failed (check your Resend dashboard)` : ""}</p>
++                    </>
++                  )}
+                   <button type="button" onClick={() => setTarget(null)} className="clay-btn px-8 py-2.5 text-sm">Close</button>
+                 </div>
+               )}

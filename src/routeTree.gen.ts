@@ -34,6 +34,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as ApiResendWebhookRouteImport } from './routes/api.resend-webhook'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as CronBlogPublishRouteImport } from './routes/cron.blog-publish'
@@ -190,6 +191,11 @@ const AdminAuthRoute = AdminAuthRouteImport.update({
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/admin/dashboard',
   path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiResendWebhookRoute = ApiResendWebhookRouteImport.update({
+  id: '/api/resend-webhook',
+  path: '/api/resend-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
@@ -442,6 +449,7 @@ export interface FileRoutesByTo {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
@@ -502,6 +510,7 @@ export interface FileRoutesById {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
@@ -563,6 +572,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
@@ -622,6 +632,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
@@ -681,6 +692,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
@@ -741,6 +753,7 @@ export interface RootRouteChildren {
   VerifyRoute: typeof VerifyRouteWithChildren
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  ApiResendWebhookRoute: typeof ApiResendWebhookRoute
   BlogSlugRoute: typeof BlogSlugRoute
   CronBlogPublishRoute: typeof CronBlogPublishRoute
   CronOutreachRoute: typeof CronOutreachRoute
@@ -949,6 +962,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/dashboard'
       fullPath: '/admin/dashboard'
       preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/resend-webhook': {
+      id: '/api/resend-webhook'
+      path: '/api/resend-webhook'
+      fullPath: '/api/resend-webhook'
+      preLoaderRoute: typeof ApiResendWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog/': {
@@ -1215,6 +1235,7 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyRoute: VerifyRouteWithChildren,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  ApiResendWebhookRoute: ApiResendWebhookRoute,
   BlogSlugRoute: BlogSlugRoute,
   CronBlogPublishRoute: CronBlogPublishRoute,
   CronOutreachRoute: CronOutreachRoute,

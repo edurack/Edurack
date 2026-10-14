@@ -28,6 +28,8 @@ export type OutreachJobView = {
   sent: number;
   failed: number;
   startedAt: string;
+  /** Set when a running job is paused on purpose (quiet hours). It resumes by itself via /cron/outreach. */
+  waiting?: "quiet_hours";
 };
 
 export const EMPTY_CAMPAIGN: Omit<OutreachCampaign, "id" | "lastSentAt"> = {
