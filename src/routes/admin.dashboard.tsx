@@ -11,6 +11,8 @@ import { OutreachModule } from "@/components/admin/outreach-module";
 import { TeamModule } from "@/components/admin/team-module";
 import { getTeamOverview } from "@/server-functions/team";
 import { GrowthHubModule } from "@/components/admin/growth-hub-module";
+import { ResourcesModule } from "@/components/admin/resources-module";
+import { IconDownload as DownloadIcon } from "@tabler/icons-react";
 import { IconTrendingUp as TrendingUpIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
@@ -76,6 +78,7 @@ type ModuleKey =
   | "mentors"
   | "promoters"
   | "blogs" 
+  | "resources"
   | "interns"
   | "reports"
   | "internTrials"
@@ -100,6 +103,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "blogs", label: "Blog", icon: FileText },
+      { key: "resources", label: "Free Resources", icon: DownloadIcon as any },
 
 
 
@@ -396,6 +400,8 @@ function ModuleRouter({
       return <PromoterHubModule adminUser={adminUser} />;
     case "blogs":
       return <BlogHubModule adminUser={adminUser} />;
+    case "resources":
+      return <ResourcesModule adminUser={adminUser} />;
     case "reports":
       return <QuestionReportsModule adminUser={adminUser} />;
     case "interns":

@@ -40,6 +40,7 @@ import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
 import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
 import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
+import { FreeResourcesSection } from "@/components/landing/free-resources-section";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
 // (exam-navigation UI, question palette, timers, etc). It was being bundled
@@ -349,6 +350,7 @@ function Index() {
           <MentorShowcase />
           <FeaturesSection />
           <BlogShowcase />
+          <FreeResourcesSection />
           <MentorBanner />
           <CareersStrip />
           <FinalCta />
@@ -766,7 +768,7 @@ function FinalCta() {
 // ── Footer ─────────────────────────────────────────────────────────────────
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
-  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }] },
+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },

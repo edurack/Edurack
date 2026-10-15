@@ -23,6 +23,7 @@ A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test
 - Paid test-series bundles and mentor-led mentorship batches, covering NEET, JEE, CUET and IPMAT
 - Live 1:1 and group mentor sessions, plus recorded lectures
 - Subject- and topic-wise performance analytics on every test attempt
+- Free downloadable notes, previous year papers, formula sheets and planners for NEET, JEE, CUET and IPMAT (no login needed): ${SITE_URL}/free-resources
 - A blog with exam-specific syllabus and chapter breakdowns: ${SITE_URL}/blog
 - NEET chapter-wise weightage for Physics, Chemistry, Botany and Zoology (previous-year question counts per chapter and topic, 2020–2026): ${SITE_URL}/neet/chapter-wise-weightage
 
@@ -35,6 +36,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
 - About: ${SITE_URL}/about
 - Free demo test: ${SITE_URL}/simulator/live
 - What Edurack offers (overview): ${SITE_URL}/blog/what-edurack-offers
+- Free resources (notes, PYQ PDFs, formula sheets): ${SITE_URL}/free-resources
 - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
 - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
 - FAQ: ${SITE_URL}/faq

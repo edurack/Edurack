@@ -148,6 +148,14 @@ export const BLOG_DOCUMENTS_BUCKET = "blog-documents";
 export const MAX_BLOG_DOCUMENT_BYTES = 50 * 1024 * 1024; // Supabase Free caps uploads at 50MB
 
 
+// ─── Open "Free Resources" library (/free-resources) ─────────────────────
+// Anyone can download WITHOUT logging in, but only through the server, which
+// counts the download first. Create this bucket as PRIVATE and add the insert
+// policy in db/free-resources-setup.sql. Needs SUPABASE_SERVICE_ROLE_KEY in the
+// SERVER env so the server can hand out short-lived signed links.
+import { FREE_RESOURCES_BUCKET as _FREE_RESOURCES_BUCKET } from "@/lib/resource-types";
+export const FREE_RESOURCES_BUCKET = _FREE_RESOURCES_BUCKET;
+
 // Shared helper — uploads a single File to the given bucket under a
 // collision-proof generated name, and returns its public URL. Every
 // upload field across the admin dashboard, mentor portal, and promoter

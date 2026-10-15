@@ -191,6 +191,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Become a mentor", to: "/join-mentor" },
       { label: "Internships", to: "/join-intern" },
       { label: "Blog", to: "/blog" },
+      { label: "Free resources", to: "/free-resources" },
     ],
   },
   {

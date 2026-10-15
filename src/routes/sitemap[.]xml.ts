@@ -20,6 +20,7 @@ const staticRoutes: { path: string; lastmod: string; priority: number; changefre
   { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
   { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
+  { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
   { path: "/join-intern", lastmod: "2026-09-28", priority: 0.5, changefreq: "monthly" },
