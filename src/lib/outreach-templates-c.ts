@@ -438,6 +438,80 @@ As promised, here are the resources:
 > Download them, then try three questions on Edurack to put them to use.`,
     [["Download PDFs", "/blog"], ["Practise PYQs", "/pyq"]]),
 
+  // ───────────── Free resources (/free-resources) ─────────────
+  T("Growth", "free-resources-launch", "🆓", "Free resources: announcement", "Tells every student about the open notes and PDF library. No login needed.", "First send, any audience",
+    "{{name}}, free notes and PDFs, no login needed",
+    `# Free notes and PDFs for your exam
+
+Hi {{name}},
+
+We've opened a free library at Edurack: **notes, previous year papers, formula sheets and study planners** for NEET, JEE, CUET and IPMAT.
+
+- **No login, no payment.** Just open the page and download
+- **Filter by exam and subject** to find what you need in seconds
+- **New files added regularly**, so check back
+
+> Pick one file today and use it. A PDF only helps once you open it.`,
+    [["Browse free resources", "/free-resources"]], A("any")),
+
+  T("Growth", "free-resources-neet", "🧬", "Free resources: NEET", "NEET-only version that links straight to the NEET filter.", "NEET students, any time",
+    "{{name}}, free NEET notes and PYQ papers",
+    `# Free NEET material, ready to download
+
+Hi {{name}},
+
+Here is where you can get NEET study material without logging in: **notes, previous year papers and formula sheets** for Physics, Chemistry and Biology.
+
+- Open the NEET filter and pick your subject
+- Download what you need, no sign-up required
+- Then solve a few PYQs on Edurack to test what you read
+
+> Reading notes is half the job. Solving questions from them is the other half.`,
+    [["Open NEET resources", "/free-resources?exam=neet"], ["Practise NEET PYQs", "/pyq"]], A("neet")),
+
+  T("Growth", "free-resources-jee", "⚙️", "Free resources: JEE", "JEE-only version that links straight to the JEE filter.", "JEE students, any time",
+    "{{name}}, free JEE notes and previous year papers",
+    `# Free JEE material, ready to download
+
+Hi {{name}},
+
+We have a free library for JEE: **chapter notes, previous year papers and quick-revision sheets**, and you don't need to log in to get them.
+
+- Open the JEE filter and choose a category
+- Download and start revising today
+- New files are added regularly
+
+> Keep a few of these saved on your phone for quick revision before a test.`,
+    [["Open JEE resources", "/free-resources?exam=jee"]], A("jee")),
+
+  T("Growth", "free-resources-new-files", "✨", "Free resources: new files added", "Repeat send when you've uploaded fresh material.", "After uploading new files",
+    "{{name}}, new free study files are up",
+    `# New files just added
+
+Hi {{name}},
+
+We've added fresh study material to the free library, covering **[what you added, e.g. NEET Biology notes and JEE formula sheets]**.
+
+- Free for everyone, no login needed
+- Use the exam filter to jump to yours
+
+> Missed the earlier files? They're all still there.`,
+    [["See what's new", "/free-resources"]], A("any")),
+
+  T("Growth", "free-resources-share", "🤝", "Free resources: share with a friend", "Asks students to pass the library to classmates, which grows downloads.", "A few days after the announcement",
+    "{{name}}, know someone preparing for NEET or JEE?",
+    `# Share the free library with a friend
+
+Hi {{name}},
+
+If you found our free notes and PDFs useful, forward this email to a classmate who is preparing for NEET, JEE, CUET or IPMAT.
+
+- Everything is free and needs no login
+- It takes them under a minute to find their exam and download
+
+> Preparing together is easier than preparing alone.`,
+    [["Share this page", "/free-resources"]], A("any")),
+
   T("Growth", "callback-followup", "📞", "Follow-up after a callback request", "Follows up on a student who asked for a call.", "After a callback request",
     "{{name}}, following up on your request",
     `# Thanks for reaching out
