@@ -43,7 +43,7 @@ export const SOFT_BOUNCE_LIMIT = 3;
 export type ResendEvent = {
   type?: string;
   created_at?: string;
-  data?: { to?: string[] | string; bounce?: { type?: string; subType?: string; message?: string } };
+  data?: { to?: string[] | string; subject?: string; email_id?: string; bounce?: { type?: string; subType?: string; message?: string } };
 };
 
 export function eventRecipients(evt: ResendEvent): string[] {

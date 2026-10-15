@@ -202,6 +202,10 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" },
       { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" },
       { label: "PYQ practice", to: "/pyq" },
+      { label: "Paper analysis", to: "/neet/paper-analysis" },
+      { label: "Most repeated topics", to: "/neet/most-repeated-topics" },
+      { label: "Question of the day", to: "/neet/question-of-the-day" },
+      { label: "Free NEET tools", to: "/tools" },
     ],
   },
   {

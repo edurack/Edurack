@@ -5,7 +5,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getDb } from "@/lib/mongo";
 import { listSitemapQuestions } from "@/lib/pyq-public-server";
-import { allBlueprintPaths } from "@/lib/neet-blueprint";
+import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
+import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
+import { TOPICS_PATH } from "@/lib/neet-topics";
+import { loadTreeRows } from "@/lib/pyq-server";
 
 const SITE_URL = "https://www.edurack.in";
 
@@ -81,12 +84,44 @@ function blueprintEntries(): string[] {
   return allBlueprintPaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, BLUEPRINT_LASTMOD, BLUEPRINT_PRIORITY[p.kind], "monthly"));
 }
 
+// Free tools and the data-driven NEET pages. Static content, so these are always listed.
+const SEO_LASTMOD = "2026-10-15";
+function seoEntries(): string[] {
+  return [
+    urlEntry(`${SITE_URL}/tools`, SEO_LASTMOD, 0.8, "monthly"),
+    urlEntry(`${SITE_URL}/tools/neet-rank-predictor`, SEO_LASTMOD, 0.9, "monthly"),
+    urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
+    urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
+    urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
+    ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
+    urlEntry(`${SITE_URL}${TOPICS_PATH}`, SEO_LASTMOD, 0.8, "monthly"),
+    urlEntry(`${SITE_URL}/neet/question-of-the-day`, new Date().toISOString().slice(0, 10), 0.7, "daily"),
+  ];
+}
+
+// Printable chapter sheets: only for chapters that really have PYQs in the bank (an empty sheet is noindex).
+async function sheetEntries(db: Awaited<ReturnType<typeof getDb>>): Promise<string[]> {
+  try {
+    const rows = await loadTreeRows(db, "neet");
+    const have = new Set(rows.filter((r) => r.count > 0).map((r) => `${r.subject}|${r.chapterKey}`));
+    return getSubjects().flatMap((s) =>
+      s.chapters
+        .filter((c) => have.has(`${s.name}|${c.name.trim().toLowerCase()}`))
+        .map((c) => urlEntry(`${SITE_URL}/neet/chapter-wise-weightage/${s.key}/${c.slug}/sheet`, SEO_LASTMOD, 0.6, "monthly")),
+    );
+  } catch (err) {
+    console.error("[sitemap] sheet urls failed:", err);
+    return [];
+  }
+}
+
 function buildStaticOnlyXml(): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...staticRoutes.map((r) => urlEntry(`${SITE_URL}${r.path}`, r.lastmod, r.priority, r.changefreq)),
     ...blueprintEntries(),
+    ...seoEntries(),
     "</urlset>",
   ].join("\n");
 }
@@ -166,6 +201,8 @@ export const Route = createFileRoute("/sitemap.xml")({
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
             ...staticEntries,
             ...blueprintEntries(),
+            ...seoEntries(),
+            ...(await sheetEntries(db)),
             ...mentorEntries,
             ...mentorshipBatchEntries,
             ...blogEntries,

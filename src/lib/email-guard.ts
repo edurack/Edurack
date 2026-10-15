@@ -62,7 +62,15 @@ export async function handleResendEvent(db: Db, svixId: string, evt: ResendEvent
   const bounceType = evt.data?.bounce?.type;
   for (const email of eventRecipients(evt)) {
     if (evt.type === "email.bounced" || evt.type === "email.complained") {
-      await db.collection("emailEvents").insertOne({ email, type: evt.type, bounceType: bounceType ?? null, at: new Date() });
+      await db.collection("emailEvents").insertOne({
+        email, type: evt.type, bounceType: bounceType ?? null,
+        // Kept so the admin can see WHICH email bounced and WHY (shown in Email health).
+        subType: evt.data?.bounce?.subType ?? null,
+        message: evt.data?.bounce?.message?.slice(0, 300) ?? null,
+        subject: evt.data?.subject?.slice(0, 120) ?? null,
+        emailId: evt.data?.email_id ?? null,
+        at: new Date(),
+      });
     }
     const bounces30d = evt.type === "email.bounced"
       ? await db.collection("emailEvents").countDocuments({ email, type: "email.bounced", at: { $gte: new Date(Date.now() - 30 * DAY) } })

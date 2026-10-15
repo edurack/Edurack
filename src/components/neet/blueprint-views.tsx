@@ -254,6 +254,9 @@ export function ChapterView({ subjectKey, slug }: { subjectKey: string; slug: st
 
       <div className="mt-5 flex flex-wrap gap-3">
         <PracticeButton subject={subject.name} chapter={c.name} label={`Practise ${c.name} PYQs`} />
+        <Link to="/neet/chapter-wise-weightage/$subject/$chapter/sheet" params={{ subject: subject.key, chapter: c.slug }} className="clay-chip rounded-full px-4 py-2.5 text-sm font-semibold text-foreground/70">
+          Free 20-question sheet (PDF)
+        </Link>
         <Link to="/neet/chapter-wise-weightage/$subject" params={{ subject: subject.key }} className="clay-chip rounded-full px-4 py-2.5 text-sm font-semibold text-foreground/70">
           All {subject.name} chapters
         </Link>
@@ -503,6 +506,21 @@ export function HubView() {
           </li>
         ))}
       </ol>
+
+      <SectionTitle>More NEET resources</SectionTitle>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {([
+          ["/neet/paper-analysis", "NEET paper analysis 2020–2026", "Year-by-year chapter counts and what changed."],
+          ["/neet/most-repeated-topics", "Most repeated topics", "The topics NEET keeps coming back to."],
+          ["/neet/question-of-the-day", "Question of the day", "One free NEET PYQ every day."],
+          ["/tools", "Free NEET tools", "Rank predictor, percentile calculator, target planner."],
+        ] as const).map(([to, title, blurb]) => (
+          <a key={to} href={to} className="clay block rounded-2xl p-4 transition hover:-translate-y-0.5">
+            <p className="text-sm font-bold text-foreground">{title}</p>
+            <p className="text-xs text-foreground/60">{blurb}</p>
+          </a>
+        ))}
+      </div>
 
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={faqs} />

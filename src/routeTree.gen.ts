@@ -53,6 +53,8 @@ import { Route as MentorOnboardingApplicationIdRouteImport } from './routes/ment
 import { Route as MentorProfileMentorIdRouteImport } from './routes/mentor-profile.$mentorId'
 import { Route as MentorSessionOfferingIdRouteImport } from './routes/mentor-session/$offeringId'
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
+import { Route as NeetMostRepeatedTopicsRouteImport } from './routes/neet.most-repeated-topics'
+import { Route as NeetQuestionOfTheDayRouteImport } from './routes/neet.question-of-the-day'
 import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
 import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
 import { Route as QuestionIdRouteImport } from './routes/question.$id'
@@ -61,12 +63,19 @@ import { Route as SoldTestIdRouteImport } from './routes/sold-test.$id'
 import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$testId'
 import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
+import { Route as ToolsIndexRouteImport } from './routes/tools.index'
+import { Route as ToolsNeetPercentileCalculatorRouteImport } from './routes/tools.neet-percentile-calculator'
+import { Route as ToolsNeetRankPredictorRouteImport } from './routes/tools.neet-rank-predictor'
+import { Route as ToolsNeetTargetScorePlannerRouteImport } from './routes/tools.neet-target-score-planner'
 import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certificateId'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 import { Route as NeetChapterWiseWeightageIndexRouteImport } from './routes/neet.chapter-wise-weightage.index'
+import { Route as NeetPaperAnalysisIndexRouteImport } from './routes/neet.paper-analysis.index'
+import { Route as NeetPaperAnalysisYearRouteImport } from './routes/neet.paper-analysis.$year'
 import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
 import { Route as NeetChapterWiseWeightageSubjectChapterRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter'
+import { Route as NeetChapterWiseWeightageSubjectChapterSheetRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter.sheet'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -289,6 +298,16 @@ const MentorDashboardRoute = MentorDashboardRouteImport.update({
   path: '/mentor/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NeetMostRepeatedTopicsRoute = NeetMostRepeatedTopicsRouteImport.update({
+  id: '/neet/most-repeated-topics',
+  path: '/neet/most-repeated-topics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NeetQuestionOfTheDayRoute = NeetQuestionOfTheDayRouteImport.update({
+  id: '/neet/question-of-the-day',
+  path: '/neet/question-of-the-day',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PromoterAuthRoute = PromoterAuthRouteImport.update({
   id: '/promoter/auth',
   path: '/promoter/auth',
@@ -329,6 +348,28 @@ const TestTestIdRoute = TestTestIdRouteImport.update({
   path: '/test/$testId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ToolsIndexRoute = ToolsIndexRouteImport.update({
+  id: '/tools/',
+  path: '/tools/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ToolsNeetPercentileCalculatorRoute =
+  ToolsNeetPercentileCalculatorRouteImport.update({
+    id: '/tools/neet-percentile-calculator',
+    path: '/tools/neet-percentile-calculator',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ToolsNeetRankPredictorRoute = ToolsNeetRankPredictorRouteImport.update({
+  id: '/tools/neet-rank-predictor',
+  path: '/tools/neet-rank-predictor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ToolsNeetTargetScorePlannerRoute =
+  ToolsNeetTargetScorePlannerRouteImport.update({
+    id: '/tools/neet-target-score-planner',
+    path: '/tools/neet-target-score-planner',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const VerifyCertificateIdRoute = VerifyCertificateIdRouteImport.update({
   id: '/$certificateId',
   path: '/$certificateId',
@@ -350,6 +391,16 @@ const NeetChapterWiseWeightageIndexRoute =
     path: '/neet/chapter-wise-weightage/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const NeetPaperAnalysisIndexRoute = NeetPaperAnalysisIndexRouteImport.update({
+  id: '/neet/paper-analysis/',
+  path: '/neet/paper-analysis/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NeetPaperAnalysisYearRoute = NeetPaperAnalysisYearRouteImport.update({
+  id: '/neet/paper-analysis/$year',
+  path: '/neet/paper-analysis/$year',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NeetChapterWiseWeightageSubjectIndexRoute =
   NeetChapterWiseWeightageSubjectIndexRouteImport.update({
     id: '/neet/chapter-wise-weightage/$subject/',
@@ -361,6 +412,12 @@ const NeetChapterWiseWeightageSubjectChapterRoute =
     id: '/neet/chapter-wise-weightage/$subject/$chapter',
     path: '/neet/chapter-wise-weightage/$subject/$chapter',
     getParentRoute: () => rootRouteImport,
+  } as any)
+const NeetChapterWiseWeightageSubjectChapterSheetRoute =
+  NeetChapterWiseWeightageSubjectChapterSheetRouteImport.update({
+    id: '/sheet',
+    path: '/sheet',
+    getParentRoute: () => NeetChapterWiseWeightageSubjectChapterRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -407,6 +464,8 @@ export interface FileRoutesByFullPath {
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
+  '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -415,13 +474,20 @@ export interface FileRoutesByFullPath {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
+  '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
+  '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/blog/': typeof BlogIndexRoute
+  '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRouteWithChildren
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -467,6 +533,8 @@ export interface FileRoutesByTo {
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
+  '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -475,13 +543,20 @@ export interface FileRoutesByTo {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
+  '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
+  '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/blog': typeof BlogIndexRoute
+  '/tools': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearRoute
   '/neet/chapter-wise-weightage': typeof NeetChapterWiseWeightageIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/paper-analysis': typeof NeetPaperAnalysisIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRouteWithChildren
   '/neet/chapter-wise-weightage/$subject': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -528,6 +603,8 @@ export interface FileRoutesById {
   '/mentor-profile/$mentorId': typeof MentorProfileMentorIdRoute
   '/mentor-session/$offeringId': typeof MentorSessionOfferingIdRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
+  '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
+  '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -536,13 +613,20 @@ export interface FileRoutesById {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
+  '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
+  '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
   '/blog/': typeof BlogIndexRoute
+  '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRoute
+  '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterRouteWithChildren
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -590,6 +674,8 @@ export interface FileRouteTypes {
     | '/mentor-profile/$mentorId'
     | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
+    | '/neet/most-repeated-topics'
+    | '/neet/question-of-the-day'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -598,13 +684,20 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/neet-percentile-calculator'
+    | '/tools/neet-rank-predictor'
+    | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
     | '/blog/'
+    | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/'
+    | '/neet/paper-analysis/'
     | '/neet/chapter-wise-weightage/$subject/$chapter'
     | '/neet/chapter-wise-weightage/$subject/'
+    | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -650,6 +743,8 @@ export interface FileRouteTypes {
     | '/mentor-profile/$mentorId'
     | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
+    | '/neet/most-repeated-topics'
+    | '/neet/question-of-the-day'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -658,13 +753,20 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/neet-percentile-calculator'
+    | '/tools/neet-rank-predictor'
+    | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
     | '/blog'
+    | '/tools'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage'
+    | '/neet/paper-analysis'
     | '/neet/chapter-wise-weightage/$subject/$chapter'
     | '/neet/chapter-wise-weightage/$subject'
+    | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
   id:
     | '__root__'
     | '/'
@@ -710,6 +812,8 @@ export interface FileRouteTypes {
     | '/mentor-profile/$mentorId'
     | '/mentor-session/$offeringId'
     | '/mentor/dashboard'
+    | '/neet/most-repeated-topics'
+    | '/neet/question-of-the-day'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -718,13 +822,20 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/neet-percentile-calculator'
+    | '/tools/neet-rank-predictor'
+    | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
     | '/blog/'
+    | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/'
+    | '/neet/paper-analysis/'
     | '/neet/chapter-wise-weightage/$subject/$chapter'
     | '/neet/chapter-wise-weightage/$subject/'
+    | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -771,6 +882,8 @@ export interface RootRouteChildren {
   MentorProfileMentorIdRoute: typeof MentorProfileMentorIdRoute
   MentorSessionOfferingIdRoute: typeof MentorSessionOfferingIdRoute
   MentorDashboardRoute: typeof MentorDashboardRoute
+  NeetMostRepeatedTopicsRoute: typeof NeetMostRepeatedTopicsRoute
+  NeetQuestionOfTheDayRoute: typeof NeetQuestionOfTheDayRoute
   PromoterAuthRoute: typeof PromoterAuthRoute
   PromoterDashboardRoute: typeof PromoterDashboardRoute
   QuestionIdRoute: typeof QuestionIdRoute
@@ -779,11 +892,17 @@ export interface RootRouteChildren {
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
   TestTestIdRoute: typeof TestTestIdRoute
+  ToolsNeetPercentileCalculatorRoute: typeof ToolsNeetPercentileCalculatorRoute
+  ToolsNeetRankPredictorRoute: typeof ToolsNeetRankPredictorRoute
+  ToolsNeetTargetScorePlannerRoute: typeof ToolsNeetTargetScorePlannerRoute
   BlogIndexRoute: typeof BlogIndexRoute
+  ToolsIndexRoute: typeof ToolsIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
+  NeetPaperAnalysisYearRoute: typeof NeetPaperAnalysisYearRoute
   NeetChapterWiseWeightageIndexRoute: typeof NeetChapterWiseWeightageIndexRoute
-  NeetChapterWiseWeightageSubjectChapterRoute: typeof NeetChapterWiseWeightageSubjectChapterRoute
+  NeetPaperAnalysisIndexRoute: typeof NeetPaperAnalysisIndexRoute
+  NeetChapterWiseWeightageSubjectChapterRoute: typeof NeetChapterWiseWeightageSubjectChapterRouteWithChildren
   NeetChapterWiseWeightageSubjectIndexRoute: typeof NeetChapterWiseWeightageSubjectIndexRoute
 }
 
@@ -1097,6 +1216,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MentorDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/neet/most-repeated-topics': {
+      id: '/neet/most-repeated-topics'
+      path: '/neet/most-repeated-topics'
+      fullPath: '/neet/most-repeated-topics'
+      preLoaderRoute: typeof NeetMostRepeatedTopicsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/neet/question-of-the-day': {
+      id: '/neet/question-of-the-day'
+      path: '/neet/question-of-the-day'
+      fullPath: '/neet/question-of-the-day'
+      preLoaderRoute: typeof NeetQuestionOfTheDayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/promoter/auth': {
       id: '/promoter/auth'
       path: '/promoter/auth'
@@ -1153,6 +1286,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TestTestIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tools/': {
+      id: '/tools/'
+      path: '/tools'
+      fullPath: '/tools/'
+      preLoaderRoute: typeof ToolsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tools/neet-percentile-calculator': {
+      id: '/tools/neet-percentile-calculator'
+      path: '/tools/neet-percentile-calculator'
+      fullPath: '/tools/neet-percentile-calculator'
+      preLoaderRoute: typeof ToolsNeetPercentileCalculatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tools/neet-rank-predictor': {
+      id: '/tools/neet-rank-predictor'
+      path: '/tools/neet-rank-predictor'
+      fullPath: '/tools/neet-rank-predictor'
+      preLoaderRoute: typeof ToolsNeetRankPredictorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tools/neet-target-score-planner': {
+      id: '/tools/neet-target-score-planner'
+      path: '/tools/neet-target-score-planner'
+      fullPath: '/tools/neet-target-score-planner'
+      preLoaderRoute: typeof ToolsNeetTargetScorePlannerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/verify/$certificateId': {
       id: '/verify/$certificateId'
       path: '/$certificateId'
@@ -1181,6 +1342,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NeetChapterWiseWeightageIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/neet/paper-analysis/': {
+      id: '/neet/paper-analysis/'
+      path: '/neet/paper-analysis'
+      fullPath: '/neet/paper-analysis/'
+      preLoaderRoute: typeof NeetPaperAnalysisIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/neet/paper-analysis/$year': {
+      id: '/neet/paper-analysis/$year'
+      path: '/neet/paper-analysis/$year'
+      fullPath: '/neet/paper-analysis/$year'
+      preLoaderRoute: typeof NeetPaperAnalysisYearRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/neet/chapter-wise-weightage/$subject/': {
       id: '/neet/chapter-wise-weightage/$subject/'
       path: '/neet/chapter-wise-weightage/$subject'
@@ -1195,6 +1370,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NeetChapterWiseWeightageSubjectChapterRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/neet/chapter-wise-weightage/$subject/$chapter/sheet': {
+      id: '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+      path: '/sheet'
+      fullPath: '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+      preLoaderRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRouteImport
+      parentRoute: typeof NeetChapterWiseWeightageSubjectChapterRoute
+    }
   }
 }
 
@@ -1208,6 +1390,21 @@ const VerifyRouteChildren: VerifyRouteChildren = {
 
 const VerifyRouteWithChildren =
   VerifyRoute._addFileChildren(VerifyRouteChildren)
+
+interface NeetChapterWiseWeightageSubjectChapterRouteChildren {
+  NeetChapterWiseWeightageSubjectChapterSheetRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+}
+
+const NeetChapterWiseWeightageSubjectChapterRouteChildren: NeetChapterWiseWeightageSubjectChapterRouteChildren =
+  {
+    NeetChapterWiseWeightageSubjectChapterSheetRoute:
+      NeetChapterWiseWeightageSubjectChapterSheetRoute,
+  }
+
+const NeetChapterWiseWeightageSubjectChapterRouteWithChildren =
+  NeetChapterWiseWeightageSubjectChapterRoute._addFileChildren(
+    NeetChapterWiseWeightageSubjectChapterRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -1253,6 +1450,8 @@ const rootRouteChildren: RootRouteChildren = {
   MentorProfileMentorIdRoute: MentorProfileMentorIdRoute,
   MentorSessionOfferingIdRoute: MentorSessionOfferingIdRoute,
   MentorDashboardRoute: MentorDashboardRoute,
+  NeetMostRepeatedTopicsRoute: NeetMostRepeatedTopicsRoute,
+  NeetQuestionOfTheDayRoute: NeetQuestionOfTheDayRoute,
   PromoterAuthRoute: PromoterAuthRoute,
   PromoterDashboardRoute: PromoterDashboardRoute,
   QuestionIdRoute: QuestionIdRoute,
@@ -1261,12 +1460,18 @@ const rootRouteChildren: RootRouteChildren = {
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,
   TestTestIdRoute: TestTestIdRoute,
+  ToolsNeetPercentileCalculatorRoute: ToolsNeetPercentileCalculatorRoute,
+  ToolsNeetRankPredictorRoute: ToolsNeetRankPredictorRoute,
+  ToolsNeetTargetScorePlannerRoute: ToolsNeetTargetScorePlannerRoute,
   BlogIndexRoute: BlogIndexRoute,
+  ToolsIndexRoute: ToolsIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
+  NeetPaperAnalysisYearRoute: NeetPaperAnalysisYearRoute,
   NeetChapterWiseWeightageIndexRoute: NeetChapterWiseWeightageIndexRoute,
+  NeetPaperAnalysisIndexRoute: NeetPaperAnalysisIndexRoute,
   NeetChapterWiseWeightageSubjectChapterRoute:
-    NeetChapterWiseWeightageSubjectChapterRoute,
+    NeetChapterWiseWeightageSubjectChapterRouteWithChildren,
   NeetChapterWiseWeightageSubjectIndexRoute:
     NeetChapterWiseWeightageSubjectIndexRoute,
 }
