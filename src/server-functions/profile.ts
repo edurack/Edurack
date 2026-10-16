@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { loadProfile } from "@/lib/dashboard-core";
 
 type OnboardingProfileInput = {
   fullName: string;
@@ -125,37 +126,12 @@ export const updateAcademicInfo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const getProfile = createServerFn({ method: "GET" })
+export const getProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);
     const db = await getDb();
-    const doc = await db.collection("profiles").findOne({ uid: decoded.uid });
-
-    if (!doc) {
-      return { profile: null };
-    }
-
-    // Strip Mongo-specific types (ObjectId, Date) that the client/server RPC
-    // serializer (seroval) can't handle — return a plain, JSON-safe object.
-    const profile = {
-      uid: doc.uid as string,
-      email: (doc.email as string | null) ?? null,
-      fullName: (doc.fullName as string) ?? "",
-      mobile: (doc.mobile as string) ?? "",
-      city: (doc.city as string) ?? "",
-      currentClass: (doc.currentClass as string) ?? "",
-      board: (doc.board as string) ?? "",
-      targetExam: (doc.targetExam as string) ?? "",
-      track: (doc.track as OnboardingProfileInput["track"]) ?? "",
-      cuetDomainSubjects: (doc.cuetDomainSubjects as string[]) ?? [],
-      provider: (doc.provider as string) ?? null,
-      createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : null,
-      updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : null,
-      lastLoginAt: doc.lastLoginAt instanceof Date ? doc.lastLoginAt.toISOString() : null,
-    };
-
-    return { profile };
+    return loadProfile(db, decoded.uid);
   });
 
 // True when the user still needs to go through onboarding (no full name saved yet).

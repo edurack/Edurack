@@ -89,7 +89,7 @@ export const submitInternApplication = createServerFn({ method: "POST" })
   });
 
 // ─── Admin: list applications ─────────────────────────────────────────────
-export const listInternApplications = createServerFn({ method: "GET" })
+export const listInternApplications = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireSuperAdmin(data.token);

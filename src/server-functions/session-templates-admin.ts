@@ -28,7 +28,7 @@ function rowToTemplate(row: any): SessionTemplate {
   };
 }
 
-export const listSessionTemplatesAdmin = createServerFn({ method: "GET" })
+export const listSessionTemplatesAdmin = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => d)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -88,7 +88,7 @@ export const deleteSessionTemplate = createServerFn({ method: "POST" })
 // Only returns enabled templates — same handler shape as your
 // listPublic* catalog functions, just gated on a *mentor* token instead of
 // an admin one, so it lives here but is imported by the mentor module too.
-export const listEnabledSessionTemplates = createServerFn({ method: "GET" })
+export const listEnabledSessionTemplates = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => d)
   .handler(async () => {
     const sb = supabase;

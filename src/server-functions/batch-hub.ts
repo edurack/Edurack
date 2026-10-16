@@ -35,7 +35,7 @@ function discountPercent(selling: number, crossed: number): number {
 // ─── Bundle detail (Test Series) ─────────────────────────────────────────
 // Public — browsing a bundle's overview must work for anonymous visitors;
 // only purchasing and taking tests requires login.
-export const getPublicBundleDetail = createServerFn({ method: "GET" })
+export const getPublicBundleDetail = createServerFn({ method: "POST" })
   .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     const cached = bundleDetailCache.get(data.bundleId);
@@ -78,7 +78,7 @@ export const getPublicBundleDetail = createServerFn({ method: "GET" })
 // ─── Tests inside a bundle (student-facing) ───────────────────────────────
 // Public — listing test names/timings is not sensitive; taking a test is
 // separately gated by purchase at /test/$testId.
-export const listPublicTestsForBundle = createServerFn({ method: "GET" })
+export const listPublicTestsForBundle = createServerFn({ method: "POST" })
   .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     const { ObjectId } = await import("mongodb");
@@ -107,7 +107,7 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
 // Public — the Announcements tab is already visually locked behind
 // purchase in the UI (LockGate); the announcement text itself isn't
 // sensitive, and this must not throw for anonymous browsing.
-export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
+export const listPublicBundleAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token?: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     const db = await getDb();
@@ -132,7 +132,7 @@ export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
 // yet since there's no working checkout flow to write them. This means
 // isPurchased will correctly report false for everyone until real Razorpay
 // integration exists and starts writing confirmed orders here.
-export const hasPurchased = createServerFn({ method: "GET" })
+export const hasPurchased = createServerFn({ method: "POST" })
   .validator((data: { token: string; itemType: "bundle" | "mentorship" | "mentorTest"; itemId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -202,7 +202,7 @@ export const submitSupportTicket = createServerFn({ method: "POST" })
 // read-only here exactly as they are in the mentor portal, since students
 // should see the same admin-verified info a mentor cannot self-edit.
 
-export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
+export const getPublicMentorshipDetail = createServerFn({ method: "POST" })
   .validator((data: { token?: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const cached = mentorshipDetailCache.get(data.batchId);
@@ -249,7 +249,7 @@ export const getPublicMentorshipDetail = createServerFn({ method: "GET" })
 // Public — same reasoning as getPublicMentorFullProfile below: nothing
 // here is purchase- or identity-specific, so an anonymous visitor viewing
 // a batch overview must be able to see the assigned mentor's bio too.
-export const getPublicMentorProfile = createServerFn({ method: "GET" })
+export const getPublicMentorProfile = createServerFn({ method: "POST" })
   .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     const { ObjectId } = await import("mongodb");
@@ -289,7 +289,7 @@ export const getPublicMentorProfile = createServerFn({ method: "GET" })
 // genuinely needs to know *which* signed-in student is asking, in order to
 // filter OneOnOne sessions correctly. Anonymous visitors simply don't get
 // a session list — the frontend skips calling this until login.
-export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" })
+export const listMentorshipSessionsForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -327,7 +327,7 @@ export const listMentorshipSessionsForStudent = createServerFn({ method: "GET" }
 // email-trigger metadata that bundle announcements don't.
 //
 // Public — same reasoning as listPublicBundleAnnouncements above.
-export const listPublicMentorshipAnnouncements = createServerFn({ method: "GET" })
+export const listPublicMentorshipAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token?: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const db = await getDb();
@@ -348,7 +348,7 @@ export const listPublicMentorshipAnnouncements = createServerFn({ method: "GET" 
     };
   });
 
-export const getLectureSessionForStudent = createServerFn({ method: "GET" })
+export const getLectureSessionForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -396,7 +396,7 @@ export const getLectureSessionForStudent = createServerFn({ method: "GET" })
    });
    
 
-export const listLectureCommentsForStudent = createServerFn({ method: "GET" })
+export const listLectureCommentsForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -489,7 +489,7 @@ export const updateLectureProgress = createServerFn({ method: "POST" })
     return { ok: true, completed };
   });
 
-export const getMyLectureProgress = createServerFn({ method: "GET" })
+export const getMyLectureProgress = createServerFn({ method: "POST" })
   .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -511,7 +511,7 @@ export const getMyLectureProgress = createServerFn({ method: "GET" })
 // one per session. Returns watch-progress for AsyncLecture rows and this
 // student's own review (if any) for every session in the batch, live or
 // recorded.
-export const listMySessionStatuses = createServerFn({ method: "GET" })
+export const listMySessionStatuses = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -573,7 +573,7 @@ export const submitSessionReview = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const getMySessionReview = createServerFn({ method: "GET" })
+export const getMySessionReview = createServerFn({ method: "POST" })
   .validator((data: { token: string; sessionId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -586,7 +586,7 @@ export const getMySessionReview = createServerFn({ method: "GET" })
 // ─── Student-facing read of mentor-uploaded batch notes ────────────────────
 // Notes are scoped to the batch (not per-lecture) in the current schema —
 // shown on the lecture page as reference material for that batch overall.
-export const listMentorNotesForStudent = createServerFn({ method: "GET" })
+export const listMentorNotesForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -610,7 +610,7 @@ export const listMentorNotesForStudent = createServerFn({ method: "GET" })
   });
 
 
-export const getPublicMentorFullProfile = createServerFn({ method: "GET" })
+export const getPublicMentorFullProfile = createServerFn({ method: "POST" })
   .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     const cached = mentorFullProfileCache.get(data.mentorId);
@@ -682,7 +682,7 @@ function isCurrentlyLockedForStudent(lockedFrom: string, lockedUntil: string): b
   return !(nowMinutes >= fromMinutes || nowMinutes < untilMinutes);
 }
 
-export const getMyMentorForBatch = createServerFn({ method: "GET" })
+export const getMyMentorForBatch = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -726,7 +726,7 @@ export const getMyMentorForBatch = createServerFn({ method: "GET" })
 // Test Series tests are always free-with-batch — there is no standalone
 // per-test purchase here (that's what Sell Tests is for) — so unlocking
 // only ever depends on the batch purchase, once the test is ready.
-export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GET" })
+export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -778,7 +778,7 @@ export const listMentorBatchSeriesTestsForStudent = createServerFn({ method: "GE
     };
   });
   
-export const listMyChatWithMentor = createServerFn({ method: "GET" })
+export const listMyChatWithMentor = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -829,7 +829,7 @@ export const sendMyChatMessage = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const getChatLockStatusForStudent = createServerFn({ method: "GET" })
+export const getChatLockStatusForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -853,7 +853,7 @@ export const getChatLockStatusForStudent = createServerFn({ method: "GET" })
 // lookupItemPriceAndTitle: a "live" (admin-approved) test that isn't
 // fully ingested yet must not appear as available, even to students who've
 // already purchased the batch.
-export const listAttachedSoldTestsForStudent = createServerFn({ method: "GET" })
+export const listAttachedSoldTestsForStudent = createServerFn({ method: "POST" })
   .validator((data: { token: string; batchId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -899,7 +899,7 @@ export const listAttachedSoldTestsForStudent = createServerFn({ method: "GET" })
   });
 
   // ─── Public: single Sold Test detail (for its standalone purchase page) ───
-export const getPublicSoldTestDetail = createServerFn({ method: "GET" })
+export const getPublicSoldTestDetail = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     // Auth check always runs fresh — never skip this for a cache hit.

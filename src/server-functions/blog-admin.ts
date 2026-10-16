@@ -228,7 +228,7 @@ export const updateBlogPost = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listBlogPostsAdmin = createServerFn({ method: "GET" })
+export const listBlogPostsAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -241,7 +241,7 @@ export const listBlogPostsAdmin = createServerFn({ method: "GET" })
     return { posts: rows.map(mapDocToAdminPost) };
   });
 
-export const getBlogPostAdmin = createServerFn({ method: "GET" })
+export const getBlogPostAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -530,7 +530,7 @@ function cleanPromoSettings(raw: any): BlogPromoSettings {
   return out;
 }
 
-export const getBlogPromoSettingsAdmin = createServerFn({ method: "GET" })
+export const getBlogPromoSettingsAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

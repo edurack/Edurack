@@ -39,7 +39,7 @@ export const recordSession = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listSessions = createServerFn({ method: "GET" })
+export const listSessions = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);

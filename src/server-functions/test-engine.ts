@@ -91,7 +91,7 @@ async function verifyTestAccess(uid: string, source: TestSource, test: Record<st
   if (!purchase) throw new Error("This batch hasn't been purchased.");
 }
 
-export const getTestForTaking = createServerFn({ method: "GET" })
+export const getTestForTaking = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);

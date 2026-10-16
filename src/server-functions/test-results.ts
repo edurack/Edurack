@@ -14,7 +14,7 @@ async function requireSignedIn(token: string) {
 type OptionKey = "A" | "B" | "C" | "D";
 
 // ─── Full attempt detail + question-by-question review ────────────────────
-export const getTestAttempt = createServerFn({ method: "GET" })
+export const getTestAttempt = createServerFn({ method: "POST" })
   .validator((data: { token: string; attemptId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -120,7 +120,7 @@ export const getTestAttempt = createServerFn({ method: "GET" })
 // ─── Topic / chapter analysis of one attempt ───────────────────────────────
 // Joins the attempt's graded results with the `questions` collection (which
 // carries chapter / topic / difficulty) and ranks what cost the student marks.
-export const getTopicAnalysis = createServerFn({ method: "GET" })
+export const getTopicAnalysis = createServerFn({ method: "POST" })
   .validator((data: { token: string; attemptId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -135,7 +135,7 @@ export const getTopicAnalysis = createServerFn({ method: "GET" })
   });
 
 // ─── This student's own attempts on a test (for the course hub + analysis) ─
-export const listMyAttemptsForTest = createServerFn({ method: "GET" })
+export const listMyAttemptsForTest = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -159,7 +159,7 @@ export const listMyAttemptsForTest = createServerFn({ method: "GET" })
   });
 
 // ─── Full cross-attempt analysis: trend, subject accuracy, recurring mistakes ─
-export const getTestAnalysis = createServerFn({ method: "GET" })
+export const getTestAnalysis = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
@@ -280,7 +280,7 @@ export const getTestAnalysis = createServerFn({ method: "GET" })
     };
   });
 
-export const getLeaderboard = createServerFn({ method: "GET" })
+export const getLeaderboard = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);

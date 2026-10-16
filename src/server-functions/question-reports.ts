@@ -74,7 +74,7 @@ export const reportQuestion = createServerFn({ method: "POST" })
   });
 
 // ─── Admin side ────────────────────────────────────────────────────────────
-export const listQuestionReports = createServerFn({ method: "GET" })
+export const listQuestionReports = createServerFn({ method: "POST" })
   .validator((data: { token: string; status?: ReportStatus | "all" }) => data)
   .handler(async ({ data }): Promise<{ groups: QuestionReportGroup[]; openTotal: number }> => {
     await requireAdmin(data.token);

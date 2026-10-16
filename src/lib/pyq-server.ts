@@ -161,10 +161,14 @@ export const QUESTION_PROJECTION = {
 /** Question docs → what the client gets (source label + this student's status). Shared by every list endpoint. */
 export async function buildQuestions(db: Db, uid: string, docs: Record<string, unknown>[]): Promise<PyqQuestion[]> {
     const sources = await loadSources(db, docs);
-    const progress = await db
-      .collection("practiceProgress")
-      .find({ uid, questionId: { $in: docs.map((d) => String(d._id)) } })
-      .toArray();
+    // Guests (the public /question pages pass uid "") have no progress rows, so
+    // skip the round trip instead of querying practiceProgress for uid: "".
+    const progress = uid
+      ? await db
+          .collection("practiceProgress")
+          .find({ uid, questionId: { $in: docs.map((d) => String(d._id)) } })
+          .toArray()
+      : [];
     const progMap = new Map(progress.map((p) => [p.questionId as string, p]));
 
     return docs.map((d) => {

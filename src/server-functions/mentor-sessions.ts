@@ -105,7 +105,7 @@ function rowToBooking(row: any, offeringTitle?: string): MentorSessionBooking {
   };
 }
 
-export const listMyOfferings = createServerFn({ method: "GET" })
+export const listMyOfferings = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => d)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);
@@ -404,7 +404,7 @@ export const deleteOffering = createServerFn({ method: "POST" })
 // groups these into per-session rosters (see groupBookingsIntoRosters in
 // lib/session-types.ts) — this stays flat since that's the simpler shape
 // to page/filter/search over.
-export const listMyBookings = createServerFn({ method: "GET" })
+export const listMyBookings = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => d)
   .handler(async ({ data }) => {
     const mentorId = await requireMentor(data.token);

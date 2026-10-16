@@ -67,7 +67,7 @@ export const createPromoterInvite = createServerFn({ method: "POST" })
     return { ok: true, id: String(result.insertedId), secretCode };
   });
 
-export const listPromoters = createServerFn({ method: "GET" })
+export const listPromoters = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -104,7 +104,7 @@ export const suspendPromoter = createServerFn({ method: "POST" })
 
 // ─── Coupon requests ("Request Coupon" from Select Batches) ────────────────
 
-export const listPromoterCouponRequests = createServerFn({ method: "GET" })
+export const listPromoterCouponRequests = createServerFn({ method: "POST" })
   .validator((data: { token: string; status?: PromoterCouponRequestStatus }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -184,7 +184,7 @@ export const reviewPromoterCouponRequest = createServerFn({ method: "POST" })
 
 // ─── Payout requests (from the Profile page's "Request Payment" button) ────
 
-export const listPromoterPayoutRequests = createServerFn({ method: "GET" })
+export const listPromoterPayoutRequests = createServerFn({ method: "POST" })
   .validator((data: { token: string; status?: PromoterPayoutRequestStatus }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -242,7 +242,7 @@ export const reviewPromoterPayoutRequest = createServerFn({ method: "POST" })
 
 // ─── Password reset requests (from the promoter "Forgot password" flow) ────
 
-export const listPromoterPasswordResetRequests = createServerFn({ method: "GET" })
+export const listPromoterPasswordResetRequests = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -298,7 +298,7 @@ export const resolvePromoterPasswordReset = createServerFn({ method: "POST" })
 
 // ─── Support tickets (Help/Support page) ────────────────────────────────────
 
-export const listAllPromoterTicketsAdmin = createServerFn({ method: "GET" })
+export const listAllPromoterTicketsAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

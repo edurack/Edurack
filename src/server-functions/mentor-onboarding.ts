@@ -192,7 +192,7 @@ export const requestMentorAgreementMeeting = createServerFn({ method: "POST" })
   });
 
 // ─── Admin read ──────────────────────────────────────────────────────────
-export const getMentorOnboardingDetails = createServerFn({ method: "GET" })
+export const getMentorOnboardingDetails = createServerFn({ method: "POST" })
   .validator((data: { token: string; applicationId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

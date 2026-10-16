@@ -47,7 +47,7 @@ export const requestStudentCallback = createServerFn({ method: "POST" })
   });
 
 // ─── Admin side ──────────────────────────────────────────────────────────
-export const listCallbackRequestsAdmin = createServerFn({ method: "GET" })
+export const listCallbackRequestsAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

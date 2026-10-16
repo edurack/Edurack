@@ -71,7 +71,7 @@ export const verifyAdminAccess = createServerFn({ method: "POST" })
 // ─── Module 1: Executive Analytics ───────────────────────────────────────
 
 // ─── Module 3: Student Directory ─────────────────────────────────────────
-export const listStudents = createServerFn({ method: "GET" })
+export const listStudents = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -172,7 +172,7 @@ export const createTestSeries = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listTestSeriesAdmin = createServerFn({ method: "GET" })
+export const listTestSeriesAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -226,7 +226,7 @@ export const createBundle = createServerFn({ method: "POST" })
     return { ok: true, id: String(result.insertedId) };
   });
 
-export const listBundles = createServerFn({ method: "GET" })
+export const listBundles = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -337,7 +337,7 @@ export const postBundleAnnouncement = createServerFn({ method: "POST" })
   });
  
 
-export const listBundleAnnouncements = createServerFn({ method: "GET" })
+export const listBundleAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -393,7 +393,7 @@ export const createTestCore = createServerFn({ method: "POST" })
     return { ok: true, id: String(result.insertedId) };
   });
 
-export const listTestCoresForBundle = createServerFn({ method: "GET" })
+export const listTestCoresForBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -438,7 +438,7 @@ export const updateTestCore = createServerFn({ method: "POST" })
   });
 
 
-export const listQuestions = createServerFn({ method: "GET" })
+export const listQuestions = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundleId: string; testId: string; subject: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -814,7 +814,7 @@ export const bulkCreateQuestions = createServerFn({ method: "POST" })
     return { ok: true as const, dryRun: false, inserted: docs.length, outOfSyllabus: oos, ...summary, errors: [], message: null };
   });
 
-export const listQuestionsForTestSubject = createServerFn({ method: "GET" })
+export const listQuestionsForTestSubject = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string; subject: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -903,7 +903,7 @@ export const updateQuestion = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listQuestionsForTest = createServerFn({ method: "GET" })
+export const listQuestionsForTest = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -986,7 +986,7 @@ async function applySyllabusCheck(
   return classifySyllabusTag(syllabus, q.subject, q);
 }
 
-export const getSyllabus = createServerFn({ method: "GET" })
+export const getSyllabus = createServerFn({ method: "POST" })
   .validator((data: { token: string; exam?: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1124,7 +1124,7 @@ const { hash, salt } = await hashPassword(data.mentor.password);
     return { ok: true, id: String(result.insertedId) };
   });
 
-export const listMentors = createServerFn({ method: "GET" })
+export const listMentors = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1185,7 +1185,7 @@ export const createMentorshipBatch = createServerFn({ method: "POST" })
     return { ok: true, id: String(result.insertedId) };
   });
 
-export const listMentorshipBatches = createServerFn({ method: "GET" })
+export const listMentorshipBatches = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1263,7 +1263,7 @@ export const postAnnouncement = createServerFn({ method: "POST" })
   });
  
 
-export const listAnnouncements = createServerFn({ method: "GET" })
+export const listAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1280,7 +1280,7 @@ export const listAnnouncements = createServerFn({ method: "GET" })
   });
 
   // ─── Module 12: Mentor Support Ticket Management (Super Admin side) ─────────
-export const listAllMentorTickets = createServerFn({ method: "GET" })
+export const listAllMentorTickets = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1343,7 +1343,7 @@ export const respondToMentorTicket = createServerFn({ method: "POST" })
     if (result.matchedCount === 0) throw new Error("Ticket not found.");
     return { ok: true };
   });
-export const getAdminAnalytics = createServerFn({ method: "GET" })
+export const getAdminAnalytics = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1444,7 +1444,7 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
 
 // ─── New: 360° student detail — profile + purchases + performance + devices
 // + tickets, all in one call, for the Students module's detail drawer ───────
-export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
+export const getAdminStudentFullProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string; uid: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1628,7 +1628,7 @@ export const getAdminStudentFullProfile = createServerFn({ method: "GET" })
 // instead of joining back to profiles — works even if the profile changes
 // or is deleted after the ticket was filed. Falls back to "Unknown student"
 // for any ticket filed before this snapshot existed.
-export const listAllTicketsAdmin = createServerFn({ method: "GET" })
+export const listAllTicketsAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1710,7 +1710,7 @@ export const updateTicketStatus = createServerFn({ method: "POST" })
   // ─── New: Creator/Mentor application review ─────────────────────────────────
 type SocialLink = { platform: string; url: string };
 
-export const listCreatorApplications = createServerFn({ method: "GET" })
+export const listCreatorApplications = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1898,7 +1898,7 @@ export const updateApplicationVerification = createServerFn({ method: "POST" })
 // break joins elsewhere (student performance views, leaderboards, etc.)
 // that assume a referenced bundleId/testId still exists.
 
-export const listBundlesForDeletion = createServerFn({ method: "GET" })
+export const listBundlesForDeletion = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -1972,7 +1972,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
     };
   });
 
-export const listTestCoresForDeletion = createServerFn({ method: "GET" })
+export const listTestCoresForDeletion = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -2062,7 +2062,7 @@ type PurchaseLedgerRow = {
   promotionPercent: number | null;
 };
 
-export const listAllPurchasesAdmin = createServerFn({ method: "GET" })
+export const listAllPurchasesAdmin = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -2208,7 +2208,7 @@ export const setMentorAccountStatus = createServerFn({ method: "POST" })
 // Expertise Showcase, and every batch assigned to them (manually created or
 // published from onboarding — both live in the same mentorshipBatches
 // collection). ────────────────────────────────────────────────────────────
-export const getAdminMentorFullDetail = createServerFn({ method: "GET" })
+export const getAdminMentorFullDetail = createServerFn({ method: "POST" })
   .validator((data: { token: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -2354,7 +2354,7 @@ export const resetMentorPasswordEmail = createServerFn({ method: "POST" })
 // file already exports — work unchanged for Sold Tests. Sold Test
 // questions are inserted with bundleId: "" (Sold Tests have no bundle);
 // nothing downstream reads bundleId for a testId that isn't in testCores.
-export const listSoldTestsForIngestion = createServerFn({ method: "GET" })
+export const listSoldTestsForIngestion = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -2429,7 +2429,7 @@ export const sendSoldTestToMentorForReview = createServerFn({ method: "POST" })
   });
 
   // ─── Sell Tests: access requests + price approval queue ───────────────────
-export const listSellTestsAccessRequests = createServerFn({ method: "GET" })
+export const listSellTestsAccessRequests = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -2465,7 +2465,7 @@ export const setSellTestsAccess = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listSoldTestsForApproval = createServerFn({ method: "GET" })
+export const listSoldTestsForApproval = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

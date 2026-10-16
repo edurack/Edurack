@@ -21,7 +21,7 @@ async function requireAdmin(token: string) {
   return decoded;
 }
 
-export const listOutreachCampaigns = createServerFn({ method: "GET" })
+export const listOutreachCampaigns = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
@@ -66,7 +66,7 @@ export const deleteOutreachCampaign = createServerFn({ method: "POST" })
   });
 
 /** "Who would get this if I tapped Send right now?" — shown on the confirm step. */
-export const previewOutreachAudience = createServerFn({ method: "GET" })
+export const previewOutreachAudience = createServerFn({ method: "POST" })
   .validator((data: { token: string; campaignId: string }) => data)
   .handler(async ({ data }) => {
     await requireAdmin(data.token);

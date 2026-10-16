@@ -7,10 +7,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
-import { getProfile } from "@/server-functions/profile";
-import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";
-import { getMyPurchases, getMyBatchPerformance } from "@/server-functions/student-data";
-import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions/student-sessions";
+import { getDashboardBootstrap } from "@/server-functions/dashboard";
+import { listOpenMentorSessions } from "@/server-functions/student-sessions";
 import { StudentOpenSessionsModule, BookingDialog } from "@/components/student-open-sessions-module";
 import { AppHeader } from "@/components/app-header";
 import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
@@ -226,13 +224,51 @@ function DashboardPage() {
   const [bookings, setBookings] = useState<BookingRow[] | null>(null);
   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
 
+  // One request for the whole dashboard (profile, catalog, purchases, sessions,
+  // bookings, performance) — see server-functions/dashboard.ts. A section that
+  // failed server-side comes back null and is left unset / empty here.
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     (async () => {
-      const token = await user.getIdToken();
-      listMyBookedSessions({ data: { token } }).then((r: { bookings: unknown }) => setBookings(r.bookings as BookingRow[])).catch(() => setBookings([]));
-      getMyBatchPerformance({ data: { token } }).then((r: { batches: unknown }) => setPerf(r.batches as BatchPerf[])).catch(() => setPerf([]));
+      try {
+        const token = await user.getIdToken();
+        const res = await getDashboardBootstrap({ data: { token } });
+        if (cancelled) return;
+
+        const p = res.profile?.profile;
+        if (p) {
+          setProfile({
+            fullName: p.fullName,
+            targetExam: p.targetExam || "",
+            track: (p.track as Track) || "",
+          });
+        }
+        if (res.bundles) setBundles(res.bundles.bundles as Bundle[]);
+        if (res.batches) setBatches(res.batches.batches as MentorshipBatch[]);
+        if (res.mentors) setMentors(res.mentors.mentors as MentorDirectoryEntry[]);
+        if (res.purchases) {
+          const purchasedSet = new Set(res.purchases.purchases.map((pu) => `${pu.itemType}:${pu.itemId}`));
+          setPurchasedKeys(purchasedSet);
+          if (res.soldTests) {
+            setSoldTests((res.soldTests.tests as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
+          }
+        }
+        if (res.sessions) {
+          setSessionOfferings(res.sessions.offerings as PublicMentorOffering[]);
+          setSessionSlots(res.sessions.slotsByOffering as Record<string, OpenSlot[]>);
+        }
+        setBookings((res.bookings?.bookings as BookingRow[] | undefined) ?? []);
+        setPerf((res.performance?.batches as BatchPerf[] | undefined) ?? []);
+      } catch {
+        if (cancelled) return;
+        setBookings([]);
+        setPerf([]);
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -248,45 +284,6 @@ function DashboardPage() {
     setSessionOfferings(offerings as PublicMentorOffering[]);
     setSessionSlots(slotsByOffering as Record<string, OpenSlot[]>);
   }
-
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const token = await user.getIdToken();
-      const [
-        { profile: p },
-        { bundles: bundleRows },
-        { batches: batchRows },
-        { mentors: mentorRows },
-        { tests: soldTestRows },
-        { purchases },
-        { offerings: sessionRows, slotsByOffering },
-      ] = await Promise.all([
-        getProfile({ data: { token } }),
-        listPublicBundles({ data: { token } }),
-        listPublicMentorshipBatches({ data: { token } }),
-        listPublicMentors({ data: { token } }),
-        listPublicSoldTests({ data: { token } }),
-        getMyPurchases({ data: { token } }),
-        listOpenMentorSessions({ data: { token } }),
-      ]);
-      if (p) {
-        setProfile({
-          fullName: p.fullName,
-          targetExam: p.targetExam || "",
-          track: (p.track as Track) || "",
-        });
-      }
-      setBundles(bundleRows as Bundle[]);
-      setBatches(batchRows as MentorshipBatch[]);
-      setMentors(mentorRows as MentorDirectoryEntry[]);
-      const purchasedSet = new Set(purchases.map((pu) => `${pu.itemType}:${pu.itemId}`));
-      setPurchasedKeys(purchasedSet);
-      setSoldTests((soldTestRows as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
-      setSessionOfferings(sessionRows as PublicMentorOffering[]);
-      setSessionSlots(slotsByOffering as Record<string, OpenSlot[]>);
-    })();
-  }, [user]);
 
   const allListings = useMemo(() => {
     if (!bundles || !batches || !purchasedKeys) return null;

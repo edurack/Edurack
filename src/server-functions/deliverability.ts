@@ -38,7 +38,7 @@ export type DeliverabilityView = {
   bounces: BounceRow[];
 };
 
-export const getDeliverability = createServerFn({ method: "GET" })
+export const getDeliverability = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }): Promise<DeliverabilityView> => {
     await requireAdmin(data.token);

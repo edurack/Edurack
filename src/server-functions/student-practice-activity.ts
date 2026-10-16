@@ -52,7 +52,7 @@ const snippetOf = (body: unknown) =>
     .trim()
     .slice(0, 140);
 
-export const getAdminStudentPracticeActivity = createServerFn({ method: "GET" })
+export const getAdminStudentPracticeActivity = createServerFn({ method: "POST" })
   .validator((data: { token: string; uid: string; limit?: number }) => data)
   .handler(async ({ data }): Promise<StudentPracticeActivity> => {
     await requireAdmin(data.token);

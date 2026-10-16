@@ -112,7 +112,7 @@ async function latestWeakChapter(db: Db, uid: string): Promise<TodaySummary["wea
   return next ? { attemptId, subject: next.subject, chapter: next.chapter, available: next.available - next.solved } : null;
 }
 
-export const getTodaySummary = createServerFn({ method: "GET" })
+export const getTodaySummary = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }): Promise<TodaySummary> => {
     const decoded = await requireSignedIn(data.token);
@@ -141,7 +141,7 @@ export const getTodaySummary = createServerFn({ method: "GET" })
   });
 
 // ─── Notebook ──────────────────────────────────────────────────────────────
-export const getNotebookSummary = createServerFn({ method: "GET" })
+export const getNotebookSummary = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }): Promise<NotebookSummary> => {
     const decoded = await requireSignedIn(data.token);
@@ -167,7 +167,7 @@ export const getNotebookSummary = createServerFn({ method: "GET" })
   });
 
 // A ready-made session: today's PYQ, revision that's due, mistakes, or bookmarks.
-export const listPyqSession = createServerFn({ method: "GET" })
+export const listPyqSession = createServerFn({ method: "POST" })
   .validator((data: { token: string; kind: SessionKind; difficulty?: Difficulty }) => data)
   .handler(async ({ data }): Promise<PyqList> => {
     const decoded = await requireSignedIn(data.token);
@@ -343,7 +343,7 @@ async function ownedDrill(db: Db, uid: string, drillId: string) {
   return drill;
 }
 
-export const getPyqDrill = createServerFn({ method: "GET" })
+export const getPyqDrill = createServerFn({ method: "POST" })
   .validator((data: { token: string; drillId: string }) => data)
   .handler(async ({ data }): Promise<DrillState> => {
     const decoded = await requireSignedIn(data.token);
@@ -401,7 +401,7 @@ export const submitPyqDrill = createServerFn({ method: "POST" })
 // Paid bundles (not already owned) whose tests actually contain questions from
 // the student's weak chapters. Honest by construction: a bundle only appears
 // if the match is real, and we say how many questions it has on those chapters.
-export const getWeakUpsell = createServerFn({ method: "GET" })
+export const getWeakUpsell = createServerFn({ method: "POST" })
   .validator((data: { token: string; attemptId: string }) => data)
   .handler(async ({ data }): Promise<WeakUpsell> => {
     const decoded = await requireSignedIn(data.token);

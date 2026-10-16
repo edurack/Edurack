@@ -55,7 +55,7 @@ async function requireSignedIn(token: string) {
 }
 
 // ─── Browse tree with this student's progress ──────────────────────────────
-export const getPyqTree = createServerFn({ method: "GET" })
+export const getPyqTree = createServerFn({ method: "POST" })
   .validator((data: { token: string; exam?: string }) => data)
   .handler(async ({ data }): Promise<PyqTree> => {
     const decoded = await requireSignedIn(data.token);
@@ -88,7 +88,7 @@ export const getPyqTree = createServerFn({ method: "GET" })
 
 // ─── Resolve "JEE Mains 2022 29 June Shift 2" for a set of questions ───────
 // ─── Questions for a chapter / topic (no answers, no solutions) ────────────
-export const listPyqQuestions = createServerFn({ method: "GET" })
+export const listPyqQuestions = createServerFn({ method: "POST" })
   .validator(
     (data: {
       token: string;
@@ -200,7 +200,7 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
 // session always agree, and a student can't ask for someone else's.
 
 // How many PYQs can the student practise for each weak chapter? (Drives the buttons on the result page.)
-export const getWeakPyqSummary = createServerFn({ method: "GET" })
+export const getWeakPyqSummary = createServerFn({ method: "POST" })
   .validator((data: { token: string; attemptId: string }) => data)
   .handler(async ({ data }): Promise<WeakPyqSummary> => {
     const decoded = await requireSignedIn(data.token);
@@ -216,7 +216,7 @@ export const getWeakPyqSummary = createServerFn({ method: "GET" })
 
 // The mixed practice session itself: PYQs from the weak chapters, interleaved,
 // unseen questions first. Same no-answers-in-the-list rule as everywhere else.
-export const listWeakPyqQuestions = createServerFn({ method: "GET" })
+export const listWeakPyqQuestions = createServerFn({ method: "POST" })
   .validator((data: { token: string; attemptId: string; difficulty?: Difficulty }) => data)
   .handler(async ({ data }): Promise<PyqList> => {
     const decoded = await requireSignedIn(data.token);

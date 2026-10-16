@@ -1,22 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { discountPercent, listBundlesForStudent, listLiveSoldTests, listMentorDirectory, listMentorshipBatches } from "@/lib/dashboard-core";
 
 // Unlike the admin.ts server functions, these only require a VALID student
 // (or any signed-in) Firebase token — not the admin custom claim. Any
 // logged-in user can browse the catalog; only admins can create/edit it.
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
-}
-
-function discountPercent(selling: number, crossed: number): number {
-  if (!crossed || crossed <= 0) return 0;
-  return Math.round(((crossed - selling) / crossed) * 100);
-}
-
-function shouldShowBundleForAStudent(bundleExam: string, bundleDomainSubject: string | null, studentDomainSubjects: Set<string>) {
-  if (bundleExam !== "cuet" || !bundleDomainSubject) return true;
-  return studentDomainSubjects.size === 0 || studentDomainSubjects.has(bundleDomainSubject);
 }
 
 // FIX (Lighthouse "Improve image delivery" — ~412 KiB flagged): mentor
@@ -45,67 +36,25 @@ function toResizedSupabaseImageUrl(url: string | null | undefined, size: number,
   return `${base}/storage/v1/render/image/public/${path}?width=${targetSize}&height=${targetSize}&resize=cover&quality=${quality}`;
 }
 
-export const listPublicBundles = createServerFn({ method: "GET" })
+export const listPublicBundles = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
     const profile = await db.collection("profiles").findOne({ uid: decoded.uid });
     const studentDomainSubjects = new Set((profile?.cuetDomainSubjects as string[]) ?? []);
-    // Mentor batch-series bundles are internal containers, not sellable
-    // products — a mentor's own test-series tests live here, but this
-    // bundle itself must never appear in any student-facing browse list.
-    const rows = await db.collection("bundles").find({ kind: { $ne: "mentorBatchSeries" } }).sort({ createdAt: -1 }).toArray();
-
-    return {
-      bundles: rows
-        .filter((r) => shouldShowBundleForAStudent(r.exam as string, (r.domainSubject as string | null) ?? null, studentDomainSubjects))
-        .map((r) => ({
-          id: String(r._id),
-          title: r.title as string,
-          track: r.track as string,
-          exam: (r.exam as string) ?? "neet",
-          domainSubject: (r.domainSubject as string | null) ?? null,
-          features: (r.features as string[]) ?? [],
-          sellingPrice: r.sellingPrice as number,
-          crossedPrice: r.crossedPrice as number,
-          discountPercent: discountPercent(r.sellingPrice as number, r.crossedPrice as number),
-          expiryDate: r.expiryDate as string,
-          thumbnailUrl: (r.thumbnailUrl as string | null) ?? null,
-        })),
-    };
+    return listBundlesForStudent(db, studentDomainSubjects);
   });
 
-export const listPublicMentorshipBatches = createServerFn({ method: "GET" })
+export const listPublicMentorshipBatches = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
     const db = await getDb();
-
-    const [batches, mentors] = await Promise.all([
-      db.collection("mentorshipBatches").find({}).sort({ createdAt: -1 }).toArray(),
-      db.collection("mentors").find({}, { projection: { name: 1 } }).toArray(),
-    ]);
-
-    const mentorNameById = new Map(mentors.map((m) => [String(m._id), m.name as string]));
-
-    return {
-      batches: batches.map((b) => ({
-        id: String(b._id),
-        name: b.name as string,
-        track: b.track as string,
-        exam: (b.exam as string) ?? "neet",
-        highlights: (b.highlights as string[]) ?? [],
-        sellingPrice: b.sellingPrice as number,
-        crossedPrice: b.crossedPrice as number,
-        discountPercent: discountPercent(b.sellingPrice as number, b.crossedPrice as number),
-        thumbnailUrl: (b.thumbnailUrl as string | null) ?? null,
-        mentorName: b.assignedMentorId ? (mentorNameById.get(b.assignedMentorId as string) ?? null) : null,
-      })),
-    };
+    return listMentorshipBatches(db);
   });
 
-export const getPublicBundle = createServerFn({ method: "GET" })
+export const getPublicBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -132,7 +81,7 @@ export const getPublicBundle = createServerFn({ method: "GET" })
     };
   });
 
-export const getPublicMentorshipBatch = createServerFn({ method: "GET" })
+export const getPublicMentorshipBatch = createServerFn({ method: "POST" })
   .validator((data: { token: string; id: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -172,7 +121,7 @@ export const getPublicMentorshipBatch = createServerFn({ method: "GET" })
     };
   });
 
-export const listPublicTestsForBundle = createServerFn({ method: "GET" })
+export const listPublicTestsForBundle = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -198,7 +147,7 @@ export const listPublicTestsForBundle = createServerFn({ method: "GET" })
     };
   });
   
-export const listPublicBundleAnnouncements = createServerFn({ method: "GET" })
+export const listPublicBundleAnnouncements = createServerFn({ method: "POST" })
   .validator((data: { token: string; bundleId: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
@@ -285,72 +234,12 @@ export const submitSupportTicket = createServerFn({ method: "POST" })
 // summary info for a search/browse card. Full details (about, locked
 // credentials, all batches) live behind getPublicMentorFullProfile on the
 // dedicated /mentor-profile/$mentorId page — this is just the directory.
-export const listPublicMentors = createServerFn({ method: "GET" })
+export const listPublicMentors = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
     const db = await getDb();
-
-    const batches = await db.collection("mentorshipBatches").find({ assignedMentorId: { $ne: null } }).toArray();
-    const mentorIds = [...new Set(batches.map((b) => b.assignedMentorId as string))];
-    if (mentorIds.length === 0) return { mentors: [] };
-
-    const { ObjectId } = await import("mongodb");
-    const mentors = await db
-      .collection("mentors")
-      .find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } })
-      .toArray();
-
-    // Aggregate rating across every session per mentor, same approach as
-    // getPublicMentorFullProfile, so the directory card can show a rating
-    // at a glance without a separate round trip per mentor.
-    const sessions = await db.collection("mentorshipSessions").find({ mentorId: { $in: mentorIds } }).toArray();
-    const sessionIdsByMentor = new Map<string, string[]>();
-    for (const s of sessions) {
-      const list = sessionIdsByMentor.get(s.mentorId as string) ?? [];
-      list.push(String(s._id));
-      sessionIdsByMentor.set(s.mentorId as string, list);
-    }
-    const allSessionIds = sessions.map((s) => String(s._id));
-    const reviews =
-      allSessionIds.length > 0
-        ? await db.collection("sessionReviews").find({ sessionId: { $in: allSessionIds } }).toArray()
-        : [];
-
-    const batchesByMentor = new Map<string, { id: string; name: string; track: string }[]>();
-    for (const b of batches) {
-      const mid = b.assignedMentorId as string;
-      const list = batchesByMentor.get(mid) ?? [];
-      list.push({ id: String(b._id), name: b.name as string, track: b.track as string });
-      batchesByMentor.set(mid, list);
-    }
-
-    return {
-      mentors: mentors.map((m) => {
-        const mentorId = String(m._id);
-        const mySessionIds = new Set(sessionIdsByMentor.get(mentorId) ?? []);
-        const myReviews = reviews.filter((r) => mySessionIds.has(r.sessionId as string));
-        const avgRating =
-          myReviews.length > 0 ? myReviews.reduce((sum, r) => sum + (r.rating as number), 0) / myReviews.length : null;
-
-        return {
-          id: mentorId,
-          name: m.name as string,
-          // NOTE: left untouched here deliberately — this directory backs the
-          // logged-in in-app browse UI, which may render these photos larger
-          // than the landing page's 56px avatar. If that screen also shows
-          // small thumbnails, apply toResizedSupabaseImageUrl(..., size) here
-          // the same way it's applied below in listMentorsForLanding.
-          profilePictureUrl: (m.profilePictureUrl as string | null) ?? null,
-          yearOfStudy: (m.yearOfStudy as string) ?? "",
-          aboutText: (m.aboutText as string) ?? "",
-          avgRating: avgRating !== null ? Math.round(avgRating * 10) / 10 : null,
-          reviewCount: myReviews.length,
-          batches: batchesByMentor.get(mentorId) ?? [],
-          searchText: `${m.name as string} ${(m.aboutText as string) ?? ""} ${(batchesByMentor.get(mentorId) ?? []).map((b) => b.name).join(" ")}`.toLowerCase(),
-        };
-      }),
-    };
+    return listMentorDirectory(db);
   });
 
   // ─── Public: standalone Sold Tests, browsable independent of any batch ────
@@ -359,42 +248,12 @@ export const listPublicMentors = createServerFn({ method: "GET" })
 // used in listAttachedSoldTestsForStudent and payments.ts's
 // lookupItemPriceAndTitle, so anything a student sees here is something
 // they can buy and immediately attempt.
-export const listPublicSoldTests = createServerFn({ method: "GET" })
+export const listPublicSoldTests = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     await requireSignedIn(data.token);
-    const { ObjectId } = await import("mongodb");
     const db = await getDb();
-
-    const tests = await db.collection("soldTests").find({ status: "live" }).sort({ createdAt: -1 }).toArray();
-    if (tests.length === 0) return { tests: [] };
-
-    const testIds = tests.map((t) => String(t._id));
-    const questionCounts = await db
-      .collection("questions")
-      .aggregate([{ $match: { testId: { $in: testIds } } }, { $group: { _id: "$testId", count: { $sum: 1 } } }])
-      .toArray();
-    const addedByTestId = new Map(questionCounts.map((r) => [r._id as string, r.count as number]));
-    const ready = tests.filter((t) => (addedByTestId.get(String(t._id)) ?? 0) >= (t.totalQuestions as number));
-    if (ready.length === 0) return { tests: [] };
-
-    const mentorIds = [...new Set(ready.map((t) => t.mentorId as string))];
-    const mentors = mentorIds.length
-      ? await db.collection("mentors").find({ _id: { $in: mentorIds.map((id) => new ObjectId(id)) } }, { projection: { name: 1 } }).toArray()
-      : [];
-    const nameByMentorId = new Map(mentors.map((m) => [String(m._id), m.name as string]));
-
-    return {
-      tests: ready.map((t) => ({
-        id: String(t._id),
-        name: t.name as string,
-        mentorName: nameByMentorId.get(t.mentorId as string) ?? "Edurack Mentor",
-        totalQuestions: t.totalQuestions as number,
-        durationMinutes: t.durationMinutes as number,
-        subjects: (t.subjects as string[]) ?? [],
-        price: t.approvedPrice as number,
-      })),
-    };
+    return listLiveSoldTests(db);
   });
 
   // ─── Public: one mentor's live standalone Sold Tests, for their profile page ─
@@ -403,7 +262,7 @@ export const listPublicSoldTests = createServerFn({ method: "GET" })
 // so it must not require a signed-in token. It never reads anything
 // purchase- or identity-specific (no decoded.uid used anywhere below), so
 // there was nothing here that actually needed auth in the first place.
-export const listPublicSoldTestsForMentor = createServerFn({ method: "GET" })
+export const listPublicSoldTestsForMentor = createServerFn({ method: "POST" })
   .validator((data: { token?: string; mentorId: string }) => data)
   .handler(async ({ data }) => {
     const db = await getDb();
