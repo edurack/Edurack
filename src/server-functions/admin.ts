@@ -77,18 +77,23 @@ export const listStudents = createServerFn({ method: "GET" })
     await requireAdmin(data.token);
     const db = await getDb();
 
-    const [students, deviceCounts] = await Promise.all([
-      db
-        .collection("profiles")
-        .find({}, { projection: { uid: 1, fullName: 1, email: 1, track: 1, targetExam: 1, createdAt: 1 } })
-        .sort({ createdAt: -1 })
-        .limit(200)
-        .toArray(),
-      db
-        .collection("sessions")
-        .aggregate([{ $group: { _id: "$uid", count: { $sum: 1 } } }])
-        .toArray(),
-    ]);
+    const students = await db
+      .collection("profiles")
+      .find({}, { projection: { uid: 1, fullName: 1, email: 1, track: 1, targetExam: 1, createdAt: 1 } })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .toArray();
+    // Count devices only for the 200 students we return (was: group over the
+    // entire sessions collection on every open).
+    const deviceCounts = students.length
+      ? await db
+          .collection("sessions")
+          .aggregate([
+            { $match: { uid: { $in: students.map((s) => s.uid as string) } } },
+            { $group: { _id: "$uid", count: { $sum: 1 } } },
+          ])
+          .toArray()
+      : [];
 
     const deviceCountByUid = new Map(deviceCounts.map((d) => [d._id as string, d.count as number]));
 
@@ -1349,30 +1354,37 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const [totalStudents, allPurchases, monthlyPurchases, mockTestsTaken, landingDemoCount, simulatorLiveCount] = await Promise.all([
-      db.collection("profiles").countDocuments({}),
-      db.collection("purchases").find({}).toArray(),
-      db.collection("purchases").find({ purchasedAt: { $gte: startOfMonth } }).toArray(),
-      db.collection("testAttempts").countDocuments({}),
+    const sumOf = async (match: Record<string, unknown>) => {
+      const r = await db
+        .collection("purchases")
+        .aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$amount" }, n: { $sum: 1 } } }])
+        .toArray();
+      return { total: (r[0]?.total as number) ?? 0, n: (r[0]?.n as number) ?? 0 };
+    };
+
+    const [totalStudents, allTime, monthly, recent, topAgg, mockTestsTaken, landingDemoCount, simulatorLiveCount] = await Promise.all([
+      db.collection("profiles").estimatedDocumentCount(),
+      sumOf({}),
+      sumOf({ purchasedAt: { $gte: startOfMonth } }),
+      db.collection("purchases").find({}).sort({ purchasedAt: -1 }).limit(8).toArray(),
+      db
+        .collection("purchases")
+        .aggregate([
+          { $match: { itemType: "bundle" } },
+          { $group: { _id: "$itemId", revenue: { $sum: "$amount" }, count: { $sum: 1 } } },
+          { $sort: { revenue: -1 } },
+          { $limit: 5 },
+        ])
+        .toArray(),
+      db.collection("testAttempts").estimatedDocumentCount(),
       // The two free, no-signup-required CBT demos (landing page + /simulator/live).
-      // These are deliberately anonymous (see landing-demo.ts) — there's no uid to
-      // attribute them to, so this is a site-wide count only, not per-student.
-      db.collection("landingDemoAttempts").countDocuments({}),
-      db.collection("simulatorLiveAttempts").countDocuments({}),
+      // Anonymous, so this is a site-wide count only.
+      db.collection("landingDemoAttempts").estimatedDocumentCount(),
+      db.collection("simulatorLiveAttempts").estimatedDocumentCount(),
     ]);
     const demoTestsTaken = landingDemoCount + simulatorLiveCount;
-
-    const totalRevenue = allPurchases.reduce((sum, p) => sum + (p.amount as number), 0);
-    const monthlyRevenue = monthlyPurchases.reduce((sum, p) => sum + (p.amount as number), 0);
-
-    // Recent purchases feed — last 8, newest first.
-    const recent = [...allPurchases]
-      .sort((a, b) => {
-        const at = a.purchasedAt instanceof Date ? a.purchasedAt.getTime() : 0;
-        const bt = b.purchasedAt instanceof Date ? b.purchasedAt.getTime() : 0;
-        return bt - at;
-      })
-      .slice(0, 8);
+    const totalRevenue = allTime.total;
+    const monthlyRevenue = monthly.total;
 
     const recentBundleIds = recent.filter((p) => p.itemType === "bundle").map((p) => new ObjectId(p.itemId as string));
     const recentMentorshipIds = recent
@@ -1405,15 +1417,9 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
     });
 
     // Top bundles by revenue — which content actually earns.
-    const revenueByBundle = new Map<string, number>();
-    for (const p of allPurchases) {
-      if (p.itemType !== "bundle") continue;
-      revenueByBundle.set(p.itemId as string, (revenueByBundle.get(p.itemId as string) ?? 0) + (p.amount as number));
-    }
-    const topBundleIds = Array.from(revenueByBundle.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id]) => id);
+    const revenueByBundle = new Map<string, number>(topAgg.map((t) => [String(t._id), t.revenue as number]));
+    const countByBundle = new Map<string, number>(topAgg.map((t) => [String(t._id), t.count as number]));
+    const topBundleIds = topAgg.map((t) => String(t._id)).filter((id) => /^[a-f0-9]{24}$/i.test(id));
     const topBundleDocs = topBundleIds.length
       ? await db.collection("bundles").find({ _id: { $in: topBundleIds.map((id) => new ObjectId(id)) } }).toArray()
       : [];
@@ -1421,14 +1427,14 @@ export const getAdminAnalytics = createServerFn({ method: "GET" })
     const topBundles = topBundleIds.map((id) => ({
       title: topBundleTitleById.get(id) ?? "Bundle",
       revenue: revenueByBundle.get(id) ?? 0,
-      purchaseCount: allPurchases.filter((p) => p.itemType === "bundle" && p.itemId === id).length,
+      purchaseCount: countByBundle.get(id) ?? 0,
     }));
 
     return {
       totalStudents,
       totalRevenue,
       monthlyRevenue,
-      totalPurchases: allPurchases.length,
+      totalPurchases: allTime.n,
       mockTestsTaken,
       demoTestsTaken,
       recentPurchases,

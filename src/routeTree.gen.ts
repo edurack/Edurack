@@ -40,6 +40,7 @@ import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as CronBlogPublishRouteImport } from './routes/cron.blog-publish'
 import { Route as CronOutreachRouteImport } from './routes/cron.outreach'
+import { Route as CronSessionRemindersRouteImport } from './routes/cron.session-reminders'
 import { Route as CronStreakRemindersRouteImport } from './routes/cron.streak-reminders'
 import { Route as InternAuthRouteImport } from './routes/intern/auth'
 import { Route as InternCertificateRouteImport } from './routes/intern/certificate'
@@ -231,6 +232,11 @@ const CronBlogPublishRoute = CronBlogPublishRouteImport.update({
 const CronOutreachRoute = CronOutreachRouteImport.update({
   id: '/cron/outreach',
   path: '/cron/outreach',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronSessionRemindersRoute = CronSessionRemindersRouteImport.update({
+  id: '/cron/session-reminders',
+  path: '/cron/session-reminders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CronStreakRemindersRoute = CronStreakRemindersRouteImport.update({
@@ -457,6 +463,7 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
+  '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
@@ -527,6 +534,7 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
+  '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
@@ -598,6 +606,7 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
   '/cron/outreach': typeof CronOutreachRoute
+  '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
   '/intern/auth': typeof InternAuthRoute
   '/intern/certificate': typeof InternCertificateRoute
@@ -670,6 +679,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
+    | '/cron/session-reminders'
     | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
@@ -740,6 +750,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
+    | '/cron/session-reminders'
     | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
@@ -810,6 +821,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/cron/blog-publish'
     | '/cron/outreach'
+    | '/cron/session-reminders'
     | '/cron/streak-reminders'
     | '/intern/auth'
     | '/intern/certificate'
@@ -881,6 +893,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute
   CronBlogPublishRoute: typeof CronBlogPublishRoute
   CronOutreachRoute: typeof CronOutreachRoute
+  CronSessionRemindersRoute: typeof CronSessionRemindersRoute
   CronStreakRemindersRoute: typeof CronStreakRemindersRoute
   InternAuthRoute: typeof InternAuthRoute
   InternCertificateRoute: typeof InternCertificateRoute
@@ -1136,6 +1149,13 @@ declare module '@tanstack/react-router' {
       path: '/cron/outreach'
       fullPath: '/cron/outreach'
       preLoaderRoute: typeof CronOutreachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/session-reminders': {
+      id: '/cron/session-reminders'
+      path: '/cron/session-reminders'
+      fullPath: '/cron/session-reminders'
+      preLoaderRoute: typeof CronSessionRemindersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cron/streak-reminders': {
@@ -1457,6 +1477,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   CronBlogPublishRoute: CronBlogPublishRoute,
   CronOutreachRoute: CronOutreachRoute,
+  CronSessionRemindersRoute: CronSessionRemindersRoute,
   CronStreakRemindersRoute: CronStreakRemindersRoute,
   InternAuthRoute: InternAuthRoute,
   InternCertificateRoute: InternCertificateRoute,

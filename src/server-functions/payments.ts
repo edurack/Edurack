@@ -17,6 +17,10 @@ import {
 } from "@/lib/email-templates";
 import { PLATFORM_COMMISSION_PERCENT, QUESTION_INGESTION_FEE_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
 import { SESSION_PLATFORM_COMMISSION_PERCENT, splitSessionPrice } from "@/lib/session-types";
+import { expandOfferingToSlots } from "@/lib/session-slots";
+import { rowToOffering } from "@/lib/session-rows";
+import { istDateString } from "@/lib/session-time";
+import { refundRazorpayPayment } from "@/lib/razorpay-refund";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
@@ -176,28 +180,44 @@ function applyCouponDiscount(sellingPrice: number, coupon: ResolvedCoupon) {
 // in createSessionBookingRecord below. This just avoids sending someone to
 // checkout for a slot that's obviously already full.
 async function assertSeatAvailable(offeringId: string, date: string, startTime: string) {
-  const { data: offering, error: offeringErr } = await supabase
+  const { data: row, error: offeringErr } = await supabase
     .from("mentor_session_offerings")
-    .select("capacity")
+    .select("*")
     .eq("id", offeringId)
+    .eq("active", true)
     .single();
-  if (offeringErr || !offering) throw new Error("This session is no longer available.");
+  if (offeringErr || !row) throw new Error("This session is no longer available.");
 
-  const { count, error } = await supabase
+  const { data: bookingRows, error } = await supabase
     .from("mentor_session_bookings")
-    .select("id", { count: "exact", head: true })
+    .select("offering_id, session_date, start_time")
     .eq("offering_id", offeringId)
-    .eq("session_date", date)
-    .eq("start_time", startTime)
     .neq("status", "cancelled");
   if (error) throw new Error(error.message);
 
-  if ((count ?? 0) >= offering.capacity) throw new Error("Sorry, that slot is full.");
+  const seatCounts = new Map<string, number>();
+  for (const b of bookingRows ?? []) {
+    const key = `${b.offering_id}:${b.session_date}:${b.start_time}`;
+    seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
+  }
+
+  // The client used to be able to ask for ANY date/time: an order was created
+  // as long as that exact slot wasn't full — including slots in the past or
+  // ones the mentor never offered. Now the slot has to be one the offering
+  // actually has open right now.
+  const open = expandOfferingToSlots(rowToOffering(row), seatCounts, 45);
+  const match = open.find((s) => s.date === date && s.startTime === startTime.slice(0, 5));
+  if (match) return;
+
+  const stillExists = expandOfferingToSlots(rowToOffering(row), new Map(), 45).some((s) => s.date === date && s.startTime === startTime.slice(0, 5));
+  throw new Error(stillExists ? "Sorry, that slot is full." : "That time isn't available for this session anymore. Please pick another.");
 }
 
-// One booking per student per offering — a student who's already booked
-// a slot on this offering can't book a second one (same slot or a
-// different one) until their existing booking is cancelled. Checked
+// One UPCOMING booking per student per offering — a student holding a
+// future slot on this offering can't book a second one until it's cancelled
+// or has happened. (This used to count every non-cancelled booking, so once
+// you'd attended a session you could never book that offering again — and
+// there was no way to cancel to get out of it.) Checked
 // before both a paid order is created and a free slot is claimed, so it
 // can't be bypassed by either path.
 async function assertStudentHasNotBookedOffering(offeringId: string, studentUid: string) {
@@ -206,10 +226,11 @@ async function assertStudentHasNotBookedOffering(offeringId: string, studentUid:
     .select("id", { count: "exact", head: true })
     .eq("offering_id", offeringId)
     .eq("student_uid", studentUid)
-    .neq("status", "cancelled");
+    .eq("status", "upcoming")
+    .gte("session_date", istDateString());
   if (error) throw new Error(error.message);
   if ((count ?? 0) > 0) {
-    throw new Error("You've already booked a slot for this session — cancel it first if you'd like to pick a different time.");
+    throw new Error("You already have an upcoming booking for this session. Cancel it from My Sessions if you'd like a different time.");
   }
 }
 
@@ -427,19 +448,46 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
 
     if (data.itemType === "mentorSession") {
       if (!notes.sessionDate || !notes.sessionStartTime) throw new Error("Session date/time missing from order.");
-      const { bookingId } = await createSessionBookingRecord({
-        offeringId: data.itemId,
-        date: notes.sessionDate,
-        startTime: notes.sessionStartTime,
-        studentNote: data.studentNote ?? "",
-        studentUid: decoded.uid,
-        studentName: decoded.name ?? "Student",
-        studentEmail: decoded.email ?? null,
-        paymentStatus: "paid",
-        razorpayOrderId: data.razorpayOrderId,
-        razorpayPaymentId: data.razorpayPaymentId,
-      });
-      return { ok: true, bookingId };
+
+      // Idempotent: if this payment already produced a booking (a retried
+      // request, a double-click), return it — and above all don't fall into
+      // the refund path below and refund a payment that's already been used.
+      const { data: existing } = await supabase
+        .from("mentor_session_bookings")
+        .select("id")
+        .eq("razorpay_payment_id", data.razorpayPaymentId)
+        .maybeSingle();
+      if (existing) return { ok: true, bookingId: existing.id as string };
+
+      try {
+        const { bookingId } = await createSessionBookingRecord({
+          offeringId: data.itemId,
+          date: notes.sessionDate,
+          startTime: notes.sessionStartTime,
+          studentNote: data.studentNote ?? "",
+          studentUid: decoded.uid,
+          studentName: decoded.name ?? "Student",
+          studentEmail: decoded.email ?? null,
+          paymentStatus: "paid",
+          razorpayOrderId: data.razorpayOrderId,
+          razorpayPaymentId: data.razorpayPaymentId,
+        });
+        return { ok: true, bookingId };
+      } catch (bookingErr) {
+        // Money was captured but there's no seat (the slot filled while they
+        // were paying, or the offering was paused). Don't leave them charged
+        // with nothing to show for it.
+        const reason = bookingErr instanceof Error ? bookingErr.message : "We couldn't complete your booking.";
+        let tail: string;
+        try {
+          const r = await refundRazorpayPayment(data.razorpayPaymentId, { reason: "booking failed after payment", orderId: data.razorpayOrderId });
+          tail = r.refunded ? " You haven't been charged — your payment has been refunded automatically." : "";
+        } catch (refundErr) {
+          console.error(`[verifyRazorpayPayment] auto-refund failed for payment=${data.razorpayPaymentId}:`, refundErr);
+          tail = ` We couldn't refund you automatically — please contact support with payment ID ${data.razorpayPaymentId} and we'll sort it out right away.`;
+        }
+        throw new Error(`${reason}${tail}`);
+      }
     }
 
     const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);

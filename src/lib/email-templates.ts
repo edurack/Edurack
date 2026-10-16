@@ -322,7 +322,7 @@ export function mentorPasswordResetEmailHtml(params: {
 
 function formatSessionTime(date: string, startTime: string) {
   const d = new Date(`${date}T${startTime}:00`);
-  return d.toLocaleString("en-IN", { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return `${d.toLocaleString("en-IN", { weekday: "long", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })} IST`;
 }
 
 // ─── Session booking: confirmation to the student ─────────────────────────
@@ -380,6 +380,7 @@ export function sessionReminderEmailHtml(params: {
   title: string;
   startTime: string;
   meetingLink: string | null;
+  audience?: "student" | "mentor";
 }): string {
   const body = `
     ${emailBadge("Starting soon", BRAND.lemonSoft)}
@@ -387,15 +388,52 @@ export function sessionReminderEmailHtml(params: {
       ${params.title} starts at ${params.startTime}
     </h1>
     <p style="margin: 0 0 8px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
-      Hi ${params.name}, your session with <strong style="color: ${BRAND.text};">${params.counterpartName}</strong> starts in about an hour.
+      Hi ${params.name}, your session with <strong style="color: ${BRAND.text};">${params.counterpartName}</strong> starts shortly.
     </p>
     ${
       params.meetingLink
         ? emailButton(params.meetingLink, "Join the session")
-        : `<p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
-             The meeting link will be added shortly — check your dashboard.
+        : params.audience === "mentor"
+          ? `<p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
+             You haven't added a meeting link yet — add one from the Sessions tab so your students can join.
+           </p>`
+          : `<p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">
+             The meeting link will be added shortly — check My Sessions on your dashboard.
            </p>`
     }
   `;
   return emailLayout({ previewText: `Starting soon: ${params.title} at ${params.startTime}`, bodyHtml: body });
+}
+
+// ─── Session cancelled (to the student when a mentor cancels, or to the mentor when a student does) ──
+export function sessionCancelledEmailHtml(params: {
+  recipientName: string;
+  title: string;
+  date: string;
+  startTime: string;
+  headline: string;
+  note: string | null;
+  refundNote: string | null;
+}): string {
+  const body = `
+    ${emailBadge("Session cancelled", BRAND.coralSoft)}
+    <h1 style="margin: 0 0 12px 0; font-family: ${FONT_STACK}; font-size: 22px; line-height: 30px; letter-spacing: -0.02em; color: ${BRAND.text};">
+      ${params.headline}
+    </h1>
+    <p style="margin: 0 0 16px 0; font-family: ${FONT_STACK}; font-size: 15px; line-height: 23px; color: ${BRAND.muted};">
+      Hi ${params.recipientName}, <strong style="color: ${BRAND.text};">${params.title}</strong> on
+      <strong style="color: ${BRAND.text};">${formatSessionTime(params.date, params.startTime)}</strong> will not go ahead.
+    </p>
+    ${
+      params.note
+        ? `<p style="margin: 0 0 16px 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">Note: ${params.note}</p>`
+        : ""
+    }
+    ${
+      params.refundNote
+        ? `<p style="margin: 0; font-family: ${FONT_STACK}; font-size: 14px; line-height: 21px; color: ${BRAND.muted};">${params.refundNote}</p>`
+        : ""
+    }
+  `;
+  return emailLayout({ previewText: `Cancelled: ${params.title}`, bodyHtml: body });
 }

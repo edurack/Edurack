@@ -1,68 +1,76 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  IconLoader2 as Loader2,
-  IconPlus as Plus,
-  IconTrash as Trash2,
-  IconCalendarTime as CalendarTime,
-  IconUsers as Users,
-  IconLink as LinkIcon,
-  IconX as X,
-  IconHelpCircle as HelpCircle,
-  IconClock as Clock,
-} from "@tabler/icons-react";
-import {
-  listMyOfferings,
-  createOffering,
-  updateOffering,
-  setOfferingActive,
-  deleteOffering,
-  listMyBookings,
-  setMeetingLinkForSession,
-} from "@/server-functions/mentor-sessions";
-import { getMentorProfile } from "@/server-functions/mentor-auth";
-import {
-  DAY_LABELS,
-  DURATION_OPTIONS,
-  MAX_SESSION_CAPACITY,
-  UNLIMITED_CAPACITY,
-  isUnlimitedOffering,
-  formatForOffering,
-  describeSchedule,
-  groupBookingsIntoRosters,
-  type DayOfWeek,
-  type SessionFormat,
-  type MentorSessionOffering,
-  type MentorSessionBooking,
-  type SessionRoster,
-} from "@/lib/session-types";
-import { SessionArtworkField } from "@/components/mentor-portal-ui";
+import { IconLoader2 as Loader2, IconPlus as Plus, IconTrash as Trash2, IconCalendarTime as CalendarTime, IconUsers as Users, IconLink as LinkIcon, IconClock as Clock } from "@tabler/icons-react";
+import { listMyOfferings, setOfferingActive, deleteOffering, listMyBookings, setMeetingLinkForSession } from "@/server-functions/mentor-sessions";
+import { UNLIMITED_CAPACITY, isUnlimitedOffering, describeSchedule, type MentorSessionOffering, type MentorSessionBooking } from "@/lib/session-types";
 import { SessionCalendar } from "@/components/session-calendar";
 import { expandOfferingToSlots } from "@/lib/session-slots";
 import { useTour, OnboardingTour, type TourStep } from "@/components/shared/onboarding-tour";
+import { IconCopy as Copy, IconAlertTriangle as AlertTriangle, IconCircleCheck as CircleCheck, IconRefresh as Refresh, IconExternalLink as ExternalLink } from "@tabler/icons-react";
+import { cancelSessionAsMentor, completeSession, setBookingNoShow } from "@/server-functions/mentor-sessions";
+import { ModuleHeader, StatStrip, Skeleton, EmptyState, ErrorBanner, SuccessBanner, LiveDot, inputClass, textareaClass } from "@/components/mentor-portal-ui";
+import { SESSION_PLATFORM_COMMISSION_PERCENT } from "@/lib/session-types";
+import { formatDateLong, formatTimeRange, dayParts, timeUntilLabel, slotStart, slotEnd } from "@/lib/session-time";
+import { SITE_URL } from "@/lib/seo";
+import { MentorOfferingDialog } from "@/components/mentor-offering-dialog";
 
 const SESSIONS_TOUR_STEPS: TourStep[] = [
   {
     selector: '[data-tour="sessions-tabs"]',
-    title: "Offerings vs. bookings",
+    title: "Run your sessions from here",
     description:
-      "\"My offerings\" is where you publish open slots — 1:1 or group — for students to book. \"Sessions & students\" shows who actually booked, grouped into rosters.",
+      "Upcoming shows every session students have booked, with its roster. Past is where you wrap sessions up. Offerings is where you publish the times students can book.",
   },
   {
     selector: '[data-tour="sessions-content"]',
-    title: "Manage what's here",
+    title: "Everything has an action",
     description:
-      "Toggle an offering active/inactive or delete it, or — on the bookings tab — set the meeting link for an upcoming session.",
+      "Add the meeting link, cancel a session (paid students are refunded automatically), mark it complete afterwards, and flag no-shows. Students are emailed when something changes.",
   },
 ];
 
 const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
+type SessionTab = "upcoming" | "past" | "offerings" | "calendar";
+type Notice = { tone: "ok" | "err"; text: string } | null;
+
+// One concrete session = one offering on one date at one time, with everyone
+// booked into it.
+type Instance = {
+  key: string;
+  offeringId: string;
+  title: string;
+  date: string;
+  time: string;
+  duration: number;
+  capacity: number;
+  bookings: MentorSessionBooking[];
+  active: MentorSessionBooking[]; // not cancelled
+  start: Date;
+  end: Date;
+  link: string | null;
+};
+
+function useTick(ms = 30_000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
 export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
-  const [tab, setTab] = useState<"offerings" | "bookings" | "calendar">("offerings");
+  const [tab, setTab] = useState<SessionTab>("upcoming");
   const [offerings, setOfferings] = useState<MentorSessionOffering[] | null>(null);
   const [bookings, setBookings] = useState<MentorSessionBooking[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editingOffering, setEditingOffering] = useState<MentorSessionOffering | null>(null);
+  const [cancelling, setCancelling] = useState<Instance | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const now = useTick();
+  const tour = useTour("mentorTourSessionsSeen");
 
   async function loadOfferings() {
     const { offerings: rows } = await listMyOfferings({ data: { token: mentorToken } });
@@ -72,101 +80,186 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
     const { bookings: rows } = await listMyBookings({ data: { token: mentorToken } });
     setBookings(rows as MentorSessionBooking[]);
   }
+  async function loadAll() {
+    setLoadError(false);
+    try {
+      await Promise.all([loadOfferings(), loadBookings()]);
+    } catch {
+      setLoadError(true);
+    }
+  }
 
   useEffect(() => {
-    loadOfferings();
-    loadBookings();
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Capacity per offering, so the roster view can show "6 of 10 seats" —
-  // listMyBookings doesn't carry capacity itself (it's a flat booking
-  // list), so this looks it up from the offerings already loaded above.
+  // Runs one action, refreshes bookings, and reports the outcome in a banner.
+  async function run(key: string, action: () => Promise<string | void>) {
+    setBusy(key);
+    setNotice(null);
+    try {
+      const message = await action();
+      await loadBookings();
+      if (message) setNotice({ tone: "ok", text: message });
+    } catch (err) {
+      setNotice({ tone: "err", text: err instanceof Error ? err.message : "Something went wrong. Please try again." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const capacityByOffering = useMemo(() => {
     const m = new Map<string, number>();
     for (const o of offerings ?? []) m.set(o.id, o.capacity);
     return m;
   }, [offerings]);
 
-  const rosters = useMemo(() => {
-    if (!bookings) return null;
-    const grouped = groupBookingsIntoRosters(bookings);
-    return grouped.map((r) => ({ ...r, capacity: capacityByOffering.get(r.offeringId) ?? r.students.length }));
+  const instances = useMemo<Instance[]>(() => {
+    if (!bookings) return [];
+    const byKey = new Map<string, Instance>();
+    for (const b of bookings) {
+      const key = `${b.offeringId}:${b.sessionDate}:${b.startTime}`;
+      let inst = byKey.get(key);
+      if (!inst) {
+        const date = b.sessionDate.slice(0, 10);
+        const time = b.startTime.slice(0, 5);
+        inst = {
+          key,
+          offeringId: b.offeringId,
+          title: b.offeringTitle ?? "Session",
+          date,
+          time,
+          duration: b.durationMinutes,
+          capacity: capacityByOffering.get(b.offeringId) ?? 1,
+          bookings: [],
+          active: [],
+          start: slotStart(date, time),
+          end: slotEnd(date, time, b.durationMinutes),
+          link: null,
+        };
+        byKey.set(key, inst);
+      }
+      inst.bookings.push(b);
+      if (b.status !== "cancelled") inst.active.push(b);
+      if (b.meetingLink && !inst.link) inst.link = b.meetingLink;
+    }
+    return Array.from(byKey.values());
   }, [bookings, capacityByOffering]);
 
-  const studentCount = bookings?.length ?? 0;
-  const tour = useTour("mentorTourSessionsSeen");
+  const upcoming = useMemo(
+    () => instances.filter((i) => i.active.length > 0 && i.end > now).sort((a, b) => a.start.getTime() - b.start.getTime()),
+    [instances, now],
+  );
+  const past = useMemo(
+    () => instances.filter((i) => i.active.length === 0 || i.end <= now).sort((a, b) => b.start.getTime() - a.start.getTime()),
+    [instances, now],
+  );
+  const needWrapUp = past.filter((i) => i.active.some((b) => b.status === "upcoming")).length;
+
+  const upcomingStudents = upcoming.reduce((n, i) => n + i.active.length, 0);
+  const earned = (bookings ?? []).filter((b) => b.paymentStatus === "paid" && b.status !== "cancelled").reduce((n, b) => n + b.mentorNetAmount, 0);
+  const liveOfferings = (offerings ?? []).filter((o) => o.active).length;
+  const upcomingByOffering = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of upcoming) m.set(i.offeringId, (m.get(i.offeringId) ?? 0) + i.active.length);
+    return m;
+  }, [upcoming]);
+
+  const nextUp = upcoming[0] ?? null;
+  const tabs: { key: SessionTab; label: string; count?: number | null }[] = [
+    { key: "upcoming", label: "Upcoming", count: bookings ? upcoming.length : null },
+    { key: "past", label: "Past", count: bookings ? past.length : null },
+    { key: "offerings", label: "Offerings", count: offerings ? offerings.length : null },
+    { key: "calendar", label: "Calendar" },
+  ];
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">Sessions</h1>
-          <p className="mt-1 text-sm text-foreground/60">
-            Publish open time — 1:1, a limited group, or open to everyone — for students to book. Each student can hold one active
-            booking per offering, and nothing repeats unless you choose a weekly option.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={tour.start}
-          className="clay-btn-ghost flex shrink-0 items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold text-foreground/60"
-        >
-          <HelpCircle className="h-3.5 w-3.5" />
-          Help
-        </button>
-      </div>
-
-      <div data-tour="sessions-tabs" className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setTab("offerings")}
-            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === "offerings" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-          >
-            My offerings {offerings ? `(${offerings.length})` : ""}
-          </button>
-          <button
-            onClick={() => setTab("bookings")}
-            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === "bookings" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-          >
-            Sessions & students {rosters ? `(${rosters.length} · ${studentCount} students)` : ""}
-          </button>
-          <button
-            onClick={() => setTab("calendar")}
-            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === "calendar" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-          >
-            Calendar
-          </button>
-        </div>
-        {tab === "offerings" && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold transition-transform"
-          >
+      <ModuleHeader
+        title="Sessions"
+        subtitle="Publish open time for students to book, then run each session from here: share the link, wrap it up, and handle cancellations."
+        onHelp={tour.start}
+        action={
+          <button onClick={() => setShowCreate(true)} className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold transition-transform">
             <Plus className="h-4 w-4" />
-            New session offering
+            New session
           </button>
-        )}
+        }
+      />
+
+      <StatStrip
+        className="mb-5"
+        items={[
+          {
+            label: "Upcoming sessions",
+            value: bookings ? upcoming.length : null,
+            hint: bookings ? (nextUp ? `Next: ${formatDateLong(nextUp.date)}` : "Nothing booked yet") : null,
+          },
+          { label: "Students booked", value: bookings ? upcomingStudents : null, hint: bookings ? "Across upcoming sessions" : null },
+          {
+            label: "Session earnings",
+            value: bookings ? currency.format(earned) : null,
+            hint: bookings ? `After the ${SESSION_PLATFORM_COMMISSION_PERCENT}% platform fee` : null,
+          },
+          {
+            label: "Live offerings",
+            value: offerings ? liveOfferings : null,
+            hint: offerings ? (offerings.length - liveOfferings > 0 ? `${offerings.length - liveOfferings} paused` : "All live") : null,
+            onClick: () => setTab("offerings"),
+          },
+        ]}
+      />
+
+      <div data-tour="sessions-tabs" className="mb-5 flex flex-wrap gap-2">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-full px-4 py-2 text-xs font-bold transition-all ${tab === t.key ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
+          >
+            {t.label}
+            {t.count != null ? ` (${t.count})` : ""}
+            {t.key === "past" && needWrapUp > 0 && <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-amber-400 align-middle" title={`${needWrapUp} to wrap up`} />}
+          </button>
+        ))}
       </div>
 
-      {tab === "offerings" ? (
-        <div data-tour="sessions-content">
-        <OfferingsList
-          offerings={offerings}
-          onEdit={setEditingOffering}
-          onToggleActive={async (id, active) => {
-            await setOfferingActive({ data: { token: mentorToken, offeringId: id, active } });
-            loadOfferings();
-          }}
-          onDelete={async (id) => {
-            if (!confirm("Delete this offering? Existing bookings are kept, but no new ones can be made against it.")) return;
-            await deleteOffering({ data: { token: mentorToken, offeringId: id } });
-            loadOfferings();
-          }}
-        />
-        </div>
-      ) : tab === "calendar" ? (
-        <div data-tour="sessions-content">
+      {notice && <div className="mb-4">{notice.tone === "ok" ? <SuccessBanner message={notice.text} /> : <ErrorBanner message={notice.text} />}</div>}
+
+      <div data-tour="sessions-content">
+        {loadError ? (
+          <div className="space-y-3">
+            <ErrorBanner message="Couldn't load your sessions." />
+            <button onClick={loadAll} className="clay-btn-ghost inline-flex items-center gap-2 px-4 py-2 text-xs">
+              <Refresh className="h-3.5 w-3.5" />
+              Try again
+            </button>
+          </div>
+        ) : tab === "offerings" ? (
+          <OfferingsGrid
+            offerings={offerings}
+            upcomingByOffering={upcomingByOffering}
+            onCreate={() => setShowCreate(true)}
+            onEdit={setEditingOffering}
+            onToggleActive={(id, active) =>
+              run(`toggle-${id}`, async () => {
+                await setOfferingActive({ data: { token: mentorToken, offeringId: id, active } });
+                await loadOfferings();
+                return active ? "Offering is live again." : "Offering paused. Existing bookings are unaffected; no new ones can be made.";
+              })
+            }
+            onDelete={(o) => {
+              if (!confirm(`Delete "${o.title}"? Past bookings are kept, but students can no longer book it.`)) return;
+              run(`delete-${o.id}`, async () => {
+                await deleteOffering({ data: { token: mentorToken, offeringId: o.id } });
+                await loadOfferings();
+                return "Offering deleted.";
+              });
+            }}
+            onCopied={() => setNotice({ tone: "ok", text: "Link copied. Share it with students, on Instagram, or in your Telegram group." })}
+          />
+        ) : tab === "calendar" ? (
           <MentorCalendarTab
             offerings={offerings}
             bookings={bookings}
@@ -175,35 +268,137 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
               loadBookings();
             }}
           />
-        </div>
-      ) : (
-        <div data-tour="sessions-content">
-        <RosterList
-          rosters={rosters}
-          onSetLink={async (offeringId, sessionDate, startTime, link) => {
-            await setMeetingLinkForSession({ data: { token: mentorToken, offeringId, sessionDate, startTime, meetingLink: link } });
-            loadBookings();
+        ) : bookings === null ? (
+          <div className="space-y-3">
+            <Skeleton className="h-40" />
+            <Skeleton className="h-40" />
+          </div>
+        ) : tab === "upcoming" ? (
+          upcoming.length === 0 ? (
+            <div className="clay p-2">
+              <EmptyState
+                icon={CalendarTime}
+                message={
+                  (offerings?.length ?? 0) === 0
+                    ? "No one can book you yet. Publish your first session and share the link."
+                    : "No upcoming bookings. Share an offering's link and the first student to book shows up here."
+                }
+                action={
+                  (offerings?.length ?? 0) === 0
+                    ? { label: "Create a session", onClick: () => setShowCreate(true) }
+                    : { label: "See your offerings", onClick: () => setTab("offerings") }
+                }
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {upcoming.map((i, idx) => (
+                <RosterCard
+                  key={i.key}
+                  inst={i}
+                  now={now}
+                  featured={idx === 0}
+                  busy={busy}
+                  onSetLink={(link) =>
+                    run(`link-${i.key}`, async () => {
+                      await setMeetingLinkForSession({ data: { token: mentorToken, offeringId: i.offeringId, sessionDate: i.date, startTime: i.time, meetingLink: link } });
+                      return "Meeting link saved. Students can see it in My Sessions.";
+                    })
+                  }
+                  onCancel={() => setCancelling(i)}
+                  onComplete={() =>
+                    run(`done-${i.key}`, async () => {
+                      await completeSession({ data: { token: mentorToken, offeringId: i.offeringId, sessionDate: i.date, startTime: i.time } });
+                      return "Marked as completed.";
+                    })
+                  }
+                  onNoShow={(b, noShow) =>
+                    run(`noshow-${b.id}`, async () => {
+                      await setBookingNoShow({ data: { token: mentorToken, bookingId: b.id, noShow } });
+                      return noShow ? `${b.studentName} marked as a no-show.` : `${b.studentName} marked as attended.`;
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )
+        ) : past.length === 0 ? (
+          <div className="clay p-2">
+            <EmptyState icon={CircleCheck} message="Sessions you've run or cancelled will collect here." />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {needWrapUp > 0 && (
+              <p className="clay-inset flex items-start gap-2 rounded-2xl bg-[var(--lemon-soft)]/50 px-4 py-3 text-xs font-medium text-foreground">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {needWrapUp} finished session{needWrapUp === 1 ? " is" : "s are"} still marked upcoming. Mark {needWrapUp === 1 ? "it" : "them"} complete so records and your students' history stay accurate.
+              </p>
+            )}
+            {past.map((i) => (
+              <RosterCard
+                key={i.key}
+                inst={i}
+                now={now}
+                busy={busy}
+                onSetLink={() => {}}
+                onCancel={() => {}}
+                onComplete={() =>
+                  run(`done-${i.key}`, async () => {
+                    await completeSession({ data: { token: mentorToken, offeringId: i.offeringId, sessionDate: i.date, startTime: i.time } });
+                    return "Marked as completed.";
+                  })
+                }
+                onNoShow={(b, noShow) =>
+                  run(`noshow-${b.id}`, async () => {
+                    await setBookingNoShow({ data: { token: mentorToken, bookingId: b.id, noShow } });
+                    return noShow ? `${b.studentName} marked as a no-show.` : `${b.studentName} marked as attended.`;
+                  })
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {cancelling && (
+        <CancelSessionDialog
+          inst={cancelling}
+          onClose={() => setCancelling(null)}
+          onConfirm={async (reason) => {
+            const inst = cancelling;
+            setCancelling(null);
+            await run(`cancel-${inst.key}`, async () => {
+              const res = await cancelSessionAsMentor({
+                data: { token: mentorToken, offeringId: inst.offeringId, sessionDate: inst.date, startTime: inst.time, reason },
+              });
+              const parts = [`Session cancelled. ${res.cancelled} student${res.cancelled === 1 ? " was" : "s were"} notified by email.`];
+              if (res.refunded > 0) parts.push(`${res.refunded} paid booking${res.refunded === 1 ? " was" : "s were"} refunded in full.`);
+              if (res.refundFailures > 0) parts.push(`${res.refundFailures} refund${res.refundFailures === 1 ? "" : "s"} couldn't be processed automatically. Contact Edurack support so no student is left out of pocket.`);
+              return parts.join(" ");
+            });
           }}
         />
-        </div>
       )}
 
       {showCreate && (
-        <CreateOfferingDialog
+        <MentorOfferingDialog
           mentorToken={mentorToken}
+          existing={offerings ?? []}
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
             loadOfferings();
+            setTab("offerings");
           }}
         />
       )}
 
       {editingOffering && (
-        <CreateOfferingDialog
+        <MentorOfferingDialog
           key={editingOffering.id}
           mentorToken={mentorToken}
           editing={editingOffering}
+          existing={offerings ?? []}
           onClose={() => setEditingOffering(null)}
           onCreated={() => {
             setEditingOffering(null);
@@ -217,73 +412,336 @@ export function MentorSessionsModule({ mentorToken }: { mentorToken: string }) {
   );
 }
 
-function OfferingsList({
+// ── One session + its roster ───────────────────────────────────────────
+function RosterCard({
+  inst,
+  now,
+  featured = false,
+  busy,
+  onSetLink,
+  onCancel,
+  onComplete,
+  onNoShow,
+}: {
+  inst: Instance;
+  now: Date;
+  featured?: boolean;
+  busy: string | null;
+  onSetLink: (link: string) => void;
+  onCancel: () => void;
+  onComplete: () => void;
+  onNoShow: (b: MentorSessionBooking, noShow: boolean) => void;
+}) {
+  const [editingLink, setEditingLink] = useState(false);
+  const [draft, setDraft] = useState(inst.link ?? "");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const p = dayParts(inst.date);
+  const started = inst.start <= now;
+  const ended = inst.end <= now;
+  const live = started && !ended;
+  const allCancelled = inst.active.length === 0;
+  const msUntil = inst.start.getTime() - now.getTime();
+  const unlimited = inst.capacity >= UNLIMITED_CAPACITY;
+  const isGroup = inst.capacity > 1 && !unlimited;
+  const pending = inst.active.some((b) => b.status === "upcoming");
+  const linkUrgent = !inst.link && !ended && !allCancelled && msUntil < 48 * 3_600_000;
+  const rows = showAll ? inst.bookings : inst.bookings.slice(0, 4);
+  const paidCount = inst.active.filter((b) => b.paymentStatus === "paid").length;
+
+  function saveLink() {
+    const v = draft.trim();
+    if (!/^https?:\/\/\S+$/.test(v)) {
+      setLinkError("Paste a full link starting with https://");
+      return;
+    }
+    setLinkError(null);
+    onSetLink(v);
+    setEditingLink(false);
+  }
+
+  return (
+    <div className={`clay p-4 sm:p-5 ${featured ? "border-primary/40" : ""}`}>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-center ${allCancelled ? "bg-foreground/5 text-foreground/40" : ended ? "bg-foreground/5" : "bg-primary text-primary-foreground"}`}>
+          <div>
+            <p className="font-display text-xl font-extrabold leading-none tabular-nums">{p.day}</p>
+            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide opacity-80">{p.month}</p>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-display text-base font-bold text-foreground">{inst.title}</p>
+            {allCancelled ? (
+              <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-900">Cancelled</span>
+            ) : live ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-900">
+                <LiveDot className="scale-75" /> Live now
+              </span>
+            ) : !started && msUntil < 24 * 3_600_000 ? (
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">Starts in {timeUntilLabel(msUntil)}</span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs text-foreground/55">
+            {formatDateLong(inst.date)} · {formatTimeRange(inst.time, inst.duration)} IST · {inst.duration} min
+          </p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-foreground/60">
+            <Users className="h-3.5 w-3.5 text-foreground/35" />
+            {unlimited ? `${inst.active.length} joined` : isGroup ? `${inst.active.length} of ${inst.capacity} seats booked` : inst.active.length === 1 ? "1:1 booked" : `${inst.active.length} booked`}
+          </p>
+        </div>
+      </div>
+
+      {/* Meeting link */}
+      {!allCancelled && !ended && (
+        <div className={`mt-4 rounded-2xl px-3.5 py-3 ${linkUrgent ? "bg-[var(--lemon-soft)]/60" : "clay-inset"}`}>
+          {editingLink ? (
+            <div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="https://meet.google.com/…"
+                  aria-label="Meeting link"
+                  className={`${inputClass} !rounded-xl !py-2 text-xs`}
+                  autoFocus
+                />
+                <button onClick={saveLink} disabled={busy === `link-${inst.key}`} className="clay-btn shrink-0 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-60">
+                  Save
+                </button>
+                <button onClick={() => { setEditingLink(false); setLinkError(null); }} className="shrink-0 text-xs font-semibold text-foreground/50 hover:text-foreground/80">
+                  Cancel
+                </button>
+              </div>
+              {linkError && <p className="mt-1.5 text-[11px] font-medium text-rose-700">{linkError}</p>}
+            </div>
+          ) : inst.link ? (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+              <a href={inst.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-bold text-[var(--sky-deep)] hover:underline">
+                <LinkIcon className="h-3.5 w-3.5" />
+                Open meeting
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <span className="min-w-0 flex-1 truncate text-foreground/45">{inst.link}</span>
+              <button onClick={() => { setDraft(inst.link ?? ""); setEditingLink(true); }} className="font-semibold text-foreground/55 hover:text-foreground">
+                Change
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground/70">
+                {linkUrgent && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                {linkUrgent ? "No meeting link yet — students can't join without one." : "No meeting link yet."}
+              </p>
+              <button onClick={() => setEditingLink(true)} className="clay-btn rounded-full px-3.5 py-1.5 text-xs font-semibold">
+                Add meeting link
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Roster */}
+      <ul className="mt-4 space-y-1.5">
+        {rows.map((s) => (
+          <li key={s.id} className="clay-inset flex items-center gap-3 rounded-xl px-3 py-2">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">{s.studentName.charAt(0).toUpperCase()}</span>
+            <div className="min-w-0 flex-1">
+              <p className={`truncate text-sm font-semibold ${s.status === "cancelled" ? "text-foreground/40 line-through" : "text-foreground"}`}>{s.studentName}</p>
+              {s.studentNote && <p className="truncate text-xs italic text-foreground/50">“{s.studentNote}”</p>}
+            </div>
+            <PaymentPill b={s} />
+            {s.status === "no_show" && <span className="shrink-0 rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-bold text-foreground/60">No-show</span>}
+            {s.status === "cancelled" && <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-900">Cancelled</span>}
+            {started && s.status !== "cancelled" && (
+              <button
+                onClick={() => onNoShow(s, s.status !== "no_show")}
+                disabled={busy === `noshow-${s.id}`}
+                className="shrink-0 text-[11px] font-semibold text-foreground/45 hover:text-foreground/80 disabled:opacity-50"
+              >
+                {s.status === "no_show" ? "Mark attended" : "Mark no-show"}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {inst.bookings.length > 4 && (
+        <button onClick={() => setShowAll((v) => !v)} className="mt-2 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
+          {showAll ? "Show fewer" : `Show all ${inst.bookings.length} students`}
+        </button>
+      )}
+
+      {/* Actions */}
+      {!allCancelled && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          {pending && started ? (
+            <button onClick={onComplete} disabled={busy === `done-${inst.key}`} className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-60">
+              <CircleCheck className="h-3.5 w-3.5" />
+              Mark session complete
+            </button>
+          ) : (
+            <span />
+          )}
+          {!started && (
+            <button onClick={onCancel} disabled={busy === `cancel-${inst.key}`} className="clay-btn-ghost rounded-full px-3.5 py-1.5 text-xs font-semibold text-destructive disabled:opacity-60">
+              Cancel session{paidCount > 0 ? " & refund" : ""}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentPill({ b }: { b: MentorSessionBooking }) {
+  if (b.paymentStatus === "refunded") return <span className="shrink-0 text-xs font-bold text-foreground/45">Refunded</span>;
+  if (b.isFree || b.paymentStatus === "free") return <span className="shrink-0 text-xs font-bold text-foreground/55">Free</span>;
+  if (b.paymentStatus === "paid") return <span className="shrink-0 text-xs font-bold text-[var(--sky-deep)]">{currency.format(b.mentorNetAmount)} earned</span>;
+  return <span className="shrink-0 text-xs font-bold text-foreground/45">{b.paymentStatus}</span>;
+}
+
+// ── Cancel a whole session ─────────────────────────────────────────────
+function CancelSessionDialog({ inst, onClose, onConfirm }: { inst: Instance; onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState("");
+  const paid = inst.active.filter((b) => b.paymentStatus === "paid").length;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Cancel session" className="clay w-full max-w-md rounded-b-none p-6 sm:rounded-b-3xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-display text-lg font-bold text-foreground">Cancel this session?</h3>
+        <p className="mt-1 text-sm text-foreground/60">
+          {inst.title} · {formatDateLong(inst.date)}, {formatTimeRange(inst.time, inst.duration)} IST
+        </p>
+        <ul className="mt-4 space-y-1.5 text-sm text-foreground/75">
+          <li>
+            {inst.active.length} student{inst.active.length === 1 ? "" : "s"} will be emailed straight away.
+          </li>
+          {paid > 0 && (
+            <li>
+              {paid} paid booking{paid === 1 ? "" : "s"} will be <strong>refunded in full automatically</strong>.
+            </li>
+          )}
+          <li>The time slot reopens, so other students can book it again.</li>
+        </ul>
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-xs font-semibold text-foreground/60">Message to students (optional)</span>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300} placeholder="e.g. I'm unwell. I'll reopen slots next week." className={textareaClass} />
+        </label>
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button onClick={onClose} className="clay-btn-ghost rounded-full px-4 py-2.5 text-sm font-semibold">
+            Keep session
+          </button>
+          <button onClick={() => onConfirm(reason)} className="rounded-full bg-rose-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-700">
+            Cancel session
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Offerings ──────────────────────────────────────────────────────────
+function OfferingsGrid({
   offerings,
+  upcomingByOffering,
+  onCreate,
   onEdit,
   onToggleActive,
   onDelete,
+  onCopied,
 }: {
   offerings: MentorSessionOffering[] | null;
+  upcomingByOffering: Map<string, number>;
+  onCreate: () => void;
   onEdit: (o: MentorSessionOffering) => void;
   onToggleActive: (id: string, active: boolean) => void;
-  onDelete: (id: string) => void;
+  onDelete: (o: MentorSessionOffering) => void;
+  onCopied: () => void;
 }) {
   if (offerings === null) {
     return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Skeleton className="h-56" />
+        <Skeleton className="h-56" />
       </div>
     );
   }
   if (offerings.length === 0) {
-    return <div className="clay p-8 text-center text-sm text-foreground/60">No session offerings yet — create your first one.</div>;
+    return (
+      <div className="clay p-2">
+        <EmptyState icon={CalendarTime} message="You haven't published any sessions yet. Choose when you're free, set a price (or make it free), and students can book." action={{ label: "Create your first session", onClick: onCreate }} />
+      </div>
+    );
   }
+
+  async function copyLink(id: string) {
+    try {
+      await navigator.clipboard.writeText(`${SITE_URL}/mentor-session/${id}`);
+      onCopied();
+    } catch {
+      window.prompt("Copy this link:", `${SITE_URL}/mentor-session/${id}`);
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {offerings.map((o) => (
-        <div key={o.id} className="clay flex flex-col gap-2 p-4">
-          {(o.posterUrl || o.thumbnailUrl) && (
-            <div className={`overflow-hidden rounded-2xl bg-foreground/5 ${o.posterUrl ? "mx-auto aspect-[4/5] w-40" : "h-28 w-full"}`}>
-              <img src={(o.posterUrl ?? o.thumbnailUrl) as string} alt="" className="h-full w-full object-cover" />
-            </div>
-          )}
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate font-display text-base font-bold text-foreground">{o.title}</p>
-              <p className="text-xs text-foreground/50">
+      {offerings.map((o) => {
+        const upcomingN = upcomingByOffering.get(o.id) ?? 0;
+        const cover = o.posterUrl ?? o.thumbnailUrl;
+        return (
+          <div key={o.id} className={`clay flex flex-col overflow-hidden ${o.active ? "" : "opacity-80"}`}>
+            {cover && (
+              <div className="h-32 w-full overflow-hidden bg-foreground/5">
+                <img src={cover} alt="" className="h-full w-full object-cover object-top" />
+              </div>
+            )}
+            <div className="flex flex-1 flex-col gap-2 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 font-display text-base font-bold leading-snug text-foreground">{o.title}</p>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${o.active ? "bg-[var(--mint-soft)] text-foreground" : "bg-foreground/10 text-foreground/55"}`}>
+                  {o.active ? "Live" : "Paused"}
+                </span>
+              </div>
+              <p className="text-xs text-foreground/55">
                 {o.durationMinutes} min · {o.isFree ? "Free" : currency.format(o.price)}
                 {isUnlimitedOffering(o) ? " · open to everyone" : o.capacity > 1 ? ` · up to ${o.capacity} students` : " · 1:1"}
+                {o.subject ? ` · ${o.subject}` : ""}
               </p>
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground/70">
+                <Clock className="h-3.5 w-3.5 text-foreground/30" />
+                {describeSchedule(o)}
+              </p>
+              <p className="text-xs text-foreground/50">{upcomingN > 0 ? `${upcomingN} student${upcomingN === 1 ? "" : "s"} booked upcoming` : "No upcoming bookings"}</p>
+
+              <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+                <button onClick={() => copyLink(o.id)} className="clay-btn inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold">
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy student link
+                </button>
+                <a href={`/mentor-session/${o.id}`} target="_blank" rel="noreferrer" className="clay-btn-ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold">
+                  Preview
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                <button onClick={() => onEdit(o)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
+                  Edit
+                </button>
+                <button onClick={() => onToggleActive(o.id, !o.active)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
+                  {o.active ? "Pause" : "Resume"}
+                </button>
+                <button
+                  onClick={() => onDelete(o)}
+                  disabled={upcomingN > 0}
+                  title={upcomingN > 0 ? "Cancel its upcoming sessions first, or pause it instead" : "Delete this offering"}
+                  className="clay-btn-ghost ml-auto inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              </div>
             </div>
-            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${o.active ? "bg-[var(--mint-soft)] text-foreground" : "bg-foreground/10 text-foreground/50"}`}>
-              {o.active ? "Live" : "Paused"}
-            </span>
           </div>
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground/70">
-            <Clock className="h-3.5 w-3.5 text-foreground/30" />
-            {describeSchedule(o)}
-          </p>
-          {o.subject && <p className="text-[11px] font-semibold text-[var(--sky-deep)]">Subject: {o.subject}</p>}
-          {!o.isOngoing && o.dateRangeEnd && (
-            <p className="text-[11px] text-foreground/40">Ends {new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { timeZone: "UTC" })}</p>
-          )}
-          <div className="mt-2 flex gap-2">
-            <button onClick={() => onEdit(o)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
-              Edit
-            </button>
-            <button onClick={() => onToggleActive(o.id, !o.active)} className="clay-btn-ghost rounded-full px-3 py-1.5 text-xs font-semibold">
-              {o.active ? "Pause" : "Resume"}
-            </button>
-            <button
-              onClick={() => onDelete(o.id)}
-              className="clay-btn-ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete
-            </button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -448,480 +906,5 @@ function MentorCalendarTab({
         );
       }}
     />
-  );
-}
-
-function RosterList({
-  rosters,
-  onSetLink,
-}: {
-  rosters: (SessionRoster & { capacity: number })[] | null;
-  onSetLink: (offeringId: string, sessionDate: string, startTime: string, link: string) => void;
-}) {
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-
-  if (rosters === null) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-      </div>
-    );
-  }
-  if (rosters.length === 0) {
-    return <div className="clay p-8 text-center text-sm text-foreground/60">No bookings yet.</div>;
-  }
-
-  return (
-    <div className="space-y-3">
-      {rosters.map((r) => {
-        const key = `${r.offeringId}:${r.sessionDate}:${r.startTime}`;
-        const existingLink = r.students.find((s) => s.meetingLink)?.meetingLink ?? null;
-        const unlimited = r.capacity >= UNLIMITED_CAPACITY;
-        const isGroup = r.capacity > 1 && !unlimited;
-        return (
-          <div key={key} className="clay p-4">
-            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="flex items-center gap-1.5 font-display text-base font-bold text-foreground">
-                  <Users className="h-4 w-4 text-foreground/40" />
-                  {r.offeringTitle}
-                  {isGroup && (
-                    <span className="rounded-full bg-[var(--purple-soft,#EDE9FE)] px-2 py-0.5 text-[10px] font-bold text-[var(--purple-deep,#6D28D9)]">
-                      {r.students.length}/{r.capacity} seats
-                    </span>
-                  )}
-                  {unlimited && (
-                    <span className="rounded-full bg-[var(--purple-soft,#EDE9FE)] px-2 py-0.5 text-[10px] font-bold text-[var(--purple-deep,#6D28D9)]">
-                      {r.students.length} joined · open to everyone
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-foreground/50">
-                  {new Date(r.sessionDate).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })} · {r.startTime} ·{" "}
-                  {r.durationMinutes} min
-                </p>
-              </div>
-
-              {editingKey === key ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Meeting link"
-                    className="clay-inset rounded-xl px-3 py-1.5 text-xs focus:outline-none"
-                  />
-                  <button
-                    onClick={() => {
-                      onSetLink(r.offeringId, r.sessionDate, r.startTime, draft);
-                      setEditingKey(null);
-                    }}
-                    className="clay-btn rounded-full px-3 py-1.5 text-xs font-semibold"
-                  >
-                    Save
-                  </button>
-                </div>
-              ) : existingLink ? (
-                <a href={existingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--sky-deep)] hover:underline">
-                  <LinkIcon className="h-3.5 w-3.5" />
-                  Meeting link
-                </a>
-              ) : (
-                <button
-                  onClick={() => {
-                    setEditingKey(key);
-                    setDraft("");
-                  }}
-                  className="clay-btn-ghost shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-                >
-                  Add meeting link
-                </button>
-              )}
-            </div>
-
-            <ul className="space-y-1.5">
-              {r.students.map((s) => (
-                <li key={s.id} className="clay-inset flex items-center justify-between gap-3 rounded-xl px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{s.studentName}</p>
-                    {s.studentNote && <p className="truncate text-xs italic text-foreground/50">"{s.studentNote}"</p>}
-                  </div>
-                  <span className={`shrink-0 text-xs font-bold ${s.paymentStatus === "paid" || s.paymentStatus === "free" ? "text-[var(--sky-deep)]" : "text-foreground/50"}`}>
-                    {s.isFree ? "Free" : currency.format(s.price)} · {s.paymentStatus}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Used for both creating a new offering and editing an existing one — when
-// `editing` is passed, every field starts pre-filled from it and saving
-// calls updateOffering instead of createOffering.
-function CreateOfferingDialog({
-  mentorToken,
-  editing = null,
-  onClose,
-  onCreated,
-}: {
-  mentorToken: string;
-  editing?: MentorSessionOffering | null;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [title, setTitle] = useState(editing?.title ?? "");
-  const [description, setDescription] = useState(editing?.description ?? "");
-  const [duration, setDuration] = useState<(typeof DURATION_OPTIONS)[number]>(editing?.durationMinutes ?? 30);
-  const [isFree, setIsFree] = useState(editing?.isFree ?? false);
-  const [price, setPrice] = useState(editing && !editing.isFree ? String(editing.price) : "");
-  // Nothing recurs until the mentor explicitly says so — "once" is the
-  // default so publishing a session never silently turns into a standing
-  // weekly commitment.
-  const isEditedOneTime = !!editing && !editing.isOngoing && !!editing.dateRangeStart && editing.dateRangeStart === editing.dateRangeEnd;
-  const [repeatMode, setRepeatMode] = useState<"once" | "weekly_ongoing" | "weekly_until">(
-    !editing ? "once" : editing.isOngoing ? "weekly_ongoing" : isEditedOneTime ? "once" : "weekly_until",
-  );
-  const [onceDate, setOnceDate] = useState(isEditedOneTime ? (editing!.dateRangeStart as string) : "");
-  const [days, setDays] = useState<Set<DayOfWeek>>(new Set(editing?.recurringDays ?? []));
-  const [times, setTimes] = useState<string[]>(editing?.startTimes?.length ? editing.startTimes : ["17:00"]);
-  const [endDate, setEndDate] = useState(editing && !editing.isOngoing && !isEditedOneTime ? (editing.dateRangeEnd ?? "") : "");
-  const [format, setFormat] = useState<SessionFormat>(editing ? formatForOffering(editing) : "one_on_one");
-  const [groupCapacity, setGroupCapacity] = useState(editing && editing.capacity > 1 ? String(editing.capacity) : "10");
-  const [subject, setSubject] = useState(editing?.subject ?? "");
-  const [thumbnailUrl, setThumbnailUrl] = useState(editing?.thumbnailUrl ?? "");
-  const [posterUrl, setPosterUrl] = useState(editing?.posterUrl ?? "");
-  const [mentorPhotoUrl, setMentorPhotoUrl] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Default the thumbnail to the mentor's own profile photo — pulled
-  // straight from their profile, not something they have to re-upload —
-  // so the form starts pre-filled. They can still replace or remove it.
-  useEffect(() => {
-    getMentorProfile({ data: { token: mentorToken } }).then(({ profile }) => {
-      setMentorPhotoUrl(profile.profilePictureUrl);
-      // Only pre-fill for a brand-new offering — when editing, an empty
-      // thumbnail is a deliberate choice and shouldn't be overwritten.
-      if (!editing) setThumbnailUrl((prev) => prev || (profile.profilePictureUrl ?? ""));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // "Open to everyone" is always free — there's no price field for it, so
-  // force isFree true whenever that format is selected.
-  useEffect(() => {
-    if (format === "open_unlimited") setIsFree(true);
-  }, [format]);
-
-  function toggleDay(d: DayOfWeek) {
-    setDays((prev) => {
-      const next = new Set(prev);
-      if (next.has(d)) next.delete(d);
-      else next.add(d);
-      return next;
-    });
-  }
-
-  async function handleSubmit() {
-    setError(null);
-    if (repeatMode === "once" && !onceDate) return setError("Pick a date.");
-    if (repeatMode === "weekly_until" && !endDate) return setError("Pick an end date, or choose \"Weekly, ongoing\".");
-    if (repeatMode !== "once" && days.size === 0) return setError("Pick at least one day.");
-    setSubmitting(true);
-    try {
-      const cap =
-        format === "one_on_one"
-          ? 1
-          : format === "open_unlimited"
-            ? UNLIMITED_CAPACITY
-            : Math.max(2, Math.min(MAX_SESSION_CAPACITY, Number(groupCapacity) || 2));
-
-      // "Once" is stored as an ordinary weekly-pattern offering whose date
-      // range is pinned to just that one day, so it produces exactly one
-      // occurrence and then never appears again — no schema special-case
-      // needed, and it can never silently turn into a standing weekly slot.
-      const recurringDays = repeatMode === "once" ? [new Date(`${onceDate}T00:00:00Z`).getUTCDay() as DayOfWeek] : Array.from(days);
-      const dateRangeStart = repeatMode === "once" ? onceDate : null;
-      const dateRangeEnd = repeatMode === "once" ? onceDate : repeatMode === "weekly_until" ? endDate || null : null;
-      const isOngoing = repeatMode === "weekly_ongoing";
-
-      const payload = {
-          token: mentorToken,
-          title,
-          description,
-          durationMinutes: duration,
-          isFree: format === "open_unlimited" ? true : isFree,
-          price: format === "open_unlimited" ? 0 : Number(price) || 0,
-          thumbnailUrl: thumbnailUrl.trim() || null,
-          // Only sent when it actually changed (or a poster is set on a new
-          // offering) so saving still works on databases where the
-          // poster_url column hasn't been added yet.
-          ...((editing ? posterUrl !== (editing.posterUrl ?? "") : !!posterUrl.trim())
-            ? { posterUrl: posterUrl.trim() || null }
-            : {}),
-          recurringDays,
-          startTimes: times.filter(Boolean),
-          dateRangeStart,
-          dateRangeEnd,
-          isOngoing,
-          capacity: cap,
-          subject: subject.trim() || null,
-      };
-      if (editing) await updateOffering({ data: { ...payload, offeringId: editing.id } });
-      else await createOffering({ data: payload });
-      onCreated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create this offering.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="clay max-h-[90vh] w-full max-w-lg overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold text-foreground">{editing ? "Edit session offering" : "New session offering"}</h3>
-          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="space-y-3.5">
-          <Field label="Title / topic">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Doubt clearing — Organic Chemistry" className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none" />
-          </Field>
-
-          <Field label="Description (optional)">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none" />
-          </Field>
-
-          <Field label="Subject (optional — powers student recommendations, e.g. after a low test score in this subject)">
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Maths, Physics, Organic Chemistry" className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none" />
-          </Field>
-
-          <Field label="Duration">
-            <div className="flex flex-wrap gap-1.5">
-              {DURATION_OPTIONS.map((d) => (
-                <button key={d} type="button" onClick={() => setDuration(d)} className={`rounded-xl px-3 py-1.5 text-xs font-semibold ${duration === d ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}>
-                  {d} min
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="Who can join?">
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => setFormat("one_on_one")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${format === "one_on_one" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                One student
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">1:1 — you and them only</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormat("limited_group")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${format === "limited_group" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                A limited group
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">You set the max students</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormat("open_unlimited")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${format === "open_unlimited" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                Anyone, no limit
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">Open to everyone, always free</span>
-              </button>
-            </div>
-            {format === "limited_group" && (
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs text-foreground/60">Max students per slot</span>
-                <input
-                  value={groupCapacity}
-                  onChange={(e) => setGroupCapacity(e.target.value)}
-                  inputMode="numeric"
-                  className="clay-inset w-20 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
-                />
-              </div>
-            )}
-          </Field>
-
-          {format !== "open_unlimited" && (
-            <Field label="Price">
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-1.5 text-xs text-foreground/70">
-                  <input type="checkbox" checked={isFree} onChange={(e) => setIsFree(e.target.checked)} />
-                  Free
-                </label>
-                {!isFree && (
-                  <input
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    inputMode="numeric"
-                    placeholder={format === "limited_group" ? "₹ per student" : "₹ amount"}
-                    className="clay-inset flex-1 rounded-2xl px-4 py-2 text-sm focus:outline-none"
-                  />
-                )}
-              </div>
-              {!isFree && price && <p className="mt-1 text-[11px] text-foreground/40">You'll receive {currency.format(Math.round(Number(price) * 0.95))} per student after platform commission (5%).</p>}
-            </Field>
-          )}
-
-          <Field label="How often does this run?">
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => setRepeatMode("once")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${repeatMode === "once" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                Just once
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">A single date — doesn't repeat</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRepeatMode("weekly_until")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${repeatMode === "weekly_until" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                Weekly, until a date
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">Repeats every week, then stops</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRepeatMode("weekly_ongoing")}
-                className={`rounded-xl px-3 py-2.5 text-left text-xs font-semibold ${repeatMode === "weekly_ongoing" ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-              >
-                Weekly, ongoing
-                <span className="mt-0.5 block text-[10px] font-normal opacity-80">Repeats every week until you pause it</span>
-              </button>
-            </div>
-          </Field>
-
-          {repeatMode === "once" ? (
-            <Field label="Date">
-              <input
-                type="date"
-                value={onceDate}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setOnceDate(e.target.value)}
-                className="clay-inset w-full rounded-2xl px-4 py-2 text-sm focus:outline-none"
-              />
-            </Field>
-          ) : (
-            <Field label="Which days does this repeat on?">
-              <div className="grid grid-cols-7 gap-1">
-                {DAY_LABELS.map((label, i) => (
-                  <button key={label} type="button" onClick={() => toggleDay(i as DayOfWeek)} className={`rounded-xl py-1.5 text-xs font-semibold ${days.has(i as DayOfWeek) ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
-
-          {repeatMode === "weekly_until" && (
-            <Field label="Repeat until">
-              <input
-                type="date"
-                value={endDate}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="clay-inset w-full rounded-2xl px-4 py-2 text-sm focus:outline-none"
-              />
-            </Field>
-          )}
-
-          <Field label={repeatMode === "once" ? "What time(s) on that day?" : "What time(s) — same times apply to every day you picked above"}>
-            <div className="space-y-1.5">
-              {times.map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={t}
-                    onChange={(e) => setTimes((prev) => prev.map((p, idx) => (idx === i ? e.target.value : p)))}
-                    className="clay-inset rounded-2xl px-4 py-2 text-sm focus:outline-none"
-                  />
-                  {times.length > 1 && (
-                    <button onClick={() => setTimes((prev) => prev.filter((_, idx) => idx !== i))} className="text-foreground/40 hover:text-foreground/70">
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button onClick={() => setTimes((prev) => [...prev, "17:00"])} className="clay-btn-ghost inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold">
-                <Plus className="h-3.5 w-3.5" />
-                Add another time
-              </button>
-              {repeatMode !== "once" && (
-                <p className="text-[11px] text-foreground/40">
-                  Need different times on different days? Publish this as a separate offering for those days instead.
-                </p>
-              )}
-            </div>
-          </Field>
-
-          <SessionArtworkField
-            label="Thumbnail (optional)"
-            value={thumbnailUrl}
-            onChange={setThumbnailUrl}
-            storagePath={`mentor-sessions/${mentorToken.split(".")[0]}/thumbnails`}
-          />
-          <p className="-mt-2 text-[11px] text-foreground/40">
-            {thumbnailUrl && thumbnailUrl === mentorPhotoUrl
-              ? "Using your profile photo by default — upload a different image to change it."
-              : thumbnailUrl
-                ? "Custom thumbnail set — remove it to fall back to your profile photo."
-                : mentorPhotoUrl
-                  ? "Removed — we'll show your profile photo instead."
-                  : "No profile photo on file yet — we'll show a placeholder until you upload one here or on your profile."}
-          </p>
-
-          <SessionArtworkField
-            label="Poster (optional, 4:5)"
-            shape="poster"
-            value={posterUrl}
-            onChange={setPosterUrl}
-            storagePath={`mentor-sessions/${mentorToken.split(".")[0]}/posters`}
-          />
-          <p className="-mt-2 text-[11px] text-foreground/40">
-            {posterUrl
-              ? "Students see this 4:5 poster instead of the thumbnail on session cards, the session page and the landing page."
-              : "Add a portrait poster (1080×1350 works well) — it replaces the thumbnail everywhere students see this session."}
-          </p>
-
-          {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
-
-          <button
-            onClick={handleSubmit}
-            disabled={
-              submitting ||
-              !title.trim() ||
-              (repeatMode === "once" ? !onceDate : days.size === 0) ||
-              (repeatMode === "weekly_until" && !endDate)
-            }
-            className="clay-btn mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold transition-transform disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarTime className="h-4 w-4" />}
-            {editing ? "Save changes" : "Publish offering"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-foreground/40">{label}</p>
-      {children}
-    </div>
   );
 }

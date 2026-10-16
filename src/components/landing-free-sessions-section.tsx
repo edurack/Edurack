@@ -1,24 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { IconClock as Clock, IconSparkles as Sparkles, IconArrowRight as ArrowRight } from "@tabler/icons-react";
+import { IconArrowRight as ArrowRight, IconClock as Clock } from "@tabler/icons-react";
 import { listPublicFreeMentorSessions } from "@/server-functions/student-sessions";
 import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
-
-const PINK_SOFT = "var(--pink-soft, #FCE7F3)";
-const PINK_DEEP = "var(--pink-deep, #BE185D)";
+import { formatSlot } from "@/lib/session-time";
+import { FormatBadge, MentorAvatar, SessionCover, seatsNote } from "@/components/sessions/session-ui";
 
 type FreeSessionCard = PublicMentorOffering & { nextSlot: OpenSlot };
 
-// Drop this component wherever it fits editorially on the public landing
-// page (src/routes/index.tsx) — right after the hero is the obvious spot
-// given it's meant to be a headline USP, but it's fully self-contained so
-// it works anywhere. Renders nothing (returns null) if there are no free
-// sessions open right now, rather than showing an empty/broken-looking
-// section on a marketing page.
-//
-// No auth required to view — clicking a card sends the visitor to the
-// now-public /mentor-session/$offeringId page, which itself only asks
-// them to sign in at the moment they actually try to book.
+// Self-contained marketing section for the public landing page. Renders
+// nothing when there are no free sessions open, rather than an empty block.
+// No auth to browse — cards open the public /mentor-session/$offeringId page,
+// which only asks the visitor to sign in at the moment they book.
 export function LandingFreeSessionsSection() {
   const [sessions, setSessions] = useState<FreeSessionCard[] | null>(null);
 
@@ -32,75 +25,55 @@ export function LandingFreeSessionsSection() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-      <div className="mb-6 flex flex-col items-start gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-1.5 flex items-center gap-1.5" style={{ color: PINK_DEEP }}>
-            <Sparkles className="h-4 w-4" />
-            <span className="text-xs font-bold uppercase tracking-wide">Free, right now</span>
-          </div>
-          <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Live sessions with real mentors — free
-          </h2>
-          <p className="mt-1 text-sm text-foreground/60">Book a slot with a mentor who's cracked the exam you're prepping for. No cost, no catch.</p>
-        </div>
+      <div className="mb-6 max-w-2xl">
+        <h2 className="font-display text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">Talk to someone who's already done it. Free.</h2>
+        <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
+          Live sessions with mentors who cracked the exam you're preparing for. Pick a time that works, no payment needed.
+        </p>
       </div>
 
       {sessions === null ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="clay h-48 animate-pulse" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-72 animate-pulse rounded-3xl bg-secondary" />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sessions.map((s) => (
-            <Link
-              key={s.id}
-              to="/mentor-session/$offeringId"
-              params={{ offeringId: s.id }}
-              className="clay flex flex-col overflow-hidden p-3 transition-transform duration-200 hover:border-primary/60"
-            >
-              <div
-                className={`relative flex items-center justify-center overflow-hidden rounded-2xl ${s.posterUrl ? "aspect-[4/5] w-full" : "h-24"}`}
-                style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}
+          {sessions.map((s) => {
+            const seats = seatsNote(s, s.nextSlot);
+            return (
+              <Link
+                key={s.id}
+                to="/mentor-session/$offeringId"
+                params={{ offeringId: s.id }}
+                className="group flex flex-col overflow-hidden rounded-3xl border border-border bg-card transition-colors hover:border-foreground/40"
               >
-                {s.posterUrl || s.thumbnailUrl || s.mentorPhotoUrl ? (
-                  <img src={s.posterUrl ?? s.thumbnailUrl ?? s.mentorPhotoUrl ?? undefined} alt="" loading="lazy" className="h-full w-full object-cover" />
-                ) : (
-                  <Sparkles className="h-8 w-8 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
-                )}
-                {s.subject && (
-                  <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold text-foreground/70 shadow-sm">
-                    {s.subject}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-1 flex-col p-3 pt-4">
-                <div className="mb-1 flex items-center gap-2">
-                  {s.mentorPhotoUrl ? (
-                    <img src={s.mentorPhotoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
-                  ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: PINK_SOFT, color: PINK_DEEP }}>
-                      {s.mentorName.charAt(0)}
-                    </div>
-                  )}
-                  <span className="truncate text-xs font-semibold text-foreground/60">{s.mentorName}</span>
+                <div className="relative">
+                  <SessionCover offering={s} className="aspect-[16/10] w-full" />
+                  {s.subject && <span className="absolute left-3 top-3 rounded-full bg-background/95 px-2.5 py-1 text-[11px] font-bold text-primary">{s.subject}</span>}
+                  <FormatBadge offering={s} className="absolute right-3 top-3" />
                 </div>
-                <h3 className="mb-2 font-display text-base font-bold leading-tight text-foreground">{s.title}</h3>
-                <p className="mb-4 flex items-center gap-1 text-xs text-foreground/50">
-                  <Clock className="h-3.5 w-3.5" />
-                  {new Date(s.nextSlot.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })} · {s.nextSlot.startTime}
-                </p>
-                <span
-                  className="mt-auto flex items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-sm font-bold text-white transition-transform duration-200"
-                  style={{ background: PINK_DEEP }}
-                >
-                  Book free — it's on us
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </div>
-            </Link>
-          ))}
+                <div className="flex flex-1 flex-col p-4">
+                  <div className="flex items-center gap-2">
+                    <MentorAvatar name={s.mentorName} photoUrl={s.mentorPhotoUrl} size={22} />
+                    <span className="truncate text-xs font-semibold text-muted-foreground">{s.mentorName}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">{s.durationMinutes} min</span>
+                  </div>
+                  <h3 className="mt-1.5 font-display text-lg font-bold leading-snug tracking-tight">{s.title}</h3>
+                  <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    {formatSlot(s.nextSlot.date, s.nextSlot.startTime)}
+                    {seats && <span className={`ml-auto text-xs font-bold ${seats.urgent ? "text-amber-700" : "text-muted-foreground"}`}>{seats.text}</span>}
+                  </p>
+                  <span className="mt-4 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-foreground px-4 text-sm font-bold text-background">
+                    Reserve a free seat
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </section>

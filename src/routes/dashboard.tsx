@@ -14,6 +14,7 @@ import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions
 import { StudentOpenSessionsModule, BookingDialog } from "@/components/student-open-sessions-module";
 import { AppHeader } from "@/components/app-header";
 import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
+import { slotStart, formatTime12, formatSlot } from "@/lib/session-time";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => noindexHead("My Dashboard"),
@@ -194,7 +195,8 @@ type BookingRow = {
 
 type BatchPerf = { bundleId: string; bundleTitle: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number };
 
-const slotDate = (r: BookingRow) => new Date(`${r.session_date}T${r.start_time}:00`);
+// Slots are India wall-clock; parse them as such, not in the browser's timezone.
+const slotDate = (r: BookingRow) => slotStart(r.session_date, r.start_time);
 
 function untilLabel(d: Date) {
   const h = Math.round((d.getTime() - Date.now()) / 36e5);
@@ -557,8 +559,8 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
   const upNext: UpNextInfo = next
     ? {
         state: "session",
-        date: slotDate(next).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }),
-        meta: `${next.start_time} · ${next.duration_minutes} min · ${untilLabel(slotDate(next))}`,
+        date: slotDate(next).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" }),
+        meta: `${formatTime12(next.start_time)} IST · ${next.duration_minutes} min · ${untilLabel(slotDate(next))}`,
         title: next.mentor_session_offerings?.title ?? "Mentor session",
         joinUrl: next.meeting_link ?? undefined,
         total: upcoming.length,
@@ -662,7 +664,7 @@ function FreeSlotList({ slots, getToken, onBooked }: { slots: { offering: Public
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Gift className="h-4 w-4" /></div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">{offering.title}</p>
-                <p className="truncate text-xs text-muted-foreground">{offering.mentorName} · {new Date(slot.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {slot.startTime}</p>
+                <p className="truncate text-xs text-muted-foreground">{offering.mentorName} · {formatSlot(slot.date, slot.startTime)}</p>
               </div>
               <span className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Book</span>
             </button>

@@ -1,50 +1,71 @@
+// Student-facing "find a session" screen. Props unchanged
+// ({ getToken, subjectFilter }) so the dashboard keeps working.
+//
+// Built around the question students actually have — "when can I talk to
+// someone?" — so the primary control is a day strip, not a mentor list. Every
+// card leads with its next open time (and how scarce it is), and one tap on a
+// time opens the booking flow.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { IconLoader2 as Loader2, IconClock as Clock, IconX as X, IconUsers as Users, IconInfoCircle as Info } from "@tabler/icons-react";
+import { IconSearch as Search, IconRefresh as Refresh, IconArrowRight as ArrowRight, IconCircleCheck as CircleCheck } from "@tabler/icons-react";
 import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions/student-sessions";
-import { createRazorpayOrder, verifyRazorpayPayment, claimFreeItem } from "@/server-functions/payments";
-import { SessionCalendar } from "@/components/session-calendar";
-import { isUnlimitedOffering, describeSchedule, type OpenSlot, type PublicMentorOffering } from "@/lib/session-types";
+import { formatForOffering, type OpenSlot, type PublicMentorOffering } from "@/lib/session-types";
+import { addDaysIso, dayParts, formatSlot, formatTime12, istDateString, relativeDay } from "@/lib/session-time";
+import { BookingDialog } from "@/components/sessions/booking-dialog";
+import { FormatBadge, MentorAvatar, SessionCover, priceLabel, seatsNote } from "@/components/sessions/session-ui";
 
-const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+// Kept for the existing imports in dashboard.tsx and the detail route.
+export { BookingDialog };
 
 type PriceFilter = "all" | "free" | "paid";
+type FormatFilter = "all" | "one_on_one" | "group";
+type SortKey = "soon" | "price";
+type MyBooking = { date: string; startTime: string };
 
-function loadRazorpayScript() {
-  return new Promise<void>((resolve, reject) => {
-    if ((window as any).Razorpay) return resolve();
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load payment gateway."));
-    document.body.appendChild(script);
-  });
-}
+const segmented = (active: boolean) =>
+  `min-h-10 rounded-full px-4 text-sm font-bold transition-colors ${active ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground"}`;
+
+const chip = (active: boolean) =>
+  `inline-flex min-h-9 items-center rounded-full border px-3.5 text-xs font-bold transition-colors ${
+    active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/70 hover:border-foreground/40"
+  }`;
 
 export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToken: () => Promise<string>; subjectFilter?: string }) {
   const [offerings, setOfferings] = useState<PublicMentorOffering[] | null>(null);
   const [slotsByOffering, setSlotsByOffering] = useState<Record<string, OpenSlot[]>>({});
-  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
+  const [myBookings, setMyBookings] = useState<Map<string, MyBooking>>(new Map());
+  const [loadError, setLoadError] = useState(false);
+
   const [query, setQuery] = useState(subjectFilter ?? "");
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
+  const [formatFilter, setFormatFilter] = useState<FormatFilter>("all");
+  const [subject, setSubject] = useState<string | null>(null);
+  const [day, setDay] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>("soon");
   const [booking, setBooking] = useState<{ offering: PublicMentorOffering; slot: OpenSlot } | null>(null);
-  const [view, setView] = useState<"list" | "calendar">("list");
-  // One booking per offering (enforced server-side too — see
-  // assertStudentHasNotBookedOffering in payments.ts) — this set is just
-  // what lets the card say "You've booked this" instead of letting the
-  // student attempt, and fail, a second booking.
-  const [bookedOfferingIds, setBookedOfferingIds] = useState<Set<string>>(new Set());
 
   async function load() {
-    const token = await getToken();
-    const [{ offerings: rows, slotsByOffering: slots }, { bookings }] = await Promise.all([
-      listOpenMentorSessions({ data: { token } }),
-      listMyBookedSessions({ data: { token } }),
-    ]);
-    setOfferings(rows as PublicMentorOffering[]);
-    setSlotsByOffering(slots as Record<string, OpenSlot[]>);
-    setBookedOfferingIds(
-      new Set((bookings as any[]).filter((b) => b.status !== "cancelled").map((b) => b.offering_id as string)),
-    );
+    setLoadError(false);
+    try {
+      const token = await getToken();
+      const [{ offerings: rows, slotsByOffering: slots }, { bookings }] = await Promise.all([
+        listOpenMentorSessions({ data: { token } }),
+        listMyBookedSessions({ data: { token } }),
+      ]);
+      setOfferings(rows as PublicMentorOffering[]);
+      setSlotsByOffering(slots as Record<string, OpenSlot[]>);
+      // Only a *future, active* booking blocks rebooking now (see payments.ts).
+      const today = istDateString();
+      const mine = new Map<string, MyBooking>();
+      for (const b of bookings as any[]) {
+        if (b.status === "upcoming" && String(b.session_date).slice(0, 10) >= today && !mine.has(b.offering_id)) {
+          mine.set(b.offering_id, { date: String(b.session_date).slice(0, 10), startTime: String(b.start_time).slice(0, 5) });
+        }
+      }
+      setMyBookings(mine);
+    } catch {
+      setLoadError(true);
+    }
   }
 
   useEffect(() => {
@@ -52,135 +73,213 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
+  // Everything except the day filter — the day strip counts against this.
+  const base = useMemo(() => {
     if (!offerings) return [];
     const q = query.trim().toLowerCase();
     return offerings.filter((o) => {
+      if ((slotsByOffering[o.id] ?? []).length === 0) return false;
       if (priceFilter === "free" && !o.isFree) return false;
       if (priceFilter === "paid" && o.isFree) return false;
-      if ((slotsByOffering[o.id] ?? []).length === 0) return false;
+      const f = formatForOffering(o);
+      if (formatFilter === "one_on_one" && f !== "one_on_one") return false;
+      if (formatFilter === "group" && f === "one_on_one") return false;
+      if (subject && o.subject !== subject) return false;
       if (q && !`${o.title} ${o.mentorName} ${o.description} ${o.subject ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [offerings, priceFilter, query, slotsByOffering]);
+  }, [offerings, slotsByOffering, priceFilter, formatFilter, subject, query]);
 
-  // Every bookable slot across the filtered offerings, one calendar event
-  // each — so a student can pick a day first and see everything open on it,
-  // instead of hunting through each mentor's card.
-  const calendarEvents = useMemo(
-    () =>
-      filtered.flatMap((o) =>
-        (slotsByOffering[o.id] ?? []).map((slot) => ({ date: slot.date, startTime: slot.startTime, offering: o, slot })),
-      ),
-    [filtered, slotsByOffering],
-  );
+  const days = useMemo(() => {
+    const today = istDateString();
+    return Array.from({ length: 14 }, (_, i) => {
+      const date = addDaysIso(today, i);
+      const count = base.filter((o) => (slotsByOffering[o.id] ?? []).some((s) => s.date === date)).length;
+      return { date, count };
+    });
+  }, [base, slotsByOffering]);
+
+  const results = useMemo(() => {
+    const rows = base
+      .map((o) => {
+        const all = slotsByOffering[o.id] ?? [];
+        return { offering: o, slots: day ? all.filter((s) => s.date === day) : all };
+      })
+      .filter((r) => r.slots.length > 0);
+    rows.sort((a, b) =>
+      sort === "price"
+        ? Number(a.offering.price) - Number(b.offering.price) || (a.slots[0].date + a.slots[0].startTime).localeCompare(b.slots[0].date + b.slots[0].startTime)
+        : (a.slots[0].date + a.slots[0].startTime).localeCompare(b.slots[0].date + b.slots[0].startTime),
+    );
+    return rows;
+  }, [base, slotsByOffering, day, sort]);
+
+  const subjects = useMemo(() => Array.from(new Set((offerings ?? []).map((o) => o.subject).filter(Boolean) as string[])).slice(0, 8), [offerings]);
+
+  const filtersActive = Boolean(query || priceFilter !== "all" || formatFilter !== "all" || subject || day);
+  function clearFilters() {
+    setQuery("");
+    setPriceFilter("all");
+    setFormatFilter("all");
+    setSubject(null);
+    setDay(null);
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-3xl border border-dashed border-border p-10 text-center">
+        <p className="text-sm text-muted-foreground">We couldn't load sessions. Check your connection and try again.</p>
+        <button type="button" onClick={load} className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">
+          <Refresh className="h-4 w-4" />
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="clay-inset mb-4 flex items-start gap-2.5 rounded-2xl px-4 py-3 text-xs text-foreground/60">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-foreground/40" />
-        <p>
-          Book a mentor's open time directly — 1:1, a small group, or an open session anyone can join. Each card shows exactly when the
-          mentor is free. You can hold <strong className="text-foreground/80">one active booking per session</strong> — cancel it from{" "}
-          <Link to="/my-sessions" className="font-semibold underline">
-            My Sessions
-          </Link>{" "}
-          if you need to rebook a different time.
-        </p>
-      </div>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search mentors, topics, or subjects…"
-          className="clay-inset w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none sm:max-w-xs"
-        />
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div className="clay-inset mr-1 flex gap-1 rounded-full p-1">
-            {(["list", "calendar"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`rounded-full px-3 py-1 text-xs font-bold ${view === v ? "clay-btn text-white" : "text-foreground/60"}`}
-              >
-                {v === "list" ? "List" : "Calendar"}
+      {/* Search + type filters */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <label className="relative block lg:w-80">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search mentors, topics, subjects"
+            aria-label="Search sessions"
+            className="min-h-11 w-full rounded-full border border-border bg-card pl-11 pr-4 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-full border border-border p-1">
+            {(["all", "free", "paid"] as PriceFilter[]).map((f) => (
+              <button key={f} type="button" onClick={() => setPriceFilter(f)} className={segmented(priceFilter === f)}>
+                {f === "all" ? "Any price" : f === "free" ? "Free" : "Paid"}
               </button>
             ))}
           </div>
-          {(["all", "free", "paid"] as PriceFilter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setPriceFilter(f)}
-              className={`rounded-full px-3.5 py-1.5 text-xs font-bold ${priceFilter === f ? "clay-btn text-white" : "clay-chip text-foreground/70"}`}
-            >
-              {f === "all" ? "All" : f === "free" ? "Free" : "Paid"}
-            </button>
-          ))}
+          <div className="inline-flex rounded-full border border-border p-1">
+            {(
+              [
+                ["all", "Any format"],
+                ["one_on_one", "1:1"],
+                ["group", "Group"],
+              ] as [FormatFilter, string][]
+            ).map(([f, label]) => (
+              <button key={f} type="button" onClick={() => setFormatFilter(f)} className={segmented(formatFilter === f)}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {offerings === null ? (
-        <div className="flex justify-center py-10">
-          <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="clay p-8 text-center text-sm text-foreground/60">No open sessions match right now — check back soon.</div>
-      ) : view === "calendar" ? (
-        <SessionCalendar
-          events={calendarEvents}
-          emptyDayLabel="No open sessions this day."
-          initialMonth={calendarEvents.length > 0 ? new Date(calendarEvents[0].date) : undefined}
-          renderEvent={(e) => {
-            const booked = bookedOfferingIds.has(e.offering.id);
-            const unlimited = isUnlimitedOffering(e.offering);
-            const isGroup = e.offering.capacity > 1 && !unlimited;
-            return (
-              <div key={`${e.offering.id}-${e.slot.date}-${e.slot.startTime}`} className="clay-inset rounded-2xl px-3.5 py-3">
-                <p className="truncate text-sm font-bold text-foreground">{e.offering.title}</p>
-                <p className="text-xs text-foreground/50">
-                  {e.offering.mentorName} · {e.slot.startTime} · {e.slot.durationMinutes} min
-                </p>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-foreground/70">
-                    {e.offering.isFree ? "Free" : currency.format(e.offering.price)}
-                    {isGroup && <span className="ml-1.5 font-normal text-foreground/40">{e.slot.seatsRemaining} seats left</span>}
-                    {unlimited && <span className="ml-1.5 font-normal text-foreground/40">open to everyone</span>}
-                  </span>
-                  {booked ? (
-                    <Link to="/my-sessions" className="text-xs font-bold text-[var(--sky-deep)] hover:underline">
-                      Booked
-                    </Link>
-                  ) : (
-                    <button
-                      onClick={() => setBooking({ offering: e.offering, slot: e.slot })}
-                      className="clay-btn rounded-full px-3.5 py-1.5 text-xs font-bold"
-                    >
-                      Book
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          }}
-        />
-      ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {filtered.map((o) => (
-            <OfferingCard
-              key={o.id}
-              offering={o}
-              slots={slotsByOffering[o.id] ?? []}
-              alreadyBooked={bookedOfferingIds.has(o.id)}
-              onPick={(slot) => setBooking({ offering: o, slot })}
-            />
+      {subjects.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setSubject(null)} className={chip(subject === null)}>
+            All subjects
+          </button>
+          {subjects.map((s) => (
+            <button key={s} type="button" onClick={() => setSubject(subject === s ? null : s)} className={chip(subject === s)}>
+              {s}
+            </button>
           ))}
         </div>
       )}
+
+      {/* Day strip */}
+      <div className="mt-5">
+        <p className="mb-2 text-xs font-semibold text-muted-foreground">When are you free?</p>
+        <div role="tablist" aria-label="Filter by day" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={day === null}
+            onClick={() => setDay(null)}
+            className={`flex min-h-[4.25rem] w-[4.25rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-xs font-bold transition-colors ${
+              day === null ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:border-foreground/40"
+            }`}
+          >
+            Any day
+          </button>
+          {days.map(({ date, count }) => {
+            const p = dayParts(date);
+            const active = day === date;
+            const empty = count === 0;
+            return (
+              <button
+                key={date}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                disabled={empty && !active}
+                onClick={() => setDay(active ? null : date)}
+                className={`flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  active ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:border-foreground/40"
+                }`}
+              >
+                <span className={`text-[11px] font-semibold ${active ? "text-background/70" : "text-muted-foreground"}`}>{relativeDay(date) === "Today" ? "Today" : p.weekday}</span>
+                <span className="font-display text-xl font-extrabold leading-tight tabular-nums">{p.day}</span>
+                <span className={`text-[10px] font-semibold ${active ? "text-background/70" : empty ? "text-muted-foreground" : "text-primary"}`}>{empty ? "—" : `${count} open`}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {offerings === null ? "Loading sessions…" : `${results.length} session${results.length === 1 ? "" : "s"}${day ? ` on ${relativeDay(day)}` : " open"}`}
+        </p>
+        <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          Sort
+          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="min-h-9 rounded-full border border-border bg-card px-3 text-xs font-bold text-foreground focus:outline-none">
+            <option value="soon">Soonest first</option>
+            <option value="price">Price: low to high</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-4">
+        {offerings === null ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-80 animate-pulse rounded-3xl bg-secondary" />
+            ))}
+          </div>
+        ) : results.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-border p-10 text-center">
+            <p className="text-sm font-semibold">{filtersActive ? "Nothing matches those filters." : "No sessions are open right now."}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{filtersActive ? "Try a different day or clear the filters." : "Mentors add new times all the time — check back soon."}</p>
+            {filtersActive && (
+              <button type="button" onClick={clearFilters} className="clay-btn mt-4 inline-flex min-h-11 items-center px-5 text-sm">
+                Clear filters
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {results.map(({ offering, slots }) => (
+              <SessionCard
+                key={offering.id}
+                offering={offering}
+                slots={slots}
+                dayFiltered={Boolean(day)}
+                mine={myBookings.get(offering.id) ?? null}
+                onPick={(slot) => setBooking({ offering, slot })}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {booking && (
         <BookingDialog
           offering={booking.offering}
           slot={booking.slot}
+          slots={slotsByOffering[booking.offering.id]}
           getToken={getToken}
           onClose={() => setBooking(null)}
           onBooked={() => {
@@ -193,205 +292,77 @@ export function StudentOpenSessionsModule({ getToken, subjectFilter }: { getToke
   );
 }
 
-function OfferingCard({
+function SessionCard({
   offering,
   slots,
-  alreadyBooked,
+  dayFiltered,
+  mine,
   onPick,
 }: {
   offering: PublicMentorOffering;
   slots: OpenSlot[];
-  alreadyBooked: boolean;
+  dayFiltered: boolean;
+  mine: MyBooking | null;
   onPick: (slot: OpenSlot) => void;
 }) {
-  const preview = slots.slice(0, 4);
-  const unlimited = isUnlimitedOffering(offering);
-  const isGroup = offering.capacity > 1 && !unlimited;
+  const next = slots[0];
+  const preview = slots.slice(0, 3);
+  const seats = seatsNote(offering, next);
+
   return (
-    <div className="clay flex flex-col overflow-hidden p-3">
-      <div className={`relative flex items-center justify-center overflow-hidden rounded-2xl bg-[var(--pink-soft,#FCE7F3)] ${offering.posterUrl ? "aspect-[4/5] w-full" : "h-28"}`}>
-        {offering.posterUrl || offering.thumbnailUrl || offering.mentorPhotoUrl ? (
-          <img
-            src={offering.posterUrl ?? offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined}
-            alt=""
-            className={offering.posterUrl || offering.thumbnailUrl ? "h-full w-full object-cover" : "h-full w-full object-cover opacity-90"}
-          />
-        ) : (
-          <Clock className="h-9 w-9 text-[var(--pink-deep,#BE185D)] opacity-50" strokeWidth={1.5} />
-        )}
-        {(isGroup || unlimited) && (
-          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-[10px] font-bold text-foreground/70 shadow-sm">
-            <Users className="h-3 w-3" />
-            {unlimited ? "Open to everyone" : "Group"}
-          </span>
-        )}
-      </div>
-      <div className="p-3 pt-4">
-        <div className="mb-1 flex items-center gap-2">
-          {offering.mentorPhotoUrl && <img src={offering.mentorPhotoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />}
-          <p className="truncate text-xs font-semibold text-foreground/60">{offering.mentorName}</p>
-          {offering.subject && (
-            <span className="shrink-0 rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--sky-deep)]">{offering.subject}</span>
-          )}
+    <article className="flex flex-col overflow-hidden rounded-3xl border border-border bg-card">
+      <Link to="/mentor-session/$offeringId" params={{ offeringId: offering.id }} className="relative block" aria-label={`${offering.title} — details`}>
+        <SessionCover offering={offering} className="aspect-[16/10] w-full" />
+        <div className="absolute left-3 top-3 flex gap-1.5">
+          {offering.subject && <span className="rounded-full bg-background/95 px-2.5 py-1 text-[11px] font-bold text-primary">{offering.subject}</span>}
         </div>
-        <Link to="/mentor-session/$offeringId" params={{ offeringId: offering.id }} className="block font-display text-base font-bold text-foreground hover:underline">
+        <FormatBadge offering={offering} className="absolute right-3 top-3" />
+        <span className="absolute bottom-3 left-3 rounded-full bg-foreground px-3 py-1 text-xs font-extrabold text-background">{priceLabel(offering)}</span>
+      </Link>
+
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-center gap-2">
+          <MentorAvatar name={offering.mentorName} photoUrl={offering.mentorPhotoUrl} size={22} />
+          <p className="truncate text-xs font-semibold text-muted-foreground">{offering.mentorName}</p>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{offering.durationMinutes} min</span>
+        </div>
+        <Link to="/mentor-session/$offeringId" params={{ offeringId: offering.id }} className="mt-1.5 block font-display text-lg font-bold leading-snug tracking-tight hover:underline">
           {offering.title}
         </Link>
-        <p className="mt-1 text-sm font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground/50">
-          <Clock className="h-3.5 w-3.5 shrink-0" />
-          {describeSchedule(offering)}
-        </p>
+        {offering.description && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{offering.description}</p>}
 
-        {alreadyBooked ? (
-          <Link
-            to="/my-sessions"
-            className="mt-3 inline-flex items-center gap-1.5 rounded-2xl bg-[var(--mint-soft)]/60 px-3 py-2 text-xs font-bold text-foreground"
-          >
-            You've booked this — view it in My Sessions
-          </Link>
-        ) : (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {preview.map((s) => (
-              <button
-                key={`${s.date}-${s.startTime}`}
-                onClick={() => onPick(s)}
-                className="clay-chip flex flex-col items-start rounded-2xl px-3 py-1.5 text-[11px] font-semibold text-foreground/70 transition-colors hover:bg-foreground/5"
-              >
-                <span>
-                  {new Date(s.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} · {s.startTime}
-                </span>
-                {isGroup && <span className="text-[10px] font-normal text-foreground/40">{s.seatsRemaining} seats left</span>}
-              </button>
-            ))}
-            {slots.length > preview.length && <span className="self-center text-[11px] text-foreground/40">+{slots.length - preview.length} more</span>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Exported so other pages (the dashboard's free-sessions banner, the
-// future premium session detail page) can open the exact same booking
-// flow without duplicating the Razorpay/claimFreeItem logic.
-export function BookingDialog({
-  offering,
-  slot,
-  getToken,
-  onClose,
-  onBooked,
-}: {
-  offering: PublicMentorOffering;
-  slot: OpenSlot;
-  getToken: () => Promise<string>;
-  onClose: () => void;
-  onBooked: () => void;
-}) {
-  const [note, setNote] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleConfirm() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const token = await getToken();
-
-      if (offering.isFree) {
-        await claimFreeItem({
-          data: { token, itemType: "mentorSession", itemId: offering.id, sessionDate: slot.date, sessionStartTime: slot.startTime, studentNote: note },
-        });
-        onBooked();
-        return;
-      }
-
-      const order = await createRazorpayOrder({
-        data: { token, itemType: "mentorSession", itemId: offering.id, sessionDate: slot.date, sessionStartTime: slot.startTime },
-      });
-
-      await loadRazorpayScript();
-      const rzp = new (window as any).Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.orderId,
-        name: "Edurack",
-        description: offering.title,
-        handler: async (response: any) => {
-          try {
-            await verifyRazorpayPayment({
-              data: {
-                token,
-                itemType: "mentorSession",
-                itemId: offering.id,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-                studentNote: note,
-              },
-            });
-            onBooked();
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Payment succeeded but booking failed — contact support with your payment ID.");
-          } finally {
-            setSubmitting(false);
-          }
-        },
-        modal: {
-          ondismiss: () => setSubmitting(false),
-        },
-      });
-      rzp.open();
-      return;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not book this session.");
-      setSubmitting(false);
-    }
-  }
-
-  const isGroup = offering.capacity > 1;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="clay w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold text-foreground">Confirm booking</h3>
-          <button onClick={onClose} className="text-foreground/40 hover:text-foreground/70">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="clay-inset mb-4 rounded-2xl p-4">
-          <p className="font-semibold text-foreground">{offering.title}</p>
-          <p className="text-sm text-foreground/60">with {offering.mentorName}</p>
-          <p className="mt-1 text-sm text-foreground/60">
-            {new Date(slot.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" })} · {slot.startTime} · {slot.durationMinutes} min
-          </p>
-          {isGroup && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-foreground/50">
-              <Users className="h-3.5 w-3.5" />
-              Group session — {slot.seatsRemaining} of {slot.capacity} seats left
-            </p>
+        <div className="mt-auto pt-4">
+          {mine ? (
+            <Link to="/my-sessions" className="flex min-h-11 items-center gap-2 rounded-2xl bg-emerald-50 px-3.5 text-sm font-bold text-emerald-900">
+              <CircleCheck className="h-4 w-4 shrink-0" />
+              <span className="truncate">You're booked · {formatSlot(mine.date, mine.startTime)}</span>
+            </Link>
+          ) : (
+            <>
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <p className="text-sm font-bold">{dayFiltered ? relativeDay(next.date) : `Next: ${formatSlot(next.date, next.startTime)}`}</p>
+                {seats && <span className={`text-xs font-bold ${seats.urgent ? "text-amber-700" : "text-muted-foreground"}`}>{seats.text}</span>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {preview.map((s) => (
+                  <button
+                    key={`${s.date}-${s.startTime}`}
+                    type="button"
+                    onClick={() => onPick(s)}
+                    className="min-h-10 rounded-full border border-border px-3.5 text-sm font-bold tabular-nums transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                  >
+                    {dayFiltered ? formatTime12(s.startTime) : `${relativeDay(s.date).replace(/^\w+, /, "")} · ${formatTime12(s.startTime)}`}
+                  </button>
+                ))}
+                <Link to="/mentor-session/$offeringId" params={{ offeringId: offering.id }} className="ml-auto inline-flex min-h-10 items-center gap-1 text-xs font-bold text-primary hover:underline">
+                  {slots.length > preview.length ? `+${slots.length - preview.length} more` : "Details"}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </>
           )}
-          <p className="mt-2 font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
         </div>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="What would you like to discuss? (optional)"
-          rows={2}
-          className="clay-inset mb-3 w-full rounded-2xl px-4 py-2.5 text-sm focus:outline-none"
-        />
-        {error && <p className="mb-2 text-xs font-medium text-rose-600">{error}</p>}
-        <button
-          onClick={handleConfirm}
-          disabled={submitting}
-          className="clay-btn inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-bold disabled:opacity-50"
-        >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {offering.isFree ? "Confirm booking" : "Pay & confirm"}
-        </button>
       </div>
-    </div>
+    </article>
   );
 }

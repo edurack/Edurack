@@ -6,6 +6,8 @@ import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
 import { expandOfferingToSlots } from "@/lib/session-slots";
 import type { MentorSessionOffering, OpenSlot, PublicMentorOffering } from "@/lib/session-types";
+import { cancelBookings, type BookingRow } from "@/lib/session-cancel";
+import { cancellationPolicy, istDateString, slotStart } from "@/lib/session-time";
 
 async function verifyFirebaseToken(token: string) {
   return adminAuth.verifyIdToken(token);
@@ -118,12 +120,56 @@ export const listMyBookedSessions = createServerFn({ method: "GET" })
     const student = await verifyFirebaseToken(data.token);
     const { data: rows, error } = await supabase
       .from("mentor_session_bookings")
-      .select("*, mentor_session_offerings(title)")
+      .select("*, mentor_session_offerings(title, thumbnail_url)")
       .eq("student_uid", student.uid)
       .order("session_date", { ascending: true })
       .order("start_time", { ascending: true });
     if (error) throw new Error(error.message);
-    return { bookings: rows ?? [] };
+
+    // Same raw row shape as before (dashboard/profile read it), plus who the
+    // session is with — My Sessions used to show a title and nothing else.
+    const mentorIds = Array.from(new Set((rows ?? []).map((r: any) => r.mentor_id as string)));
+    const mentorInfo = await lookupMentorPublicInfo(mentorIds).catch(() => ({}) as Record<string, { name: string; photoUrl: string | null }>);
+    return {
+      bookings: (rows ?? []).map((r: any) => ({
+        ...r,
+        mentor_name: mentorInfo[r.mentor_id]?.name ?? "Your mentor",
+        mentor_photo_url: mentorInfo[r.mentor_id]?.photoUrl ?? null,
+      })),
+    };
+  });
+
+// Student-initiated cancellation. Applies the policy in lib/session-time.ts:
+// 24h+ out and paid -> automatic full refund; closer in -> seat is released
+// but no automatic refund; already started -> not allowed. (The old UI told
+// students to "cancel from My Sessions" but no such button or function
+// existed, and a booked offering stayed locked to them permanently.)
+export const cancelMyBooking = createServerFn({ method: "POST" })
+  .validator((d: { token: string; bookingId: string }) => d)
+  .handler(async ({ data }) => {
+    const student = await verifyFirebaseToken(data.token);
+    const { data: row, error } = await supabase
+      .from("mentor_session_bookings")
+      .select("*, mentor_session_offerings(title)")
+      .eq("id", data.bookingId)
+      .eq("student_uid", student.uid) // ownership
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("We couldn't find that booking.");
+    if (row.status !== "upcoming") throw new Error("This booking has already been cancelled or completed.");
+
+    const isPaid = row.payment_status === "paid" && Number(row.price) > 0;
+    const policy = cancellationPolicy(slotStart(row.session_date, row.start_time), isPaid);
+    if (!policy.canCancel) throw new Error(policy.detail);
+
+    const result = await cancelBookings([row as BookingRow], {
+      by: "student",
+      refund: policy.refund === "full",
+      strict: true,
+      offeringTitle: row.mentor_session_offerings?.title ?? "Session",
+    });
+    if (result.cancelled === 0) throw new Error("This booking has already been cancelled.");
+    return { ok: true as const, refunded: result.refunded > 0, policy: policy.refund };
   });
 
 // ─── Premium session detail page ────────────────────────────────────────
@@ -141,9 +187,10 @@ export const listMyBookedSessions = createServerFn({ method: "GET" })
 export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
   .validator((d: { token?: string; offeringId: string }) => d)
   .handler(async ({ data }) => {
+    let viewerUid: string | null = null;
     if (data.token) {
       try {
-        await verifyFirebaseToken(data.token);
+        viewerUid = (await verifyFirebaseToken(data.token)).uid;
       } catch {
         // ignore — treat as an anonymous view rather than erroring
       }
@@ -186,7 +233,14 @@ export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
       aiimsIitRank: (mentorDoc?.aiimsIitRank as string) ?? "",
       enrolledCollege: (mentorDoc?.enrolledCollege as string) ?? "",
       pursuedCourse: (mentorDoc?.pursuedCourse as string) ?? "",
-      expertAt: (mentorDoc?.expertAt as string) ?? "",
+      // Stored as a list for some mentors and a comma-separated string for
+      // others; the page now always gets a list (it used to call .join() on
+      // whatever it got).
+      expertAt: Array.isArray(mentorDoc?.expertAt)
+        ? (mentorDoc?.expertAt as unknown[]).map(String).filter(Boolean)
+        : typeof mentorDoc?.expertAt === "string"
+          ? (mentorDoc.expertAt as string).split(",").map((t) => t.trim()).filter(Boolean)
+          : [],
       whyExpertAt: (mentorDoc?.whyExpertAt as string) ?? "",
       scoreType: (mentorDoc?.scoreType as "rank" | "percentile" | "score" | null) ?? null,
       scoreValue: (mentorDoc?.scoreValue as string) ?? "",
@@ -210,7 +264,22 @@ export const getMentorSessionOfferingDetail = createServerFn({ method: "GET" })
 
     const publicOffering: PublicMentorOffering = { ...offering, mentorName: mentorBio.name, mentorPhotoUrl: mentorBio.photoUrl };
 
-    return { offering: publicOffering, mentorBio, slots, otherOfferings };
+    let myBooking: { id: string; sessionDate: string; startTime: string; meetingLink: string | null } | null = null;
+    if (viewerUid) {
+      const { data: mine } = await supabase
+        .from("mentor_session_bookings")
+        .select("id, session_date, start_time, meeting_link")
+        .eq("offering_id", offering.id)
+        .eq("student_uid", viewerUid)
+        .eq("status", "upcoming")
+        .gte("session_date", istDateString())
+        .order("session_date", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (mine) myBooking = { id: mine.id, sessionDate: mine.session_date, startTime: mine.start_time, meetingLink: mine.meeting_link ?? null };
+    }
+
+    return { offering: publicOffering, mentorBio, slots, otherOfferings, myBooking };
   });
 
 // ─── Public landing-page listing ────────────────────────────────────────

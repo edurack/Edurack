@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
+import { slotStart, formatTime12 } from "@/lib/session-time";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   IconLoader2 as Loader2,
@@ -116,7 +117,7 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-const slotDate = (r: BookingRow) => new Date(`${r.session_date}T${r.start_time}:00`);
+const slotDate = (r: BookingRow) => slotStart(r.session_date, r.start_time);
 
 function SectionCard({
   icon: Icon,
@@ -391,7 +392,7 @@ function ProfilePage() {
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Clock className="h-4 w-4" /></div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">{b.mentor_session_offerings?.title ?? "Mentor session"}</p>
-                    <p className="truncate text-xs text-foreground/50">{slotDate(b).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · {b.start_time} · {b.is_free ? "Free" : "Paid"}</p>
+                    <p className="truncate text-xs text-foreground/50">{slotDate(b).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })} · {formatTime12(b.start_time)} IST · {b.is_free ? "Free" : "Paid"}</p>
                   </div>
                   {b.meeting_link && <a href={b.meeting_link} target="_blank" rel="noreferrer" className="clay-btn-ghost inline-flex min-h-9 shrink-0 items-center gap-1.5 px-3 text-xs"><LinkIcon className="h-3.5 w-3.5" />Join</a>}
                 </li>

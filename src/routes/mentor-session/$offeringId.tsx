@@ -4,20 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import {
   IconLoader2 as Loader2,
   IconClock as Clock,
-  IconUsers as UsersIcon,
   IconArrowLeft as ArrowLeft,
   IconSchool as GraduationCap,
   IconTrophy as Trophy,
-  IconCalendarTime as CalendarTime,
-  IconSparkles as Sparkles,
   IconArrowRight as ArrowRight,
   IconLogin as LogIn,
+  IconCircleCheck as CircleCheck,
+  IconCalendarEvent as CalendarEvent,
 } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { getMentorSessionOfferingDetail } from "@/server-functions/student-sessions";
-import { BookingDialog } from "@/components/student-open-sessions-module";
+import { BookingDialog } from "@/components/sessions/booking-dialog";
+import { SlotPicker } from "@/components/sessions/slot-picker";
+import { FormatBadge, MentorAvatar, SessionCover, formatLabel, priceLabel, seatsNote } from "@/components/sessions/session-ui";
 import { AppHeader } from "@/components/app-header";
-import { isUnlimitedOffering, describeSchedule, type MentorBioForOffering, type OpenSlot, type OtherOfferingSummary, type PublicMentorOffering } from "@/lib/session-types";
+import { SESSION_FREE_CANCEL_HOURS, formatDateLong, formatSlot, formatTimeRange } from "@/lib/session-time";
+import { describeSchedule, type MentorBioForOffering, type OpenSlot, type OtherOfferingSummary, type PublicMentorOffering } from "@/lib/session-types";
 
 export const Route = createFileRoute("/mentor-session/$offeringId")({
   loader: async ({ params }) => {
@@ -63,47 +65,35 @@ export const Route = createFileRoute("/mentor-session/$offeringId")({
   component: MentorSessionDetailPage,
 });
 
-const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
-const PINK_SOFT = "var(--pink-soft, #FCE7F3)";
-const PINK_DEEP = "var(--pink-deep, #BE185D)";
-
 type DetailData = {
   offering: PublicMentorOffering;
   mentorBio: MentorBioForOffering;
   slots: OpenSlot[];
   otherOfferings: OtherOfferingSummary[];
+  myBooking: { id: string; sessionDate: string; startTime: string; meetingLink: string | null } | null;
 };
 
 // This page is intentionally public — a logged-out visitor (from the
 // landing page, or a shared link) can read the full offering, the
-// mentor's bio, and every open slot without signing in. Only clicking
-// "Book" is gated behind auth (see handleBookClick below), since booking
-// itself needs a Firebase token (payments.ts).
-//
-// INTEGRATION NOTE: the redirect-back-after-login below sends the visitor
-// to `/auth?redirect=/mentor-session/<id>`. This only actually returns
-// them here if auth.tsx reads that `redirect` search param after a
-// successful sign-in and navigates there — if your /auth route doesn't
-// already support a redirect param, it'll just land them on your default
-// post-login page, and they'll need to click into this session again.
-// Wire that up: after firebaseSignIn/firebaseSignUp/googleAuth resolves,
-// use the `redirect` search param instead of the current
-// navigate({ to: "/dashboard" }) fallback when it's present.
+// mentor's bio, and every open slot without signing in. Only the final
+// "Book" step needs an account, and it sends them back here afterwards
+// (auth.tsx honours the `redirect` search param).
 function MentorSessionDetailPage() {
   const { offeringId } = Route.useParams();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<DetailData | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selected, setSelected] = useState<OpenSlot | null>(null);
   const [booking, setBooking] = useState<OpenSlot | null>(null);
 
   async function load() {
     setStatus("loading");
     try {
       const token = user ? await user.getIdToken() : undefined;
-      const result = await getMentorSessionOfferingDetail({ data: { token, offeringId } });
-      setData(result as DetailData);
+      const result = (await getMentorSessionOfferingDetail({ data: { token, offeringId } })) as DetailData;
+      setData(result);
+      setSelected((prev) => result.slots.find((s) => prev && s.date === prev.date && s.startTime === prev.startTime) ?? result.slots[0] ?? null);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -116,27 +106,13 @@ function MentorSessionDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, offeringId]);
 
-  const dateGroups = useMemo(() => {
-    if (!data) return [];
-    const byDate = new Map<string, OpenSlot[]>();
-    for (const s of data.slots) {
-      const arr = byDate.get(s.date) ?? [];
-      arr.push(s);
-      byDate.set(s.date, arr);
-    }
-    return Array.from(byDate.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [data]);
-
-  useEffect(() => {
-    if (dateGroups.length > 0 && !selectedDate) setSelectedDate(dateGroups[0][0]);
-  }, [dateGroups, selectedDate]);
-
-  function handleBookClick(slot: OpenSlot) {
+  function handleBook() {
+    if (!selected) return;
     if (!user) {
       navigate({ to: "/auth", search: { redirect: `/mentor-session/${offeringId}` } as any });
       return;
     }
-    setBooking(slot);
+    setBooking(selected);
   }
 
   if (loading) {
@@ -148,31 +124,29 @@ function MentorSessionDetailPage() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} />}
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        <Link to={user ? "/dashboard" : "/"} className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground/60 hover:text-foreground">
+      <main className="mx-auto max-w-5xl px-4 pb-32 pt-4 sm:px-6 lg:pb-16">
+        <Link to={user ? "/dashboard" : "/"} className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
           {user ? "Back to dashboard" : "Back to home"}
         </Link>
 
         {status === "loading" ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
+          <div className="space-y-4">
+            <div className="aspect-[16/8] animate-pulse rounded-3xl bg-secondary" />
+            <div className="h-40 animate-pulse rounded-3xl bg-secondary" />
           </div>
         ) : status === "error" || !data ? (
-          <div className="clay p-10 text-center">
-            <p className="text-sm text-foreground/60">This session isn't available — it may have been paused or removed.</p>
+          <div className="rounded-3xl border border-dashed border-border p-12 text-center">
+            <p className="font-semibold">This session isn't available</p>
+            <p className="mt-1 text-sm text-muted-foreground">It may have been paused or removed by the mentor.</p>
+            <Link to={user ? "/dashboard" : "/"} className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
+              Browse other sessions
+            </Link>
           </div>
         ) : (
-          <SessionDetail
-            data={data}
-            dateGroups={dateGroups}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-            onPickSlot={handleBookClick}
-            isSignedIn={Boolean(user)}
-          />
+          <SessionDetail data={data} selected={selected} onSelect={setSelected} onBook={handleBook} isSignedIn={Boolean(user)} />
         )}
       </main>
 
@@ -180,6 +154,7 @@ function MentorSessionDetailPage() {
         <BookingDialog
           offering={data.offering}
           slot={booking}
+          slots={data.slots}
           getToken={() => user.getIdToken()}
           onClose={() => setBooking(null)}
           onBooked={() => {
@@ -192,233 +167,242 @@ function MentorSessionDetailPage() {
   );
 }
 
-// Minimal fallback header for logged-out visitors — doesn't assume
-// AppHeader gracefully handles a null user (it may require one). Swap
-// this for whatever your actual public/marketing header component is if
-// you already have one, rather than keeping this bare-bones version.
+// Minimal fallback header for logged-out visitors.
 function PublicHeader({ offeringId }: { offeringId: string }) {
   return (
-    <header className="clay-sm sticky top-0 z-20 mx-3 mt-3 flex items-center justify-between px-4 py-3 sm:mx-6">
-      <Link to="/" className="font-display text-sm font-bold text-foreground">
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+      <Link to="/" className="font-display text-base font-extrabold tracking-tight text-foreground">
         Edurack
       </Link>
       <Link
         to="/auth"
         search={{ redirect: `/mentor-session/${offeringId}` } as any}
-        className="clay-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold text-white"
+        className="clay-btn inline-flex min-h-10 items-center gap-1.5 px-5 text-sm"
       >
-        <LogIn className="h-3.5 w-3.5" />
+        <LogIn className="h-4 w-4" />
         Sign in
       </Link>
     </header>
   );
 }
 
-function SessionDetail({
-  data,
-  dateGroups,
-  selectedDate,
-  onSelectDate,
-  onPickSlot,
-  isSignedIn,
-}: {
-  data: DetailData;
-  dateGroups: [string, OpenSlot[]][];
-  selectedDate: string | null;
-  onSelectDate: (d: string) => void;
-  onPickSlot: (s: OpenSlot) => void;
-  isSignedIn: boolean;
-}) {
-  const { offering, mentorBio, otherOfferings } = data;
-  const unlimited = isUnlimitedOffering(offering);
-  const isGroup = offering.capacity > 1 && !unlimited;
-  const slotsForSelectedDate = dateGroups.find(([d]) => d === selectedDate)?.[1] ?? [];
-
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
-      <div className="space-y-6">
-        {/* Hero */}
-        <div className="clay overflow-hidden">
-          <div
-            className={`relative flex items-center justify-center ${offering.posterUrl ? "py-6" : "h-56 sm:h-72"}`}
-            style={{ background: `linear-gradient(135deg, ${PINK_SOFT}, var(--sky-soft))` }}
-          >
-            {offering.posterUrl ? (
-              <img src={offering.posterUrl} alt={offering.title} className="aspect-[4/5] w-full max-w-xs rounded-2xl object-cover shadow-lg sm:max-w-sm" />
-            ) : offering.thumbnailUrl || offering.mentorPhotoUrl ? (
-              <img src={offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? undefined} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <Sparkles className="h-14 w-14 opacity-40" style={{ color: PINK_DEEP }} strokeWidth={1.5} />
-            )}
-            {offering.subject && (
-              <span className="absolute left-4 top-4 rounded-full bg-background/90 px-3 py-1.5 text-xs font-bold text-foreground/80 shadow-sm">
-                {offering.subject}
-              </span>
-            )}
-            {(isGroup || unlimited) && (
-              <span className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-background/90 px-3 py-1.5 text-xs font-bold text-foreground/80 shadow-sm">
-                <UsersIcon className="h-3.5 w-3.5" />
-                {unlimited ? "Open to everyone" : "Group session"}
-              </span>
-            )}
-          </div>
-          <div className="p-5 sm:p-6">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{offering.title}</h1>
-            <div className="mt-2 flex items-center gap-2">
-              {mentorBio.photoUrl ? (
-                <img src={mentorBio.photoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
-              ) : (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold" style={{ background: PINK_SOFT, color: PINK_DEEP }}>
-                  {mentorBio.name.charAt(0)}
-                </div>
-              )}
-              <span className="text-sm font-semibold text-foreground/70">{mentorBio.name}</span>
-              {mentorBio.yearOfStudy && <span className="text-xs text-foreground/40">· {mentorBio.yearOfStudy}</span>}
-            </div>
-            <p className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-foreground/60">
-              <Clock className="h-4 w-4 shrink-0 text-foreground/40" />
-              {describeSchedule(offering)}
-            </p>
-            {offering.description && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-foreground/70">{offering.description}</p>}
-          </div>
-        </div>
-
-        {/* About the mentor */}
-        <div className="clay p-5 sm:p-6">
-          <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-foreground">
-            <GraduationCap className="h-5 w-5 text-foreground/40" />
-            About {mentorBio.name.split(" ")[0]}
-          </h2>
-          {mentorBio.aboutText && <p className="mb-4 whitespace-pre-line text-sm leading-6 text-foreground/70">{mentorBio.aboutText}</p>}
-          <div className="flex flex-wrap gap-2">
-            {mentorBio.aiimsIitRank && <InfoChip label="Rank" value={mentorBio.aiimsIitRank} />}
-            {mentorBio.enrolledCollege && <InfoChip label="College" value={mentorBio.enrolledCollege} />}
-            {mentorBio.pursuedCourse && <InfoChip label="Course" value={mentorBio.pursuedCourse} />}
-          </div>
-          {mentorBio.expertAt.length > 0 && (
-            <div className="clay-inset mt-4 flex items-start gap-3 rounded-2xl p-4">
-              <Trophy className="mt-0.5 h-5 w-5 shrink-0" style={{ color: PINK_DEEP }} />
-              <div>
-                <p className="text-sm font-bold text-foreground">Expert at {mentorBio.expertAt.join(", ")}</p>
-                {mentorBio.whyExpertAt && <p className="mt-1 text-xs text-foreground/60">{mentorBio.whyExpertAt}</p>}
-                {mentorBio.scoreType && mentorBio.scoreValue && (
-                  <p className="mt-1 text-xs font-semibold text-foreground/50">
-                    {mentorBio.scoreType === "rank" ? "Rank" : mentorBio.scoreType === "percentile" ? "Percentile" : "Score"}: {mentorBio.scoreValue}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Full slot calendar */}
-        <div className="clay p-5 sm:p-6">
-          <h2 className="mb-4 flex items-center gap-2 font-display text-lg font-bold text-foreground">
-            <CalendarTime className="h-5 w-5 text-foreground/40" />
-            Choose a time
-          </h2>
-          {!isSignedIn && (
-            <p className="mb-4 rounded-2xl bg-[var(--sky-soft)] px-4 py-2.5 text-xs font-semibold text-foreground/70">
-              Sign in to book — picking a time below will take you to a quick sign-in first.
-            </p>
-          )}
-          {dateGroups.length === 0 ? (
-            <p className="text-sm text-foreground/60">No open slots right now — check back soon.</p>
-          ) : (
-            <>
-              <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {dateGroups.map(([d]) => {
-                  const active = d === selectedDate;
-                  const date = new Date(d);
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => onSelectDate(d)}
-                      className={`flex shrink-0 flex-col items-center rounded-2xl px-3.5 py-2 text-xs font-bold transition-all ${
-                        active ? "clay-btn text-white" : "clay-chip text-foreground/70"
-                      }`}
-                      style={active ? { background: PINK_DEEP } : undefined}
-                    >
-                      <span>{date.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" })}</span>
-                      <span className="text-[10px] font-normal opacity-80">{date.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {slotsForSelectedDate.map((s) => (
-                  <button
-                    key={s.startTime}
-                    onClick={() => onPickSlot(s)}
-                    className="clay-chip flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-foreground/80 transition-colors hover:bg-foreground/5"
-                  >
-                    <Clock className="h-3.5 w-3.5 text-foreground/40" />
-                    {s.startTime}
-                    {isGroup && <span className="text-[11px] font-normal text-foreground/40">· {s.seatsRemaining} left</span>}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* More with this mentor */}
-        {otherOfferings.length > 0 && (
-          <div className="clay p-5 sm:p-6">
-            <h2 className="mb-4 font-display text-lg font-bold text-foreground">More sessions with {mentorBio.name.split(" ")[0]}</h2>
-            <div className="space-y-2">
-              {otherOfferings.map((o) => (
-                <Link
-                  key={o.id}
-                  to="/mentor-session/$offeringId"
-                  params={{ offeringId: o.id }}
-                  className="clay-inset flex items-center justify-between gap-3 rounded-2xl px-4 py-3 transition-colors hover:bg-foreground/5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{o.title}</p>
-                    <p className="text-xs text-foreground/50">{o.durationMinutes} min</p>
-                  </div>
-                  <span className="shrink-0 text-sm font-bold text-foreground/70">{o.isFree ? "Free" : currency.format(o.price)}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-foreground/30" />
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Sticky pricing / booking sidebar */}
-      <div className="lg:sticky lg:top-6 lg:self-start">
-        <div className="clay p-5">
-          <p className="font-display text-2xl font-bold text-foreground">{offering.isFree ? "Free" : currency.format(offering.price)}</p>
-          <p className="mt-1 text-xs text-foreground/50">{offering.durationMinutes} min · {isGroup ? `up to ${offering.capacity} students` : "1:1 with mentor"}</p>
-
-          {dateGroups.length > 0 ? (
-            <button
-              onClick={() => onPickSlot(dateGroups.find(([d]) => d === selectedDate)?.[1][0] ?? dateGroups[0][1][0])}
-              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-3 text-sm font-bold text-white transition-transform"
-              style={{ background: PINK_DEEP }}
-            >
-              {offering.isFree ? "Book free session" : "Book now"}
-              <ArrowRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <p className="mt-4 rounded-2xl bg-foreground/5 px-4 py-3 text-center text-xs text-foreground/50">No open slots right now</p>
-          )}
-
-          <p className="mt-3 text-center text-[11px] text-foreground/40">
-            {isSignedIn ? "Pick your exact time above — this books the first open slot for a quick start." : "You'll sign in first, then land right back here to finish booking."}
-          </p>
-        </div>
-      </div>
+    <div className="rounded-2xl bg-secondary px-3.5 py-3">
+      <p className="text-[11px] font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm font-bold leading-snug">{value}</p>
     </div>
   );
 }
 
-function InfoChip({ label, value }: { label: string; value: string }) {
+function SessionDetail({
+  data,
+  selected,
+  onSelect,
+  onBook,
+  isSignedIn,
+}: {
+  data: DetailData;
+  selected: OpenSlot | null;
+  onSelect: (s: OpenSlot) => void;
+  onBook: () => void;
+  isSignedIn: boolean;
+}) {
+  const { offering, mentorBio, otherOfferings, slots, myBooking } = data;
+  const first = mentorBio.name.split(" ")[0];
+  const seats = selected ? seatsNote(offering, selected) : null;
+  const nextLabel = useMemo(() => (slots[0] ? formatSlot(slots[0].date, slots[0].startTime) : "None open"), [slots]);
+  const ctaLabel = !isSignedIn ? "Sign in to book" : offering.isFree ? "Book free session" : `Book for ${priceLabel(offering)}`;
+
+  const bookingPanel = (
+    <div className="rounded-3xl border border-border bg-card p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-display text-3xl font-extrabold tracking-tight">{priceLabel(offering)}</p>
+        <span className="text-xs font-semibold text-muted-foreground">
+          {offering.durationMinutes} min · {formatLabel(offering)}
+        </span>
+      </div>
+
+      {myBooking ? (
+        <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-emerald-900">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <CircleCheck className="h-4 w-4" />
+            You're booked
+          </p>
+          <p className="mt-1 text-sm">{formatSlot(myBooking.sessionDate, myBooking.startTime)}</p>
+          <Link to="/my-sessions" className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-full bg-emerald-900 px-4 text-xs font-bold text-white">
+            <CalendarEvent className="h-3.5 w-3.5" />
+            Manage in My Sessions
+          </Link>
+        </div>
+      ) : selected ? (
+        <>
+          <div className="mt-4 rounded-2xl bg-secondary px-4 py-3">
+            <p className="text-sm font-bold">{formatDateLong(selected.date)}</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Clock className="h-3.5 w-3.5" />
+              {formatTimeRange(selected.startTime, selected.durationMinutes)} IST
+            </p>
+            {seats && <p className={`mt-1.5 text-xs font-bold ${seats.urgent ? "text-amber-700" : "text-muted-foreground"}`}>{seats.text}</p>}
+          </div>
+          <button type="button" onClick={onBook} className="clay-btn mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 px-4 text-sm font-bold">
+            {ctaLabel}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </>
+      ) : (
+        <p className="mt-4 rounded-2xl bg-secondary px-4 py-3 text-center text-sm text-muted-foreground">No open times right now. Check back soon.</p>
+      )}
+
+      <ul className="mt-4 space-y-1.5 text-xs text-muted-foreground">
+        <li className="flex gap-2">
+          <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          {offering.isFree ? "Cancel any time before it starts" : `Full refund if you cancel ${SESSION_FREE_CANCEL_HOURS}+ hours ahead`}
+        </li>
+        <li className="flex gap-2">
+          <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+          Meeting link shared before the session, plus a reminder email
+        </li>
+        {!isSignedIn && (
+          <li className="flex gap-2">
+            <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            You'll sign in first, then come straight back here
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+
   return (
-    <span className="clay-chip rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/70">
-      <span className="text-foreground/40">{label}:</span> {value}
+    <>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-6">
+          {/* Hero */}
+          <section className="overflow-hidden rounded-3xl border border-border bg-card">
+            <div className="relative">
+              <SessionCover offering={offering} className="aspect-[16/9] w-full sm:aspect-[16/8]" />
+              <div className="absolute left-4 top-4 flex gap-2">
+                {offering.subject && <span className="rounded-full bg-background/95 px-3 py-1.5 text-xs font-bold text-primary">{offering.subject}</span>}
+              </div>
+              <FormatBadge offering={offering} className="absolute right-4 top-4 !px-3 !py-1.5 !text-xs" />
+            </div>
+            <div className="p-5 sm:p-7">
+              <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-balance sm:text-4xl">{offering.title}</h1>
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="flex items-center gap-2">
+                  <MentorAvatar name={mentorBio.name} photoUrl={mentorBio.photoUrl} size={32} />
+                  <span className="text-sm font-bold">{mentorBio.name}</span>
+                </span>
+                {mentorBio.yearOfStudy && <span className="text-sm text-muted-foreground">{mentorBio.yearOfStudy}</span>}
+                {mentorBio.aiimsIitRank && <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-bold">{mentorBio.aiimsIitRank}</span>}
+              </div>
+
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Fact label="Duration" value={`${offering.durationMinutes} minutes`} />
+                <Fact label="Format" value={formatLabel(offering)} />
+                <Fact label="Next open" value={nextLabel} />
+                <Fact label="Repeats" value={describeSchedule(offering).replace(/ · .*$/, "")} />
+              </div>
+
+              {offering.description && (
+                <div className="mt-6">
+                  <h2 className="font-display text-lg font-bold">What you'll cover</h2>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-7 text-foreground/75">{offering.description}</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Pick a time */}
+          <section className="rounded-3xl border border-border bg-card p-5 sm:p-7">
+            <h2 className="font-display text-lg font-bold">Pick a time</h2>
+            <p className="mb-4 mt-0.5 text-sm text-muted-foreground">
+              {offering.capacity > 1 && offering.capacity < 200 ? `Group session — up to ${offering.capacity} students per slot.` : "Choose a day, then a time that suits you."}
+            </p>
+            <SlotPicker slots={slots} selected={selected} onSelect={onSelect} showSeats />
+          </section>
+
+          {/* About the mentor */}
+          <section className="rounded-3xl border border-border bg-card p-5 sm:p-7">
+            <h2 className="flex items-center gap-2 font-display text-lg font-bold">
+              <GraduationCap className="h-5 w-5 text-muted-foreground" />
+              About {first}
+            </h2>
+            {mentorBio.aboutText && <p className="mt-3 whitespace-pre-line text-sm leading-7 text-foreground/75">{mentorBio.aboutText}</p>}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {mentorBio.enrolledCollege && <Chip label="College" value={mentorBio.enrolledCollege} />}
+              {mentorBio.pursuedCourse && <Chip label="Course" value={mentorBio.pursuedCourse} />}
+              {mentorBio.scoreType && mentorBio.scoreValue && (
+                <Chip label={mentorBio.scoreType === "rank" ? "Rank" : mentorBio.scoreType === "percentile" ? "Percentile" : "Score"} value={mentorBio.scoreValue} />
+              )}
+            </div>
+            {mentorBio.expertAt.length > 0 && (
+              <div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-4">
+                <Trophy className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                <div>
+                  <p className="text-sm font-bold">Strongest at {mentorBio.expertAt.join(", ")}</p>
+                  {mentorBio.whyExpertAt && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{mentorBio.whyExpertAt}</p>}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* More with this mentor */}
+          {otherOfferings.length > 0 && (
+            <section className="rounded-3xl border border-border bg-card p-5 sm:p-7">
+              <h2 className="font-display text-lg font-bold">More with {first}</h2>
+              <ul className="mt-3 space-y-2">
+                {otherOfferings.map((o) => (
+                  <li key={o.id}>
+                    <Link
+                      to="/mentor-session/$offeringId"
+                      params={{ offeringId: o.id }}
+                      className="flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-border px-4 py-2.5 transition-colors hover:border-foreground/40"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold">{o.title}</span>
+                        <span className="block text-xs text-muted-foreground">{o.durationMinutes} min</span>
+                      </span>
+                      <span className="shrink-0 text-sm font-extrabold">{priceLabel(o)}</span>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        {/* Desktop sticky booking card */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-6">{bookingPanel}</div>
+        </aside>
+      </div>
+
+      {/* Mobile: booking card sits inline above the fold of the page end + a sticky action bar */}
+      <div className="mt-6 lg:hidden">{bookingPanel}</div>
+      {!myBooking && selected && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-5xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold">{priceLabel(offering)}</p>
+              <p className="truncate text-xs text-muted-foreground">{formatSlot(selected.date, selected.startTime)}</p>
+            </div>
+            <button type="button" onClick={onBook} className="clay-btn inline-flex min-h-11 shrink-0 items-center gap-2 px-6 text-sm font-bold">
+              {isSignedIn ? (offering.isFree ? "Book free" : "Book now") : "Sign in to book"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Chip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold">
+      <span className="text-muted-foreground">{label}:</span> {value}
     </span>
   );
 }

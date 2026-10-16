@@ -201,7 +201,7 @@ export type MentorBioForOffering = {
   aiimsIitRank: string;
   enrolledCollege: string;
   pursuedCourse: string;
-  expertAt: string;
+  expertAt: string[];
   whyExpertAt: string;
   scoreType: "rank" | "percentile" | "score" | null;
   scoreValue: string;
@@ -220,4 +220,6 @@ export type MentorSessionOfferingDetail = {
   mentorBio: MentorBioForOffering;
   slots: OpenSlot[]; // full window, not the capped preview used elsewhere
   otherOfferings: OtherOfferingSummary[]; // other active offerings by the same mentor
+  // The signed-in student's upcoming booking on this offering, if any (null when logged out).
+  myBooking: { id: string; sessionDate: string; startTime: string; meetingLink: string | null } | null;
 };

@@ -11,12 +11,11 @@ import { OutreachModule } from "@/components/admin/outreach-module";
 import { TeamModule } from "@/components/admin/team-module";
 import { getTeamOverview } from "@/server-functions/team";
 import { GrowthHubModule } from "@/components/admin/growth-hub-module";
-import { ResourcesModule } from "@/components/admin/resources-module";
-import { IconDownload as DownloadIcon } from "@tabler/icons-react";
 import { IconTrendingUp as TrendingUpIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
-import { adminSignOutUser } from "@/lib/admin-auth-client";import {
+import { adminSignOutUser } from "@/lib/admin-auth-client";
+import { installAdminFetchGuard } from "@/lib/admin-fetch-guard";import {
   getAdminAnalytics,
   listAllPurchasesAdmin, 
   listStudents,
@@ -78,7 +77,6 @@ type ModuleKey =
   | "mentors"
   | "promoters"
   | "blogs" 
-  | "resources"
   | "interns"
   | "reports"
   | "internTrials"
@@ -103,7 +101,6 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "blogs", label: "Blog", icon: FileText },
-      { key: "resources", label: "Free Resources", icon: DownloadIcon as any },
 
 
 
@@ -181,6 +178,9 @@ function AdminDashboardPage() {
   const activeModule: ModuleKey = tab ?? "overview";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  // De-dupe, briefly cache and quietly retry admin data calls.
+  useEffect(() => installAdminFetchGuard(), []);
+
   useEffect(() => {
     if (loading) return;
     if (!adminUser || !isAdmin) {
@@ -191,7 +191,11 @@ function AdminDashboardPage() {
   // Creates/refreshes this person's team profile the moment they land on the dashboard.
   useEffect(() => {
     if (!adminUser || !isAdmin) return;
-    adminUser.getIdToken().then((token) => getTeamOverview({ data: { token } })).catch(() => {});
+    // Deferred so it never competes with the first screen's data.
+    const t = setTimeout(() => {
+      adminUser.getIdToken().then((token) => getTeamOverview({ data: { token } })).catch(() => {});
+    }, 2500);
+    return () => clearTimeout(t);
   }, [adminUser, isAdmin]);
 
   function setActiveModule(key: ModuleKey) {
@@ -233,8 +237,8 @@ function AdminDashboardPage() {
           />
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col md:hidden">
-          <header className="clay-sm sticky top-0 z-20 mx-3 mt-3 flex items-center justify-between px-4 py-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="clay-sm sticky top-0 z-20 mx-3 mt-3 flex items-center justify-between px-4 py-3 md:hidden">
             <div className="flex items-center gap-2">
               <div className="clay flex h-8 w-8 shrink-0 items-center justify-center">
                 <ShieldCheck className="h-4 w-4 text-foreground/70" />
@@ -271,16 +275,12 @@ function AdminDashboardPage() {
             </div>
           )}
 
-          <main className="min-w-0 flex-1 px-4 py-6">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} onNavigate={(k) => setActiveModule(k as ModuleKey)} />
+          <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+            <div className="mx-auto max-w-5xl">
+              <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} onNavigate={(k) => setActiveModule(k as ModuleKey)} />
+            </div>
           </main>
         </div>
-
-        <main className="hidden min-w-0 flex-1 px-8 py-8 md:block">
-          <div className="mx-auto max-w-5xl">
-            <ModuleRouter activeModule={activeModule} adminUser={adminUser} ticketId={ticketId} onNavigate={(k) => setActiveModule(k as ModuleKey)} />
-          </div>
-        </main>
       </div>
     </div>
   );
@@ -400,8 +400,6 @@ function ModuleRouter({
       return <PromoterHubModule adminUser={adminUser} />;
     case "blogs":
       return <BlogHubModule adminUser={adminUser} />;
-    case "resources":
-      return <ResourcesModule adminUser={adminUser} />;
     case "reports":
       return <QuestionReportsModule adminUser={adminUser} />;
     case "interns":
