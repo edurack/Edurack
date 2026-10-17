@@ -29,6 +29,15 @@ import {
   loadProfile,
 } from "@/lib/dashboard-core";
 
+// Per-section wall-clock timing, logged as one JSON line per request so slow
+// sections can be found in Vercel Logs. Durations only — no tokens, uids or data.
+function timed<T>(timings: Record<string, number>, name: string, run: () => Promise<T>): Promise<T> {
+  const t0 = performance.now();
+  return run().finally(() => {
+    timings[name] = Math.round(performance.now() - t0);
+  });
+}
+
 function settled<T>(name: string, r: PromiseSettledResult<T>): T | null {
   if (r.status === "fulfilled") return r.value;
   console.error(`[dashboard-bootstrap] ${name} failed:`, r.reason);
@@ -39,29 +48,34 @@ function settled<T>(name: string, r: PromiseSettledResult<T>): T | null {
 export const getDashboardBootstrap = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
-    const decoded = await adminAuth.verifyIdToken(data.token);
+    const t0 = performance.now();
+    const timings: Record<string, number> = {};
+    const decoded = await timed(timings, "verifyToken", () => adminAuth.verifyIdToken(data.token));
     const uid = decoded.uid;
-    const db = await getDb();
+    const db = await timed(timings, "getDb", () => getDb());
 
-    const profileP = loadProfile(db, uid);
+    const profileP = timed(timings, "profile", () => loadProfile(db, uid));
     // Bundle visibility depends on the student's CUET subjects — reuse the
-    // profile read instead of querying it a second time.
+    // profile read instead of querying it a second time. (Its time includes
+    // waiting for the profile read.)
     const bundlesP = profileP.then(({ profile }) =>
-      listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? [])),
+      timed(timings, "bundles", () => listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? []))),
     );
 
     const [profile, bundles, batches, mentors, soldTests, purchases, sessions, bookings, performance] =
       await Promise.allSettled([
         profileP,
         bundlesP,
-        listMentorshipBatches(db),
-        listMentorDirectory(db),
-        listLiveSoldTests(db),
-        loadMyPurchases(db, uid),
-        loadOpenMentorSessions(),
-        loadMyBookedSessions(uid),
-        loadMyBatchPerformance(db, uid),
+        timed(timings, "batches", () => listMentorshipBatches(db)),
+        timed(timings, "mentors", () => listMentorDirectory(db)),
+        timed(timings, "soldTests", () => listLiveSoldTests(db)),
+        timed(timings, "purchases", () => loadMyPurchases(db, uid)),
+        timed(timings, "sessions", () => loadOpenMentorSessions()),
+        timed(timings, "bookings", () => loadMyBookedSessions(uid)),
+        timed(timings, "performance", () => loadMyBatchPerformance(db, uid)),
       ]);
+
+    console.log(JSON.stringify({ at: "dashboard-bootstrap", totalMs: Math.round(performance.now() - t0), ...timings }));
 
     return {
       profile: settled("profile", profile),

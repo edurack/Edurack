@@ -105,7 +105,11 @@ export const getTestForTaking = createServerFn({ method: "POST" })
     await verifyTestAccess(decoded.uid, source, test);
 
     const [questionDocs, priorAttemptCount] = await Promise.all([
-      db.collection("questions").find({ testId: data.testId }).sort({ subject: 1, questionNo: 1 }).toArray(),
+      db
+        .collection("questions")
+        .find({ testId: data.testId }, { projection: { correctOption: 0, correctAnswer: 0, solution: 0 } })
+        .sort({ subject: 1, questionNo: 1 })
+        .toArray(),
       db.collection("testAttempts").countDocuments({ uid: decoded.uid, testId: data.testId }),
     ]);
 

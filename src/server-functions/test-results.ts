@@ -48,13 +48,15 @@ export const getTestAttempt = createServerFn({ method: "POST" })
     // question text/options/solution — fetch those now (safe to show in
     // full, including the solution, since the test is already submitted).
     const { ObjectId: OID } = await import("mongodb");
-    const questionDocs = await db
-      .collection("questions")
-      .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
-      .toArray();
+    // The question fetch and the attempt-rules fetch don't depend on each other.
+    const [questionDocs, rules] = await Promise.all([
+      db
+        .collection("questions")
+        .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
+        .toArray(),
+      loadAttemptRules(db, attempt.testId as string),
+    ]);
     const questionById = new Map(questionDocs.map((q) => [String(q._id), q]));
-
-    const rules = await loadAttemptRules(db, attempt.testId as string);
     const { optionalSkipped, countedQuestions, optionalCount } = getExcludedQuestions(
       questionResults,
       rules,
@@ -298,7 +300,9 @@ export const getLeaderboard = createServerFn({ method: "POST" })
       ])
       .toArray();
 
-    const uids = bestAttempts.map((r) => r._id as string);
+    // Only the top 20 rows (plus this student) are ever shown with a name, so
+    // look up just those profiles instead of every participant's.
+    const uids = [...new Set([...bestAttempts.slice(0, 20).map((r) => r._id as string), decoded.uid])];
     const profiles = await db
       .collection("profiles")
       .find({ uid: { $in: uids } }, { projection: { uid: 1, fullName: 1 } })

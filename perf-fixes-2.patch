@@ -1,0 +1,119 @@
+diff -ruN a/src/server-functions/dashboard.ts b/src/server-functions/dashboard.ts
+--- a/src/server-functions/dashboard.ts	2026-10-17 05:44:42.722527341 +0000
++++ b/src/server-functions/dashboard.ts	2026-10-17 05:44:42.763823882 +0000
+@@ -29,6 +29,15 @@
+   loadProfile,
+ } from "@/lib/dashboard-core";
+ 
++// Per-section wall-clock timing, logged as one JSON line per request so slow
++// sections can be found in Vercel Logs. Durations only — no tokens, uids or data.
++function timed<T>(timings: Record<string, number>, name: string, run: () => Promise<T>): Promise<T> {
++  const t0 = performance.now();
++  return run().finally(() => {
++    timings[name] = Math.round(performance.now() - t0);
++  });
++}
++
+ function settled<T>(name: string, r: PromiseSettledResult<T>): T | null {
+   if (r.status === "fulfilled") return r.value;
+   console.error(`[dashboard-bootstrap] ${name} failed:`, r.reason);
+@@ -39,30 +48,35 @@
+ export const getDashboardBootstrap = createServerFn({ method: "POST" })
+   .validator((data: { token: string }) => data)
+   .handler(async ({ data }) => {
+-    const decoded = await adminAuth.verifyIdToken(data.token);
++    const t0 = performance.now();
++    const timings: Record<string, number> = {};
++    const decoded = await timed(timings, "verifyToken", () => adminAuth.verifyIdToken(data.token));
+     const uid = decoded.uid;
+-    const db = await getDb();
++    const db = await timed(timings, "getDb", () => getDb());
+ 
+-    const profileP = loadProfile(db, uid);
++    const profileP = timed(timings, "profile", () => loadProfile(db, uid));
+     // Bundle visibility depends on the student's CUET subjects — reuse the
+-    // profile read instead of querying it a second time.
++    // profile read instead of querying it a second time. (Its time includes
++    // waiting for the profile read.)
+     const bundlesP = profileP.then(({ profile }) =>
+-      listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? [])),
++      timed(timings, "bundles", () => listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? []))),
+     );
+ 
+     const [profile, bundles, batches, mentors, soldTests, purchases, sessions, bookings, performance] =
+       await Promise.allSettled([
+         profileP,
+         bundlesP,
+-        listMentorshipBatches(db),
+-        listMentorDirectory(db),
+-        listLiveSoldTests(db),
+-        loadMyPurchases(db, uid),
+-        loadOpenMentorSessions(),
+-        loadMyBookedSessions(uid),
+-        loadMyBatchPerformance(db, uid),
++        timed(timings, "batches", () => listMentorshipBatches(db)),
++        timed(timings, "mentors", () => listMentorDirectory(db)),
++        timed(timings, "soldTests", () => listLiveSoldTests(db)),
++        timed(timings, "purchases", () => loadMyPurchases(db, uid)),
++        timed(timings, "sessions", () => loadOpenMentorSessions()),
++        timed(timings, "bookings", () => loadMyBookedSessions(uid)),
++        timed(timings, "performance", () => loadMyBatchPerformance(db, uid)),
+       ]);
+ 
++    console.log(JSON.stringify({ at: "dashboard-bootstrap", totalMs: Math.round(performance.now() - t0), ...timings }));
++
+     return {
+       profile: settled("profile", profile),
+       bundles: settled("bundles", bundles),
+diff -ruN a/src/server-functions/test-engine.ts b/src/server-functions/test-engine.ts
+--- a/src/server-functions/test-engine.ts	2026-10-17 05:44:42.722488840 +0000
++++ b/src/server-functions/test-engine.ts	2026-10-17 05:44:42.764248326 +0000
+@@ -105,7 +105,11 @@
+     await verifyTestAccess(decoded.uid, source, test);
+ 
+     const [questionDocs, priorAttemptCount] = await Promise.all([
+-      db.collection("questions").find({ testId: data.testId }).sort({ subject: 1, questionNo: 1 }).toArray(),
++      db
++        .collection("questions")
++        .find({ testId: data.testId }, { projection: { correctOption: 0, correctAnswer: 0, solution: 0 } })
++        .sort({ subject: 1, questionNo: 1 })
++        .toArray(),
+       db.collection("testAttempts").countDocuments({ uid: decoded.uid, testId: data.testId }),
+     ]);
+ 
+diff -ruN a/src/server-functions/test-results.ts b/src/server-functions/test-results.ts
+--- a/src/server-functions/test-results.ts	2026-10-17 05:44:42.722506306 +0000
++++ b/src/server-functions/test-results.ts	2026-10-17 05:44:42.764548945 +0000
+@@ -48,13 +48,15 @@
+     // question text/options/solution — fetch those now (safe to show in
+     // full, including the solution, since the test is already submitted).
+     const { ObjectId: OID } = await import("mongodb");
+-    const questionDocs = await db
+-      .collection("questions")
+-      .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
+-      .toArray();
++    // The question fetch and the attempt-rules fetch don't depend on each other.
++    const [questionDocs, rules] = await Promise.all([
++      db
++        .collection("questions")
++        .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
++        .toArray(),
++      loadAttemptRules(db, attempt.testId as string),
++    ]);
+     const questionById = new Map(questionDocs.map((q) => [String(q._id), q]));
+-
+-    const rules = await loadAttemptRules(db, attempt.testId as string);
+     const { optionalSkipped, countedQuestions, optionalCount } = getExcludedQuestions(
+       questionResults,
+       rules,
+@@ -298,7 +300,9 @@
+       ])
+       .toArray();
+ 
+-    const uids = bestAttempts.map((r) => r._id as string);
++    // Only the top 20 rows (plus this student) are ever shown with a name, so
++    // look up just those profiles instead of every participant's.
++    const uids = [...new Set([...bestAttempts.slice(0, 20).map((r) => r._id as string), decoded.uid])];
+     const profiles = await db
+       .collection("profiles")
+       .find({ uid: { $in: uids } }, { projection: { uid: 1, fullName: 1 } })
