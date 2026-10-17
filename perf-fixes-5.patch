@@ -1,0 +1,106 @@
+diff -ruN a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
+--- a/src/routes/dashboard.tsx	2026-10-17 12:01:13.043944522 +0000
++++ b/src/routes/dashboard.tsx	2026-10-17 12:01:13.104323176 +0000
+@@ -8,7 +8,10 @@
+ import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
+ import { useAuth } from "@/lib/auth-context";
+ import { getDashboardBootstrap } from "@/server-functions/dashboard";
+-import { listOpenMentorSessions } from "@/server-functions/student-sessions";
++import { getProfile } from "@/server-functions/profile";
++import { listPublicBundles, listPublicMentorshipBatches, listPublicMentors, listPublicSoldTests } from "@/server-functions/catalog";
++import { getMyPurchases, getMyBatchPerformance } from "@/server-functions/student-data";
++import { listOpenMentorSessions, listMyBookedSessions } from "@/server-functions/student-sessions";
+ import { StudentOpenSessionsModule, BookingDialog } from "@/components/student-open-sessions-module";
+ import { AppHeader } from "@/components/app-header";
+ import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
+@@ -225,18 +228,48 @@
+   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
+ 
+   // One request for the whole dashboard (profile, catalog, purchases, sessions,
+-  // bookings, performance) — see server-functions/dashboard.ts. A section that
+-  // failed server-side comes back null and is left unset / empty here.
++  // bookings, performance) — see server-functions/dashboard.ts. If that request
++  // fails, or a section comes back empty, only the missing sections are fetched
++  // with the individual server functions, so a problem in the combined request
++  // can never leave a page spinning forever. Errors are logged to the console.
+   useEffect(() => {
+     if (!user) return;
+     let cancelled = false;
+     (async () => {
+       try {
+         const token = await user.getIdToken();
+-        const res = await getDashboardBootstrap({ data: { token } });
++
++        let res: any = null;
++        try {
++          res = await getDashboardBootstrap({ data: { token } });
++        } catch (err) {
++          console.error("[dashboard] combined request failed, falling back to per-section requests:", err);
++        }
++        if (cancelled) return;
++
++        const section = async (name: string, have: any, run: () => Promise<any>): Promise<any> => {
++          if (have) return have;
++          try {
++            return await run();
++          } catch (err) {
++            console.error(`[dashboard] ${name} failed:`, err);
++            return null;
++          }
++        };
++        const [profileRes, bundlesRes, batchesRes, mentorsRes, soldTestsRes, purchasesRes, sessionsRes, bookingsRes, performanceRes] = await Promise.all([
++          section("profile", res?.profile, () => getProfile({ data: { token } })),
++          section("bundles", res?.bundles, () => listPublicBundles({ data: { token } })),
++          section("batches", res?.batches, () => listPublicMentorshipBatches({ data: { token } })),
++          section("mentors", res?.mentors, () => listPublicMentors({ data: { token } })),
++          section("soldTests", res?.soldTests, () => listPublicSoldTests({ data: { token } })),
++          section("purchases", res?.purchases, () => getMyPurchases({ data: { token } })),
++          section("sessions", res?.sessions, () => listOpenMentorSessions({ data: { token } })),
++          section("bookings", res?.bookings, () => listMyBookedSessions({ data: { token } })),
++          section("performance", res?.performance, () => getMyBatchPerformance({ data: { token } })),
++        ]);
+         if (cancelled) return;
+ 
+-        const p = res.profile?.profile;
++        const p = profileRes?.profile;
+         if (p) {
+           setProfile({
+             fullName: p.fullName,
+@@ -244,23 +277,24 @@
+             track: (p.track as Track) || "",
+           });
+         }
+-        if (res.bundles) setBundles(res.bundles.bundles as Bundle[]);
+-        if (res.batches) setBatches(res.batches.batches as MentorshipBatch[]);
+-        if (res.mentors) setMentors(res.mentors.mentors as MentorDirectoryEntry[]);
+-        if (res.purchases) {
+-          const purchasedSet = new Set(res.purchases.purchases.map((pu) => `${pu.itemType}:${pu.itemId}`));
++        if (bundlesRes) setBundles(bundlesRes.bundles as Bundle[]);
++        if (batchesRes) setBatches(batchesRes.batches as MentorshipBatch[]);
++        if (mentorsRes) setMentors(mentorsRes.mentors as MentorDirectoryEntry[]);
++        if (purchasesRes) {
++          const purchasedSet = new Set<string>(purchasesRes.purchases.map((pu: { itemType: string; itemId: string }) => `${pu.itemType}:${pu.itemId}`));
+           setPurchasedKeys(purchasedSet);
+-          if (res.soldTests) {
+-            setSoldTests((res.soldTests.tests as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
++          if (soldTestsRes) {
++            setSoldTests((soldTestsRes.tests as Omit<SoldTestEntry, "purchased" | "searchText">[]).map((t) => soldTestToEntry(t, purchasedSet)));
+           }
+         }
+-        if (res.sessions) {
+-          setSessionOfferings(res.sessions.offerings as PublicMentorOffering[]);
+-          setSessionSlots(res.sessions.slotsByOffering as Record<string, OpenSlot[]>);
++        if (sessionsRes) {
++          setSessionOfferings(sessionsRes.offerings as PublicMentorOffering[]);
++          setSessionSlots(sessionsRes.slotsByOffering as Record<string, OpenSlot[]>);
+         }
+-        setBookings((res.bookings?.bookings as BookingRow[] | undefined) ?? []);
+-        setPerf((res.performance?.batches as BatchPerf[] | undefined) ?? []);
+-      } catch {
++        setBookings((bookingsRes?.bookings as BookingRow[] | undefined) ?? []);
++        setPerf((performanceRes?.batches as BatchPerf[] | undefined) ?? []);
++      } catch (err) {
++        console.error("[dashboard] load failed:", err);
+         if (cancelled) return;
+         setBookings([]);
+         setPerf([]);
