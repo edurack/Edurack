@@ -1,6 +1,7 @@
 import { TodayCard, type UpNextInfo } from "@/components/today-card";
 import { PyqHero } from "@/components/dashboard/pyq-hero";
 import { StreakPopup } from "@/components/dashboard/streak-popup";
+import { CompleteProfilePopup } from "@/components/dashboard/complete-profile-popup";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -45,6 +46,8 @@ function resolveExamKey(targetExam: string): ExamKey | null {
 
 type StudentProfile = {
   fullName: string;
+  mobile: string;
+  city: string;
   targetExam: string;
   track: Track;
 };
@@ -273,6 +276,8 @@ function DashboardPage() {
         if (p) {
           setProfile({
             fullName: p.fullName,
+            mobile: p.mobile ?? "",
+            city: p.city ?? "",
             targetExam: p.targetExam || "",
             track: (p.track as Track) || "",
           });
@@ -442,6 +447,10 @@ function DashboardPage() {
     <div className="min-h-screen bg-background">
       <AppHeader user={user} displayName={profile?.fullName} />
       <StreakPopup />
+      <CompleteProfilePopup
+        profile={profile ? { fullName: profile.fullName, mobile: profile.mobile, city: profile.city } : null}
+        onSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } : prev))}
+      />
 
       <div className="mx-auto flex max-w-7xl gap-10 px-4 sm:px-6">
         {/* ── Sidebar (desktop) ─────────────────────────────── */}
