@@ -1,119 +1,222 @@
-diff -ruN a/src/server-functions/dashboard.ts b/src/server-functions/dashboard.ts
---- a/src/server-functions/dashboard.ts	2026-10-17 05:44:42.722527341 +0000
-+++ b/src/server-functions/dashboard.ts	2026-10-17 05:44:42.763823882 +0000
-@@ -29,6 +29,15 @@
-   loadProfile,
- } from "@/lib/dashboard-core";
+diff -ruN a/src/lib/dashboard-core.ts b/src/lib/dashboard-core.ts
+--- a/src/lib/dashboard-core.ts	2026-10-17 06:08:25.825712898 +0000
++++ b/src/lib/dashboard-core.ts	2026-10-17 06:09:03.497361012 +0000
+@@ -17,7 +17,8 @@
+ import { getDb } from "@/lib/mongo";
+ import { supabase } from "@/lib/supabase";
+ import { expandOfferingToSlots } from "@/lib/session-slots";
+-import type { MentorSessionOffering, OpenSlot, PublicMentorOffering } from "@/lib/session-types";
++import { rowToOffering } from "@/lib/session-rows";
++import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
  
-+// Per-section wall-clock timing, logged as one JSON line per request so slow
-+// sections can be found in Vercel Logs. Durations only — no tokens, uids or data.
-+function timed<T>(timings: Record<string, number>, name: string, run: () => Promise<T>): Promise<T> {
-+  const t0 = performance.now();
-+  return run().finally(() => {
-+    timings[name] = Math.round(performance.now() - t0);
-+  });
+ export type Db = Awaited<ReturnType<typeof getDb>>;
+ 
+@@ -344,30 +345,6 @@
+ }
+ 
+ // ─── Mentor sessions (Supabase) ────────────────────────────────────────────
+-export function rowToOffering(row: any): MentorSessionOffering {
+-  return {
+-    id: row.id,
+-    mentorId: row.mentor_id,
+-    title: row.title,
+-    description: row.description ?? "",
+-    durationMinutes: row.duration_minutes,
+-    isFree: row.is_free,
+-    price: Number(row.price),
+-    thumbnailUrl: row.thumbnail_url,
+-    posterUrl: row.poster_url ?? null,
+-    recurringDays: row.recurring_days,
+-    startTimes: row.start_times,
+-    dateRangeStart: row.date_range_start,
+-    dateRangeEnd: row.date_range_end,
+-    isOngoing: row.is_ongoing,
+-    active: row.active,
+-    capacity: row.capacity ?? 1,
+-    subject: row.subject ?? null,
+-    createdAt: row.created_at,
+-    updatedAt: row.updated_at,
+-  };
+-}
+-
+ export async function lookupMentorPublicInfo(mentorIds: string[]): Promise<Record<string, { name: string; photoUrl: string | null }>> {
+   if (mentorIds.length === 0) return {};
+   const { ObjectId } = await import("mongodb");
+diff -ruN a/src/server-functions/payments.ts b/src/server-functions/payments.ts
+--- a/src/server-functions/payments.ts	2026-10-17 06:08:25.829439490 +0000
++++ b/src/server-functions/payments.ts	2026-10-17 06:08:25.880708715 +0000
+@@ -48,6 +48,14 @@
+ // student-sessions.ts). itemId for this type is the offering id.
+ type ItemType = "bundle" | "mentorship" | "mentorTest" | "mentorSession";
+ 
++const ITEM_TYPES: readonly string[] = ["bundle", "mentorship", "mentorTest", "mentorSession"];
++
++// Used as the validator for every function that takes an itemType.
++function checkedItemInput<T extends { itemType: ItemType }>(data: T): T {
++  if (!ITEM_TYPES.includes(data.itemType)) throw new Error("Invalid item type.");
++  return data;
 +}
 +
- function settled<T>(name: string, r: PromiseSettledResult<T>): T | null {
-   if (r.status === "fulfilled") return r.value;
-   console.error(`[dashboard-bootstrap] ${name} failed:`, r.reason);
-@@ -39,30 +48,35 @@
- export const getDashboardBootstrap = createServerFn({ method: "POST" })
-   .validator((data: { token: string }) => data)
+ async function lookupMentorPublicInfo(mentorId: string): Promise<{ name: string; photoUrl: string | null; email: string | null } | null> {
+   const { ObjectId } = await import("mongodb");
+   const db = await getDb();
+@@ -290,46 +298,52 @@
+   }
+ 
+   const mentorInfo = await lookupMentorPublicInfo(offering.mentor_id);
+-  if (mentorInfo?.email) {
+-    try {
+-      await sendMail({
+-        to: mentorInfo.email,
+-        subject: `New booking: ${params.studentName} — ${offering.title}`,
+-        html: sessionBookingNotificationEmailHtml({
+-          mentorName: mentorInfo.name,
+-          studentName: params.studentName,
+-          title: offering.title,
+-          date: params.date,
+-          startTime: params.startTime,
+-        }),
+-      });
+-    } catch (err) {
+-      console.error(`[createSessionBookingRecord] mentor notification email failed for booking=${booking.id}:`, err);
+-    }
+-  }
+-  if (params.studentEmail) {
+-    try {
+-      await sendMail({
+-        to: params.studentEmail,
+-        subject: `Confirmed: ${offering.title} with ${mentorInfo?.name ?? "your mentor"}`,
+-        html: sessionBookingConfirmationEmailHtml({
+-          studentName: params.studentName,
+-          mentorName: mentorInfo?.name ?? "your mentor",
+-          title: offering.title,
+-          date: params.date,
+-          startTime: params.startTime,
+-        }),
+-      });
+-    } catch (err) {
+-      console.error(`[createSessionBookingRecord] student confirmation email failed for booking=${booking.id}:`, err);
+-    }
+-  }
++  // The two emails are independent and best-effort — send them concurrently so
++  // the student isn't waiting on two mail round trips back to back.
++  await Promise.all([
++    (async () => {
++      if (!mentorInfo?.email) return;
++      try {
++        await sendMail({
++          to: mentorInfo.email,
++          subject: `New booking: ${params.studentName} — ${offering.title}`,
++          html: sessionBookingNotificationEmailHtml({
++            mentorName: mentorInfo.name,
++            studentName: params.studentName,
++            title: offering.title,
++            date: params.date,
++            startTime: params.startTime,
++          }),
++        });
++      } catch (err) {
++        console.error(`[createSessionBookingRecord] mentor notification email failed for booking=${booking.id}:`, err);
++      }
++    })(),
++    (async () => {
++      if (!params.studentEmail) return;
++      try {
++        await sendMail({
++          to: params.studentEmail,
++          subject: `Confirmed: ${offering.title} with ${mentorInfo?.name ?? "your mentor"}`,
++          html: sessionBookingConfirmationEmailHtml({
++            studentName: params.studentName,
++            mentorName: mentorInfo?.name ?? "your mentor",
++            title: offering.title,
++            date: params.date,
++            startTime: params.startTime,
++          }),
++        });
++      } catch (err) {
++        console.error(`[createSessionBookingRecord] student confirmation email failed for booking=${booking.id}:`, err);
++      }
++    })(),
++  ]);
+ 
+   return { bookingId: booking.id as string, mentorId: offering.mentor_id as string };
+ }
+ 
+ export const previewCoupon = createServerFn({ method: "POST" })
+-  .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => data)
++  .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => checkedItemInput(data))
    .handler(async ({ data }) => {
--    const decoded = await adminAuth.verifyIdToken(data.token);
-+    const t0 = performance.now();
-+    const timings: Record<string, number> = {};
-+    const decoded = await timed(timings, "verifyToken", () => adminAuth.verifyIdToken(data.token));
-     const uid = decoded.uid;
--    const db = await getDb();
-+    const db = await timed(timings, "getDb", () => getDb());
+     await requireSignedIn(data.token);
+     const { sellingPrice } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+@@ -354,7 +368,7 @@
+       couponCode?: string;
+       sessionDate?: string;
+       sessionStartTime?: string;
+-    }) => data,
++    }) => checkedItemInput(data),
+   )
+   .handler(async ({ data }) => {
+     const decoded = await requireSignedIn(data.token);
+@@ -429,7 +443,7 @@
+       razorpayPaymentId: string;
+       razorpaySignature: string;
+       studentNote?: string;
+-    }) => data,
++    }) => checkedItemInput(data),
+   )
+   .handler(async ({ data }) => {
+     const decoded = await requireSignedIn(data.token);
+@@ -446,6 +460,18 @@
+     const notes = (order.notes ?? {}) as Record<string, string>;
+     const amountCharged = Number(order.amount) / 100;
  
--    const profileP = loadProfile(db, uid);
-+    const profileP = timed(timings, "profile", () => loadProfile(db, uid));
-     // Bundle visibility depends on the student's CUET subjects — reuse the
--    // profile read instead of querying it a second time.
-+    // profile read instead of querying it a second time. (Its time includes
-+    // waiting for the profile read.)
-     const bundlesP = profileP.then(({ profile }) =>
--      listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? [])),
-+      timed(timings, "bundles", () => listBundlesForStudent(db, new Set(profile?.cuetDomainSubjects ?? []))),
-     );
- 
-     const [profile, bundles, batches, mentors, soldTests, purchases, sessions, bookings, performance] =
-       await Promise.allSettled([
-         profileP,
-         bundlesP,
--        listMentorshipBatches(db),
--        listMentorDirectory(db),
--        listLiveSoldTests(db),
--        loadMyPurchases(db, uid),
--        loadOpenMentorSessions(),
--        loadMyBookedSessions(uid),
--        loadMyBatchPerformance(db, uid),
-+        timed(timings, "batches", () => listMentorshipBatches(db)),
-+        timed(timings, "mentors", () => listMentorDirectory(db)),
-+        timed(timings, "soldTests", () => listLiveSoldTests(db)),
-+        timed(timings, "purchases", () => loadMyPurchases(db, uid)),
-+        timed(timings, "sessions", () => loadOpenMentorSessions()),
-+        timed(timings, "bookings", () => loadMyBookedSessions(uid)),
-+        timed(timings, "performance", () => loadMyBatchPerformance(db, uid)),
-       ]);
- 
-+    console.log(JSON.stringify({ at: "dashboard-bootstrap", totalMs: Math.round(performance.now() - t0), ...timings }));
++    // The signature above only proves "this payment belongs to this order". What
++    // the order was FOR, and who placed it, is in its notes (written server-side
++    // by createRazorpayOrder). Without this check, a valid signature from a cheap
++    // order could be replayed with a different itemId to unlock a pricier item,
++    // or used from a different account.
++    if (notes.itemType !== data.itemType || notes.itemId !== data.itemId || notes.uid !== decoded.uid) {
++      console.warn(
++        `[verifyRazorpayPayment] order/item mismatch: order=${data.razorpayOrderId} payment=${data.razorpayPaymentId}`,
++      );
++      throw new Error("Payment verification failed — this payment doesn't match the item being unlocked.");
++    }
 +
-     return {
-       profile: settled("profile", profile),
-       bundles: settled("bundles", bundles),
-diff -ruN a/src/server-functions/test-engine.ts b/src/server-functions/test-engine.ts
---- a/src/server-functions/test-engine.ts	2026-10-17 05:44:42.722488840 +0000
-+++ b/src/server-functions/test-engine.ts	2026-10-17 05:44:42.764248326 +0000
-@@ -105,7 +105,11 @@
-     await verifyTestAccess(decoded.uid, source, test);
+     if (data.itemType === "mentorSession") {
+       if (!notes.sessionDate || !notes.sessionStartTime) throw new Error("Session date/time missing from order.");
  
-     const [questionDocs, priorAttemptCount] = await Promise.all([
--      db.collection("questions").find({ testId: data.testId }).sort({ subject: 1, questionNo: 1 }).toArray(),
-+      db
-+        .collection("questions")
-+        .find({ testId: data.testId }, { projection: { correctOption: 0, correctAnswer: 0, solution: 0 } })
-+        .sort({ subject: 1, questionNo: 1 })
-+        .toArray(),
-       db.collection("testAttempts").countDocuments({ uid: decoded.uid, testId: data.testId }),
-     ]);
+@@ -581,11 +607,11 @@
+       sessionDate?: string;
+       sessionStartTime?: string;
+       studentNote?: string;
+-    }) => data,
++    }) => checkedItemInput(data),
+   )
+   .handler(async ({ data }) => {
+     const decoded = await requireSignedIn(data.token);
+-    const { sellingPrice } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
++    const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
  
-diff -ruN a/src/server-functions/test-results.ts b/src/server-functions/test-results.ts
---- a/src/server-functions/test-results.ts	2026-10-17 05:44:42.722506306 +0000
-+++ b/src/server-functions/test-results.ts	2026-10-17 05:44:42.764548945 +0000
-@@ -48,13 +48,15 @@
-     // question text/options/solution — fetch those now (safe to show in
-     // full, including the solution, since the test is already submitted).
-     const { ObjectId: OID } = await import("mongodb");
--    const questionDocs = await db
--      .collection("questions")
--      .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
--      .toArray();
-+    // The question fetch and the attempt-rules fetch don't depend on each other.
-+    const [questionDocs, rules] = await Promise.all([
-+      db
-+        .collection("questions")
-+        .find({ _id: { $in: questionResults.map((q) => new OID(q.questionId)) } })
-+        .toArray(),
-+      loadAttemptRules(db, attempt.testId as string),
-+    ]);
-     const questionById = new Map(questionDocs.map((q) => [String(q._id), q]));
--
--    const rules = await loadAttemptRules(db, attempt.testId as string);
-     const { optionalSkipped, countedQuestions, optionalCount } = getExcludedQuestions(
-       questionResults,
-       rules,
-@@ -298,7 +300,9 @@
-       ])
-       .toArray();
+     if (sellingPrice > 0) {
+       throw new Error("This item isn't free — use regular checkout.");
+@@ -610,7 +636,6 @@
+       return { ok: true, bookingId };
+     }
  
--    const uids = bestAttempts.map((r) => r._id as string);
-+    // Only the top 20 rows (plus this student) are ever shown with a name, so
-+    // look up just those profiles instead of every participant's.
-+    const uids = [...new Set([...bestAttempts.slice(0, 20).map((r) => r._id as string), decoded.uid])];
-     const profiles = await db
-       .collection("profiles")
-       .find({ uid: { $in: uids } }, { projection: { uid: 1, fullName: 1 } })
+-    const { title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+     const db = await getDb();
+     const commissionPercent = await resolveCommissionPercent(data.itemType, data.itemId);
+     const freePaymentId = `free_${decoded.uid}_${Date.now()}`;
+diff -ruN a/src/server-functions/student-sessions.ts b/src/server-functions/student-sessions.ts
+--- a/src/server-functions/student-sessions.ts	2026-10-17 06:08:25.829976283 +0000
++++ b/src/server-functions/student-sessions.ts	2026-10-17 06:09:03.497882506 +0000
+@@ -3,7 +3,8 @@
+ import { createServerFn } from "@tanstack/react-start";
+ import { adminAuth } from "@/lib/firebase-admin";
+ import { getDb } from "@/lib/mongo";
+-import { loadMyBookedSessions, loadOpenMentorSessions, lookupMentorPublicInfo, rowToOffering } from "@/lib/dashboard-core";
++import { loadMyBookedSessions, loadOpenMentorSessions, lookupMentorPublicInfo } from "@/lib/dashboard-core";
++import { rowToOffering } from "@/lib/session-rows";
+ import { supabase } from "@/lib/supabase";
+ import { expandOfferingToSlots } from "@/lib/session-slots";
+ import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";

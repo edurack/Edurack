@@ -17,7 +17,8 @@
 import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
 import { expandOfferingToSlots } from "@/lib/session-slots";
-import type { MentorSessionOffering, OpenSlot, PublicMentorOffering } from "@/lib/session-types";
+import { rowToOffering } from "@/lib/session-rows";
+import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
 
 export type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -344,30 +345,6 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
 }
 
 // ─── Mentor sessions (Supabase) ────────────────────────────────────────────
-export function rowToOffering(row: any): MentorSessionOffering {
-  return {
-    id: row.id,
-    mentorId: row.mentor_id,
-    title: row.title,
-    description: row.description ?? "",
-    durationMinutes: row.duration_minutes,
-    isFree: row.is_free,
-    price: Number(row.price),
-    thumbnailUrl: row.thumbnail_url,
-    posterUrl: row.poster_url ?? null,
-    recurringDays: row.recurring_days,
-    startTimes: row.start_times,
-    dateRangeStart: row.date_range_start,
-    dateRangeEnd: row.date_range_end,
-    isOngoing: row.is_ongoing,
-    active: row.active,
-    capacity: row.capacity ?? 1,
-    subject: row.subject ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
 export async function lookupMentorPublicInfo(mentorIds: string[]): Promise<Record<string, { name: string; photoUrl: string | null }>> {
   if (mentorIds.length === 0) return {};
   const { ObjectId } = await import("mongodb");

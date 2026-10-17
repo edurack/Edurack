@@ -3,7 +3,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
-import { loadMyBookedSessions, loadOpenMentorSessions, lookupMentorPublicInfo, rowToOffering } from "@/lib/dashboard-core";
+import { loadMyBookedSessions, loadOpenMentorSessions, lookupMentorPublicInfo } from "@/lib/dashboard-core";
+import { rowToOffering } from "@/lib/session-rows";
 import { supabase } from "@/lib/supabase";
 import { expandOfferingToSlots } from "@/lib/session-slots";
 import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";

@@ -20,12 +20,12 @@ async function connect(): Promise<Db> {
 
   const make = () =>
     new MongoClient(uri, {
-      // Fail fast (5s) to avoid long serverless hangs, and prevent pool exhaustion on Atlas M0.
+      // Fail fast on initial connection, but allow sufficient time (30s) for complex queries/aggregations
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 5,   // Cap max pool size for Atlas Free Tier
-      minPoolSize: 0,   // Don't retain idle sockets across suspended serverless instances
+      socketTimeoutMS: 30000,
+      maxPoolSize: 5,   // Cap max pool size for Atlas Free Tier (M0)
+      minPoolSize: 0,   // Do not retain idle sockets across suspended serverless instances
       maxIdleTimeMS: 60000,
       retryReads: true,
       retryWrites: true,
@@ -59,8 +59,7 @@ export function getDb(): Promise<Db> {
   return dbPromise;
 }
 
-// Best-effort, once per server process. Indexes make the admin lists/aggregates
-// (students, purchases, sessions, team) hit an index instead of scanning.
+// Best-effort, once per server process. Indexes make admin lists/aggregates hit an index instead of scanning.
 async function ensureIndexes(db: Db) {
   if (indexesEnsured) return;
   indexesEnsured = true;
