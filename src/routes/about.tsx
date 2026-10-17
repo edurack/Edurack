@@ -130,6 +130,11 @@ function AboutPage() {
                   </Link>{" "}
                   reaches us directly.
                 </p>
+                <p className="mt-4 leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-foreground">Not to be confused with others.</span> Edurack is
+                  the platform at edurack.in, and only edurack.in. We are not affiliated with, owned by, or part of
+                  any other company, product or website named &quot;EduRack&quot; or &quot;Edurack Technologies&quot;.
+                </p>
               </div>
             </Rise>
           </div>

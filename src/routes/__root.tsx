@@ -52,6 +52,9 @@ const structuredData = {
       logo: `${SITE_URL}/favicon.ico`,
       description: SITE_DESCRIPTION,
       areaServed: "IN",
+      // Disambiguation: other, unrelated businesses use similar names.
+      disambiguatingDescription:
+        "Edurack is the platform at edurack.in only. It is not affiliated with any other company or website named EduRack or Edurack Technologies.",
       // The full story lives on a real page, not crammed into meta tags —
       // this is what both Google and AI answer engines actually read.
       mainEntityOfPage: `${SITE_URL}/about`,

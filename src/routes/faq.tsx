@@ -15,6 +15,10 @@ const FAQS: { q: string; a: string }[] = [
     a: "Edurack is a marketplace for exam preparation: a free CBT mock-test engine built to match the real NTA exam interface, plus mentor-led test series and mentorship batches for NEET, JEE, CUET and IPMAT. You can practice on the simulator without paying anything, and pay only for the specific batches or test series you choose.",
   },
   {
+    q: "Is Edurack the same as EduRack or Edurack Technologies?",
+    a: "No. Edurack is the platform at edurack.in, and only edurack.in. We are not affiliated with, owned by, or part of any other company, product or website named \"EduRack\" or \"Edurack Technologies\". If a site isn't on edurack.in, it isn't ours.",
+  },
+  {
     q: "Is Edurack only for NEET?",
     a: "No. Edurack covers NEET, JEE, CUET and IPMAT today, on the same CBT engine and the same mentorship marketplace. Some of our earliest content leans NEET- and JEE-heavy simply because that's what we've published first — the platform itself isn't built around any single exam.",
   },

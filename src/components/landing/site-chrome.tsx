@@ -296,6 +296,10 @@ export function SiteFooter() {
         <p className="mt-12 border-t border-white/10 pt-6 text-xs text-white/40">
           © {new Date().getFullYear()} EDURACK (edurack.in). All rights reserved.
         </p>
+        <p className="mt-2 text-xs text-white/40">
+          Edurack is the platform at edurack.in only. We are not affiliated with any other company or website
+          named &quot;EduRack&quot; or &quot;Edurack Technologies&quot;.
+        </p>
       </div>
     </footer>
   );
