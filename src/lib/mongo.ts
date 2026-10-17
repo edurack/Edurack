@@ -20,14 +20,13 @@ async function connect(): Promise<Db> {
 
   const make = () =>
     new MongoClient(uri, {
-      // Fail fast instead of hanging for 30s, and keep warm sockets so the
-      // second click in the admin portal doesn't pay a fresh TLS handshake.
-      serverSelectionTimeoutMS: 8000,
-      connectTimeoutMS: 8000,
+      // Fail fast (5s) to avoid long serverless hangs, and prevent pool exhaustion on Atlas M0.
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
       socketTimeoutMS: 45000,
-      maxPoolSize: 20,
-      minPoolSize: 2,
-      maxIdleTimeMS: 120000,
+      maxPoolSize: 5,   // Cap max pool size for Atlas Free Tier
+      minPoolSize: 0,   // Don't retain idle sockets across suspended serverless instances
+      maxIdleTimeMS: 60000,
       retryReads: true,
       retryWrites: true,
     });
@@ -43,7 +42,6 @@ async function connect(): Promise<Db> {
   }
 
   // Connect eagerly so every caller awaits the SAME in-flight connection
-  // (previously concurrent first requests each raced the lazy connect).
   await client.connect();
   const db = client.db("Edurack");
   void ensureIndexes(db);
