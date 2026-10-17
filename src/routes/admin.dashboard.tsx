@@ -6,6 +6,7 @@ import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashb
 import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, Flame, History } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
+import { ResourcesModule } from "@/components/admin/resources-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
 import { OutreachModule } from "@/components/admin/outreach-module";
 import { TeamModule } from "@/components/admin/team-module";
@@ -77,6 +78,7 @@ type ModuleKey =
   | "mentors"
   | "promoters"
   | "blogs" 
+  | "resources"
   | "interns"
   | "reports"
   | "internTrials"
@@ -101,6 +103,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "blogs", label: "Blog", icon: FileText },
+      { key: "resources", label: "Free Resources", icon: FileText },
 
 
 
@@ -400,6 +403,8 @@ function ModuleRouter({
       return <PromoterHubModule adminUser={adminUser} />;
     case "blogs":
       return <BlogHubModule adminUser={adminUser} />;
+    case "resources":
+      return <ResourcesModule adminUser={adminUser} />;
     case "reports":
       return <QuestionReportsModule adminUser={adminUser} />;
     case "interns":
