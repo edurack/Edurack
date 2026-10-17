@@ -320,7 +320,7 @@ export function BlogEditor({ adminUser, postId, initial, onBack }: {
           </>
         )}
 
-        {tab === "files" && <BlogDocumentsPanel documents={form.documents ?? []} onChange={(docs) => set("documents", docs)} />}
+        {tab === "files" && <BlogDocumentsPanel documents={form.documents ?? []} onChange={(docs) => set("documents", docs)} postId={id} adminUser={adminUser} />}
       </div>
     </div>
   );

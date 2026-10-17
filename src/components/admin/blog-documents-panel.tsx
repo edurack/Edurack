@@ -5,7 +5,7 @@
 // link of a file that's already in Supabase. Either way only the storage
 // location is kept — the permanent link is never shown to students; they get a
 // short-lived one after logging in. Changes are saved with the post's Save button.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IconFileText as FileText,
   IconLink as LinkIcon,
@@ -17,8 +17,29 @@ import {
 import { MAX_BLOG_DOCUMENTS, type BlogDocument } from "@/lib/blog-types";
 import { documentFromExistingUrl, uploadBlogDocument } from "@/lib/blog-document-upload";
 import { formatFileSize } from "@/lib/blog-document-format";
+import { getBlogDownloadStats, type DocDownloadStat, type DownloadRow } from "@/server-functions/blog-download-stats";
 
-export function BlogDocumentsPanel({ documents, onChange }: { documents: BlogDocument[]; onChange: (docs: BlogDocument[]) => void }) {
+export function BlogDocumentsPanel({
+  documents,
+  onChange,
+  postId,
+  adminUser,
+}: {
+  documents: BlogDocument[];
+  onChange: (docs: BlogDocument[]) => void;
+  postId?: string | null;
+  adminUser?: { getIdToken: () => Promise<string> };
+}) {
+  const [stats, setStats] = useState<{ docs: DocDownloadStat[]; recent: DownloadRow[] } | null>(null);
+  const [showWho, setShowWho] = useState(false);
+  useEffect(() => {
+    if (!postId || !adminUser) return;
+    let off = false;
+    adminUser.getIdToken().then((token) => getBlogDownloadStats({ data: { token, postId } })).then((r) => { if (!off) setStats(r); }).catch(() => {});
+    return () => { off = true; };
+  }, [postId, adminUser]);
+  const statFor = (id: string) => stats?.docs.find((x) => x.documentId === id);
+  const totalDownloads = stats?.docs.reduce((n, d) => n + d.total, 0) ?? 0;
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [linkInput, setLinkInput] = useState("");
@@ -83,6 +104,11 @@ export function BlogDocumentsPanel({ documents, onChange }: { documents: BlogDoc
                 {d.sizeBytes ? ` · ${formatFileSize(d.sizeBytes)}` : ""}
                 {d.bucket ? ` · ${d.bucket}` : " · external link"}
               </p>
+              {postId && stats && (
+                <p className="px-1 pt-0.5 text-[11px] font-semibold text-foreground/60">
+                  {(statFor(d.id)?.total ?? 0).toLocaleString()} downloads · {(statFor(d.id)?.unique ?? 0).toLocaleString()} students
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -102,6 +128,29 @@ export function BlogDocumentsPanel({ documents, onChange }: { documents: BlogDoc
           />
         </div>
       ))}
+
+      {postId && stats && totalDownloads > 0 && (
+        <div className="clay-inset rounded-2xl p-3">
+          <button type="button" onClick={() => setShowWho((v) => !v)} className="flex w-full items-center justify-between text-xs font-semibold text-foreground/70">
+            <span>Who downloaded ({totalDownloads.toLocaleString()} total)</span>
+            <span>{showWho ? "Hide" : "Show"}</span>
+          </button>
+          {showWho && (
+            <ul className="mt-2 max-h-64 space-y-1.5 overflow-y-auto text-[11px]">
+              {stats.recent.map((r, i) => (
+                <li key={i} className="flex items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className="font-semibold">{r.name}</span>
+                    {r.email ? <span className="text-foreground/50"> · {r.email}</span> : null}
+                    <span className="block truncate text-foreground/45">{r.title}</span>
+                  </span>
+                  <span className="shrink-0 text-foreground/45">{new Date(r.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {!full && (
         <>
