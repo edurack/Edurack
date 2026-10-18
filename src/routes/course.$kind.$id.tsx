@@ -31,7 +31,7 @@ import {
   listMentorBatchSeriesTestsForStudent,
 } from "@/server-functions/batch-hub";
 import { createRazorpayOrder, verifyRazorpayPayment, previewCoupon, claimFreeItem } from "@/server-functions/payments";
-import { listMyAttemptsForTest } from "@/server-functions/test-results";
+import { getMyAttemptSummaries } from "@/server-functions/test-results";
 
 declare global {
   interface Window {
@@ -63,6 +63,18 @@ function loadRazorpayScript(): Promise<void> {
   });
 }
 
+// Public page content fetched by the route loader (see below). Loosely typed on purpose: the
+// component casts each field to its own row type, exactly as it did for its own fetches.
+type CourseSeed = {
+  kind: string;
+  id: string;
+  bundle?: unknown;
+  tests?: unknown;
+  announcements?: unknown;
+  mentorship?: unknown;
+  mentorProfile?: unknown;
+};
+
 export const Route = createFileRoute("/course/$kind/$id")({
   // Server-side so each bundle / mentorship batch gets its own title,
   // description, canonical and Course structured data. The page
@@ -70,8 +82,15 @@ export const Route = createFileRoute("/course/$kind/$id")({
   loader: async ({ params }) => {
     try {
       if (params.kind === "bundle") {
-        const { bundle: b } = await getPublicBundleDetail({ data: { token: "", bundleId: params.id } });
-        if (!b) return { seo: null };
+        // Everything the public page shows, fetched together. On a direct visit this runs
+        // on the server, so the content is already in the HTML and the page skips its own
+        // fetch (see `seed` in CourseHubPage).
+        const [{ bundle: b }, { tests }, { announcements }] = await Promise.all([
+          getPublicBundleDetail({ data: { token: "", bundleId: params.id } }),
+          listPublicTestsForBundle({ data: { token: "", bundleId: params.id } }),
+          listPublicBundleAnnouncements({ data: { token: "", bundleId: params.id } }),
+        ]);
+        if (!b) return { seo: null, initial: null };
         const feats = ((b.features as string[]) ?? []).filter(Boolean).slice(0, 3).join(", ");
         return {
           seo: {
@@ -80,11 +99,19 @@ export const Route = createFileRoute("/course/$kind/$id")({
             price: Number(b.sellingPrice) || 0,
             image: (b.thumbnailUrl as string | null) ?? null,
           },
+          initial: { kind: "bundle", id: params.id, bundle: b, tests, announcements } as CourseSeed,
         };
       }
       if (params.kind === "mentorship") {
-        const { batch: b } = await getPublicMentorshipDetail({ data: { token: "", batchId: params.id } });
-        if (!b) return { seo: null };
+        const [{ batch: b }, { announcements }] = await Promise.all([
+          getPublicMentorshipDetail({ data: { token: "", batchId: params.id } }),
+          listPublicMentorshipAnnouncements({ data: { token: "", batchId: params.id } }),
+        ]);
+        if (!b) return { seo: null, initial: null };
+        const mentorId = b.mentorId as string | undefined;
+        const mentorProfile = mentorId
+          ? (await getPublicMentorProfile({ data: { token: "", mentorId } })).mentor
+          : null;
         const mentorName = (b.mentor?.name as string | undefined) ?? "";
         const highlights = ((b.highlights as string[]) ?? []).filter(Boolean).slice(0, 3).join(" · ");
         return {
@@ -94,11 +121,13 @@ export const Route = createFileRoute("/course/$kind/$id")({
             price: Number(b.sellingPrice) || 0,
             image: (b.thumbnailUrl as string | null) ?? b.mentor?.profilePictureUrl ?? null,
           },
+          initial: { kind: "mentorship", id: params.id, mentorship: b, announcements, mentorProfile } as CourseSeed,
         };
       }
-      return { seo: null };
+      return { seo: null, initial: null };
     } catch {
-      return { seo: null };
+      // Any failure just means "no seed": the page falls back to fetching in the browser.
+      return { seo: null, initial: null };
     }
   },
   head: ({ loaderData, params }) => {
@@ -293,19 +322,22 @@ function LoginRequiredCard({ label }: { label: string }) {
 
 function CourseHubPage() {
   const { kind, id } = Route.useParams() as { kind: Kind; id: string };
+  const loaderData = Route.useLoaderData() as { initial?: CourseSeed | null } | undefined;
+  // Public content the loader already fetched for THIS kind/id (null → fetch in the browser).
+  const seed = loaderData?.initial && loaderData.initial.kind === kind && loaderData.initial.id === id ? loaderData.initial : null;
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const accent = KIND_ACCENT[kind];
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
-  const [bundle, setBundle] = useState<BundleDetail | null>(null);
-  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(null);
-  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(null);
-  const [tests, setTests] = useState<TestRow[] | null>(null);
+  const [bundle, setBundle] = useState<BundleDetail | null>(() => (seed?.kind === "bundle" ? (seed.bundle as BundleDetail | null) : null));
+  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(() => (seed?.kind === "mentorship" ? (seed.mentorship as MentorshipDetail | null) : null));
+  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(() => (seed?.kind === "mentorship" ? (seed.mentorProfile as MentorProfile | null) : null));
+  const [tests, setTests] = useState<TestRow[] | null>(() => (seed ? ((seed.tests as TestRow[] | undefined) ?? []) : null));
   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
-  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(null);
+  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(() => (seed ? ((seed.announcements as AnnouncementRow[] | undefined) ?? []) : null));
   const [isPurchased, setIsPurchased] = useState(false);
-  const [publicContentLoaded, setPublicContentLoaded] = useState(false);
+  const [publicContentLoaded, setPublicContentLoaded] = useState(!!seed);
   const [pdfModal, setPdfModal] = useState<{ url: string; name: string } | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
@@ -348,6 +380,20 @@ function CourseHubPage() {
   // to both slow LCP and high CLS on this route). Anonymous requests pass
   // an empty token, which these "public" endpoints already support.
   useEffect(() => {
+    // The route loader already fetched this page's public content (and, on a direct visit,
+    // rendered it into the HTML). Just mirror it into state when navigating between courses.
+    if (seed) {
+      if (seed.kind === "bundle") {
+        setBundle(seed.bundle as BundleDetail | null);
+      } else {
+        setMentorship(seed.mentorship as MentorshipDetail | null);
+        setMentorProfile(seed.mentorProfile as MentorProfile | null);
+      }
+      setTests(seed.kind === "bundle" ? ((seed.tests as TestRow[] | undefined) ?? []) : []);
+      setAnnouncements((seed.announcements as AnnouncementRow[] | undefined) ?? []);
+      setPublicContentLoaded(true);
+      return;
+    }
     (async () => {
       try {
         if (kind === "bundle") {
@@ -360,14 +406,14 @@ function CourseHubPage() {
           setTests(t as TestRow[]);
           setAnnouncements(a as AnnouncementRow[]);
         } else {
-          const { batch } = await getPublicMentorshipDetail({ data: { token: "", batchId: id } });
+          // Announcements only need the batch id, so fetch them alongside the detail.
+          const [{ batch }, { announcements: a }] = await Promise.all([
+            getPublicMentorshipDetail({ data: { token: "", batchId: id } }),
+            listPublicMentorshipAnnouncements({ data: { token: "", batchId: id } }),
+          ]);
           const batchDetail = batch as MentorshipDetail | null;
           setMentorship(batchDetail);
           setTests([]);
-
-          const { announcements: a } = await listPublicMentorshipAnnouncements({
-            data: { token: "", batchId: id },
-          });
           setAnnouncements(a as AnnouncementRow[]);
 
           if (batchDetail?.mentorId) {
@@ -396,21 +442,25 @@ function CourseHubPage() {
     (async () => {
       const token = user ? await user.getIdToken() : "";
 
-      if (user) {
-        const purchase = await hasPurchased({ data: { token, itemType: kind, itemId: id } });
-        setIsPurchased(purchase.isPurchased);
-      } else {
-        setIsPurchased(false);
-      }
+      // The purchase check and the session list don't depend on each other, so run them together.
+      const purchaseP = user
+        ? hasPurchased({ data: { token, itemType: kind, itemId: id } })
+        : Promise.resolve({ isPurchased: false });
+      // Announcements are public; the session list is not — it filters
+      // OneOnOne sessions by uid, so it genuinely needs a real signed-in
+      // student. Anonymous visitors just see an empty Sessions tab (with
+      // a "log in" prompt) until they log in.
+      const sessionsP =
+        kind === "mentorship"
+          ? user
+            ? listMentorshipSessionsForStudent({ data: { token, batchId: id } })
+            : Promise.resolve({ sessions: [] as SessionRow[] })
+          : null;
 
-      if (kind === "mentorship") {
-        // Announcements are public; the session list is not — it filters
-        // OneOnOne sessions by uid, so it genuinely needs a real signed-in
-        // student. Anonymous visitors just see an empty Sessions tab (with
-        // a "log in" prompt) until they log in.
-        const { sessions: s } = user
-          ? await listMentorshipSessionsForStudent({ data: { token, batchId: id } })
-          : { sessions: [] as SessionRow[] };
+      const purchase = await purchaseP;
+      setIsPurchased(purchase.isPurchased);
+      if (sessionsP) {
+        const { sessions: s } = await sessionsP;
         setSessions(s as SessionRow[]);
       }
     })();
@@ -1179,16 +1229,9 @@ function TestsTab({
     let cancelled = false;
     (async () => {
       const token = await user.getIdToken();
-      const entries = await Promise.all(
-        tests.map(async (t) => {
-          const { attempts } = await listMyAttemptsForTest({ data: { token, testId: t.id } });
-          if (attempts.length === 0) return [t.id, undefined] as const;
-          const best = attempts.reduce((max, a) => (a.score > max.score ? a : max), attempts[0]);
-          return [t.id, { count: attempts.length, bestScore: best.score, totalMarks: best.totalMarks }] as const;
-        }),
-      );
+      const { summaries } = await getMyAttemptSummaries({ data: { token, testIds: tests.map((t) => t.id) } });
       if (cancelled) return;
-      setAttemptsByTest(Object.fromEntries(entries));
+      setAttemptsByTest(summaries);
     })();
     return () => {
       cancelled = true;
@@ -1574,16 +1617,9 @@ function BatchSeriesTestsTab({
     let cancelled = false;
     (async () => {
       const token = await user.getIdToken();
-      const entries = await Promise.all(
-        unlocked.map(async (t) => {
-          const { attempts } = await listMyAttemptsForTest({ data: { token, testId: t.id } });
-          if (attempts.length === 0) return [t.id, undefined] as const;
-          const best = attempts.reduce((max, a) => (a.score > max.score ? a : max), attempts[0]);
-          return [t.id, { count: attempts.length, bestScore: best.score, totalMarks: best.totalMarks }] as const;
-        }),
-      );
+      const { summaries } = await getMyAttemptSummaries({ data: { token, testIds: unlocked.map((t) => t.id) } });
       if (cancelled) return;
-      setAttemptsByTest(Object.fromEntries(entries));
+      setAttemptsByTest(summaries);
     })();
     return () => {
       cancelled = true;

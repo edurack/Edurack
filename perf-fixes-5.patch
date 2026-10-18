@@ -1,264 +1,128 @@
-diff -ruN a/src/components/dashboard/complete-profile-popup.tsx b/src/components/dashboard/complete-profile-popup.tsx
---- a/src/components/dashboard/complete-profile-popup.tsx	1970-01-01 00:00:00.000000000 +0000
-+++ b/src/components/dashboard/complete-profile-popup.tsx	2026-10-17 12:07:42.955157820 +0000
-@@ -0,0 +1,179 @@
-+// Nudges a signed-in student to finish their profile (real name, mobile, city).
-+// Onboarding only collects exam + track and fills the rest with placeholders, so this
-+// is where the real details get collected. It saves through updateBasicInfo, the same
-+// server function the Profile page's inline fields use.
-+//
-+// Shown at most once per snooze period ("Maybe later" hides it for SNOOZE_DAYS), never
-+// stacks on top of another open dialog (e.g. the streak popup), and is purely a nudge:
-+// any failure just leaves the student on the dashboard.
-+import { useEffect, useState } from "react";
-+import { Link } from "@tanstack/react-router";
-+import { ArrowRight, Check, FileText, Sparkles } from "lucide-react";
-+import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-+import { useAuth } from "@/lib/auth-context";
-+import { updateBasicInfo } from "@/server-functions/profile";
-+import { isRealCity, isRealMobile, isRealName, missingProfileFields, PLACEHOLDER_CITY, PLACEHOLDER_MOBILE } from "@/lib/profile-completeness";
+diff -ruN a/src/routes/course.$kind.$id.tsx b/src/routes/course.$kind.$id.tsx
+--- a/src/routes/course.$kind.$id.tsx	2026-10-17 17:52:38.365280000 +0000
++++ b/src/routes/course.$kind.$id.tsx	2026-10-17 17:52:59.606683263 +0000
+@@ -63,6 +63,18 @@
+   });
+ }
+ 
++// Public page content fetched by the route loader (see below). Loosely typed on purpose: the
++// component casts each field to its own row type, exactly as it did for its own fetches.
++type CourseSeed = {
++  kind: string;
++  id: string;
++  bundle?: unknown;
++  tests?: unknown;
++  announcements?: unknown;
++  mentorship?: unknown;
++  mentorProfile?: unknown;
++};
 +
-+const SNOOZE_DAYS = 3;
-+const SHOW_DELAY_MS = 1500;
-+const snoozeKey = (uid: string) => `edurack-complete-profile-snooze:${uid}`;
-+
-+function isSnoozed(uid: string): boolean {
-+  try {
-+    const until = Number(localStorage.getItem(snoozeKey(uid)) ?? 0);
-+    return Number.isFinite(until) && until > Date.now();
-+  } catch {
-+    return false;
-+  }
-+}
-+function snooze(uid: string) {
-+  try {
-+    localStorage.setItem(snoozeKey(uid), String(Date.now() + SNOOZE_DAYS * 24 * 60 * 60 * 1000));
-+  } catch { /* storage unavailable: it may show again next visit, harmless */ }
-+}
-+
-+type Basic = { fullName: string; mobile: string; city: string };
-+
-+export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | null; onSaved: (next: Basic) => void }) {
-+  const { user } = useAuth();
-+  const [open, setOpen] = useState(false);
-+  const [done, setDone] = useState(false);
-+  const [busy, setBusy] = useState(false);
-+  const [err, setErr] = useState<string | null>(null);
-+  const [name, setName] = useState("");
-+  const [mobile, setMobile] = useState("");
-+  const [city, setCity] = useState("");
-+
-+  const incomplete = !!profile && missingProfileFields(profile).length > 0;
-+
-+  // Decide once, after the profile has loaded, whether to show.
-+  useEffect(() => {
-+    if (!user || !profile || !incomplete || done || isSnoozed(user.uid)) return;
-+    const t = window.setTimeout(() => {
-+      // Don't pile onto another dialog (e.g. the streak popup) — try again on the next visit.
-+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-+      // Start the form from real values only; placeholders are shown as empty fields.
-+      setName(isRealName(profile.fullName) ? profile.fullName : "");
-+      setMobile(isRealMobile(profile.mobile) ? profile.mobile : "");
-+      setCity(isRealCity(profile.city) ? profile.city : "");
-+      setOpen(true);
-+    }, SHOW_DELAY_MS);
-+    return () => window.clearTimeout(t);
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [user?.uid, !!profile, incomplete]);
-+
-+  function close() {
-+    setOpen(false);
-+    if (user && !done) snooze(user.uid);
-+  }
-+
-+  async function save() {
-+    if (!user || !profile) return;
-+    const n = name.trim();
-+    const m = mobile.trim();
-+    const c = city.trim();
-+    if (!isRealName(n)) return setErr("Enter your full name.");
-+    if (!isRealMobile(m)) return setErr("Enter a valid 10-digit mobile number.");
-+    if (!isRealCity(c)) return setErr("Enter your city.");
-+
-+    setBusy(true);
-+    setErr(null);
-+    try {
-+      const token = await user.getIdToken();
-+      // Only send what actually changed. The three fields are independent $set updates.
-+      const changes: Promise<unknown>[] = [];
-+      if (n !== profile.fullName) changes.push(updateBasicInfo({ data: { token, field: "fullName", value: n } }));
-+      if (m !== profile.mobile) changes.push(updateBasicInfo({ data: { token, field: "mobile", value: m } }));
-+      if (c !== profile.city) changes.push(updateBasicInfo({ data: { token, field: "city", value: c } }));
-+      await Promise.all(changes);
-+      onSaved({ fullName: n, mobile: m, city: c });
-+      setDone(true);
-+    } catch {
-+      setErr("Couldn't save that. Please try again.");
-+    } finally {
-+      setBusy(false);
+ export const Route = createFileRoute("/course/$kind/$id")({
+   // Server-side so each bundle / mentorship batch gets its own title,
+   // description, canonical and Course structured data. The page
+@@ -70,8 +82,15 @@
+   loader: async ({ params }) => {
+     try {
+       if (params.kind === "bundle") {
+-        const { bundle: b } = await getPublicBundleDetail({ data: { token: "", bundleId: params.id } });
+-        if (!b) return { seo: null };
++        // Everything the public page shows, fetched together. On a direct visit this runs
++        // on the server, so the content is already in the HTML and the page skips its own
++        // fetch (see `seed` in CourseHubPage).
++        const [{ bundle: b }, { tests }, { announcements }] = await Promise.all([
++          getPublicBundleDetail({ data: { token: "", bundleId: params.id } }),
++          listPublicTestsForBundle({ data: { token: "", bundleId: params.id } }),
++          listPublicBundleAnnouncements({ data: { token: "", bundleId: params.id } }),
++        ]);
++        if (!b) return { seo: null, initial: null };
+         const feats = ((b.features as string[]) ?? []).filter(Boolean).slice(0, 3).join(", ");
+         return {
+           seo: {
+@@ -80,11 +99,19 @@
+             price: Number(b.sellingPrice) || 0,
+             image: (b.thumbnailUrl as string | null) ?? null,
+           },
++          initial: { kind: "bundle", id: params.id, bundle: b, tests, announcements } as CourseSeed,
+         };
+       }
+       if (params.kind === "mentorship") {
+-        const { batch: b } = await getPublicMentorshipDetail({ data: { token: "", batchId: params.id } });
+-        if (!b) return { seo: null };
++        const [{ batch: b }, { announcements }] = await Promise.all([
++          getPublicMentorshipDetail({ data: { token: "", batchId: params.id } }),
++          listPublicMentorshipAnnouncements({ data: { token: "", batchId: params.id } }),
++        ]);
++        if (!b) return { seo: null, initial: null };
++        const mentorId = b.mentorId as string | undefined;
++        const mentorProfile = mentorId
++          ? (await getPublicMentorProfile({ data: { token: "", mentorId } })).mentor
++          : null;
+         const mentorName = (b.mentor?.name as string | undefined) ?? "";
+         const highlights = ((b.highlights as string[]) ?? []).filter(Boolean).slice(0, 3).join(" · ");
+         return {
+@@ -94,11 +121,13 @@
+             price: Number(b.sellingPrice) || 0,
+             image: (b.thumbnailUrl as string | null) ?? b.mentor?.profilePictureUrl ?? null,
+           },
++          initial: { kind: "mentorship", id: params.id, mentorship: b, announcements, mentorProfile } as CourseSeed,
+         };
+       }
+-      return { seo: null };
++      return { seo: null, initial: null };
+     } catch {
+-      return { seo: null };
++      // Any failure just means "no seed": the page falls back to fetching in the browser.
++      return { seo: null, initial: null };
+     }
+   },
+   head: ({ loaderData, params }) => {
+@@ -293,19 +322,22 @@
+ 
+ function CourseHubPage() {
+   const { kind, id } = Route.useParams() as { kind: Kind; id: string };
++  const loaderData = Route.useLoaderData() as { initial?: CourseSeed | null } | undefined;
++  // Public content the loader already fetched for THIS kind/id (null → fetch in the browser).
++  const seed = loaderData?.initial && loaderData.initial.kind === kind && loaderData.initial.id === id ? loaderData.initial : null;
+   const { user, loading } = useAuth();
+   const navigate = useNavigate();
+   const accent = KIND_ACCENT[kind];
+ 
+   const [activeTab, setActiveTab] = useState<TabKey>("overview");
+-  const [bundle, setBundle] = useState<BundleDetail | null>(null);
+-  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(null);
+-  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(null);
+-  const [tests, setTests] = useState<TestRow[] | null>(null);
++  const [bundle, setBundle] = useState<BundleDetail | null>(() => (seed?.kind === "bundle" ? (seed.bundle as BundleDetail | null) : null));
++  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(() => (seed?.kind === "mentorship" ? (seed.mentorship as MentorshipDetail | null) : null));
++  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(() => (seed?.kind === "mentorship" ? (seed.mentorProfile as MentorProfile | null) : null));
++  const [tests, setTests] = useState<TestRow[] | null>(() => (seed ? ((seed.tests as TestRow[] | undefined) ?? []) : null));
+   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
+-  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(null);
++  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(() => (seed ? ((seed.announcements as AnnouncementRow[] | undefined) ?? []) : null));
+   const [isPurchased, setIsPurchased] = useState(false);
+-  const [publicContentLoaded, setPublicContentLoaded] = useState(false);
++  const [publicContentLoaded, setPublicContentLoaded] = useState(!!seed);
+   const [pdfModal, setPdfModal] = useState<{ url: string; name: string } | null>(null);
+   const [purchasing, setPurchasing] = useState(false);
+   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+@@ -348,6 +380,20 @@
+   // to both slow LCP and high CLS on this route). Anonymous requests pass
+   // an empty token, which these "public" endpoints already support.
+   useEffect(() => {
++    // The route loader already fetched this page's public content (and, on a direct visit,
++    // rendered it into the HTML). Just mirror it into state when navigating between courses.
++    if (seed) {
++      if (seed.kind === "bundle") {
++        setBundle(seed.bundle as BundleDetail | null);
++      } else {
++        setMentorship(seed.mentorship as MentorshipDetail | null);
++        setMentorProfile(seed.mentorProfile as MentorProfile | null);
++      }
++      setTests(seed.kind === "bundle" ? ((seed.tests as TestRow[] | undefined) ?? []) : []);
++      setAnnouncements((seed.announcements as AnnouncementRow[] | undefined) ?? []);
++      setPublicContentLoaded(true);
++      return;
 +    }
-+  }
-+
-+  if (!user || !profile) return null;
-+
-+  return (
-+    <Dialog open={open} onOpenChange={(v) => { if (!v) close(); else setOpen(true); }}>
-+      <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-md gap-0 overflow-y-auto rounded-3xl border-0 p-0 [&>button]:text-white">
-+        <div className="ink-section relative isolate overflow-hidden px-5 pb-5 pt-6 sm:px-6">
-+          <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 -z-10 h-52 w-52 rounded-full bg-amber-300/20 blur-3xl" />
-+          <div className="flex items-center gap-2">
-+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-amber-300 text-amber-950">
-+              {done ? <Check className="h-5 w-5" strokeWidth={3} aria-hidden /> : <Sparkles className="h-5 w-5" aria-hidden />}
-+            </span>
-+            <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-200">{done ? "Profile complete" : "Takes 30 seconds"}</p>
-+          </div>
-+          <DialogTitle className="font-display mt-3 text-2xl font-extrabold leading-tight text-white">
-+            {done ? "You're all set" : "Complete your profile"}
-+          </DialogTitle>
-+          <DialogDescription className="mt-1 text-sm text-white/65">
-+            {done
-+              ? "Thanks! Your free study material is ready whenever you need it."
-+              : "Add your name, mobile number and city to get picks matched to you, plus free notes, previous year papers, formula sheets and planners."}
-+          </DialogDescription>
-+        </div>
-+
-+        <div className="space-y-4 bg-card px-5 pb-5 pt-4 text-foreground sm:px-6">
-+          {done ? (
-+            <Link
-+              to="/free-resources"
-+              onClick={() => setOpen(false)}
-+              className="clay-btn inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm"
-+            >
-+              <FileText className="h-4 w-4" aria-hidden /> Open free resources <ArrowRight className="h-4 w-4" aria-hidden />
-+            </Link>
-+          ) : (
-+            <>
-+              <label className="block">
-+                <span className="mb-1 block text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">Full name</span>
-+                <input
-+                  value={name} onChange={(e) => setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Your full name"
-+                  className="min-h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none"
-+                />
-+              </label>
-+              <label className="block">
-+                <span className="mb-1 block text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">Mobile number</span>
-+                <input
-+                  value={mobile === PLACEHOLDER_MOBILE ? "" : mobile} onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
-+                  disabled={busy} inputMode="numeric" autoComplete="tel-national" placeholder="10-digit number"
-+                  className="min-h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none"
-+                />
-+              </label>
-+              <label className="block">
-+                <span className="mb-1 block text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">City</span>
-+                <input
-+                  value={city === PLACEHOLDER_CITY ? "" : city} onChange={(e) => setCity(e.target.value)} disabled={busy}
-+                  autoComplete="address-level2" placeholder="Where do you live?"
-+                  className="min-h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none"
-+                />
-+              </label>
-+
-+              {err && <p className="text-xs font-semibold text-rose-600">{err}</p>}
-+
-+              <div className="flex flex-col gap-2 sm:flex-row-reverse">
-+                <button
-+                  type="button" onClick={save} disabled={busy}
-+                  className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm disabled:opacity-60"
-+                >
-+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null} Save and continue
-+                </button>
-+                <button
-+                  type="button" onClick={close} disabled={busy}
-+                  className="min-h-11 rounded-full px-5 text-sm font-semibold text-muted-foreground hover:text-foreground disabled:opacity-60"
-+                >
-+                  Maybe later
-+                </button>
-+              </div>
-+            </>
-+          )}
-+        </div>
-+      </DialogContent>
-+    </Dialog>
-+  );
-+}
-diff -ruN a/src/lib/profile-completeness.ts b/src/lib/profile-completeness.ts
---- a/src/lib/profile-completeness.ts	1970-01-01 00:00:00.000000000 +0000
-+++ b/src/lib/profile-completeness.ts	2026-10-17 12:07:42.954032235 +0000
-@@ -0,0 +1,37 @@
-+// Pure helpers (client + server safe) for "has this student finished their profile?".
-+//
-+// Onboarding (routes/auth.tsx) only asks for exam + track, then saves PLACEHOLDERS for
-+// everything else: the Google display name or "Student", mobile "0000000000" and city
-+// "Not Specified". So "complete" here means the name, mobile and city are REAL values,
-+// not just non-empty. Board is deliberately not checked: onboarding defaults it to CBSE,
-+// which is a legitimate real value we can't tell apart from a default.
-+
-+export const PLACEHOLDER_MOBILE = "0000000000";
-+export const PLACEHOLDER_CITY = "Not Specified";
-+const PLACEHOLDER_NAME = "student";
-+
-+export type MissingProfileField = "fullName" | "mobile" | "city";
-+
-+type BasicProfile = { fullName?: string | null; mobile?: string | null; city?: string | null };
-+
-+export const isRealName = (v: string | null | undefined) => {
-+  const t = (v ?? "").trim();
-+  return t.length >= 2 && t.toLowerCase() !== PLACEHOLDER_NAME;
-+};
-+// Same 10-digit rule the Profile page enforces, minus the onboarding placeholder.
-+export const isRealMobile = (v: string | null | undefined) => {
-+  const t = (v ?? "").trim();
-+  return /^\d{10}$/.test(t) && t !== PLACEHOLDER_MOBILE;
-+};
-+export const isRealCity = (v: string | null | undefined) => {
-+  const t = (v ?? "").trim();
-+  return t.length >= 2 && t.toLowerCase() !== PLACEHOLDER_CITY.toLowerCase();
-+};
-+
-+export function missingProfileFields(p: BasicProfile | null | undefined): MissingProfileField[] {
-+  const out: MissingProfileField[] = [];
-+  if (!isRealName(p?.fullName)) out.push("fullName");
-+  if (!isRealMobile(p?.mobile)) out.push("mobile");
-+  if (!isRealCity(p?.city)) out.push("city");
-+  return out;
-+}
-diff -ruN a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
---- a/src/routes/dashboard.tsx	2026-10-17 12:07:42.948349042 +0000
-+++ b/src/routes/dashboard.tsx	2026-10-17 12:07:43.000444344 +0000
-@@ -1,6 +1,7 @@
- import { TodayCard, type UpNextInfo } from "@/components/today-card";
- import { PyqHero } from "@/components/dashboard/pyq-hero";
- import { StreakPopup } from "@/components/dashboard/streak-popup";
-+import { CompleteProfilePopup } from "@/components/dashboard/complete-profile-popup";
- import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
- import { noindexHead } from "@/lib/seo";
- import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-@@ -45,6 +46,8 @@
- 
- type StudentProfile = {
-   fullName: string;
-+  mobile: string;
-+  city: string;
-   targetExam: string;
-   track: Track;
- };
-@@ -273,6 +276,8 @@
-         if (p) {
-           setProfile({
-             fullName: p.fullName,
-+            mobile: p.mobile ?? "",
-+            city: p.city ?? "",
-             targetExam: p.targetExam || "",
-             track: (p.track as Track) || "",
-           });
-@@ -442,6 +447,10 @@
-     <div className="min-h-screen bg-background">
-       <AppHeader user={user} displayName={profile?.fullName} />
-       <StreakPopup />
-+      <CompleteProfilePopup
-+        profile={profile ? { fullName: profile.fullName, mobile: profile.mobile, city: profile.city } : null}
-+        onSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } : prev))}
-+      />
- 
-       <div className="mx-auto flex max-w-7xl gap-10 px-4 sm:px-6">
-         {/* ── Sidebar (desktop) ─────────────────────────────── */}
+     (async () => {
+       try {
+         if (kind === "bundle") {

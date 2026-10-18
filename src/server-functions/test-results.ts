@@ -160,6 +160,48 @@ export const listMyAttemptsForTest = createServerFn({ method: "POST" })
     };
   });
 
+// ─── Best-score summary for MANY tests in one request ─────────────────────
+// The course pages used to call listMyAttemptsForTest once per test (N parallel
+// requests, each loading every attempt document in full). This returns just what
+// those pages show — attempt count, best score and its total marks — in one query
+// with a projection. Best = highest score, ties go to the earliest attempt, the
+// same rule the pages applied client-side.
+export const getMyAttemptSummaries = createServerFn({ method: "POST" })
+  .validator((data: { token: string; testIds: string[] }) => ({
+    token: data.token,
+    testIds: Array.isArray(data.testIds) ? [...new Set(data.testIds.map(String))].slice(0, 200) : [],
+  }))
+  .handler(async ({ data }) => {
+    const decoded = await requireSignedIn(data.token);
+    const summaries: Record<string, { count: number; bestScore: number; totalMarks: number }> = {};
+    if (data.testIds.length === 0) return { summaries };
+
+    const db = await getDb();
+    const rows = await db
+      .collection("testAttempts")
+      .find(
+        { uid: decoded.uid, testId: { $in: data.testIds } },
+        { projection: { testId: 1, attemptNumber: 1, score: 1, totalMarks: 1 } },
+      )
+      .sort({ attemptNumber: 1 })
+      .toArray();
+
+    for (const r of rows) {
+      const testId = r.testId as string;
+      const score = r.score as number;
+      const cur = summaries[testId];
+      if (!cur) summaries[testId] = { count: 1, bestScore: score, totalMarks: r.totalMarks as number };
+      else {
+        cur.count += 1;
+        if (score > cur.bestScore) {
+          cur.bestScore = score;
+          cur.totalMarks = r.totalMarks as number;
+        }
+      }
+    }
+    return { summaries };
+  });
+
 // ─── Full cross-attempt analysis: trend, subject accuracy, recurring mistakes ─
 export const getTestAnalysis = createServerFn({ method: "POST" })
   .validator((data: { token: string; testId: string }) => data)
