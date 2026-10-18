@@ -9,6 +9,7 @@ import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
 import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
 import { TOPICS_PATH } from "@/lib/neet-topics";
 import { loadTreeRows } from "@/lib/pyq-server";
+import { istDayKey } from "@/lib/practice-schedule";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -136,7 +137,9 @@ export function seoEntries(): string[] {
     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
     urlEntry(`${SITE_URL}${TOPICS_PATH}`, SEO_LASTMOD, 0.8, "monthly"),
-    urlEntry(`${SITE_URL}/neet/question-of-the-day`, new Date().toISOString().slice(0, 10), 0.7, "daily"),
+    // The question of the day switches at midnight IST (see getQuestionOfTheDay), so lastmod is the IST day —
+    // not the UTC date, which would lag by up to 5½ hours after the page has already changed.
+    urlEntry(`${SITE_URL}/neet/question-of-the-day`, istDayKey(new Date()), 0.7, "daily"),
   ];
 }
 

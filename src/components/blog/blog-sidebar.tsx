@@ -8,7 +8,7 @@ import { Link } from "@tanstack/react-router";
 import { IconArrowRight as ArrowRight, IconFlame as Flame, IconClock as Clock, IconCompass as Compass, IconTargetArrow as Target } from "@tabler/icons-react";
 import { TableOfContentsSidebar } from "@/components/blog/table-of-contents";
 import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
-import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
+import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary, SidebarChapter, SidebarTopic } from "@/lib/blog-types";
 import type { BlogHeading } from "@/lib/blog-content";
 
 export type BlogSidebarData = {
@@ -16,9 +16,13 @@ export type BlogSidebarData = {
   latest: PublicBlogPostSummary[];
   popular: PublicBlogPostSummary[];
   categories: { category: BlogCategory; count: number }[];
+  /** NEET chapter pages this post is about (empty for non-NEET posts). */
+  chapters: SidebarChapter[];
+  /** Most repeated NEET topics; each links to its chapter page. */
+  topics: SidebarTopic[];
 };
 
-export const EMPTY_SIDEBAR: BlogSidebarData = { related: [], latest: [], popular: [], categories: [] };
+export const EMPTY_SIDEBAR: BlogSidebarData = { related: [], latest: [], popular: [], categories: [], chapters: [], topics: [] };
 
 const NEET_GUIDES = [
   { label: "All chapters ranked", to: "/neet/chapter-wise-weightage" },
@@ -100,6 +104,52 @@ export function BlogSidebar({ post, headings, data }: { post: PublicBlogPost; he
             Open the CBT simulator
           </Link>
         </section>
+      )}
+
+      {data.chapters.length > 0 && (
+        <Card id="sb-chapters" title="NEET chapters in this post" icon={<Target className="h-4 w-4 text-primary" aria-hidden="true" />}>
+          <ul className="space-y-1">
+            {data.chapters.map((c) => (
+              <li key={`${c.subjectKey}/${c.slug}`}>
+                <Link
+                  to="/neet/chapter-wise-weightage/$subject/$chapter"
+                  params={{ subject: c.subjectKey, chapter: c.slug }}
+                  className="group flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 text-[13px] font-bold text-foreground hover:bg-foreground/5"
+                >
+                  <span className="min-w-0">
+                    <span className="block group-hover:underline">{c.name}</span>
+                    <span className="block text-[11px] font-medium text-foreground/45">{c.subjectName} weightage and PYQs</span>
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-40" aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {data.topics.length > 0 && (
+        <Card id="sb-repeated" title="Most repeated NEET topics" icon={<Flame className="h-4 w-4 text-orange-500" aria-hidden="true" />}>
+          <ul className="space-y-1">
+            {data.topics.map((t) => (
+              <li key={`${t.subjectKey}/${t.slug}/${t.name}`}>
+                <Link
+                  to="/neet/chapter-wise-weightage/$subject/$chapter"
+                  params={{ subject: t.subjectKey, chapter: t.slug }}
+                  className="group block rounded-lg px-1.5 py-1.5 hover:bg-foreground/5"
+                >
+                  <span className="line-clamp-2 text-[13px] font-semibold leading-snug text-foreground group-hover:underline">{t.name}</span>
+                  <span className="block text-[11px] text-foreground/45">
+                    {t.chapterName} · in {t.papers} of 8 papers
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link to="/neet/most-repeated-topics" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+            See all most repeated topics <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </Card>
       )}
 
       {data.popular.length > 0 && (

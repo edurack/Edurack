@@ -250,3 +250,7 @@ export function resolveBlogPromoAudience(input: {
 // bulk dialog warns when more than this are ticked; the public query caps
 // at this number regardless (newest first).
 export const MAX_FEATURED_POSTS = 6;
+
+// NEET links shown in a post's sidebar (built on the server from the blueprint dataset).
+export type SidebarChapter = { subjectKey: string; slug: string; name: string; subjectName: string };
+export type SidebarTopic = { name: string; chapterName: string; subjectKey: string; slug: string; papers: number; total: number };

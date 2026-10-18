@@ -188,11 +188,22 @@ export const getBlogSidebarData = createServerFn({ method: "GET" })
     const db = await getDb();
     const exclude = new ObjectId(data.postId);
 
-    const [related, latestRows, categoryRows] = await Promise.all([
+    const [related, latestRows, categoryRows, thisPost] = await Promise.all([
       queryRelated(db, ObjectId, data),
       db.collection("blogPosts").find({ ...PUBLISHED_FILTER, _id: { $ne: exclude } }).project({ bodyMarkdown: 0 }).sort({ publishedAt: -1 }).limit(5).toArray(),
       db.collection("blogPosts").aggregate([{ $match: PUBLISHED_FILTER }, { $group: { _id: "$category", n: { $sum: 1 } } }]).toArray(),
+      db.collection("blogPosts").findOne({ _id: exclude }, { projection: { title: 1, tags: 1 } }),
     ]);
+
+    // NEET chapter pages this post is about + the most repeated topics, so a crawler on
+    // a post can reach the weightage pages. Blueprint data stays server-side (dynamic import).
+    const { neetLinksForPost } = await import("@/lib/blog-links-server");
+    const neet = neetLinksForPost({
+      title: String(thisPost?.title ?? ""),
+      tags: Array.isArray(thisPost?.tags) ? thisPost.tags.map(String) : [],
+      category: data.category,
+      examKey: data.examKey ?? null,
+    });
 
     // "Most read" skips anything already shown under "Latest" so the two lists never repeat.
     const popularRows = await db
@@ -210,6 +221,8 @@ export const getBlogSidebarData = createServerFn({ method: "GET" })
       categories: categoryRows
         .map((r: any) => ({ category: r._id as BlogCategory, count: r.n as number }))
         .sort((a: any, b: any) => b.count - a.count),
+      chapters: neet.chapters,
+      topics: neet.topics,
     };
   });
 

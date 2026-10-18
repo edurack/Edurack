@@ -6,7 +6,7 @@
 import { QUESTION_PROJECTION, buildQuestions, eligibleBundleIds, ensureQuestionIndexes, pyqMatch, scopeMatch, type Db } from "@/lib/pyq-server";
 import { pickDailyIndex } from "@/lib/practice-schedule";
 import { buildPublicPage } from "@/lib/pyq-public-server";
-import { isIndexable, plainText, questionParam, type PyqPublicPage } from "@/lib/pyq-public";
+import { isIndexable, plainText, questionParam, snippetOf, type PyqPublicPage, type PyqRelated } from "@/lib/pyq-public";
 import type { PyqQuestion } from "@/lib/pyq-types";
 
 export const SHEET_SIZE = 20;
@@ -75,4 +75,43 @@ export async function loadChapterSheet(db: Db, subject: string, chapter: string)
 export async function loadChapterSheetKey(db: Db, subject: string, chapter: string): Promise<{ id: string; answer: string }[]> {
   const docs = await sheetDocs(db, subject, chapter);
   return docs.map((d) => ({ id: String(d._id), answer: d.type === "mcq" ? String(d.correctOption ?? "") : String(d.correctAnswer ?? "") }));
+}
+
+export const CHAPTER_TOP_COUNT = 10;
+const PER_TOPIC_CAP = 2;
+
+/**
+ * Questions a chapter weightage page links to: newest papers first, readable ones only,
+ * at most PER_TOPIC_CAP per topic so the links spread across the chapter instead of
+ * bunching on one topic. Stable order, so the same links serve every crawl.
+ */
+export async function loadChapterTopQuestions(db: Db, subject: string, chapter: string, limit = CHAPTER_TOP_COUNT): Promise<PyqRelated[]> {
+  await ensureQuestionIndexes(db);
+  const match = await scopeMatch(db, QOTD_EXAM, subject, chapter);
+  const docs = await db
+    .collection("questions")
+    .find(match, { projection: QUESTION_PROJECTION as unknown as Record<string, 0 | 1> })
+    .sort({ pyqYear: -1, _id: 1 })
+    .limit(limit * 6)
+    .toArray();
+
+  const perTopic = new Map<string, number>();
+  const picked: Record<string, unknown>[] = [];
+  for (const d of docs) {
+    if (picked.length >= limit) break;
+    if (!isIndexable(plainText(String(d.body ?? "")))) continue;
+    const topic = String(d.topic ?? "").trim().toLowerCase();
+    const n = perTopic.get(topic) ?? 0;
+    if (n >= PER_TOPIC_CAP) continue;
+    perTopic.set(topic, n + 1);
+    picked.push(d);
+  }
+  if (picked.length === 0) return [];
+
+  const built = await buildQuestions(db, "", picked);
+  const byId = new Map(built.map((b) => [b.id, b]));
+  return picked
+    .map((d) => byId.get(String(d._id)))
+    .filter((q): q is PyqQuestion => Boolean(q))
+    .map((q) => ({ param: questionParam(q), snippet: snippetOf(q.body), label: q.source.label, difficulty: q.difficulty, chapter: q.chapter, topic: q.topic }));
 }

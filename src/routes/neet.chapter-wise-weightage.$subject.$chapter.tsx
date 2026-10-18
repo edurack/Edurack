@@ -6,11 +6,14 @@ import { BLUEPRINT_BASE, RANGE_LABEL, chapterPath, getChapter, getSubject, subje
 import { chapterDescription, chapterFaq, chapterTitle, faqPageJsonLd, itemListJsonLd } from "@/lib/neet-blueprint-copy";
 import { ChapterView } from "@/components/neet/blueprint-views";
 import { BlueprintNotFound } from "@/components/neet/blueprint-not-found";
+import { getChapterTopQuestions } from "@/server-functions/pyq-seo";
 
 export const Route = createFileRoute("/neet/chapter-wise-weightage/$subject/$chapter")({
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
     if (!getChapter(params.subject, params.chapter)) throw notFound();
-    return { subjectKey: params.subject, slug: params.chapter };
+    // Links to the chapter's PYQ pages. A database hiccup must never take the page down.
+    const topQuestions = await getChapterTopQuestions({ data: { subject: params.subject, chapter: params.chapter } }).catch(() => []);
+    return { subjectKey: params.subject, slug: params.chapter, topQuestions };
   },
   head: ({ loaderData }) => {
     const subject = loaderData ? getSubject(loaderData.subjectKey) : undefined;
@@ -42,6 +45,6 @@ export const Route = createFileRoute("/neet/chapter-wise-weightage/$subject/$cha
 });
 
 function ChapterPage() {
-  const { subjectKey, slug } = Route.useLoaderData();
-  return <ChapterView subjectKey={subjectKey} slug={slug} />;
+  const { subjectKey, slug, topQuestions } = Route.useLoaderData();
+  return <ChapterView subjectKey={subjectKey} slug={slug} topQuestions={topQuestions} />;
 }

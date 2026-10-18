@@ -1,128 +1,230 @@
-diff -ruN a/src/routes/course.$kind.$id.tsx b/src/routes/course.$kind.$id.tsx
---- a/src/routes/course.$kind.$id.tsx	2026-10-17 17:52:38.365280000 +0000
-+++ b/src/routes/course.$kind.$id.tsx	2026-10-17 17:52:59.606683263 +0000
-@@ -63,6 +63,18 @@
-   });
- }
- 
-+// Public page content fetched by the route loader (see below). Loosely typed on purpose: the
-+// component casts each field to its own row type, exactly as it did for its own fetches.
-+type CourseSeed = {
-+  kind: string;
-+  id: string;
-+  bundle?: unknown;
-+  tests?: unknown;
-+  announcements?: unknown;
-+  mentorship?: unknown;
-+  mentorProfile?: unknown;
-+};
+diff --git a/src/lib/funnel-events.ts b/src/lib/funnel-events.ts
+new file mode 100644
+index 0000000..5076ed4
+--- /dev/null
++++ b/src/lib/funnel-events.ts
+@@ -0,0 +1,57 @@
++// Client-side tracker for the question-page funnel (see server-functions/funnel.ts).
++// Fire-and-forget: it never blocks the UI, never throws, and does nothing when the
++// browser sends Do Not Track.
++import { recordFunnelEvent } from "@/server-functions/funnel";
 +
- export const Route = createFileRoute("/course/$kind/$id")({
-   // Server-side so each bundle / mentorship batch gets its own title,
-   // description, canonical and Course structured data. The page
-@@ -70,8 +82,15 @@
-   loader: async ({ params }) => {
-     try {
-       if (params.kind === "bundle") {
--        const { bundle: b } = await getPublicBundleDetail({ data: { token: "", bundleId: params.id } });
--        if (!b) return { seo: null };
-+        // Everything the public page shows, fetched together. On a direct visit this runs
-+        // on the server, so the content is already in the HTML and the page skips its own
-+        // fetch (see `seed` in CourseHubPage).
-+        const [{ bundle: b }, { tests }, { announcements }] = await Promise.all([
-+          getPublicBundleDetail({ data: { token: "", bundleId: params.id } }),
-+          listPublicTestsForBundle({ data: { token: "", bundleId: params.id } }),
-+          listPublicBundleAnnouncements({ data: { token: "", bundleId: params.id } }),
-+        ]);
-+        if (!b) return { seo: null, initial: null };
-         const feats = ((b.features as string[]) ?? []).filter(Boolean).slice(0, 3).join(", ");
-         return {
-           seo: {
-@@ -80,11 +99,19 @@
-             price: Number(b.sellingPrice) || 0,
-             image: (b.thumbnailUrl as string | null) ?? null,
-           },
-+          initial: { kind: "bundle", id: params.id, bundle: b, tests, announcements } as CourseSeed,
-         };
-       }
-       if (params.kind === "mentorship") {
--        const { batch: b } = await getPublicMentorshipDetail({ data: { token: "", batchId: params.id } });
--        if (!b) return { seo: null };
-+        const [{ batch: b }, { announcements }] = await Promise.all([
-+          getPublicMentorshipDetail({ data: { token: "", batchId: params.id } }),
-+          listPublicMentorshipAnnouncements({ data: { token: "", batchId: params.id } }),
-+        ]);
-+        if (!b) return { seo: null, initial: null };
-+        const mentorId = b.mentorId as string | undefined;
-+        const mentorProfile = mentorId
-+          ? (await getPublicMentorProfile({ data: { token: "", mentorId } })).mentor
-+          : null;
-         const mentorName = (b.mentor?.name as string | undefined) ?? "";
-         const highlights = ((b.highlights as string[]) ?? []).filter(Boolean).slice(0, 3).join(" · ");
-         return {
-@@ -94,11 +121,13 @@
-             price: Number(b.sellingPrice) || 0,
-             image: (b.thumbnailUrl as string | null) ?? b.mentor?.profilePictureUrl ?? null,
-           },
-+          initial: { kind: "mentorship", id: params.id, mentorship: b, announcements, mentorProfile } as CourseSeed,
-         };
-       }
--      return { seo: null };
-+      return { seo: null, initial: null };
-     } catch {
--      return { seo: null };
-+      // Any failure just means "no seed": the page falls back to fetching in the browser.
-+      return { seo: null, initial: null };
-     }
-   },
-   head: ({ loaderData, params }) => {
-@@ -293,19 +322,22 @@
++export type FunnelEvent = "question_view" | "answer_checked" | "gate_shown" | "gate_signup_click" | "gate_login_click" | "auth_return";
++
++const SESSION_KEY = "edurack_funnel_src";
++const SEARCH_ENGINES: [RegExp, string][] = [
++  [/(^|\.)google\./, "google"],
++  [/(^|\.)bing\.com$/, "bing"],
++  [/(^|\.)duckduckgo\.com$/, "duckduckgo"],
++  [/(^|\.)yahoo\./, "yahoo"],
++  [/(^|\.)ecosia\.org$/, "ecosia"],
++  [/(^|\.)yandex\./, "yandex"],
++];
++
++const clean = (s: string, max: number) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, max);
++
++/** Where this visit came from: a search engine, "direct", a utm_source, another site, or "internal". */
++function classify(): string {
++  const utm = new URLSearchParams(window.location.search).get("utm_source");
++  if (utm) return `utm:${clean(utm, 24)}`;
++  if (!document.referrer) return "direct";
++  let host: string;
++  try {
++    host = new URL(document.referrer).hostname.replace(/^www\./, "");
++  } catch {
++    return "direct";
++  }
++  if (host === window.location.hostname.replace(/^www\./, "")) return "internal";
++  const engine = SEARCH_ENGINES.find(([re]) => re.test(host));
++  return engine ? engine[1] : `ref:${clean(host, 34)}`;
++}
++
++/** The tab's first external source sticks for the whole session, so a later click is credited to how the visitor arrived. */
++function sessionSource(): { source: string; landing: boolean } {
++  try {
++    const stored = window.sessionStorage.getItem(SESSION_KEY);
++    if (stored) return { source: stored, landing: false };
++    const source = classify();
++    if (source !== "internal") window.sessionStorage.setItem(SESSION_KEY, source);
++    return { source, landing: source !== "internal" };
++  } catch {
++    return { source: classify(), landing: false };
++  }
++}
++
++export function trackEvent(event: FunnelEvent, opts: { path?: string; detail?: string } = {}): void {
++  if (typeof window === "undefined" || navigator.doNotTrack === "1") return;
++  try {
++    const { source, landing } = sessionSource();
++    void recordFunnelEvent({ data: { event, path: opts.path ?? window.location.pathname, source, landing, detail: opts.detail } }).catch(() => {});
++  } catch {
++    // never let analytics break the page
++  }
++}
+diff --git a/src/routes/auth.tsx b/src/routes/auth.tsx
+index 5a3884e..0390979 100644
+--- a/src/routes/auth.tsx
++++ b/src/routes/auth.tsx
+@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
+ import { getDeviceId, getDeviceLabel } from "@/lib/device";
+ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/server-functions/profile";
+ import { recordSession } from "@/server-functions/sessions";
++import { trackEvent } from "@/lib/funnel-events";
+ import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
  
- function CourseHubPage() {
-   const { kind, id } = Route.useParams() as { kind: Kind; id: string };
-+  const loaderData = Route.useLoaderData() as { initial?: CourseSeed | null } | undefined;
-+  // Public content the loader already fetched for THIS kind/id (null → fetch in the browser).
-+  const seed = loaderData?.initial && loaderData.initial.kind === kind && loaderData.initial.id === id ? loaderData.initial : null;
-   const { user, loading } = useAuth();
-   const navigate = useNavigate();
-   const accent = KIND_ACCENT[kind];
+ export const Route = createFileRoute("/auth")({
+@@ -83,9 +84,12 @@ function AuthPage() {
+   // After sign-in: back to the page that sent the student here, else the dashboard.
+   // useCallback so the sign-in effect below doesn't re-run on every render.
+   const goAfterLogin = useCallback(() => {
+-    if (redirectTo) router.history.push(redirectTo);
+-    else navigate({ to: "/dashboard" });
+-  }, [redirectTo, router, navigate]);
++    if (redirectTo) {
++      // A visitor who hit the locked-solution gate on a question page and came back through sign-up / log-in.
++      if (redirectTo.startsWith("/question/")) trackEvent("auth_return", { path: redirectTo, detail: initialTab ?? "signin" });
++      router.history.push(redirectTo);
++    } else navigate({ to: "/dashboard" });
++  }, [redirectTo, initialTab, router, navigate]);
  
-   const [activeTab, setActiveTab] = useState<TabKey>("overview");
--  const [bundle, setBundle] = useState<BundleDetail | null>(null);
--  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(null);
--  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(null);
--  const [tests, setTests] = useState<TestRow[] | null>(null);
-+  const [bundle, setBundle] = useState<BundleDetail | null>(() => (seed?.kind === "bundle" ? (seed.bundle as BundleDetail | null) : null));
-+  const [mentorship, setMentorship] = useState<MentorshipDetail | null>(() => (seed?.kind === "mentorship" ? (seed.mentorship as MentorshipDetail | null) : null));
-+  const [mentorProfile, setMentorProfile] = useState<MentorProfile | null>(() => (seed?.kind === "mentorship" ? (seed.mentorProfile as MentorProfile | null) : null));
-+  const [tests, setTests] = useState<TestRow[] | null>(() => (seed ? ((seed.tests as TestRow[] | undefined) ?? []) : null));
-   const [sessions, setSessions] = useState<SessionRow[] | null>(null);
--  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(null);
-+  const [announcements, setAnnouncements] = useState<AnnouncementRow[] | null>(() => (seed ? ((seed.announcements as AnnouncementRow[] | undefined) ?? []) : null));
-   const [isPurchased, setIsPurchased] = useState(false);
--  const [publicContentLoaded, setPublicContentLoaded] = useState(false);
-+  const [publicContentLoaded, setPublicContentLoaded] = useState(!!seed);
-   const [pdfModal, setPdfModal] = useState<{ url: string; name: string } | null>(null);
-   const [purchasing, setPurchasing] = useState(false);
-   const [purchaseError, setPurchaseError] = useState<string | null>(null);
-@@ -348,6 +380,20 @@
-   // to both slow LCP and high CLS on this route). Anonymous requests pass
-   // an empty token, which these "public" endpoints already support.
    useEffect(() => {
-+    // The route loader already fetched this page's public content (and, on a direct visit,
-+    // rendered it into the HTML). Just mirror it into state when navigating between courses.
-+    if (seed) {
-+      if (seed.kind === "bundle") {
-+        setBundle(seed.bundle as BundleDetail | null);
-+      } else {
-+        setMentorship(seed.mentorship as MentorshipDetail | null);
-+        setMentorProfile(seed.mentorProfile as MentorProfile | null);
+     if (loading) return;
+diff --git a/src/routes/question.$id.tsx b/src/routes/question.$id.tsx
+index d9b52de..ceaa046 100644
+--- a/src/routes/question.$id.tsx
++++ b/src/routes/question.$id.tsx
+@@ -9,7 +9,7 @@
+ //    it out of the HTML (instead of hiding it with CSS) is deliberate: showing
+ //    Googlebot something users can't see is cloaking.
+ import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
+-import { useState } from "react";
++import { useEffect, useRef, useState } from "react";
+ import { IconLoader2 as Loader2, IconLock as Lock } from "@tabler/icons-react";
+ import { AppHeader } from "@/components/app-header";
+ import { useAuth } from "@/lib/auth-context";
+@@ -20,6 +20,7 @@ import { GENERAL_TOPIC, UNTAGGED_CHAPTER, type OptionKey, type PyqAnswer } from
+ import { checkPublicPyqAnswer, getPublicQuestion } from "@/server-functions/pyq-public";
+ import { submitPyqAnswer } from "@/server-functions/pyq-practice";
+ import { cn } from "@/lib/utils";
++import { trackEvent } from "@/lib/funnel-events";
+ 
+ const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
+ 
+@@ -115,6 +116,14 @@ function QuestionView({ page }: { page: PyqPublicPage }) {
+   const [busy, setBusy] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+ 
++  // One "question_view" per question per page load, once we know whether the visitor is signed in.
++  const viewed = useRef<string | null>(null);
++  useEffect(() => {
++    if (loading || viewed.current === q.id) return;
++    viewed.current = q.id;
++    trackEvent("question_view", { detail: user ? "member" : "visitor" });
++  }, [loading, user, q.id]);
++
+   const canCheck = q.type === "mcq" ? picked !== null : typed !== "" && Number.isFinite(Number(typed));
+   const disabled = busy || loading || Boolean(outcome);
+ 
+@@ -135,9 +144,11 @@ function QuestionView({ page }: { page: PyqPublicPage }) {
+           solution: r.solution ?? "",
+           ...chosen,
+         });
++        trackEvent("answer_checked", { detail: `member-${r.revealed ? "revealed" : r.isCorrect ? "correct" : "wrong"}` });
+       } else {
+         const r = await checkPublicPyqAnswer({ data: { questionId: q.id, answer } });
+         setOutcome({ ...r, ...chosen });
++        trackEvent("answer_checked", { detail: `visitor-${r.revealed ? "revealed" : r.isCorrect ? "correct" : "wrong"}` });
+       }
+     } catch (e) {
+       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+@@ -389,16 +400,24 @@ function SolutionBlock({ outcome, path }: { outcome: Outcome; path: string }) {
+     return <p className="text-xs font-semibold text-foreground/50">A written solution hasn't been added for this question yet.</p>;
+   }
+   // Visitor: locked. `redirect` brings them back to this page after login.
++  return <LockedSolution path={path} />;
++}
++
++function LockedSolution({ path }: { path: string }) {
++  // Counted once when the gate appears, then each click, so "gate shown → sign-up click" is measurable.
++  useEffect(() => {
++    trackEvent("gate_shown", { path });
++  }, [path]);
+   return (
+     <div className="clay-inset rounded-2xl p-5 text-center">
+       <Lock className="mx-auto h-5 w-5 text-foreground/50" aria-hidden />
+       <p className="font-display mt-2 text-sm font-bold text-foreground">Log in to see the step-by-step solution</p>
+       <p className="mt-1 text-xs text-foreground/60">Create an account in a minute and pick up right back here.</p>
+       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+-        <Link to="/auth" search={{ tab: "signup", redirect: path }} className="clay-btn rounded-full px-5 py-2.5 text-sm font-bold text-white">
++        <Link to="/auth" search={{ tab: "signup", redirect: path }} onClick={() => trackEvent("gate_signup_click", { path })} className="clay-btn rounded-full px-5 py-2.5 text-sm font-bold text-white">
+           Sign up free
+         </Link>
+-        <Link to="/auth" search={{ tab: "signin", redirect: path }} className="clay-chip rounded-full px-5 py-2.5 text-sm font-bold text-foreground">
++        <Link to="/auth" search={{ tab: "signin", redirect: path }} onClick={() => trackEvent("gate_login_click", { path })} className="clay-chip rounded-full px-5 py-2.5 text-sm font-bold text-foreground">
+           Log in
+         </Link>
+       </div>
+diff --git a/src/server-functions/funnel.ts b/src/server-functions/funnel.ts
+new file mode 100644
+index 0000000..a7200cf
+--- /dev/null
++++ b/src/server-functions/funnel.ts
+@@ -0,0 +1,58 @@
++// First-party funnel events for the public question pages: where visitors come from,
++// whether they check an answer, see the login gate, and click through.
++//
++// Privacy by design: no cookies, no user id, no IP and no user agent are stored — only
++// the event name, the page path (query string stripped), a coarse traffic source
++// ("google", "direct", "utm:newsletter"...) and the time. Events expire after 120 days.
++// Logged client-side (not in the server render) because edge-cached pages never reach
++// the server on a repeat visit.
++import { createServerFn } from "@tanstack/react-start";
++import { getDb } from "@/lib/mongo";
++import { getCurrentRequest } from "@/lib/get-request";
++import { hitRateLimit } from "@/lib/pyq-public-server";
++
++const EVENTS = ["question_view", "answer_checked", "gate_shown", "gate_signup_click", "gate_login_click", "auth_return"] as const;
++const EVENTS_PER_WINDOW = 120; // per IP...
++const WINDOW_SECONDS = 60; // ...per minute
++const RETENTION_SECONDS = 120 * 24 * 3600;
++const BOT = /bot|crawl|spider|slurp|lighthouse|headless|preview|facebookexternalhit|whatsapp/i;
++
++let indexesEnsured = false;
++
++function clientIp(): string {
++  const request = getCurrentRequest();
++  return request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request?.headers.get("x-real-ip") ?? "unknown";
++}
++
++export const recordFunnelEvent = createServerFn({ method: "POST" })
++  .validator((data: { event: string; path: string; source: string; landing: boolean; detail?: string }) => data)
++  .handler(async ({ data }): Promise<{ ok: boolean }> => {
++    try {
++      if (!(EVENTS as readonly string[]).includes(data.event)) return { ok: false };
++      if (typeof data.path !== "string" || !data.path.startsWith("/")) return { ok: false };
++      // Crawlers that run JavaScript must not count as visitors.
++      if (BOT.test(getCurrentRequest()?.headers.get("user-agent") ?? "")) return { ok: true };
++
++      const path = data.path.split(/[?#]/)[0].slice(0, 200);
++      const source = typeof data.source === "string" && /^[a-z0-9._:-]{1,40}$/i.test(data.source) ? data.source.toLowerCase() : "other";
++      const detail = typeof data.detail === "string" && /^[a-z0-9_-]{1,20}$/i.test(data.detail) ? data.detail.toLowerCase() : null;
++
++      const db = await getDb();
++      if (!(await hitRateLimit(db, `funnel:${clientIp()}`, EVENTS_PER_WINDOW, WINDOW_SECONDS))) return { ok: false };
++
++      const col = db.collection("funnelEvents");
++      if (!indexesEnsured) {
++        indexesEnsured = true;
++        try {
++          await col.createIndex({ at: 1 }, { expireAfterSeconds: RETENTION_SECONDS });
++          await col.createIndex({ event: 1, at: -1 });
++        } catch {
++          // best-effort, same as the other ensure*Indexes helpers
++        }
 +      }
-+      setTests(seed.kind === "bundle" ? ((seed.tests as TestRow[] | undefined) ?? []) : []);
-+      setAnnouncements((seed.announcements as AnnouncementRow[] | undefined) ?? []);
-+      setPublicContentLoaded(true);
-+      return;
++      await col.insertOne({ event: data.event, path, source, landing: data.landing === true, detail, at: new Date() });
++      return { ok: true };
++    } catch {
++      return { ok: false }; // analytics must never surface an error to a student
 +    }
-     (async () => {
-       try {
-         if (kind === "bundle") {
++  });

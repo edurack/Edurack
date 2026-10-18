@@ -25,6 +25,8 @@ import {
   type Topic,
 } from "@/lib/neet-blueprint";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
+import type { PyqRelated } from "@/lib/pyq-public";
+import { GENERAL_TOPIC } from "@/lib/pyq-types";
 import { DATA_NOTE, chapterFaq, chapterSummary, hubFaq, subjectFaq, subjectIntro, subjectYearTotals, type Faq } from "@/lib/neet-blueprint-copy";
 
 // Shared page frame: the site header (with links to the blog, PYQ practice and
@@ -210,7 +212,7 @@ function DataNote() {
 }
 
 // ── Chapter page ───────────────────────────────────────────────────────────
-export function ChapterView({ subjectKey, slug }: { subjectKey: string; slug: string }) {
+export function ChapterView({ subjectKey, slug, topQuestions = [] }: { subjectKey: string; slug: string; topQuestions?: PyqRelated[] }) {
   const subject = getSubject(subjectKey) as Subject;
   const c = getChapter(subjectKey, slug) as Chapter;
   const ins = chapterInsights(c);
@@ -274,6 +276,26 @@ export function ChapterView({ subjectKey, slug }: { subjectKey: string; slug: st
       <div className="clay rounded-3xl p-4 sm:p-5">
         <TopicTable topics={c.topics} />
       </div>
+
+      {topQuestions.length > 0 && (
+        <>
+          <SectionTitle>Recent {c.name} PYQs to practise</SectionTitle>
+          <p className="mb-3 text-sm text-foreground/60">Questions from the latest papers, spread across the chapter's topics. Check your answer free on each page.</p>
+          <ul className="space-y-2">
+            {topQuestions.map((q) => (
+              <li key={q.param}>
+                <Link to="/question/$id" params={{ id: q.param }} className="clay block p-3.5 transition-colors hover:bg-foreground/[0.03]">
+                  <p className="text-sm leading-snug text-foreground">{q.snippet || `${q.chapter} question`}</p>
+                  <p className="mt-1.5 text-[11px] font-semibold text-foreground/50">
+                    {q.label} · {q.difficulty}
+                    {q.topic !== GENERAL_TOPIC ? ` · ${q.topic}` : ""}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <SectionTitle>What the papers tell us</SectionTitle>
       <div className="grid gap-4 sm:grid-cols-2">

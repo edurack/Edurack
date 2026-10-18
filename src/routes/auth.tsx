@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/server-functions/profile";
 import { recordSession } from "@/server-functions/sessions";
+import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
 
 export const Route = createFileRoute("/auth")({
@@ -83,9 +84,12 @@ function AuthPage() {
   // After sign-in: back to the page that sent the student here, else the dashboard.
   // useCallback so the sign-in effect below doesn't re-run on every render.
   const goAfterLogin = useCallback(() => {
-    if (redirectTo) router.history.push(redirectTo);
-    else navigate({ to: "/dashboard" });
-  }, [redirectTo, router, navigate]);
+    if (redirectTo) {
+      // A visitor who hit the locked-solution gate on a question page and came back through sign-up / log-in.
+      if (redirectTo.startsWith("/question/")) trackEvent("auth_return", { path: redirectTo, detail: initialTab ?? "signin" });
+      router.history.push(redirectTo);
+    } else navigate({ to: "/dashboard" });
+  }, [redirectTo, initialTab, router, navigate]);
 
   useEffect(() => {
     if (loading) return;

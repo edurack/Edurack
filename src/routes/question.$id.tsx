@@ -9,7 +9,7 @@
 //    it out of the HTML (instead of hiding it with CSS) is deliberate: showing
 //    Googlebot something users can't see is cloaking.
 import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconLoader2 as Loader2, IconLock as Lock } from "@tabler/icons-react";
 import { AppHeader } from "@/components/app-header";
 import { useAuth } from "@/lib/auth-context";
@@ -20,6 +20,7 @@ import { GENERAL_TOPIC, UNTAGGED_CHAPTER, type OptionKey, type PyqAnswer } from 
 import { checkPublicPyqAnswer, getPublicQuestion } from "@/server-functions/pyq-public";
 import { submitPyqAnswer } from "@/server-functions/pyq-practice";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/funnel-events";
 
 const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
 
@@ -115,6 +116,14 @@ function QuestionView({ page }: { page: PyqPublicPage }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // One "question_view" per question per page load, once we know whether the visitor is signed in.
+  const viewed = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || viewed.current === q.id) return;
+    viewed.current = q.id;
+    trackEvent("question_view", { detail: user ? "member" : "visitor" });
+  }, [loading, user, q.id]);
+
   const canCheck = q.type === "mcq" ? picked !== null : typed !== "" && Number.isFinite(Number(typed));
   const disabled = busy || loading || Boolean(outcome);
 
@@ -135,9 +144,11 @@ function QuestionView({ page }: { page: PyqPublicPage }) {
           solution: r.solution ?? "",
           ...chosen,
         });
+        trackEvent("answer_checked", { detail: `member-${r.revealed ? "revealed" : r.isCorrect ? "correct" : "wrong"}` });
       } else {
         const r = await checkPublicPyqAnswer({ data: { questionId: q.id, answer } });
         setOutcome({ ...r, ...chosen });
+        trackEvent("answer_checked", { detail: `visitor-${r.revealed ? "revealed" : r.isCorrect ? "correct" : "wrong"}` });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
@@ -389,16 +400,24 @@ function SolutionBlock({ outcome, path }: { outcome: Outcome; path: string }) {
     return <p className="text-xs font-semibold text-foreground/50">A written solution hasn't been added for this question yet.</p>;
   }
   // Visitor: locked. `redirect` brings them back to this page after login.
+  return <LockedSolution path={path} />;
+}
+
+function LockedSolution({ path }: { path: string }) {
+  // Counted once when the gate appears, then each click, so "gate shown → sign-up click" is measurable.
+  useEffect(() => {
+    trackEvent("gate_shown", { path });
+  }, [path]);
   return (
     <div className="clay-inset rounded-2xl p-5 text-center">
       <Lock className="mx-auto h-5 w-5 text-foreground/50" aria-hidden />
       <p className="font-display mt-2 text-sm font-bold text-foreground">Log in to see the step-by-step solution</p>
       <p className="mt-1 text-xs text-foreground/60">Create an account in a minute and pick up right back here.</p>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        <Link to="/auth" search={{ tab: "signup", redirect: path }} className="clay-btn rounded-full px-5 py-2.5 text-sm font-bold text-white">
+        <Link to="/auth" search={{ tab: "signup", redirect: path }} onClick={() => trackEvent("gate_signup_click", { path })} className="clay-btn rounded-full px-5 py-2.5 text-sm font-bold text-white">
           Sign up free
         </Link>
-        <Link to="/auth" search={{ tab: "signin", redirect: path }} className="clay-chip rounded-full px-5 py-2.5 text-sm font-bold text-foreground">
+        <Link to="/auth" search={{ tab: "signin", redirect: path }} onClick={() => trackEvent("gate_login_click", { path })} className="clay-chip rounded-full px-5 py-2.5 text-sm font-bold text-foreground">
           Log in
         </Link>
       </div>

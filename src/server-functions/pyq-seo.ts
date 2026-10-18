@@ -6,6 +6,8 @@ import { getDb } from "@/lib/mongo";
 import { istDayKey, addDays } from "@/lib/practice-schedule";
 import type { QotdPayload } from "@/lib/pyq-seo-server";
 import type { PyqQuestion } from "@/lib/pyq-types";
+import type { PyqRelated } from "@/lib/pyq-public";
+import { getChapter } from "@/lib/neet-blueprint";
 
 export type ChapterSheet = { questions: PyqQuestion[]; total: number };
 
@@ -23,6 +25,17 @@ export const getChapterSheet = createServerFn({ method: "GET" })
     if (typeof data.subject !== "string" || typeof data.chapter !== "string") throw new Error("Sheet not found.");
     const { loadChapterSheet } = await import("@/lib/pyq-seo-server");
     return loadChapterSheet(await getDb(), data.subject, data.chapter);
+  });
+
+/** Links from a chapter weightage page to that chapter's PYQ pages. Takes the blueprint keys, never free text. No answers in the payload. */
+export const getChapterTopQuestions = createServerFn({ method: "GET" })
+  .validator((data: { subject: string; chapter: string }) => data)
+  .handler(async ({ data }): Promise<PyqRelated[]> => {
+    if (typeof data.subject !== "string" || typeof data.chapter !== "string") return [];
+    const c = getChapter(data.subject, data.chapter);
+    if (!c) return [];
+    const { loadChapterTopQuestions } = await import("@/lib/pyq-seo-server");
+    return loadChapterTopQuestions(await getDb(), c.subjectName, c.name);
   });
 
 /** The answer key is the reason to sign up: signed-in students only. */
