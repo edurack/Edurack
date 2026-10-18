@@ -29,6 +29,11 @@ import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as PyqRouteImport } from './routes/pyq'
 import { Route as PyqDrillRouteImport } from './routes/pyq-drill'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SitemapBlogDotxmlRouteImport } from './routes/sitemap-blog[.]xml'
+import { Route as SitemapMentorsDotxmlRouteImport } from './routes/sitemap-mentors[.]xml'
+import { Route as SitemapNeetDotxmlRouteImport } from './routes/sitemap-neet[.]xml'
+import { Route as SitemapPagesDotxmlRouteImport } from './routes/sitemap-pages[.]xml'
+import { Route as SitemapQuestionsDotxmlRouteImport } from './routes/sitemap-questions[.]xml'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
@@ -177,6 +182,31 @@ const PyqDrillRoute = PyqDrillRouteImport.update({
 const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   id: '/robots.txt',
   path: '/robots.txt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapBlogDotxmlRoute = SitemapBlogDotxmlRouteImport.update({
+  id: '/sitemap-blog.xml',
+  path: '/sitemap-blog.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapMentorsDotxmlRoute = SitemapMentorsDotxmlRouteImport.update({
+  id: '/sitemap-mentors.xml',
+  path: '/sitemap-mentors.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapNeetDotxmlRoute = SitemapNeetDotxmlRouteImport.update({
+  id: '/sitemap-neet.xml',
+  path: '/sitemap-neet.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapPagesDotxmlRoute = SitemapPagesDotxmlRouteImport.update({
+  id: '/sitemap-pages.xml',
+  path: '/sitemap-pages.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapQuestionsDotxmlRoute = SitemapQuestionsDotxmlRouteImport.update({
+  id: '/sitemap-questions.xml',
+  path: '/sitemap-questions.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -453,6 +483,11 @@ export interface FileRoutesByFullPath {
   '/pyq': typeof PyqRoute
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
+  '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
+  '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
+  '/sitemap-questions.xml': typeof SitemapQuestionsDotxmlRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -524,6 +559,11 @@ export interface FileRoutesByTo {
   '/pyq': typeof PyqRoute
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
+  '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
+  '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
+  '/sitemap-questions.xml': typeof SitemapQuestionsDotxmlRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -596,6 +636,11 @@ export interface FileRoutesById {
   '/pyq': typeof PyqRoute
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
+  '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
+  '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
+  '/sitemap-questions.xml': typeof SitemapQuestionsDotxmlRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tickets': typeof TicketsRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -669,6 +714,11 @@ export interface FileRouteTypes {
     | '/pyq'
     | '/pyq-drill'
     | '/robots.txt'
+    | '/sitemap-blog.xml'
+    | '/sitemap-mentors.xml'
+    | '/sitemap-neet.xml'
+    | '/sitemap-pages.xml'
+    | '/sitemap-questions.xml'
     | '/sitemap.xml'
     | '/tickets'
     | '/unsubscribe'
@@ -740,6 +790,11 @@ export interface FileRouteTypes {
     | '/pyq'
     | '/pyq-drill'
     | '/robots.txt'
+    | '/sitemap-blog.xml'
+    | '/sitemap-mentors.xml'
+    | '/sitemap-neet.xml'
+    | '/sitemap-pages.xml'
+    | '/sitemap-questions.xml'
     | '/sitemap.xml'
     | '/tickets'
     | '/unsubscribe'
@@ -811,6 +866,11 @@ export interface FileRouteTypes {
     | '/pyq'
     | '/pyq-drill'
     | '/robots.txt'
+    | '/sitemap-blog.xml'
+    | '/sitemap-mentors.xml'
+    | '/sitemap-neet.xml'
+    | '/sitemap-pages.xml'
+    | '/sitemap-questions.xml'
     | '/sitemap.xml'
     | '/tickets'
     | '/unsubscribe'
@@ -883,6 +943,11 @@ export interface RootRouteChildren {
   PyqRoute: typeof PyqRoute
   PyqDrillRoute: typeof PyqDrillRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SitemapBlogDotxmlRoute: typeof SitemapBlogDotxmlRoute
+  SitemapMentorsDotxmlRoute: typeof SitemapMentorsDotxmlRoute
+  SitemapNeetDotxmlRoute: typeof SitemapNeetDotxmlRoute
+  SitemapPagesDotxmlRoute: typeof SitemapPagesDotxmlRoute
+  SitemapQuestionsDotxmlRoute: typeof SitemapQuestionsDotxmlRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TicketsRoute: typeof TicketsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -1072,6 +1137,41 @@ declare module '@tanstack/react-router' {
       path: '/robots.txt'
       fullPath: '/robots.txt'
       preLoaderRoute: typeof RobotsDottxtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap-blog.xml': {
+      id: '/sitemap-blog.xml'
+      path: '/sitemap-blog.xml'
+      fullPath: '/sitemap-blog.xml'
+      preLoaderRoute: typeof SitemapBlogDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap-mentors.xml': {
+      id: '/sitemap-mentors.xml'
+      path: '/sitemap-mentors.xml'
+      fullPath: '/sitemap-mentors.xml'
+      preLoaderRoute: typeof SitemapMentorsDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap-neet.xml': {
+      id: '/sitemap-neet.xml'
+      path: '/sitemap-neet.xml'
+      fullPath: '/sitemap-neet.xml'
+      preLoaderRoute: typeof SitemapNeetDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap-pages.xml': {
+      id: '/sitemap-pages.xml'
+      path: '/sitemap-pages.xml'
+      fullPath: '/sitemap-pages.xml'
+      preLoaderRoute: typeof SitemapPagesDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap-questions.xml': {
+      id: '/sitemap-questions.xml'
+      path: '/sitemap-questions.xml'
+      fullPath: '/sitemap-questions.xml'
+      preLoaderRoute: typeof SitemapQuestionsDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -1467,6 +1567,11 @@ const rootRouteChildren: RootRouteChildren = {
   PyqRoute: PyqRoute,
   PyqDrillRoute: PyqDrillRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  SitemapBlogDotxmlRoute: SitemapBlogDotxmlRoute,
+  SitemapMentorsDotxmlRoute: SitemapMentorsDotxmlRoute,
+  SitemapNeetDotxmlRoute: SitemapNeetDotxmlRoute,
+  SitemapPagesDotxmlRoute: SitemapPagesDotxmlRoute,
+  SitemapQuestionsDotxmlRoute: SitemapQuestionsDotxmlRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TicketsRoute: TicketsRoute,
   UnsubscribeRoute: UnsubscribeRoute,

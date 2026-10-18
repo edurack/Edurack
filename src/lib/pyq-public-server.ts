@@ -16,7 +16,10 @@ import {
   type Db,
 } from "@/lib/pyq-server";
 import { GENERAL_TOPIC, UNTAGGED_CHAPTER } from "@/lib/pyq-types";
-import { isIndexable, plainText, questionParam, snippetOf, type PyqPublicPage, type PyqRelated } from "@/lib/pyq-public";
+import { isIndexable, plainText, questionParam, snippetOf, type PyqAdjacent, type PyqContext, type PyqPublicPage, type PyqRelated } from "@/lib/pyq-public";
+import type { ExamKey } from "@/lib/admin-types";
+import type { PyqQuestion } from "@/lib/pyq-types";
+import { PAPER_LABELS, RANGE_LABEL, chapterInsights, findChapterByNames, getSubject, matchTopic } from "@/lib/neet-blueprint";
 
 const RELATED_COUNT = 6;
 
@@ -100,22 +103,95 @@ async function loadRelated(db: Db, doc: Doc, exam: Awaited<ReturnType<typeof pra
   }));
 }
 
+const ADJACENT_SCAN = 6;
+
+const toRelated = (q: PyqQuestion): PyqRelated => ({
+  param: questionParam(q),
+  snippet: snippetOf(q.body),
+  label: q.source.label,
+  difficulty: q.difficulty,
+  chapter: q.chapter,
+  topic: q.topic,
+});
+
+/**
+ * The previous and next question of the same chapter by _id (no wrap-around),
+ * skipping image-only ones that stay out of search. A fixed chain through the
+ * chapter gives every page a stable crawl path in both directions.
+ */
+async function loadAdjacent(db: Db, doc: Doc, exam: ExamKey | null): Promise<PyqAdjacent> {
+  const subject = doc.subject as string;
+  const chapter = String(doc.chapter ?? "").trim() || UNTAGGED_CHAPTER;
+  const match =
+    chapter === UNTAGGED_CHAPTER ? { ...(await pyqMatch(db, exam)), subject } : await scopeMatch(db, exam, subject, chapter);
+  const col = db.collection("questions");
+  const projection = QUESTION_PROJECTION as unknown as Record<string, 0 | 1>;
+  const [after, before] = await Promise.all([
+    col.find({ ...match, _id: { $gt: doc._id } } as never, { projection }).sort({ _id: 1 }).limit(ADJACENT_SCAN).toArray(),
+    col.find({ ...match, _id: { $lt: doc._id } } as never, { projection }).sort({ _id: -1 }).limit(ADJACENT_SCAN).toArray(),
+  ]);
+  const pick = (rows: Record<string, unknown>[]) => rows.find((d) => isIndexable(plainText(String(d.body ?? ""))));
+  const next = pick(after);
+  const prev = pick(before);
+  const picked = [next, prev].filter((d): d is Record<string, unknown> => Boolean(d));
+  if (picked.length === 0) return { prev: null, next: null };
+  const built = await buildQuestions(db, "", picked);
+  const byId = new Map(built.map((b) => [b.id, b]));
+  const related = (d: Record<string, unknown> | undefined) => {
+    const b = d ? byId.get(String(d._id)) : undefined;
+    return b ? toRelated(b) : null;
+  };
+  return { prev: related(prev), next: related(next) };
+}
+
+/** Chapter weightage + topic repeat counts from the NEET blueprint. NEET questions with a chapter tag that matches the dataset only. */
+function buildContext(q: PyqQuestion, exam: ExamKey | null): PyqContext | null {
+  if (exam !== "neet" || q.chapter === UNTAGGED_CHAPTER) return null;
+  const c = findChapterByNames(q.subject, q.chapter);
+  const subject = c ? getSubject(c.subjectKey) : undefined;
+  if (!c || !subject) return null;
+  const ins = chapterInsights(c);
+  const t = q.topic !== GENERAL_TOPIC ? matchTopic(c, q.topic) : null;
+  return {
+    subjectKey: c.subjectKey,
+    subjectName: c.subjectName,
+    chapterSlug: c.slug,
+    chapterName: c.name,
+    chapterTotal: c.total,
+    subjectTotal: subject.total,
+    share: c.share,
+    rank: c.rank,
+    chapterCount: subject.chapters.length,
+    perPaperAvg: ins.perPaperAvg,
+    trend: ins.trend,
+    recentAvg: ins.recentAvg,
+    earlierAvg: ins.earlierAvg,
+    rangeLabel: RANGE_LABEL,
+    paperCount: PAPER_LABELS.length,
+    topic: t ? { name: q.topic, total: t.total, papers: t.papers } : null,
+  };
+}
+
 export async function buildPublicPage(db: Db, doc: Doc): Promise<PyqPublicPage> {
   const [question] = await buildQuestions(db, "", [doc]);
   const keys = await practiceKeysFor(db, doc);
+  const [related, adjacent] = await Promise.all([loadRelated(db, doc, keys.exam), loadAdjacent(db, doc, keys.exam)]);
   return {
     question,
     examKey: keys.exam,
     canonical: questionParam(question),
     indexable: isIndexable(plainText(question.body)),
-    related: await loadRelated(db, doc, keys.exam),
+    related,
+    context: buildContext(question, keys.exam),
+    adjacent,
   };
 }
 
 // ─── Sitemap ───────────────────────────────────────────────────────────────
-// A sitemap file holds at most 50,000 urls. Stay under that here; if the bank
-// ever outgrows it, split into a sitemap index (see the notes in the PR).
-const SITEMAP_MAX = 45_000;
+// A sitemap file holds at most 50,000 urls (and 50 MB). Questions are served in
+// chunks of this size from /sitemap-questions.xml?page=N, listed by the index at
+// /sitemap.xml, so the bank can grow without ever hitting the limit.
+export const SITEMAP_QUESTIONS_PER_FILE = 10_000;
 
 const isoDate = (v: unknown): string | null => {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
@@ -123,16 +199,24 @@ const isoDate = (v: unknown): string | null => {
   return null;
 };
 
-/** Indexable public questions as { path, lastmod } — thin/image-only ones are left out. */
-export async function listSitemapQuestions(db: Db): Promise<{ path: string; lastmod: string | null }[]> {
+async function sitemapQuestionFilter(db: Db) {
+  return { isPYQ: true, bundleId: { $in: await eligibleBundleIds(db) } };
+}
+
+/** How many question sitemap files exist (at least 1). Counts eligible questions, before the thin-page filter. */
+export async function countSitemapQuestionPages(db: Db): Promise<number> {
+  const n = await db.collection("questions").countDocuments(await sitemapQuestionFilter(db));
+  return Math.max(1, Math.ceil(n / SITEMAP_QUESTIONS_PER_FILE));
+}
+
+/** Indexable public questions for one sitemap file (1-based page) as { path, lastmod } — thin/image-only ones are left out. */
+export async function listSitemapQuestions(db: Db, page = 1): Promise<{ path: string; lastmod: string | null }[]> {
   const rows = await db
     .collection("questions")
-    .find(
-      { isPYQ: true, bundleId: { $in: await eligibleBundleIds(db) } },
-      { projection: { body: 1, subject: 1, chapter: 1, updatedAt: 1, createdAt: 1 } },
-    )
+    .find(await sitemapQuestionFilter(db), { projection: { body: 1, subject: 1, chapter: 1, updatedAt: 1, createdAt: 1 } })
     .sort({ _id: 1 })
-    .limit(SITEMAP_MAX)
+    .skip((Math.max(1, page) - 1) * SITEMAP_QUESTIONS_PER_FILE)
+    .limit(SITEMAP_QUESTIONS_PER_FILE)
     .toArray();
 
   const out: { path: string; lastmod: string | null }[] = [];

@@ -7,7 +7,7 @@
 // 301s to the current slug instead).
 import type { ExamKey } from "@/lib/admin-types";
 import { UNTAGGED_CHAPTER, type Difficulty, type OptionKey, type PyqQuestion } from "@/lib/pyq-types";
-import { truncate } from "@/lib/seo";
+import { SITE_URL, truncate } from "@/lib/seo";
 
 /** Questions whose readable text is shorter than this (image-only, "Match the following" stubs…) stay out of Google. */
 export const MIN_INDEXABLE_CHARS = 40;
@@ -118,6 +118,30 @@ export type PyqRelated = {
   topic: string;
 };
 
+/** What the NEET blueprint says about this question's chapter and topic. Server-built, so the whole dataset never ships to the browser. */
+export type PyqContext = {
+  subjectKey: string;
+  subjectName: string;
+  chapterSlug: string;
+  chapterName: string;
+  chapterTotal: number;
+  subjectTotal: number;
+  share: number;
+  rank: number;
+  chapterCount: number;
+  perPaperAvg: number;
+  trend: "rising" | "steady" | "falling";
+  recentAvg: number;
+  earlierAvg: number;
+  rangeLabel: string;
+  paperCount: number;
+  /** Null when the question has no topic tag or no blueprint row matches it. */
+  topic: { name: string; total: number; papers: number } | null;
+};
+
+/** The questions just before and after this one in its chapter (indexable ones only). */
+export type PyqAdjacent = { prev: PyqRelated | null; next: PyqRelated | null };
+
 export type PyqPublicPage = {
   /** Never contains the answer or the solution. */
   question: PyqQuestion;
@@ -126,6 +150,8 @@ export type PyqPublicPage = {
   canonical: string;
   indexable: boolean;
   related: PyqRelated[];
+  context: PyqContext | null;
+  adjacent: PyqAdjacent;
 };
 
 /** What a logged-out visitor gets back: the answer, never the solution. */
@@ -139,3 +165,59 @@ export type PublicCheckResult = {
 };
 
 export const snippetOf = (body: string, max = 140) => truncate(plainText(body), max);
+
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Plain sentences that say where this question sits — paper, difficulty, how
+ * much weight its chapter carries and how often its topic repeats. Rendered in
+ * the HTML so every question page has facts of its own, not just the stem.
+ */
+export function questionContextLines(q: PyqQuestion, ctx: PyqContext | null): string[] {
+  const out: string[] = [];
+  if (q.source.year) out.push(`Previous-year question from ${q.source.label}.`);
+  out.push(`Tagged ${q.difficulty.toLowerCase()} difficulty.`);
+  if (ctx) {
+    out.push(
+      `${ctx.chapterName} contributed ${ctx.chapterTotal} of the ${ctx.subjectTotal} NEET ${ctx.subjectName} questions asked between ${ctx.rangeLabel} ` +
+        `(${ctx.share}% of the subject, #${ctx.rank} of ${ctx.chapterCount} chapters), roughly ${ctx.perPaperAvg} per paper.`,
+    );
+    if (ctx.topic) {
+      out.push(`The topic “${ctx.topic.name}” came up in ${ctx.topic.papers} of ${ctx.paperCount} papers (${plural(ctx.topic.total, "question")}) in the same period.`);
+    }
+    if (ctx.trend !== "steady") {
+      out.push(`The chapter is ${ctx.trend}: the latest three papers average ${ctx.recentAvg} questions each, against ${ctx.earlierAvg} in the first three.`);
+    }
+  }
+  return out;
+}
+
+/**
+ * schema.org Question for the page. Only what a visitor can see in the HTML is
+ * marked up: the stem and the four options. The correct answer and the solution
+ * are fetched after the visitor checks an answer / logs in, so there is
+ * deliberately NO acceptedAnswer — marking up an answer the page doesn't show
+ * would break Google's structured-data rules. (That also means this will not
+ * produce a Q&A rich result; it describes the page to search engines.)
+ */
+export function questionJsonLd(q: PyqQuestion, url: string) {
+  const text = plainText(q.body);
+  const options = q.type === "mcq" && q.options ? (["A", "B", "C", "D"] as const).map((k) => plainText(q.options?.[k] ?? "")) : [];
+  const allOptions = options.length === 4 && options.every(Boolean);
+  const tagged = q.chapter !== UNTAGGED_CHAPTER;
+  return {
+    "@context": "https://schema.org",
+    "@type": "Question",
+    "@id": `${url}#question`,
+    url,
+    name: truncate(questionTitle({ body: q.body, subject: q.subject, chapter: q.chapter, label: q.source.label }), 110),
+    text: truncate(text, 1000),
+    inLanguage: "en-IN",
+    eduQuestionType: q.type === "mcq" ? "Multiple choice" : "Numerical",
+    about: [{ "@type": "Thing", name: q.subject }, ...(tagged ? [{ "@type": "Thing", name: q.chapter }] : [])],
+    isPartOf: { "@type": "WebPage", "@id": url },
+    publisher: { "@id": `${SITE_URL}/#organization` },
+    ...(allOptions ? { suggestedAnswer: options.map((t) => ({ "@type": "Answer", text: truncate(t, 300) })) } : {}),
+  };
+}

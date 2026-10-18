@@ -105,6 +105,33 @@ export function practiceSearch(subjectName: string, chapterName?: string) {
   return { exam: "neet" as const, subject: subjectName, ...(chapterName ? { chapter: chapterName } : {}) };
 }
 
+const normName = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** The blueprint chapter for a question's (subject, chapter) tags; undefined when the names don't match. */
+export function findChapterByNames(subjectName: string, chapterName: string): Chapter | undefined {
+  const s = SUBJECTS.find((x) => normName(x.name) === normName(subjectName));
+  return s?.chapters.find((c) => normName(c.name) === normName(chapterName));
+}
+
+export type TopicMatch = { total: number; papers: number; rows: number };
+
+/**
+ * How often a topic was asked. Blueprint rows carry the sub-topic in brackets
+ * ("Transcription (Types of RNA)"), so a question tagged "Transcription" matches
+ * every row that is exactly that or starts with it. Null when nothing matches.
+ */
+export function matchTopic(c: Chapter, topicName: string): TopicMatch | null {
+  const t = normName(topicName);
+  if (!t) return null;
+  const rows = c.topics.filter((x) => {
+    const n = normName(x.name);
+    return n === t || n.startsWith(`${t} (`);
+  });
+  if (rows.length === 0) return null;
+  const papers = PAPER_LABELS.filter((_, i) => rows.some((r) => (r.years[i] ?? 0) > 0)).length;
+  return { total: sum(rows.map((r) => r.total)), papers, rows: rows.length };
+}
+
 export const totalQuestions = () => sum(SUBJECTS.map((s) => s.total));
 export const totalChapters = () => sum(SUBJECTS.map((s) => s.chapters.length));
 

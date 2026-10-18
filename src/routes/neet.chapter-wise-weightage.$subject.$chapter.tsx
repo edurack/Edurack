@@ -2,8 +2,8 @@
 //   →  /neet/chapter-wise-weightage/<subject>/<chapter>
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
-import { BLUEPRINT_BASE, chapterPath, getChapter, getSubject, subjectPath } from "@/lib/neet-blueprint";
-import { chapterDescription, chapterFaq, chapterTitle, faqPageJsonLd } from "@/lib/neet-blueprint-copy";
+import { BLUEPRINT_BASE, RANGE_LABEL, chapterPath, getChapter, getSubject, subjectPath, topicLabel } from "@/lib/neet-blueprint";
+import { chapterDescription, chapterFaq, chapterTitle, faqPageJsonLd, itemListJsonLd } from "@/lib/neet-blueprint-copy";
 import { ChapterView } from "@/components/neet/blueprint-views";
 import { BlueprintNotFound } from "@/components/neet/blueprint-not-found";
 
@@ -29,6 +29,11 @@ export const Route = createFileRoute("/neet/chapter-wise-weightage/$subject/$cha
           { name: c.name, path },
         ]),
         faqPageJsonLd(chapterFaq(c, subject.total, subject.chapters.length)),
+        // The topics table is on the page; list the ten most-asked, most-asked first.
+        itemListJsonLd(
+          `${c.name}: most asked NEET topics ${RANGE_LABEL}`,
+          [...c.topics].sort((a, b) => b.total - a.total || b.papers - a.papers).slice(0, 10).map((t) => ({ name: topicLabel(t.name) })),
+        ),
       ],
     });
   },

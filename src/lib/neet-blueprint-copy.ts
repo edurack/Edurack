@@ -223,11 +223,11 @@ export function faqPageJsonLd(faqs: Faq[]) {
   };
 }
 
-export function itemListJsonLd(name: string, items: { name: string; url: string }[]) {
+export function itemListJsonLd(name: string, items: { name: string; url?: string }[]) {
   return {
     "@context": "https://schema.org",
     "@type": "ItemList",
     name,
-    itemListElement: items.map((it, i) => ({ "@type": "ListItem", position: i + 1, name: it.name, url: it.url })),
+    itemListElement: items.map((it, i) => ({ "@type": "ListItem", position: i + 1, name: it.name, ...(it.url ? { url: it.url } : {}) })),
   };
 }

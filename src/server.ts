@@ -4,6 +4,7 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { validateServerEnv } from "./lib/env";
 import { getDb } from "./lib/mongo";
+import { edgeCachePolicy } from "./lib/edge-cache";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -57,12 +58,33 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+// Adds CDN cache headers to successful anonymous GET page renders on the public
+// allowlist in lib/edge-cache.ts. Never overrides a Cache-Control a route set
+// itself, and never touches errors, redirects, cookies or non-HTML responses.
+function withEdgeCache(request: Request, response: Response): Response {
+  if (request.method !== "GET" || response.status !== 200) return response;
+  if (response.headers.has("cache-control") || response.headers.has("set-cookie")) return response;
+  if (!(response.headers.get("content-type") ?? "").includes("text/html")) return response;
+
+  let policy: string | null = null;
+  try {
+    policy = edgeCachePolicy(new URL(request.url).pathname);
+  } catch {
+    return response;
+  }
+  if (!policy) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", policy);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withEdgeCache(request, await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

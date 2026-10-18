@@ -15,7 +15,7 @@ import { AppHeader } from "@/components/app-header";
 import { useAuth } from "@/lib/auth-context";
 import { SmartContent } from "@/lib/smart-content";
 import { SITE_URL, breadcrumbJsonLd, pageHead, truncate } from "@/lib/seo";
-import { parseQuestionParam, plainText, questionTitle, stemKind, type PublicCheckResult, type PyqPublicPage } from "@/lib/pyq-public";
+import { parseQuestionParam, plainText, questionContextLines, questionJsonLd, questionTitle, stemKind, type PublicCheckResult, type PyqPublicPage } from "@/lib/pyq-public";
 import { GENERAL_TOPIC, UNTAGGED_CHAPTER, type OptionKey, type PyqAnswer } from "@/lib/pyq-types";
 import { checkPublicPyqAnswer, getPublicQuestion } from "@/server-functions/pyq-public";
 import { submitPyqAnswer } from "@/server-functions/pyq-practice";
@@ -63,11 +63,14 @@ export const Route = createFileRoute("/question/$id")({
         : `${truncate(text, 100)} — ${where}. Check the answer free; log in for the step-by-step solution.`,
       path,
       type: "article",
-      jsonLd: breadcrumbJsonLd([
-        { name: "Home", path: "/" },
-        { name: "PYQ practice", path: "/pyq" },
-        { name: truncate(text, 60), path },
-      ]),
+      jsonLd: [
+        breadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: "PYQ practice", path: "/pyq" },
+          { name: truncate(text, 60), path },
+        ]),
+        questionJsonLd(q, `${SITE_URL}${path}`),
+      ],
     });
   },
   notFoundComponent: QuestionNotFound,
@@ -102,7 +105,7 @@ type Outcome = Partial<PublicCheckResult> & {
 };
 
 function QuestionView({ page }: { page: PyqPublicPage }) {
-  const { question: q, examKey, canonical, related } = page;
+  const { question: q, examKey, canonical, related, context, adjacent } = page;
   const { user, loading } = useAuth();
   const path = `/question/${canonical}`;
 
@@ -304,6 +307,46 @@ function QuestionView({ page }: { page: PyqPublicPage }) {
         >
           Practise more {q.chapter !== UNTAGGED_CHAPTER ? q.chapter : q.subject} PYQs
         </Link>
+
+        {/* Facts specific to this question, in the HTML Google reads: paper, difficulty, chapter weightage, topic repeats. */}
+        <section aria-labelledby="about-question" className="clay mt-6 p-4 sm:p-5">
+          <h2 id="about-question" className="font-display text-base font-bold text-foreground">
+            About this question
+          </h2>
+          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-foreground/80">
+            {questionContextLines(q, context).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {context && (
+            <Link
+              to="/neet/chapter-wise-weightage/$subject/$chapter"
+              params={{ subject: context.subjectKey, chapter: context.chapterSlug }}
+              className="mt-3 inline-block text-sm font-bold text-[var(--sky-deep)] underline-offset-2 hover:underline"
+            >
+              See {context.chapterName} weightage, topic by topic
+            </Link>
+          )}
+        </section>
+
+        {(adjacent.prev || adjacent.next) && (
+          <nav aria-label="Previous and next question" className="mt-6 grid gap-2 sm:grid-cols-2">
+            {adjacent.prev ? (
+              <Link to="/question/$id" params={{ id: adjacent.prev.param }} className="clay block p-3.5 transition-colors hover:bg-foreground/[0.03]">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-foreground/50">← Previous question</p>
+                <p className="mt-1 text-sm leading-snug text-foreground">{adjacent.prev.snippet || `${adjacent.prev.chapter} question`}</p>
+              </Link>
+            ) : (
+              <span />
+            )}
+            {adjacent.next && (
+              <Link to="/question/$id" params={{ id: adjacent.next.param }} className="clay block p-3.5 text-right transition-colors hover:bg-foreground/[0.03]">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-foreground/50">Next question →</p>
+                <p className="mt-1 text-sm leading-snug text-foreground">{adjacent.next.snippet || `${adjacent.next.chapter} question`}</p>
+              </Link>
+            )}
+          </nav>
+        )}
 
         {related.length > 0 && (
           <section aria-labelledby="related" className="mt-8">

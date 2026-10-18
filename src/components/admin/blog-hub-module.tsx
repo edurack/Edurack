@@ -22,6 +22,7 @@ import { listBlogPostsAdmin, softDeleteBlogPost, bulkUpdateBlogPosts } from "@/s
 import type { BulkBlogAction } from "@/server-functions/blog-admin";
 import { BlogPromoSettingsPanel } from "@/components/admin/blog-promo-settings";
 import { BlogEditor, StatusPill } from "@/components/admin/blog-editor";
+import { BlogImportDialog } from "@/components/admin/blog-import-dialog";
 import { BLOG_STARTERS } from "@/lib/blog-starters";
 import { BLOG_CATEGORIES, BLOG_CATEGORY_LABELS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
 import type { BlogPost, BlogPostInput, BlogCategory } from "@/lib/blog-types";
@@ -63,6 +64,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const [initial, setInitial] = useState<Partial<BlogPostInput> | undefined>(undefined);
   const [showPromo, setShowPromo] = useState(false);
   const [chooser, setChooser] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [category, setCategory] = useState<BlogCategory | "all">("all");
   const [query, setQuery] = useState("");
@@ -232,6 +234,9 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
           >
             Free test popup
           </button>
+          <button onClick={() => setImportOpen(true)} className="clay-chip flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold text-foreground/70">
+            Import JSON
+          </button>
           <button onClick={() => setChooser(true)} className="clay-btn flex items-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-bold">
             <Plus className="h-4 w-4" />
             New post
@@ -335,6 +340,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
         </div>
       )}
 
+      <BlogImportDialog open={importOpen} onClose={() => setImportOpen(false)} adminUser={adminUser} onDone={loadList} />
       {dialog && (
         <BulkPublishDialog
           mode={dialog}
