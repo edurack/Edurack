@@ -1,5 +1,6 @@
-// src/routes/neet.chapter-wise-weightage.$subject.$chapter.tsx
+// src/routes/neet.chapter-wise-weightage.$subject.$chapter.index.tsx
 //   →  /neet/chapter-wise-weightage/<subject>/<chapter>
+// (.index keeps /sheet a sibling route: a plain $chapter route would be its parent and never render it without an Outlet)
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
 import { BLUEPRINT_BASE, RANGE_LABEL, chapterPath, getChapter, getSubject, subjectPath, topicLabel } from "@/lib/neet-blueprint";
@@ -8,7 +9,7 @@ import { ChapterView } from "@/components/neet/blueprint-views";
 import { BlueprintNotFound } from "@/components/neet/blueprint-not-found";
 import { getChapterTopQuestions } from "@/server-functions/pyq-seo";
 
-export const Route = createFileRoute("/neet/chapter-wise-weightage/$subject/$chapter")({
+export const Route = createFileRoute("/neet/chapter-wise-weightage/$subject/$chapter/")({
   loader: async ({ params }) => {
     if (!getChapter(params.subject, params.chapter)) throw notFound();
     // Links to the chapter's PYQ pages. A database hiccup must never take the page down.

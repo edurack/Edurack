@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { PAPER_LABELS, RANGE_LABEL, chapterPath, practiceSearch, topicLabel, type Chapter } from "@/lib/neet-blueprint";
 import { DATA_NOTE, type Faq } from "@/lib/neet-blueprint-copy";
 import { PAPER_SLUGS, analyzePaper, paperIntro, paperPath, type PaperAnalysis } from "@/lib/neet-paper-analysis";
+import { analyzePaperSubject, paperSubjectIntro, type PaperSubject } from "@/lib/neet-paper-subject";
 import { everyYearTopics, overallTopics, topicsBySubject, type RepeatedTopic } from "@/lib/neet-topics";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 
@@ -53,14 +54,14 @@ function ChapterLink({ c, showSubject = true }: { c: Chapter; showSubject?: bool
   );
 }
 
-function Practice({ line }: { line: string }) {
+function Practice({ line, subject = "Biology" }: { line: string; subject?: string }) {
   return (
     <div className="ink-section mt-10 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p className="font-display text-lg font-extrabold">{line}</p>
         <p className="mt-1 text-sm text-white/65">Free NEET PYQs with solutions. Try your first 5 without logging in.</p>
       </div>
-      <Link to="/pyq" search={practiceSearch("Biology") as never} className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[#ffffff] px-6 text-sm font-extrabold text-[#141b2b]">Practise NEET PYQs</Link>
+      <Link to="/pyq" search={practiceSearch(subject) as never} className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[#ffffff] px-6 text-sm font-extrabold text-[#141b2b]">Practise NEET PYQs</Link>
     </div>
   );
 }
@@ -125,11 +126,12 @@ export function PaperView({ slug, faqs }: { slug: string; faqs: Faq[] }) {
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {a.subjects.map((s) => (
-          <div key={s.key} className="clay-inset rounded-2xl px-4 py-3">
+          <Link key={s.key} to="/neet/paper-analysis/$year/$subject" params={{ year: a.slug, subject: s.key }} className="clay-inset block rounded-2xl px-4 py-3 transition hover:-translate-y-0.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{s.name}</p>
             <p className="font-display mt-0.5 text-2xl font-bold">{s.count}</p>
             <p className="text-xs text-foreground/50">{s.share}% of questions</p>
-          </div>
+            <p className="mt-1.5 text-xs font-bold text-[var(--sky-deep)]">{s.name} chapter-wise →</p>
+          </Link>
         ))}
       </div>
 
@@ -191,6 +193,115 @@ export function PaperView({ slug, faqs }: { slug: string; faqs: Faq[] }) {
         ))}
       </div>
       <p className="mt-8 text-xs text-foreground/50">{DATA_NOTE}</p>
+    </Page>
+  );
+}
+
+// ── /neet/paper-analysis/<year>/<subject> ────────────────────────────────
+const delta = (count: number, prev: number | null) => (prev === null ? "" : count === prev ? "same" : count > prev ? `+${count - prev}` : `${count - prev}`);
+
+export function PaperSubjectView({ paperSlug, subjectKey, faqs }: { paperSlug: string; subjectKey: string; faqs: Faq[] }) {
+  const a = analyzePaperSubject(paperSlug, subjectKey) as PaperSubject;
+  const s = a.subject;
+  const maxCount = a.chapters[0]?.count ?? 1;
+  const otherSubjects = ["physics", "chemistry", "botany", "zoology"].filter((k) => k !== subjectKey && analyzePaperSubject(paperSlug, k));
+  const stat = (label: string, value: ReactNode, hint: string) => (
+    <div className="clay-inset rounded-2xl px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{label}</p>
+      <p className="font-display mt-0.5 text-2xl font-bold">{value}</p>
+      <p className="text-xs text-foreground/50">{hint}</p>
+    </div>
+  );
+  return (
+    <Page crumbs={[{ label: "NEET paper analysis", to: "/neet/paper-analysis" }, { label: a.label, to: paperPath(a.slug) }, { label: s.name }]}>
+      <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{a.label} {s.name} paper analysis</h1>
+      <div className="mt-4 max-w-3xl space-y-3 text-[15px] leading-relaxed text-foreground/80">{paperSubjectIntro(a).map((p) => <p key={p}>{p}</p>)}</div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {stat("Questions", a.count, `${s.name} in ${a.label}`)}
+        {stat("Share of paper", `${a.share}%`, `of ${a.paperTotal} tagged questions`)}
+        {stat("Chapters asked", `${a.chapters.length}/${s.chapters.length}`, `${a.absent.length} had no question`)}
+        {stat(a.prevLabel ? `vs ${a.prevLabel}` : "Rank of 8 papers", a.prevCount === null ? `#${a.rank}` : delta(a.count, a.prevCount), a.prevCount === null ? `by ${s.name} count` : `${a.prevCount} then, ${a.count} now`)}
+      </div>
+
+      <H2>{s.name} chapters and topics asked in {a.label}</H2>
+      <p className="mb-3 text-sm text-foreground/60">Chapters are ranked by questions in this paper. Under each chapter are the topics that were asked; “new” marks a topic with no question in any earlier paper.</p>
+      <ul className="clay divide-y divide-border rounded-3xl px-5">
+        {a.chapters.map((r) => (
+          <li key={r.chapter.slug} className="py-3.5">
+            <div className="flex items-center gap-3">
+              <span className="flex-1 text-[15px]"><ChapterLink c={r.chapter} showSubject={false} /></span>
+              <span className="hidden w-28 sm:block"><Bar value={r.count} max={maxCount} /></span>
+              <span className="w-6 text-right text-sm font-bold text-foreground">{r.count}</span>
+              <span className="w-12 text-right text-xs text-foreground/55">{delta(r.count, r.prev)}</span>
+            </div>
+            {r.topics.length > 0 && (
+              <p className="mt-1.5 text-xs leading-relaxed text-foreground/60">
+                {r.topics.map((t, i) => (
+                  <span key={t.name}>
+                    {i > 0 && " · "}
+                    {topicLabel(t.name, 70)}
+                    {t.inPaper > 1 ? ` ×${t.inPaper}` : ""}
+                    {t.firstTime && <span className="font-semibold text-[var(--sky-deep)]"> new</span>}
+                  </span>
+                ))}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {(a.biggestRise || a.biggestDrop) && a.prevLabel && (
+        <>
+          <H2>What changed from {a.prevLabel}</H2>
+          <ul className="space-y-2 text-[15px] text-foreground/80">
+            {a.biggestRise && <li>Biggest rise: <ChapterLink c={a.biggestRise.chapter} showSubject={false} /> went from {a.biggestRise.from} to {a.biggestRise.to} questions.</li>}
+            {a.biggestDrop && <li>Biggest drop: <ChapterLink c={a.biggestDrop.chapter} showSubject={false} /> went from {a.biggestDrop.from} to {a.biggestDrop.to} questions.</li>}
+          </ul>
+        </>
+      )}
+
+      {a.firstTimeTopics.length > 0 && (
+        <>
+          <H2>{s.name} topics asked for the first time in {a.label}</H2>
+          <TopicRows topics={a.firstTimeTopics.map((t) => ({ name: t.name, chapter: t.chapter, value: `${t.inPaper} Qs` }))} />
+        </>
+      )}
+
+      {a.absent.length > 0 && (
+        <>
+          <H2>{s.name} chapters with no question in {a.label}</H2>
+          <p className="text-sm leading-relaxed text-foreground/75">
+            {a.absent.map((c, i) => <span key={c.slug}>{i > 0 && ", "}<ChapterLink c={c} showSubject={false} /></span>)}
+          </p>
+        </>
+      )}
+
+      <Practice line={`Practise ${s.name} PYQs`} subject={s.name} />
+
+      <H2>{s.name} across the 8 papers</H2>
+      <div className="flex flex-wrap gap-2">
+        {a.perPaper.map((p) =>
+          p.slug === a.slug ? (
+            <span key={p.slug} className="rounded-full bg-foreground px-4 py-2 text-xs font-bold text-background">{p.label} · {p.count}</span>
+          ) : (
+            <Link key={p.slug} to="/neet/paper-analysis/$year/$subject" params={{ year: p.slug, subject: subjectKey }} className="rounded-full border border-border px-4 py-2 text-xs font-bold text-foreground/70 hover:border-foreground/40">{p.label} · {p.count}</Link>
+          ),
+        )}
+      </div>
+
+      <H2>{a.label} in the other subjects</H2>
+      <div className="flex flex-wrap gap-2">
+        {otherSubjects.map((k) => (
+          <Link key={k} to="/neet/paper-analysis/$year/$subject" params={{ year: a.slug, subject: k }} className="rounded-full border border-border px-4 py-2 text-xs font-bold capitalize text-foreground/70 hover:border-foreground/40">{k}</Link>
+        ))}
+        <Link to="/neet/paper-analysis/$year" params={{ year: a.slug }} className="rounded-full border border-border px-4 py-2 text-xs font-bold text-foreground/70 hover:border-foreground/40">Full {a.label} analysis</Link>
+        <Link to="/neet/chapter-wise-weightage/$subject" params={{ subject: subjectKey }} className="rounded-full border border-border px-4 py-2 text-xs font-bold text-foreground/70 hover:border-foreground/40">{s.name} weightage, all papers</Link>
+      </div>
+
+      <H2>Frequently asked questions</H2>
+      <Faqs faqs={faqs} />
+      <p className="mt-8 text-xs text-foreground/50">{DATA_NOTE} Counts cover {RANGE_LABEL}.</p>
     </Page>
   );
 }

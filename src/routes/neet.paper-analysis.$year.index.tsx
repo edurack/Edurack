@@ -1,4 +1,5 @@
-// src/routes/neet.paper-analysis.$year.tsx  →  /neet/paper-analysis/<year>   (2020 … 2026, re-neet-2026)
+// src/routes/neet.paper-analysis.$year.index.tsx  →  /neet/paper-analysis/<year>
+// (.index so the per-subject pages below, /<year>/<subject>, are siblings and not children that need an Outlet)   (2020 … 2026, re-neet-2026)
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
 import { faqPageJsonLd } from "@/lib/neet-blueprint-copy";
@@ -6,7 +7,7 @@ import { PAPER_BASE, analyzePaper, paperDescription, paperFaq, paperPath, paperT
 import { PaperView } from "@/components/neet/seo-pages";
 import { BlueprintNotFound } from "@/components/neet/blueprint-not-found";
 
-export const Route = createFileRoute("/neet/paper-analysis/$year")({
+export const Route = createFileRoute("/neet/paper-analysis/$year/")({
   loader: ({ params }) => {
     if (!analyzePaper(params.year)) throw notFound();
     return { year: params.year };

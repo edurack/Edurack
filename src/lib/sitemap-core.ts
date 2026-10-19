@@ -7,6 +7,7 @@ import { SITE_URL } from "@/lib/seo";
 import { getDb } from "@/lib/mongo";
 import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
 import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
+import { allPaperSubjectPages, paperSubjectPath } from "@/lib/neet-paper-subject";
 import { TOPICS_PATH } from "@/lib/neet-topics";
 import { loadTreeRows } from "@/lib/pyq-server";
 import { istDayKey } from "@/lib/practice-schedule";
@@ -136,6 +137,8 @@ export function seoEntries(): string[] {
     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
+    // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.
+    ...allPaperSubjectPages().map((p) => urlEntry(`${SITE_URL}${paperSubjectPath(p.paper, p.subject)}`, SEO_LASTMOD, 0.7, "monthly")),
     urlEntry(`${SITE_URL}${TOPICS_PATH}`, SEO_LASTMOD, 0.8, "monthly"),
     // The question of the day switches at midnight IST (see getQuestionOfTheDay), so lastmod is the IST day —
     // not the UTC date, which would lag by up to 5½ hours after the page has already changed.

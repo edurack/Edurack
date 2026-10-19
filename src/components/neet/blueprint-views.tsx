@@ -27,6 +27,8 @@ import {
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import type { PyqRelated } from "@/lib/pyq-public";
 import { GENERAL_TOPIC } from "@/lib/pyq-types";
+import { PAPER_SLUGS } from "@/lib/neet-paper-analysis";
+import { analyzePaperSubject } from "@/lib/neet-paper-subject";
 import { DATA_NOTE, chapterFaq, chapterSummary, hubFaq, subjectFaq, subjectIntro, subjectYearTotals, type Faq } from "@/lib/neet-blueprint-copy";
 
 // Shared page frame: the site header (with links to the blog, PYQ practice and
@@ -422,6 +424,19 @@ export function SubjectView({ subjectKey }: { subjectKey: string }) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <SectionTitle>{s.name} paper by paper</SectionTitle>
+      <p className="mb-3 text-sm text-foreground/60">Open a year to see which {s.name} chapters and topics that paper asked.</p>
+      <div className="flex flex-wrap gap-2">
+        {PAPER_SLUGS.map((p, i) => {
+          const pa = analyzePaperSubject(p, s.key);
+          return pa ? (
+            <Link key={p} to="/neet/paper-analysis/$year/$subject" params={{ year: p, subject: s.key }} className="clay-chip rounded-full px-4 py-2 text-xs font-bold text-foreground/70">
+              {PAPER_LABELS[i]} · {pa.count}
+            </Link>
+          ) : null;
+        })}
       </div>
 
       <SectionTitle>Frequently asked questions</SectionTitle>
