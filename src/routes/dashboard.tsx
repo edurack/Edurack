@@ -1,4 +1,5 @@
 import { TodayCard, type UpNextInfo } from "@/components/today-card";
+import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
 import { PyqHero } from "@/components/dashboard/pyq-hero";
 import { StreakPopup } from "@/components/dashboard/streak-popup";
 import { CompleteProfilePopup } from "@/components/dashboard/complete-profile-popup";
@@ -6,7 +7,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
+import { IconTrophy as Trophy, IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { getDashboardBootstrap } from "@/server-functions/dashboard";
 import { getProfile } from "@/server-functions/profile";
@@ -590,6 +591,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
   const continueCount = ownedListings.length + ownedTests.length;
   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
     { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq", highlight: true },
+    { icon: Trophy, label: "Weekly leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
     { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
@@ -617,6 +619,9 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
     <div className="space-y-4">
       {/* PYQ practice comes first: streak, milestones and a tile per subject. */}
       <PyqHero />
+
+      {/* The team's weekly shout-out (renders nothing until one is published). */}
+      <StudentOfTheWeekBanner />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* The next mentor session (the practice part lives in the hero above). */}
@@ -651,7 +656,7 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {actions.map((a, i) => {
           const inner = (<><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${a.highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}{a.highlight && <span className="ml-1.5 rounded-full bg-amber-300 px-1.5 py-0.5 align-middle text-[9px] font-extrabold uppercase text-amber-950">Free</span>}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
           const base = a.highlight ? `${tile} border-primary/60 bg-primary/5` : tile;

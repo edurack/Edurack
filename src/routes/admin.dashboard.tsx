@@ -12,7 +12,8 @@ import { OutreachModule } from "@/components/admin/outreach-module";
 import { TeamModule } from "@/components/admin/team-module";
 import { getTeamOverview } from "@/server-functions/team";
 import { GrowthHubModule } from "@/components/admin/growth-hub-module";
-import { IconTrendingUp as TrendingUpIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
+import { LeaderboardModule } from "@/components/admin/leaderboard-module";
+import { IconTrendingUp as TrendingUpIcon, IconTrophy as TrophyIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";
@@ -73,6 +74,7 @@ type ModuleKey =
   | "students"
   | "outreach"
   | "growth"
+  | "leaderboard"
   | "team"
   | "applications"
   | "mentors"
@@ -92,7 +94,7 @@ type ModuleDef = { key: ModuleKey; label: string; icon: typeof LayoutDashboard }
 // posted somewhere the student dashboard doesn't read yet. Keeping either
 // around just meant admins could enter data with no visible effect.
 const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
-  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }, { key: "growth", label: "Growth Hub", icon: TrendingUpIcon as any }] },
+  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }, { key: "growth", label: "Growth Hub", icon: TrendingUpIcon as any }, { key: "leaderboard", label: "Student of the week", icon: TrophyIcon as any }] },
   {
     label: "Content",
     items: [
@@ -393,6 +395,8 @@ function ModuleRouter({
       return <OutreachModule adminUser={adminUser} />;
     case "growth":
       return <GrowthHubModule adminUser={adminUser} onNavigate={onNavigate} />;
+    case "leaderboard":
+      return <LeaderboardModule adminUser={adminUser} />;
     case "team":
       return <TeamModule adminUser={adminUser} />;
     case "applications":

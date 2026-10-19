@@ -20,6 +20,7 @@ import { Route as FreeResourcesRouteImport } from './routes/free-resources'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as JoinInternRouteImport } from './routes/join-intern'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
+import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MySessionsRouteImport } from './routes/my-sessions'
@@ -79,9 +80,9 @@ import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 import { Route as NeetChapterWiseWeightageIndexRouteImport } from './routes/neet.chapter-wise-weightage.index'
 import { Route as NeetPaperAnalysisIndexRouteImport } from './routes/neet.paper-analysis.index'
+import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
 import { Route as NeetPaperAnalysisYearIndexRouteImport } from './routes/neet.paper-analysis.$year.index'
 import { Route as NeetPaperAnalysisYearSubjectRouteImport } from './routes/neet.paper-analysis.$year.$subject'
-import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
 import { Route as NeetChapterWiseWeightageSubjectChapterIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter.index'
 import { Route as NeetChapterWiseWeightageSubjectChapterSheetRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter.sheet'
 
@@ -138,6 +139,11 @@ const JoinInternRoute = JoinInternRouteImport.update({
 const JoinMentorRoute = JoinMentorRouteImport.update({
   id: '/join-mentor',
   path: '/join-mentor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardRoute = LeaderboardRouteImport.update({
+  id: '/leaderboard',
+  path: '/leaderboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
@@ -439,21 +445,22 @@ const NeetPaperAnalysisIndexRoute = NeetPaperAnalysisIndexRouteImport.update({
   path: '/neet/paper-analysis/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const NeetPaperAnalysisYearIndexRoute = NeetPaperAnalysisYearIndexRouteImport.update({
-  id: '/neet/paper-analysis/$year/',
-  path: '/neet/paper-analysis/$year/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const NeetPaperAnalysisYearSubjectRoute =
-  NeetPaperAnalysisYearSubjectRouteImport.update({
-    id: '/neet/paper-analysis/$year/$subject',
-    path: '/neet/paper-analysis/$year/$subject',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const NeetChapterWiseWeightageSubjectIndexRoute =
   NeetChapterWiseWeightageSubjectIndexRouteImport.update({
     id: '/neet/chapter-wise-weightage/$subject/',
     path: '/neet/chapter-wise-weightage/$subject/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const NeetPaperAnalysisYearIndexRoute =
+  NeetPaperAnalysisYearIndexRouteImport.update({
+    id: '/neet/paper-analysis/$year/',
+    path: '/neet/paper-analysis/$year/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const NeetPaperAnalysisYearSubjectRoute =
+  NeetPaperAnalysisYearSubjectRouteImport.update({
+    id: '/neet/paper-analysis/$year/$subject',
+    path: '/neet/paper-analysis/$year/$subject',
     getParentRoute: () => rootRouteImport,
   } as any)
 const NeetChapterWiseWeightageSubjectChapterIndexRoute =
@@ -481,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/help': typeof HelpRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -538,13 +546,13 @@ export interface FileRoutesByFullPath {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
-  '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
-  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
+  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -558,6 +566,7 @@ export interface FileRoutesByTo {
   '/help': typeof HelpRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -615,13 +624,13 @@ export interface FileRoutesByTo {
   '/tools': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
-  '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearIndexRoute
-  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis': typeof NeetPaperAnalysisIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
+  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage/$subject': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -636,6 +645,7 @@ export interface FileRoutesById {
   '/help': typeof HelpRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
+  '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
   '/my-sessions': typeof MySessionsRoute
@@ -693,13 +703,13 @@ export interface FileRoutesById {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
-  '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
-  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
-  '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
+  '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
+  '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -715,6 +725,7 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-intern'
     | '/join-mentor'
+    | '/leaderboard'
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
@@ -772,13 +783,13 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
-    | '/neet/paper-analysis/$year/'
-    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
-    | '/neet/chapter-wise-weightage/$subject/$chapter/'
+    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage/$subject/'
+    | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/neet/chapter-wise-weightage/$subject/$chapter/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -792,6 +803,7 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-intern'
     | '/join-mentor'
+    | '/leaderboard'
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
@@ -849,13 +861,13 @@ export interface FileRouteTypes {
     | '/tools'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
-    | '/neet/paper-analysis/$year'
-    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage'
     | '/neet/paper-analysis'
-    | '/neet/chapter-wise-weightage/$subject/$chapter'
+    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage/$subject'
+    | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/neet/chapter-wise-weightage/$subject/$chapter'
   id:
     | '__root__'
     | '/'
@@ -869,6 +881,7 @@ export interface FileRouteTypes {
     | '/help'
     | '/join-intern'
     | '/join-mentor'
+    | '/leaderboard'
     | '/llms.txt'
     | '/login'
     | '/my-sessions'
@@ -926,13 +939,13 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
-    | '/neet/paper-analysis/$year/'
-    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
-    | '/neet/chapter-wise-weightage/$subject/$chapter/'
+    | '/neet/paper-analysis/$year/$subject'
     | '/neet/chapter-wise-weightage/$subject/'
+    | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/neet/chapter-wise-weightage/$subject/$chapter/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -947,6 +960,7 @@ export interface RootRouteChildren {
   HelpRoute: typeof HelpRoute
   JoinInternRoute: typeof JoinInternRoute
   JoinMentorRoute: typeof JoinMentorRoute
+  LeaderboardRoute: typeof LeaderboardRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
   MySessionsRoute: typeof MySessionsRoute
@@ -1003,13 +1017,13 @@ export interface RootRouteChildren {
   ToolsIndexRoute: typeof ToolsIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
-  NeetPaperAnalysisYearIndexRoute: typeof NeetPaperAnalysisYearIndexRoute
-  NeetPaperAnalysisYearSubjectRoute: typeof NeetPaperAnalysisYearSubjectRoute
   NeetChapterWiseWeightageIndexRoute: typeof NeetChapterWiseWeightageIndexRoute
   NeetPaperAnalysisIndexRoute: typeof NeetPaperAnalysisIndexRoute
-  NeetChapterWiseWeightageSubjectChapterIndexRoute: typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
-  NeetChapterWiseWeightageSubjectChapterSheetRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  NeetPaperAnalysisYearSubjectRoute: typeof NeetPaperAnalysisYearSubjectRoute
   NeetChapterWiseWeightageSubjectIndexRoute: typeof NeetChapterWiseWeightageSubjectIndexRoute
+  NeetPaperAnalysisYearIndexRoute: typeof NeetPaperAnalysisYearIndexRoute
+  NeetChapterWiseWeightageSubjectChapterSheetRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  NeetChapterWiseWeightageSubjectChapterIndexRoute: typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1089,6 +1103,13 @@ declare module '@tanstack/react-router' {
       path: '/join-mentor'
       fullPath: '/join-mentor'
       preLoaderRoute: typeof JoinMentorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboard': {
+      id: '/leaderboard'
+      path: '/leaderboard'
+      fullPath: '/leaderboard'
+      preLoaderRoute: typeof LeaderboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/llms.txt': {
@@ -1504,6 +1525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NeetPaperAnalysisIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/neet/chapter-wise-weightage/$subject/': {
+      id: '/neet/chapter-wise-weightage/$subject/'
+      path: '/neet/chapter-wise-weightage/$subject'
+      fullPath: '/neet/chapter-wise-weightage/$subject/'
+      preLoaderRoute: typeof NeetChapterWiseWeightageSubjectIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/neet/paper-analysis/$year/': {
       id: '/neet/paper-analysis/$year/'
       path: '/neet/paper-analysis/$year'
@@ -1516,13 +1544,6 @@ declare module '@tanstack/react-router' {
       path: '/neet/paper-analysis/$year/$subject'
       fullPath: '/neet/paper-analysis/$year/$subject'
       preLoaderRoute: typeof NeetPaperAnalysisYearSubjectRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/neet/chapter-wise-weightage/$subject/': {
-      id: '/neet/chapter-wise-weightage/$subject/'
-      path: '/neet/chapter-wise-weightage/$subject'
-      fullPath: '/neet/chapter-wise-weightage/$subject/'
-      preLoaderRoute: typeof NeetChapterWiseWeightageSubjectIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/neet/chapter-wise-weightage/$subject/$chapter/': {
@@ -1565,6 +1586,7 @@ const rootRouteChildren: RootRouteChildren = {
   HelpRoute: HelpRoute,
   JoinInternRoute: JoinInternRoute,
   JoinMentorRoute: JoinMentorRoute,
+  LeaderboardRoute: LeaderboardRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
   MySessionsRoute: MySessionsRoute,
@@ -1621,16 +1643,16 @@ const rootRouteChildren: RootRouteChildren = {
   ToolsIndexRoute: ToolsIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
-  NeetPaperAnalysisYearIndexRoute: NeetPaperAnalysisYearIndexRoute,
-  NeetPaperAnalysisYearSubjectRoute: NeetPaperAnalysisYearSubjectRoute,
   NeetChapterWiseWeightageIndexRoute: NeetChapterWiseWeightageIndexRoute,
   NeetPaperAnalysisIndexRoute: NeetPaperAnalysisIndexRoute,
-  NeetChapterWiseWeightageSubjectChapterIndexRoute:
-    NeetChapterWiseWeightageSubjectChapterIndexRoute,
-  NeetChapterWiseWeightageSubjectChapterSheetRoute:
-    NeetChapterWiseWeightageSubjectChapterSheetRoute,
+  NeetPaperAnalysisYearSubjectRoute: NeetPaperAnalysisYearSubjectRoute,
   NeetChapterWiseWeightageSubjectIndexRoute:
     NeetChapterWiseWeightageSubjectIndexRoute,
+  NeetPaperAnalysisYearIndexRoute: NeetPaperAnalysisYearIndexRoute,
+  NeetChapterWiseWeightageSubjectChapterSheetRoute:
+    NeetChapterWiseWeightageSubjectChapterSheetRoute,
+  NeetChapterWiseWeightageSubjectChapterIndexRoute:
+    NeetChapterWiseWeightageSubjectChapterIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
