@@ -1,15 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
-import { ChevronLeft, Timer } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { noindexHead } from "@/lib/seo";
 import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { DrillResultView, DrillRunner } from "@/components/pyq/pyq-drill";
+import { DrillLauncher, type StartOptions } from "@/components/pyq/drill-launcher";
 import { getPyqDrill, startPyqDrill, submitPyqDrill } from "@/server-functions/practice-extras";
 import type { DrillState } from "@/lib/pyq-types";
 import type { DrillAnswer } from "@/lib/practice-schedule";
-import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
 
 // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
 // the server's clock, and a finished drill reopens its result.
@@ -30,6 +30,8 @@ function DrillPage() {
   const [state, setState] = useState<DrillState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // Problems starting a drill (like "today's free drills are used up") are shown on the start screen, not as a dead end.
+  const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -56,17 +58,17 @@ function DrillPage() {
     };
   }, [user, drillId]);
 
-  async function start() {
+  async function start(opts: StartOptions = {}) {
     if (!user || starting) return;
     setStarting(true);
-    setError(null);
+    setStartError(null);
     try {
       const token = await user.getIdToken();
-      const set = await startPyqDrill({ data: { token, exam } });
+      const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
       setState({ status: "running", set });
       navigate({ search: { exam, drillId: set.drillId }, replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start the drill.");
+      setStartError(e instanceof Error ? e.message : "Could not start the drill.");
     } finally {
       setStarting(false);
     }
@@ -122,26 +124,7 @@ function DrillPage() {
               <ChevronLeft className="h-4 w-4" aria-hidden />
               PYQs
             </button>
-            <div className="clay p-6 text-center sm:p-8">
-              <div className="clay-inset mx-auto grid h-14 w-14 place-items-center rounded-2xl">
-                <Timer className="h-6 w-6 text-[var(--sky-deep)]" aria-hidden />
-              </div>
-              <h1 className="font-display mt-4 text-2xl font-bold text-foreground">Timed PYQ drill</h1>
-              <p className="mt-2 text-sm text-foreground/60">Practise under exam pressure, not at your own pace.</p>
-              <ul className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-foreground/80">
-                <li>• {DRILL_QUESTIONS} previous year questions, mixed across subjects</li>
-                <li>• {DRILL_MINUTES} minutes — the clock runs on our server, so a refresh won't reset it</li>
-                <li>
-                  • +{DRILL_MARKS.correct} for right, {DRILL_MARKS.wrongMcq} for a wrong MCQ, no penalty for skipping
-                </li>
-                <li>• Questions you haven't seen come first; every wrong answer goes to your notebook</li>
-              </ul>
-              {error && <p className="mt-4 text-xs font-semibold text-destructive">{error}</p>}
-              <button onClick={start} disabled={starting} className="clay-btn mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
-                {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Start drill
-              </button>
-            </div>
+            <DrillLauncher user={user} exam={exam} starting={starting} error={startError} onStart={start} />
           </div>
         )}
       </main>

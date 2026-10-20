@@ -26,6 +26,7 @@ A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test
 - Free downloadable notes, previous year papers, formula sheets and planners for NEET, JEE, CUET and IPMAT (no login needed): ${SITE_URL}/free-resources
 - A blog with exam-specific syllabus and chapter breakdowns: ${SITE_URL}/blog
 - NEET chapter-wise weightage for Physics, Chemistry, Botany and Zoology (previous-year question counts per chapter and topic, 2020–2026): ${SITE_URL}/neet/chapter-wise-weightage
+- JEE Main chapter-wise weightage for Physics, Chemistry and Maths (question counts per chapter and concept, 2022–2026): ${SITE_URL}/jee/chapter-wise-weightage
 
 ## Who runs it
 ${SITE_URL}/about — background on the platform, how the marketplace model works, and how mentor credentials are verified.
@@ -39,6 +40,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
 - Free resources (notes, PYQ PDFs, formula sheets): ${SITE_URL}/free-resources
 - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
 - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
+- JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
 - FAQ: ${SITE_URL}/faq
 - Help & Support: ${SITE_URL}/help
 - Become a mentor: ${SITE_URL}/join-mentor

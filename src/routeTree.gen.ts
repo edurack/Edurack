@@ -31,6 +31,7 @@ import { Route as PyqRouteImport } from './routes/pyq'
 import { Route as PyqDrillRouteImport } from './routes/pyq-drill'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapBlogDotxmlRouteImport } from './routes/sitemap-blog[.]xml'
+import { Route as SitemapJeeDotxmlRouteImport } from './routes/sitemap-jee[.]xml'
 import { Route as SitemapMentorsDotxmlRouteImport } from './routes/sitemap-mentors[.]xml'
 import { Route as SitemapNeetDotxmlRouteImport } from './routes/sitemap-neet[.]xml'
 import { Route as SitemapPagesDotxmlRouteImport } from './routes/sitemap-pages[.]xml'
@@ -41,6 +42,7 @@ import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AdminAuthRouteImport } from './routes/admin.auth'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as ApiRazorpayWebhookRouteImport } from './routes/api.razorpay-webhook'
 import { Route as ApiResendWebhookRouteImport } from './routes/api.resend-webhook'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
@@ -53,6 +55,7 @@ import { Route as InternCertificateRouteImport } from './routes/intern/certifica
 import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
 import { Route as InternOfferLetterRouteImport } from './routes/intern/offer-letter'
 import { Route as InternProfileRouteImport } from './routes/intern/profile'
+import { Route as JeeMostRepeatedConceptsRouteImport } from './routes/jee.most-repeated-concepts'
 import { Route as LectureSessionIdRouteImport } from './routes/lecture.$sessionId'
 import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
 import { Route as LegalRefundRouteImport } from './routes/legal/refund'
@@ -78,11 +81,14 @@ import { Route as ToolsNeetTargetScorePlannerRouteImport } from './routes/tools.
 import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certificateId'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
+import { Route as JeeChapterWiseWeightageIndexRouteImport } from './routes/jee.chapter-wise-weightage.index'
 import { Route as NeetChapterWiseWeightageIndexRouteImport } from './routes/neet.chapter-wise-weightage.index'
 import { Route as NeetPaperAnalysisIndexRouteImport } from './routes/neet.paper-analysis.index'
+import { Route as JeeChapterWiseWeightageSubjectIndexRouteImport } from './routes/jee.chapter-wise-weightage.$subject.index'
 import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
 import { Route as NeetPaperAnalysisYearIndexRouteImport } from './routes/neet.paper-analysis.$year.index'
 import { Route as NeetPaperAnalysisYearSubjectRouteImport } from './routes/neet.paper-analysis.$year.$subject'
+import { Route as JeeChapterWiseWeightageSubjectChapterIndexRouteImport } from './routes/jee.chapter-wise-weightage.$subject.$chapter.index'
 import { Route as NeetChapterWiseWeightageSubjectChapterIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter.index'
 import { Route as NeetChapterWiseWeightageSubjectChapterSheetRouteImport } from './routes/neet.chapter-wise-weightage.$subject.$chapter.sheet'
 
@@ -196,6 +202,11 @@ const SitemapBlogDotxmlRoute = SitemapBlogDotxmlRouteImport.update({
   path: '/sitemap-blog.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitemapJeeDotxmlRoute = SitemapJeeDotxmlRouteImport.update({
+  id: '/sitemap-jee.xml',
+  path: '/sitemap-jee.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitemapMentorsDotxmlRoute = SitemapMentorsDotxmlRouteImport.update({
   id: '/sitemap-mentors.xml',
   path: '/sitemap-mentors.xml',
@@ -244,6 +255,11 @@ const AdminAuthRoute = AdminAuthRouteImport.update({
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/admin/dashboard',
   path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRazorpayWebhookRoute = ApiRazorpayWebhookRouteImport.update({
+  id: '/api/razorpay-webhook',
+  path: '/api/razorpay-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiResendWebhookRoute = ApiResendWebhookRouteImport.update({
@@ -304,6 +320,11 @@ const InternOfferLetterRoute = InternOfferLetterRouteImport.update({
 const InternProfileRoute = InternProfileRouteImport.update({
   id: '/intern/profile',
   path: '/intern/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JeeMostRepeatedConceptsRoute = JeeMostRepeatedConceptsRouteImport.update({
+  id: '/jee/most-repeated-concepts',
+  path: '/jee/most-repeated-concepts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LectureSessionIdRoute = LectureSessionIdRouteImport.update({
@@ -434,6 +455,12 @@ const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
   path: '/intern/trial/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JeeChapterWiseWeightageIndexRoute =
+  JeeChapterWiseWeightageIndexRouteImport.update({
+    id: '/jee/chapter-wise-weightage/',
+    path: '/jee/chapter-wise-weightage/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const NeetChapterWiseWeightageIndexRoute =
   NeetChapterWiseWeightageIndexRouteImport.update({
     id: '/neet/chapter-wise-weightage/',
@@ -445,6 +472,12 @@ const NeetPaperAnalysisIndexRoute = NeetPaperAnalysisIndexRouteImport.update({
   path: '/neet/paper-analysis/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JeeChapterWiseWeightageSubjectIndexRoute =
+  JeeChapterWiseWeightageSubjectIndexRouteImport.update({
+    id: '/jee/chapter-wise-weightage/$subject/',
+    path: '/jee/chapter-wise-weightage/$subject/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const NeetChapterWiseWeightageSubjectIndexRoute =
   NeetChapterWiseWeightageSubjectIndexRouteImport.update({
     id: '/neet/chapter-wise-weightage/$subject/',
@@ -461,6 +494,12 @@ const NeetPaperAnalysisYearSubjectRoute =
   NeetPaperAnalysisYearSubjectRouteImport.update({
     id: '/neet/paper-analysis/$year/$subject',
     path: '/neet/paper-analysis/$year/$subject',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const JeeChapterWiseWeightageSubjectChapterIndexRoute =
+  JeeChapterWiseWeightageSubjectChapterIndexRouteImport.update({
+    id: '/jee/chapter-wise-weightage/$subject/$chapter/',
+    path: '/jee/chapter-wise-weightage/$subject/$chapter/',
     getParentRoute: () => rootRouteImport,
   } as any)
 const NeetChapterWiseWeightageSubjectChapterIndexRoute =
@@ -499,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-jee.xml': typeof SitemapJeeDotxmlRoute
   '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
   '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
   '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
@@ -509,6 +549,7 @@ export interface FileRoutesByFullPath {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
@@ -520,6 +561,7 @@ export interface FileRoutesByFullPath {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -546,12 +588,15 @@ export interface FileRoutesByFullPath {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
+  '/jee/chapter-wise-weightage/$subject/': typeof JeeChapterWiseWeightageSubjectIndexRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/jee/chapter-wise-weightage/$subject/$chapter/': typeof JeeChapterWiseWeightageSubjectChapterIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRoutesByTo {
@@ -577,6 +622,7 @@ export interface FileRoutesByTo {
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-jee.xml': typeof SitemapJeeDotxmlRoute
   '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
   '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
   '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
@@ -587,6 +633,7 @@ export interface FileRoutesByTo {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
@@ -598,6 +645,7 @@ export interface FileRoutesByTo {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -624,12 +672,15 @@ export interface FileRoutesByTo {
   '/tools': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/chapter-wise-weightage': typeof JeeChapterWiseWeightageIndexRoute
   '/neet/chapter-wise-weightage': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis': typeof NeetPaperAnalysisIndexRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
+  '/jee/chapter-wise-weightage/$subject': typeof JeeChapterWiseWeightageSubjectIndexRoute
   '/neet/chapter-wise-weightage/$subject': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/jee/chapter-wise-weightage/$subject/$chapter': typeof JeeChapterWiseWeightageSubjectChapterIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRoutesById {
@@ -656,6 +707,7 @@ export interface FileRoutesById {
   '/pyq-drill': typeof PyqDrillRoute
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap-blog.xml': typeof SitemapBlogDotxmlRoute
+  '/sitemap-jee.xml': typeof SitemapJeeDotxmlRoute
   '/sitemap-mentors.xml': typeof SitemapMentorsDotxmlRoute
   '/sitemap-neet.xml': typeof SitemapNeetDotxmlRoute
   '/sitemap-pages.xml': typeof SitemapPagesDotxmlRoute
@@ -666,6 +718,7 @@ export interface FileRoutesById {
   '/verify': typeof VerifyRouteWithChildren
   '/admin/auth': typeof AdminAuthRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
@@ -677,6 +730,7 @@ export interface FileRoutesById {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -703,12 +757,15 @@ export interface FileRoutesById {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
+  '/jee/chapter-wise-weightage/$subject/': typeof JeeChapterWiseWeightageSubjectIndexRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  '/jee/chapter-wise-weightage/$subject/$chapter/': typeof JeeChapterWiseWeightageSubjectChapterIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/': typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 export interface FileRouteTypes {
@@ -736,6 +793,7 @@ export interface FileRouteTypes {
     | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap-blog.xml'
+    | '/sitemap-jee.xml'
     | '/sitemap-mentors.xml'
     | '/sitemap-neet.xml'
     | '/sitemap-pages.xml'
@@ -746,6 +804,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
@@ -757,6 +816,7 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/most-repeated-concepts'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -783,12 +843,15 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/chapter-wise-weightage/'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
     | '/neet/paper-analysis/$year/$subject'
+    | '/jee/chapter-wise-weightage/$subject/'
     | '/neet/chapter-wise-weightage/$subject/'
     | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/jee/chapter-wise-weightage/$subject/$chapter/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -814,6 +877,7 @@ export interface FileRouteTypes {
     | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap-blog.xml'
+    | '/sitemap-jee.xml'
     | '/sitemap-mentors.xml'
     | '/sitemap-neet.xml'
     | '/sitemap-pages.xml'
@@ -824,6 +888,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
@@ -835,6 +900,7 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/most-repeated-concepts'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -861,12 +927,15 @@ export interface FileRouteTypes {
     | '/tools'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/chapter-wise-weightage'
     | '/neet/chapter-wise-weightage'
     | '/neet/paper-analysis'
     | '/neet/paper-analysis/$year/$subject'
+    | '/jee/chapter-wise-weightage/$subject'
     | '/neet/chapter-wise-weightage/$subject'
     | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/jee/chapter-wise-weightage/$subject/$chapter'
     | '/neet/chapter-wise-weightage/$subject/$chapter'
   id:
     | '__root__'
@@ -892,6 +961,7 @@ export interface FileRouteTypes {
     | '/pyq-drill'
     | '/robots.txt'
     | '/sitemap-blog.xml'
+    | '/sitemap-jee.xml'
     | '/sitemap-mentors.xml'
     | '/sitemap-neet.xml'
     | '/sitemap-pages.xml'
@@ -902,6 +972,7 @@ export interface FileRouteTypes {
     | '/verify'
     | '/admin/auth'
     | '/admin/dashboard'
+    | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
     | '/cron/blog-publish'
@@ -913,6 +984,7 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/most-repeated-concepts'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -939,12 +1011,15 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/chapter-wise-weightage/'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
     | '/neet/paper-analysis/$year/$subject'
+    | '/jee/chapter-wise-weightage/$subject/'
     | '/neet/chapter-wise-weightage/$subject/'
     | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
+    | '/jee/chapter-wise-weightage/$subject/$chapter/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/'
   fileRoutesById: FileRoutesById
 }
@@ -971,6 +1046,7 @@ export interface RootRouteChildren {
   PyqDrillRoute: typeof PyqDrillRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapBlogDotxmlRoute: typeof SitemapBlogDotxmlRoute
+  SitemapJeeDotxmlRoute: typeof SitemapJeeDotxmlRoute
   SitemapMentorsDotxmlRoute: typeof SitemapMentorsDotxmlRoute
   SitemapNeetDotxmlRoute: typeof SitemapNeetDotxmlRoute
   SitemapPagesDotxmlRoute: typeof SitemapPagesDotxmlRoute
@@ -981,6 +1057,7 @@ export interface RootRouteChildren {
   VerifyRoute: typeof VerifyRouteWithChildren
   AdminAuthRoute: typeof AdminAuthRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  ApiRazorpayWebhookRoute: typeof ApiRazorpayWebhookRoute
   ApiResendWebhookRoute: typeof ApiResendWebhookRoute
   BlogSlugRoute: typeof BlogSlugRoute
   CronBlogPublishRoute: typeof CronBlogPublishRoute
@@ -992,6 +1069,7 @@ export interface RootRouteChildren {
   InternDashboardRoute: typeof InternDashboardRoute
   InternOfferLetterRoute: typeof InternOfferLetterRoute
   InternProfileRoute: typeof InternProfileRoute
+  JeeMostRepeatedConceptsRoute: typeof JeeMostRepeatedConceptsRoute
   LectureSessionIdRoute: typeof LectureSessionIdRoute
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalRefundRoute: typeof LegalRefundRoute
@@ -1017,12 +1095,15 @@ export interface RootRouteChildren {
   ToolsIndexRoute: typeof ToolsIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
+  JeeChapterWiseWeightageIndexRoute: typeof JeeChapterWiseWeightageIndexRoute
   NeetChapterWiseWeightageIndexRoute: typeof NeetChapterWiseWeightageIndexRoute
   NeetPaperAnalysisIndexRoute: typeof NeetPaperAnalysisIndexRoute
   NeetPaperAnalysisYearSubjectRoute: typeof NeetPaperAnalysisYearSubjectRoute
+  JeeChapterWiseWeightageSubjectIndexRoute: typeof JeeChapterWiseWeightageSubjectIndexRoute
   NeetChapterWiseWeightageSubjectIndexRoute: typeof NeetChapterWiseWeightageSubjectIndexRoute
   NeetPaperAnalysisYearIndexRoute: typeof NeetPaperAnalysisYearIndexRoute
   NeetChapterWiseWeightageSubjectChapterSheetRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
+  JeeChapterWiseWeightageSubjectChapterIndexRoute: typeof JeeChapterWiseWeightageSubjectChapterIndexRoute
   NeetChapterWiseWeightageSubjectChapterIndexRoute: typeof NeetChapterWiseWeightageSubjectChapterIndexRoute
 }
 
@@ -1182,6 +1263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitemapBlogDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sitemap-jee.xml': {
+      id: '/sitemap-jee.xml'
+      path: '/sitemap-jee.xml'
+      fullPath: '/sitemap-jee.xml'
+      preLoaderRoute: typeof SitemapJeeDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sitemap-mentors.xml': {
       id: '/sitemap-mentors.xml'
       path: '/sitemap-mentors.xml'
@@ -1250,6 +1338,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/dashboard'
       fullPath: '/admin/dashboard'
       preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/razorpay-webhook': {
+      id: '/api/razorpay-webhook'
+      path: '/api/razorpay-webhook'
+      fullPath: '/api/razorpay-webhook'
+      preLoaderRoute: typeof ApiRazorpayWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/resend-webhook': {
@@ -1334,6 +1429,13 @@ declare module '@tanstack/react-router' {
       path: '/intern/profile'
       fullPath: '/intern/profile'
       preLoaderRoute: typeof InternProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/most-repeated-concepts': {
+      id: '/jee/most-repeated-concepts'
+      path: '/jee/most-repeated-concepts'
+      fullPath: '/jee/most-repeated-concepts'
+      preLoaderRoute: typeof JeeMostRepeatedConceptsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lecture/$sessionId': {
@@ -1511,6 +1613,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InternTrialCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jee/chapter-wise-weightage/': {
+      id: '/jee/chapter-wise-weightage/'
+      path: '/jee/chapter-wise-weightage'
+      fullPath: '/jee/chapter-wise-weightage/'
+      preLoaderRoute: typeof JeeChapterWiseWeightageIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/neet/chapter-wise-weightage/': {
       id: '/neet/chapter-wise-weightage/'
       path: '/neet/chapter-wise-weightage'
@@ -1523,6 +1632,13 @@ declare module '@tanstack/react-router' {
       path: '/neet/paper-analysis'
       fullPath: '/neet/paper-analysis/'
       preLoaderRoute: typeof NeetPaperAnalysisIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/chapter-wise-weightage/$subject/': {
+      id: '/jee/chapter-wise-weightage/$subject/'
+      path: '/jee/chapter-wise-weightage/$subject'
+      fullPath: '/jee/chapter-wise-weightage/$subject/'
+      preLoaderRoute: typeof JeeChapterWiseWeightageSubjectIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/neet/chapter-wise-weightage/$subject/': {
@@ -1544,6 +1660,13 @@ declare module '@tanstack/react-router' {
       path: '/neet/paper-analysis/$year/$subject'
       fullPath: '/neet/paper-analysis/$year/$subject'
       preLoaderRoute: typeof NeetPaperAnalysisYearSubjectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/chapter-wise-weightage/$subject/$chapter/': {
+      id: '/jee/chapter-wise-weightage/$subject/$chapter/'
+      path: '/jee/chapter-wise-weightage/$subject/$chapter'
+      fullPath: '/jee/chapter-wise-weightage/$subject/$chapter/'
+      preLoaderRoute: typeof JeeChapterWiseWeightageSubjectChapterIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/neet/chapter-wise-weightage/$subject/$chapter/': {
@@ -1597,6 +1720,7 @@ const rootRouteChildren: RootRouteChildren = {
   PyqDrillRoute: PyqDrillRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapBlogDotxmlRoute: SitemapBlogDotxmlRoute,
+  SitemapJeeDotxmlRoute: SitemapJeeDotxmlRoute,
   SitemapMentorsDotxmlRoute: SitemapMentorsDotxmlRoute,
   SitemapNeetDotxmlRoute: SitemapNeetDotxmlRoute,
   SitemapPagesDotxmlRoute: SitemapPagesDotxmlRoute,
@@ -1607,6 +1731,7 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyRoute: VerifyRouteWithChildren,
   AdminAuthRoute: AdminAuthRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  ApiRazorpayWebhookRoute: ApiRazorpayWebhookRoute,
   ApiResendWebhookRoute: ApiResendWebhookRoute,
   BlogSlugRoute: BlogSlugRoute,
   CronBlogPublishRoute: CronBlogPublishRoute,
@@ -1618,6 +1743,7 @@ const rootRouteChildren: RootRouteChildren = {
   InternDashboardRoute: InternDashboardRoute,
   InternOfferLetterRoute: InternOfferLetterRoute,
   InternProfileRoute: InternProfileRoute,
+  JeeMostRepeatedConceptsRoute: JeeMostRepeatedConceptsRoute,
   LectureSessionIdRoute: LectureSessionIdRoute,
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalRefundRoute: LegalRefundRoute,
@@ -1643,14 +1769,19 @@ const rootRouteChildren: RootRouteChildren = {
   ToolsIndexRoute: ToolsIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
+  JeeChapterWiseWeightageIndexRoute: JeeChapterWiseWeightageIndexRoute,
   NeetChapterWiseWeightageIndexRoute: NeetChapterWiseWeightageIndexRoute,
   NeetPaperAnalysisIndexRoute: NeetPaperAnalysisIndexRoute,
   NeetPaperAnalysisYearSubjectRoute: NeetPaperAnalysisYearSubjectRoute,
+  JeeChapterWiseWeightageSubjectIndexRoute:
+    JeeChapterWiseWeightageSubjectIndexRoute,
   NeetChapterWiseWeightageSubjectIndexRoute:
     NeetChapterWiseWeightageSubjectIndexRoute,
   NeetPaperAnalysisYearIndexRoute: NeetPaperAnalysisYearIndexRoute,
   NeetChapterWiseWeightageSubjectChapterSheetRoute:
     NeetChapterWiseWeightageSubjectChapterSheetRoute,
+  JeeChapterWiseWeightageSubjectChapterIndexRoute:
+    JeeChapterWiseWeightageSubjectChapterIndexRoute,
   NeetChapterWiseWeightageSubjectChapterIndexRoute:
     NeetChapterWiseWeightageSubjectChapterIndexRoute,
 }

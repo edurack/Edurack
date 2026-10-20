@@ -29,6 +29,7 @@ import {
   chapterOr,
   displayExpr,
   eligibleBundleIds,
+  keyExpr,
   ensureQuestionIndexes,
   examForAttempt,
   loadOwnedAttempt,
@@ -40,7 +41,9 @@ import {
   weakChapterAvailability,
   type Db,
 } from "@/lib/pyq-server";
+import { DRILL_LIMIT_PREFIX, FREE_DRILLS_PER_DAY, cleanCustomDrill, drillBlockReason, isCustomDrill } from "@/lib/pro";
 import {
+  GENERAL_TOPIC,
   UNTAGGED_CHAPTER,
   type Difficulty,
   type DrillResult,
@@ -262,7 +265,7 @@ async function drillSetFor(db: Db, uid: string, drill: Record<string, unknown>, 
 }
 
 export const startPyqDrill = createServerFn({ method: "POST" })
-  .validator((data: { token: string; exam?: string; subject?: string }) => data)
+  .validator((data: { token: string; exam?: string; subject?: string; custom?: unknown }) => data)
   .handler(async ({ data }): Promise<DrillSet> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
@@ -276,9 +279,32 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     const running = await col.find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
     if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return drillSetFor(db, uid, running, now);
 
+    // Edurack Pro: a free student gets FREE_DRILLS_PER_DAY standard drills a day; unlimited drills and the
+    // custom builder need Pro. Nothing is limited until the team publishes a plan (so there's always something to buy).
+    const custom = cleanCustomDrill(data.custom);
+    const wantsCustom = isCustomDrill(custom);
+    const { listActivePlans, proUntil, countDrillsToday } = await import("@/lib/pro-server");
+    const gatingOn = (await listActivePlans(db)).length > 0;
+    const isPro = gatingOn ? (await proUntil(db, uid, now)) !== null : false;
+    const usedToday = gatingOn && !isPro && !wantsCustom ? await countDrillsToday(db, uid, now) : 0;
+    const blocked = drillBlockReason({ gatingOn, isPro, wantsCustom, usedToday });
+    if (blocked === "custom") throw new Error(`${DRILL_LIMIT_PREFIX}: Building your own drill is part of Edurack Pro.`);
+    if (blocked === "limit") {
+      throw new Error(`${DRILL_LIMIT_PREFIX}: You've used today's ${FREE_DRILLS_PER_DAY} free timed drills. They reset at midnight, or go unlimited with Edurack Pro.`);
+    }
+
     const exam = await resolveExam(db, uid, data.exam);
     const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)) };
     if (data.subject) match.subject = data.subject;
+    if (custom) {
+      const and: Record<string, unknown>[] = [];
+      if (custom.chapter) and.push({ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), custom.chapter.toLowerCase()] } });
+      if (custom.topic) and.push({ $expr: { $eq: [keyExpr("topic", GENERAL_TOPIC), custom.topic.toLowerCase()] } });
+      if (and.length) match.$and = and;
+      if (custom.difficulty) match.difficulty = custom.difficulty;
+      if (custom.years) match.pyqYear = { $in: custom.years };
+    }
+    const target = custom?.count ?? DRILL_QUESTIONS;
     const pool = await db.collection("questions").find(match, { projection: { _id: 1, subject: 1 } }).limit(3000).toArray();
 
     // Unseen first, then past mistakes, then already-solved — shuffled inside each tier.
@@ -292,14 +318,17 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       return !p || !(Number(p.attempts) > 0) ? 0 : p.correct === true ? 2 : 1;
     };
     const ranked = [0, 1, 2].flatMap((t) => shuffle(pool.filter((p) => tier(String(p._id)) === t))).map((p) => ({ id: String(p._id), subject: p.subject as string }));
-    const picked = data.subject ? ranked.slice(0, DRILL_QUESTIONS) : balancedPick(ranked, DRILL_QUESTIONS);
-    if (picked.length < MIN_DRILL_QUESTIONS) throw new Error("There aren't enough PYQs yet for a timed drill. Check back soon.");
+    const picked = data.subject || custom?.chapter ? ranked.slice(0, target) : balancedPick(ranked, target);
+    if (picked.length < MIN_DRILL_QUESTIONS) {
+      throw new Error(wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
+    }
 
     const questionIds = shuffle(picked).map((p) => p.id);
     const doc = {
       uid,
       exam,
       subject: data.subject ?? null,
+      filters: custom,
       questionIds,
       durationSec: questionIds.length * SECONDS_PER_DRILL_QUESTION,
       startedAt: now,

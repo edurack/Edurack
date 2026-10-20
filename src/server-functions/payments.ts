@@ -10,29 +10,27 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
 import { sendMail } from "@/lib/mailer";
-import {
-  purchaseConfirmationEmailHtml,
-  sessionBookingConfirmationEmailHtml,
-  sessionBookingNotificationEmailHtml,
-} from "@/lib/email-templates";
+import { purchaseConfirmationEmailHtml } from "@/lib/email-templates";
 import { PLATFORM_COMMISSION_PERCENT, QUESTION_INGESTION_FEE_PERCENT, MENTOR_TEST_STANDALONE_COMMISSION_PERCENT } from "@/lib/admin-types";
-import { SESSION_PLATFORM_COMMISSION_PERCENT, splitSessionPrice } from "@/lib/session-types";
+import { SESSION_PLATFORM_COMMISSION_PERCENT } from "@/lib/session-types";
 import { expandOfferingToSlots } from "@/lib/session-slots";
 import { rowToOffering } from "@/lib/session-rows";
 import { istDateString } from "@/lib/session-time";
-import { refundRazorpayPayment } from "@/lib/razorpay-refund";
+import {
+  ITEM_TYPES,
+  completeProPlanPayment,
+  completeSessionPayment,
+  createSessionBookingRecord,
+  getRazorpayCredentials,
+  lookupItemPriceAndTitle,
+  lookupProPlan,
+  recordPaidPurchase,
+  userAlreadyOwns,
+  type ItemType,
+} from "@/lib/payment-core";
 
 async function requireSignedIn(token: string) {
   return adminAuth.verifyIdToken(token);
-}
-
-function getRazorpayCredentials() {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  if (!keyId || !keySecret) {
-    throw new Error("Server misconfigured: RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set");
-  }
-  return { keyId, keySecret };
 }
 
 async function computeRazorpaySignature(orderId: string, paymentId: string, secret: string): Promise<string> {
@@ -40,87 +38,26 @@ async function computeRazorpaySignature(orderId: string, paymentId: string, secr
   return createHmac("sha256", secret).update(`${orderId}|${paymentId}`).digest("hex");
 }
 
-// "mentorTest" — a single paid test appended to a mentor's batch series,
-// bought standalone (no batch purchase required). See testCores.price /
-// testCores.publishedToBatch in admin-types.ts.
-// "mentorSession" — a single booked slot from the Mentor Sessions feature
-// (Supabase-backed, see server-functions/mentor-sessions.ts /
-// student-sessions.ts). itemId for this type is the offering id.
-type ItemType = "bundle" | "mentorship" | "mentorTest" | "mentorSession";
+// Constant-time comparison, so response timing can't be used to guess a valid signature.
+async function signaturesMatch(expected: string, received: string): Promise<boolean> {
+  const { timingSafeEqual } = await import("node:crypto");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(String(received ?? ""));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
-const ITEM_TYPES: readonly string[] = ["bundle", "mentorship", "mentorTest", "mentorSession"];
+// Per-student ceilings, so a script can't spam Razorpay orders or guess coupon codes.
+async function limitOrThrow(uid: string, bucket: string, limit: number) {
+  const { hitRateLimit } = await import("@/lib/pyq-public-server");
+  if (!(await hitRateLimit(await getDb(), `pay:${bucket}:${uid}`, limit, 60))) {
+    throw new Error("Too many attempts. Please wait a minute and try again.");
+  }
+}
 
 // Used as the validator for every function that takes an itemType.
 function checkedItemInput<T extends { itemType: ItemType }>(data: T): T {
   if (!ITEM_TYPES.includes(data.itemType)) throw new Error("Invalid item type.");
   return data;
-}
-
-async function lookupMentorPublicInfo(mentorId: string): Promise<{ name: string; photoUrl: string | null; email: string | null } | null> {
-  const { ObjectId } = await import("mongodb");
-  const db = await getDb();
-  const mentor = await db.collection("mentors").findOne({ _id: new ObjectId(mentorId) });
-  if (!mentor) return null;
-
-  let email: string | null = null;
-  const onboarding = await db.collection("mentorOnboardingDetails").findOne({ mentorProfileId: mentorId });
-  if (onboarding?.applicationId) {
-    const app = await db.collection("creatorApplications").findOne({ _id: new ObjectId(onboarding.applicationId as string) });
-    email = (app?.personal as { email?: string } | undefined)?.email ?? null;
-  }
-
-  return {
-    name: (mentor.name as string) ?? "Mentor",
-    photoUrl: (mentor.profilePictureUrl as string | null) ?? null,
-    email,
-  };
-}
-
-async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
-  if (itemType === "mentorSession") {
-    const { data: offering, error } = await supabase
-      .from("mentor_session_offerings")
-      .select("*")
-      .eq("id", itemId)
-      .eq("active", true)
-      .single();
-    if (error || !offering) throw new Error("This session is no longer available.");
-    return { sellingPrice: offering.is_free ? 0 : Number(offering.price), title: offering.title as string };
-  }
-
-  const { ObjectId } = await import("mongodb");
-  const db = await getDb();
-
- if (itemType === "mentorTest") {
-  const test = await db.collection("testCores").findOne({ _id: new ObjectId(itemId) });
-  if (test) {
-    if (!test.price || (test.price as number) <= 0) throw new Error("This test isn't sold individually.");
-    if (!test.publishedToBatch) throw new Error("This test isn't available for purchase yet.");
-    return { sellingPrice: test.price as number, title: test.name as string };
-  }
-
-  const soldTest = await db.collection("soldTests").findOne({ _id: new ObjectId(itemId) });
-  if (!soldTest) throw new Error("Test not found");
-  if (soldTest.status !== "live" || !soldTest.approvedPrice) {
-    throw new Error("This test isn't available for purchase yet.");
-  }
-  const addedCount = await db.collection("questions").countDocuments({ testId: itemId });
-  if (addedCount < (soldTest.totalQuestions as number)) {
-    throw new Error(
-      `Edurack has only added ${addedCount} of ${soldTest.totalQuestions} questions so far — this test isn't ready for purchase yet.`,
-    );
-  }
-  return { sellingPrice: soldTest.approvedPrice as number, title: soldTest.name as string };
-}
-
-  const collection = itemType === "bundle" ? "bundles" : "mentorshipBatches";
-  const doc = await db.collection(collection).findOne({ _id: new ObjectId(itemId) });
-  if (!doc) throw new Error("Item not found");
-
-  return {
-    sellingPrice: doc.sellingPrice as number,
-    title: (itemType === "bundle" ? doc.title : doc.name) as string,
-  };
 }
 
 async function mentorHasTestSeriesAccess(mentorId: string): Promise<boolean> {
@@ -242,110 +179,11 @@ async function assertStudentHasNotBookedOffering(offeringId: string, studentUid:
   }
 }
 
-// Shared by verifyRazorpayPayment's mentorSession branch (paid) and
-// claimFreeItem's mentorSession branch (free) — inserts the booking row
-// and best-effort sends the two session emails.
-async function createSessionBookingRecord(params: {
-  offeringId: string;
-  date: string;
-  startTime: string;
-  studentNote: string;
-  studentUid: string;
-  studentName: string;
-  studentEmail: string | null;
-  paymentStatus: "paid" | "free";
-  razorpayOrderId: string | null;
-  razorpayPaymentId: string | null;
-}) {
-  const { data: offering, error: offeringErr } = await supabase
-    .from("mentor_session_offerings")
-    .select("*")
-    .eq("id", params.offeringId)
-    .single();
-  if (offeringErr || !offering) throw new Error("This session is no longer available.");
-
-  const { platformAmount, mentorNetAmount } =
-    params.paymentStatus === "free" ? { platformAmount: 0, mentorNetAmount: 0 } : splitSessionPrice(Number(offering.price));
-
-  const { data: booking, error: insertErr } = await supabase
-    .from("mentor_session_bookings")
-    .insert({
-      offering_id: offering.id,
-      mentor_id: offering.mentor_id,
-      student_uid: params.studentUid,
-      student_name: params.studentName,
-      student_email: params.studentEmail,
-      student_note: params.studentNote.trim(),
-      session_date: params.date,
-      start_time: params.startTime,
-      duration_minutes: offering.duration_minutes,
-      price: params.paymentStatus === "free" ? 0 : offering.price,
-      is_free: offering.is_free,
-      platform_amount: platformAmount,
-      mentor_net_amount: mentorNetAmount,
-      payment_status: params.paymentStatus,
-      razorpay_order_id: params.razorpayOrderId,
-      razorpay_payment_id: params.razorpayPaymentId,
-      status: "upcoming",
-    })
-    .select()
-    .single();
-  if (insertErr) {
-    // Raised by the enforce_session_capacity trigger (sql/002) when the
-    // slot filled up between the pre-check above and this insert.
-    if (insertErr.message?.includes("slot is full")) throw new Error("Sorry, that slot just filled up.");
-    throw new Error(insertErr.message);
-  }
-
-  const mentorInfo = await lookupMentorPublicInfo(offering.mentor_id);
-  // The two emails are independent and best-effort — send them concurrently so
-  // the student isn't waiting on two mail round trips back to back.
-  await Promise.all([
-    (async () => {
-      if (!mentorInfo?.email) return;
-      try {
-        await sendMail({
-          to: mentorInfo.email,
-          subject: `New booking: ${params.studentName} — ${offering.title}`,
-          html: sessionBookingNotificationEmailHtml({
-            mentorName: mentorInfo.name,
-            studentName: params.studentName,
-            title: offering.title,
-            date: params.date,
-            startTime: params.startTime,
-          }),
-        });
-      } catch (err) {
-        console.error(`[createSessionBookingRecord] mentor notification email failed for booking=${booking.id}:`, err);
-      }
-    })(),
-    (async () => {
-      if (!params.studentEmail) return;
-      try {
-        await sendMail({
-          to: params.studentEmail,
-          subject: `Confirmed: ${offering.title} with ${mentorInfo?.name ?? "your mentor"}`,
-          html: sessionBookingConfirmationEmailHtml({
-            studentName: params.studentName,
-            mentorName: mentorInfo?.name ?? "your mentor",
-            title: offering.title,
-            date: params.date,
-            startTime: params.startTime,
-          }),
-        });
-      } catch (err) {
-        console.error(`[createSessionBookingRecord] student confirmation email failed for booking=${booking.id}:`, err);
-      }
-    })(),
-  ]);
-
-  return { bookingId: booking.id as string, mentorId: offering.mentor_id as string };
-}
-
 export const previewCoupon = createServerFn({ method: "POST" })
   .validator((data: { token: string; itemType: ItemType; itemId: string; couponCode: string }) => checkedItemInput(data))
   .handler(async ({ data }) => {
-    await requireSignedIn(data.token);
+    const decoded = await requireSignedIn(data.token);
+    await limitOrThrow(decoded.uid, "coupon", 15);
     const { sellingPrice } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
     const coupon = await resolveCoupon(data.itemType, data.itemId, data.couponCode.trim());
     const { studentDiscountAmount, discountedPrice } = applyCouponDiscount(sellingPrice, coupon);
@@ -372,8 +210,14 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
+    await limitOrThrow(decoded.uid, "order", 10);
     const { keyId, keySecret } = getRazorpayCredentials();
     const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
+
+    // Don't take money for something the student already has (it would be a duplicate charge).
+    if (data.itemType !== "mentorSession" && data.itemType !== "proPlan" && (await userAlreadyOwns(decoded.uid, data.itemType, data.itemId))) {
+      throw new Error("You already have this. Find it in your purchases — no need to pay again.");
+    }
 
     if (data.itemType === "mentorSession") {
       if (!data.sessionDate || !data.sessionStartTime) throw new Error("Missing session date/time.");
@@ -394,12 +238,15 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
     }
 
     const commissionPercent = await resolveCommissionPercent(data.itemType, data.itemId);
+    // The length of Pro the student is buying, fixed now so a later edit to the plan can't change what they get.
+    const proPlan = data.itemType === "proPlan" ? await lookupProPlan(data.itemId) : null;
 
     const { default: Razorpay } = await import("razorpay");
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
 
-    const receiptPrefix = data.itemType === "bundle" ? "b" : data.itemType === "mentorship" ? "m" : data.itemType === "mentorTest" ? "t" : "s";
+    const receiptPrefix = data.itemType === "bundle" ? "b" : data.itemType === "mentorship" ? "m" : data.itemType === "mentorTest" ? "t" : data.itemType === "proPlan" ? "p" : "s";
     const amountPaise = Math.round(amountToCharge * 100);
+    if (amountPaise < 100) throw new Error("This amount is too low to charge online.");
     const order = await razorpay.orders.create({
       amount: amountPaise,
       currency: "INR",
@@ -408,8 +255,11 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
         uid: decoded.uid,
         itemType: data.itemType,
         itemId: data.itemId,
+        // The price the student was quoted, so promoter earnings are worked out from it even if the price is edited before they pay.
+        originalPrice: String(sellingPrice),
         ...(commissionPercent != null ? { platformCommissionPercent: String(commissionPercent) } : {}),
         ...(data.itemType === "mentorSession" ? { sessionDate: data.sessionDate!, sessionStartTime: data.sessionStartTime! } : {}),
+        ...(proPlan ? { durationDays: String(proPlan.durationDays), planName: proPlan.name } : {}),
         ...(coupon
           ? {
               couponCode: coupon.couponCode,
@@ -450,13 +300,13 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
     const { keyId, keySecret } = getRazorpayCredentials();
 
     const expectedSignature = await computeRazorpaySignature(data.razorpayOrderId, data.razorpayPaymentId, keySecret);
-    if (expectedSignature !== data.razorpaySignature) {
+    if (!(await signaturesMatch(expectedSignature, data.razorpaySignature))) {
       throw new Error("Payment verification failed — signature mismatch.");
     }
 
     const { default: Razorpay } = await import("razorpay");
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const order = await razorpay.orders.fetch(data.razorpayOrderId);
+    const [order, payment] = await Promise.all([razorpay.orders.fetch(data.razorpayOrderId), razorpay.payments.fetch(data.razorpayPaymentId)]);
     const notes = (order.notes ?? {}) as Record<string, string>;
     const amountCharged = Number(order.amount) / 100;
 
@@ -472,130 +322,56 @@ export const verifyRazorpayPayment = createServerFn({ method: "POST" })
       throw new Error("Payment verification failed — this payment doesn't match the item being unlocked.");
     }
 
+    // Access is granted only for money that has actually been captured, for the full order amount.
+    // If the bank is still confirming, nothing is lost: the Razorpay webhook completes the purchase
+    // a few minutes later (see routes/api.razorpay-webhook.ts), so the student must not pay twice.
+    if (payment.order_id !== data.razorpayOrderId || Number(payment.amount) !== Number(order.amount) || payment.status !== "captured") {
+      throw new Error("Your payment is still being confirmed. If you were charged, your access will appear within a few minutes — please don't pay again.");
+    }
+
     if (data.itemType === "mentorSession") {
-      if (!notes.sessionDate || !notes.sessionStartTime) throw new Error("Session date/time missing from order.");
-
-      // Idempotent: if this payment already produced a booking (a retried
-      // request, a double-click), return it — and above all don't fall into
-      // the refund path below and refund a payment that's already been used.
-      const { data: existing } = await supabase
-        .from("mentor_session_bookings")
-        .select("id")
-        .eq("razorpay_payment_id", data.razorpayPaymentId)
-        .maybeSingle();
-      if (existing) return { ok: true, bookingId: existing.id as string };
-
-      try {
-        const { bookingId } = await createSessionBookingRecord({
-          offeringId: data.itemId,
-          date: notes.sessionDate,
-          startTime: notes.sessionStartTime,
-          studentNote: data.studentNote ?? "",
-          studentUid: decoded.uid,
-          studentName: decoded.name ?? "Student",
-          studentEmail: decoded.email ?? null,
-          paymentStatus: "paid",
-          razorpayOrderId: data.razorpayOrderId,
-          razorpayPaymentId: data.razorpayPaymentId,
-        });
-        return { ok: true, bookingId };
-      } catch (bookingErr) {
-        // Money was captured but there's no seat (the slot filled while they
-        // were paying, or the offering was paused). Don't leave them charged
-        // with nothing to show for it.
-        const reason = bookingErr instanceof Error ? bookingErr.message : "We couldn't complete your booking.";
-        let tail: string;
-        try {
-          const r = await refundRazorpayPayment(data.razorpayPaymentId, { reason: "booking failed after payment", orderId: data.razorpayOrderId });
-          tail = r.refunded ? " You haven't been charged — your payment has been refunded automatically." : "";
-        } catch (refundErr) {
-          console.error(`[verifyRazorpayPayment] auto-refund failed for payment=${data.razorpayPaymentId}:`, refundErr);
-          tail = ` We couldn't refund you automatically — please contact support with payment ID ${data.razorpayPaymentId} and we'll sort it out right away.`;
-        }
-        throw new Error(`${reason}${tail}`);
-      }
+      const { bookingId } = await completeSessionPayment({
+        offeringId: data.itemId,
+        orderId: data.razorpayOrderId,
+        paymentId: data.razorpayPaymentId,
+        notes,
+        amountPaid: amountCharged,
+        studentUid: decoded.uid,
+        studentName: decoded.name ?? "Student",
+        studentEmail: decoded.email ?? null,
+        studentNote: data.studentNote ?? "",
+      });
+      return { ok: true, bookingId };
     }
 
-    const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
-    const db = await getDb();
-
-    const hasCoupon = Boolean(notes.couponCode && notes.promoterId);
-    const platformCommissionPercent = notes.platformCommissionPercent ? Number(notes.platformCommissionPercent) : null;
-
-    await db.collection("purchases").updateOne(
-      { uid: decoded.uid, itemType: data.itemType, itemId: data.itemId },
-      {
-        $set: {
-          uid: decoded.uid,
-          itemType: data.itemType,
-          itemId: data.itemId,
-          amount: amountCharged,
-          razorpayOrderId: data.razorpayOrderId,
-          razorpayPaymentId: data.razorpayPaymentId,
-          purchasedAt: new Date(),
-          ...(platformCommissionPercent != null ? { platformCommissionPercent } : {}),
-          ...(hasCoupon ? { couponCode: notes.couponCode, promoterId: notes.promoterId } : {}),
-        },
-      },
-      { upsert: true },
-    );
-
-    if (hasCoupon) {
-      try {
-        const studentDiscountPercent = Number(notes.studentDiscountPercent);
-        const promoterEarningPercent = Number(notes.promoterEarningPercent);
-        const studentDiscountAmount = Math.round((sellingPrice * studentDiscountPercent) / 100);
-        const promoterEarning = Math.round((sellingPrice * promoterEarningPercent) / 100);
-
-        const profile = await db.collection("profiles").findOne({ uid: decoded.uid }, { projection: { fullName: 1 } });
-        const studentName = (profile?.fullName as string) || decoded.name || "Student";
-
-        await db.collection("promoterSales").updateOne(
-          { promoterId: notes.promoterId, itemId: data.itemId, uid: decoded.uid },
-          {
-            $set: {
-              promoterId: notes.promoterId,
-              uid: decoded.uid,
-              studentName,
-              batchId: data.itemId,
-              batchName: title,
-              batchPrice: sellingPrice,
-              studentDiscountAmount,
-              totalPaid: amountCharged,
-              promoterEarning,
-              couponCode: notes.couponCode,
-              purchasedAt: new Date(),
-            },
-          },
-          { upsert: true },
-        );
-      } catch (err) {
-        console.error(
-          `[verifyRazorpayPayment] promoterSales write failed for uid=${decoded.uid}, itemId=${data.itemId}:`,
-          err,
-        );
-      }
+    if (data.itemType === "proPlan") {
+      const { until } = await completeProPlanPayment({
+        uid: decoded.uid,
+        email: decoded.email ?? null,
+        planId: data.itemId,
+        orderId: data.razorpayOrderId,
+        paymentId: data.razorpayPaymentId,
+        amountCharged,
+        notes,
+      });
+      return { ok: true, proUntil: until.toISOString() };
     }
 
-    if (decoded.email) {
-      try {
-        await sendMail({
-          to: decoded.email,
-          subject: `Payment successful — ${title}`,
-          html: purchaseConfirmationEmailHtml({
-            itemTitle: title,
-            itemType: data.itemType === "mentorTest" ? "bundle" : data.itemType,
-            amount: amountCharged,
-          }),
-        });
-      } catch (err) {
-        console.error(`[verifyRazorpayPayment] confirmation email failed for uid=${decoded.uid}:`, err);
-      }
-    } else {
-      console.warn(`[verifyRazorpayPayment] no email on token for uid=${decoded.uid}, skipping confirmation email`);
+    const outcome = await recordPaidPurchase({
+      uid: decoded.uid,
+      email: decoded.email ?? null,
+      name: decoded.name ?? null,
+      itemType: data.itemType,
+      itemId: data.itemId,
+      orderId: data.razorpayOrderId,
+      paymentId: data.razorpayPaymentId,
+      amountCharged,
+      notes,
+    });
+    if (outcome === "duplicate-refund-failed") {
+      throw new Error(`You already have this item, so this second payment wasn't needed. We couldn't refund it automatically — please contact support with payment ID ${data.razorpayPaymentId}.`);
     }
-
-    return { ok: true };
+    return { ok: true, ...(outcome === "duplicate-refunded" ? { duplicateRefunded: true } : {}) };
   });
 
 export const claimFreeItem = createServerFn({ method: "POST" })
@@ -611,9 +387,11 @@ export const claimFreeItem = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const decoded = await requireSignedIn(data.token);
+    if (data.itemType === "proPlan") throw new Error("This plan can't be claimed for free.");
     const { sellingPrice, title } = await lookupItemPriceAndTitle(data.itemType, data.itemId);
 
-    if (sellingPrice > 0) {
+    // Exactly 0 — not merely "not above 0", which a missing or broken price would also satisfy.
+    if (sellingPrice !== 0) {
       throw new Error("This item isn't free — use regular checkout.");
     }
 
@@ -637,13 +415,16 @@ export const claimFreeItem = createServerFn({ method: "POST" })
     }
 
     const db = await getDb();
+    // Already theirs (paid or claimed before): leave that record exactly as it is.
+    if (await userAlreadyOwns(decoded.uid, data.itemType, data.itemId)) return { ok: true, alreadyOwned: true };
+
     const commissionPercent = await resolveCommissionPercent(data.itemType, data.itemId);
     const freePaymentId = `free_${decoded.uid}_${Date.now()}`;
 
     await db.collection("purchases").updateOne(
       { uid: decoded.uid, itemType: data.itemType, itemId: data.itemId },
       {
-        $set: {
+        $setOnInsert: {
           uid: decoded.uid,
           itemType: data.itemType,
           itemId: data.itemId,

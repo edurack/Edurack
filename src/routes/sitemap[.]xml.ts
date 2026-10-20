@@ -26,6 +26,7 @@ export const Route = createFileRoute("/sitemap.xml")({
         const locs = [
           `${SITE_URL}/sitemap-pages.xml`,
           `${SITE_URL}/sitemap-neet.xml`,
+          `${SITE_URL}/sitemap-jee.xml`,
           `${SITE_URL}/sitemap-blog.xml`,
           `${SITE_URL}/sitemap-mentors.xml`,
           ...Array.from({ length: questionPages }, (_, i) => `${SITE_URL}/sitemap-questions.xml?page=${i + 1}`),

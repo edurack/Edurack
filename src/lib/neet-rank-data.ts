@@ -1,7 +1,7 @@
 // Marks → All-India-Rank data for the free NEET tools (pure data + maths, safe on client and server).
 //
 // Source: the marks-vs-rank bands published after NEET UG 2023, 2024 and 2025 (as compiled by
-// Physics Wallah and Zynerd from NTA's result data), and appeared-candidate counts from Careers360.
+// Physics Wallah and Zynerd from NTA's result data), and appeared-candidate counts from Edurack.
 // These are bands, not every single mark, so the tools interpolate inside a band and say so.
 // Each knot is [marks, AIR]: a band's top mark pairs with its first rank, its bottom mark with its last rank.
 

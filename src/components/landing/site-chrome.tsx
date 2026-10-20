@@ -80,6 +80,7 @@ export function Title({
 // weightage guides are reachable from anywhere, not only from the homepage.
 const HEADER_LINKS: { label: string; to: string }[] = [
   { label: "NEET weightage", to: "/neet/chapter-wise-weightage" },
+  { label: "JEE weightage", to: "/jee/chapter-wise-weightage" },
   { label: "PYQ practice", to: "/pyq" },
   { label: "Blog", to: "/blog" },
 ];
@@ -210,6 +211,17 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
     ],
   },
   {
+    title: "JEE guides",
+    links: [
+      { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
+      { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
+      { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
+      { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" },
+      { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" },
+      { label: "PYQ practice", to: "/pyq" },
+    ],
+  },
+  {
     title: "Help",
     links: [
       { label: "FAQ", to: "/faq" },
@@ -241,7 +253,7 @@ export function SiteFooter() {
   return (
     <footer className={`${INK} pb-10 pt-16`}>
       <div className={WRAP}>
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2">
               <img

@@ -6,7 +6,7 @@ export const RANK_FAQ: Faq[] = [
   { q: "How does the NEET rank predictor work?", a: "It takes the marks-vs-rank bands published after NEET UG 2023, 2024 and 2025 and estimates the All-India Rank each year would have given for your marks. It then shows the range across the three years." },
   { q: "Why do the three years give such different ranks?", a: "Papers differ in difficulty. In 2025 the paper was tougher and the topper scored 686, so 600 marks was around AIR 1,400. In 2024 scores were unusually high, and the same 600 marks was around AIR 78,000. Treat the range as your realistic window." },
   { q: "Is this my exact NEET rank?", a: "No. It is an estimate. Your actual rank depends on how hard your year's paper is and how all other candidates score, and category ranks are different from the All-India Rank." },
-  { q: "Where does the data come from?", a: "The marks-vs-rank bands published after the 2023, 2024 and 2025 results, compiled from NTA data, and the number of candidates who appeared from Careers360's reporting. Ranks inside a band are interpolated." },
+  { q: "Where does the data come from?", a: "The marks-vs-rank bands published after the 2023, 2024 and 2025 results, compiled from NTA data, and the number of candidates who appeared from Edurack's reporting. Ranks inside a band are interpolated." },
   { q: "How can I improve my expected rank?", a: "The fastest gains usually come from chapters you already study but lose marks in. Solving chapter-wise NEET PYQs with solutions and reviewing mistakes is the most reliable way to raise your score." },
 ];
 

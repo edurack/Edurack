@@ -1,0 +1,1201 @@
+diff --git a/src/components/jee/jee-views.tsx b/src/components/jee/jee-views.tsx
+new file mode 100644
+index 0000000..906b00c
+--- /dev/null
++++ b/src/components/jee/jee-views.tsx
+@@ -0,0 +1,511 @@
++// src/components/jee/jee-views.tsx
++//
++// The public JEE Main weightage pages (hub → subject → chapter, plus most-repeated concepts).
++// Server-rendered like the NEET blueprint pages: all text, tables and links are in the HTML
++// Google reads. No client state, nothing hidden from crawlers.
++import { Link } from "@tanstack/react-router";
++import type { ReactNode } from "react";
++import {
++  EARLIER_LABEL,
++  JEE_RANGE,
++  RECENT_LABEL,
++  YEARS,
++  conceptsForChapter,
++  droppedChapters,
++  getJeeChapter,
++  getJeeSubject,
++  getJeeSubjects,
++  jeeActiveChapters,
++  jeePracticeSearch,
++  jeeTotalQuestions,
++  neighbours,
++  topJeeChaptersOverall,
++  topJeeConceptsOverall,
++  type JeeChapter,
++  type JeeConcept,
++  type JeeSubject,
++} from "@/lib/jee-blueprint";
++import { JEE_DATA_NOTE, jeeChapterFaq, jeeChapterSummary, jeeHubFaq, jeeHubIntro, jeeSubjectFaq, jeeSubjectIntro, jeeConceptsFaq, type Faq } from "@/lib/jee-blueprint-copy";
++import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
++
++const fmt = (n: number) => n.toLocaleString("en-IN");
++
++function Page({ children }: { children: ReactNode }) {
++  return (
++    <>
++      <SiteHeader backLabel="Back to home" />
++      <main className="mx-auto max-w-5xl px-4 py-10 sm:py-14">{children}</main>
++      <SiteFooter />
++    </>
++  );
++}
++
++function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
++  return (
++    <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-foreground/55">
++      <Link to="/" className="hover:underline">Home</Link>
++      {items.map((it, i) => (
++        <span key={i} className="flex items-center gap-1.5">
++          <span aria-hidden>/</span>
++          {it.to ?? <span className="font-semibold text-foreground/80">{it.label}</span>}
++        </span>
++      ))}
++    </nav>
++  );
++}
++
++const H1 = ({ children }: { children: ReactNode }) => <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{children}</h1>;
++const SectionTitle = ({ children }: { children: ReactNode }) => <h2 className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">{children}</h2>;
++
++function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
++  return (
++    <div className="clay-inset rounded-2xl px-4 py-3">
++      <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{label}</p>
++      <p className="mt-0.5 font-display text-2xl font-bold text-foreground">{value}</p>
++      {hint && <p className="text-xs text-foreground/50">{hint}</p>}
++    </div>
++  );
++}
++
++function FaqList({ faqs }: { faqs: Faq[] }) {
++  return (
++    <div className="space-y-2">
++      {faqs.map((f) => (
++        <details key={f.q} className="clay-inset rounded-2xl px-4 py-3 open:pb-4">
++          <summary className="cursor-pointer text-sm font-semibold text-foreground">{f.q}</summary>
++          <p className="mt-2 text-sm leading-relaxed text-foreground/70">{f.a}</p>
++        </details>
++      ))}
++    </div>
++  );
++}
++
++function YearBars({ years, caption }: { years: number[]; caption: string }) {
++  const max = Math.max(1, ...years);
++  return (
++    <figure>
++      <div className="flex h-32 items-end gap-2 sm:gap-3" role="img" aria-label={caption}>
++        {years.map((n, i) => (
++          <div key={i} className="flex flex-1 flex-col items-center justify-end gap-1">
++            <span className="text-xs font-semibold text-foreground">{n}</span>
++            <div className="w-full rounded-md bg-[#141b2b]" style={{ height: `${Math.max(n > 0 ? 6 : 2, (n / max) * 84)}px`, opacity: n > 0 ? 1 : 0.2 }} />
++            <span className="text-[10px] text-foreground/50">{YEARS[i]}</span>
++          </div>
++        ))}
++      </div>
++      <figcaption className="mt-2 text-xs text-foreground/50">{caption}</figcaption>
++    </figure>
++  );
++}
++
++function PracticeCta({ line, subject }: { line: string; subject?: string }) {
++  return (
++    <div className="ink-section mt-10 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
++      <div>
++        <p className="font-display text-lg font-extrabold">{line}</p>
++        <p className="mt-1 text-sm text-white/65">Solve JEE previous-year questions with solutions on Edurack.</p>
++      </div>
++      <Link to="/pyq" search={jeePracticeSearch(subject) as never} className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[#ffffff] px-6 text-sm font-extrabold text-[#141b2b]">
++        Practise JEE PYQs
++      </Link>
++    </div>
++  );
++}
++
++function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: boolean }) {
++  return (
++    <Link to="/jee/chapter-wise-weightage/$subject/$chapter" params={{ subject: c.subjectKey, chapter: c.slug }} className="font-semibold text-foreground hover:underline">
++      {c.name}
++      {showSubject && <span className="font-normal text-foreground/50"> · {c.subjectShort}</span>}
++    </Link>
++  );
++}
++
++function TrendBadge({ c }: { c: JeeChapter }) {
++  if (c.retired) return <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-bold uppercase text-foreground/60">Not in syllabus</span>;
++  const label = c.trend === "rising" ? "↑ Rising" : c.trend === "falling" ? "↓ Falling" : "→ Steady";
++  return <span className="text-xs font-semibold text-foreground/70">{label}</span>;
++}
++
++function DataNote() {
++  return <p className="mt-8 text-xs leading-relaxed text-foreground/50">{JEE_DATA_NOTE}</p>;
++}
++
++function YearCells({ years }: { years: number[] }) {
++  return (
++    <>
++      {years.map((n, i) => (
++        <td key={i} className="px-1 py-2 text-center text-xs" style={n > 0 ? { backgroundColor: `rgba(20,27,43,${Math.min(0.08 + n * 0.006, 0.4)})` } : undefined}>
++          <span className={n > 0 ? "font-bold text-foreground" : "text-foreground/25"}>{n > 0 ? n : "–"}</span>
++        </td>
++      ))}
++    </>
++  );
++}
++
++function ChapterTable({ chapters, showRank = true }: { chapters: JeeChapter[]; showRank?: boolean }) {
++  return (
++    <div className="overflow-x-auto rounded-2xl" role="region" aria-label="Chapter-wise question counts by year" tabIndex={0}>
++      <table className="w-full min-w-[680px] border-collapse text-left text-sm">
++        <thead>
++          <tr className="text-[11px] uppercase tracking-wide text-foreground/50">
++            {showRank && <th scope="col" className="w-8 py-2 pr-2 font-semibold">#</th>}
++            <th scope="col" className="py-2 pr-3 font-semibold">Chapter</th>
++            {YEARS.map((y) => (
++              <th key={y} scope="col" className="px-1 py-2 text-center font-semibold">{y}</th>
++            ))}
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Total</th>
++            <th scope="col" className="px-2 py-2 text-center font-semibold" title={`Share of the subject, ${RECENT_LABEL}`}>Share {RECENT_LABEL}</th>
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Trend</th>
++          </tr>
++        </thead>
++        <tbody>
++          {chapters.map((c) => (
++            <tr key={c.slug} className="border-t border-foreground/10">
++              {showRank && <td className="py-2 pr-2 text-xs text-foreground/40">{c.retired ? "–" : c.rank}</td>}
++              <th scope="row" className="py-2 pr-3 text-[13px] font-medium leading-snug"><ChapterLink c={c} /></th>
++              <YearCells years={c.years} />
++              <td className="px-2 py-2 text-center text-xs font-bold text-foreground">{c.total}</td>
++              <td className="px-2 py-2 text-center text-xs text-foreground/70">{c.recentShare}%</td>
++              <td className="px-2 py-2 text-center"><TrendBadge c={c} /></td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
++function ConceptTable({ concepts, showSubject = false }: { concepts: JeeConcept[]; showSubject?: boolean }) {
++  return (
++    <div className="overflow-x-auto rounded-2xl" role="region" aria-label="Concept-wise question counts by year" tabIndex={0}>
++      <table className="w-full min-w-[620px] border-collapse text-left text-sm">
++        <thead>
++          <tr className="text-[11px] uppercase tracking-wide text-foreground/50">
++            <th scope="col" className="w-8 py-2 pr-2 font-semibold">#</th>
++            <th scope="col" className="py-2 pr-3 font-semibold">Concept</th>
++            {YEARS.map((y) => (
++              <th key={y} scope="col" className="px-1 py-2 text-center font-semibold">{y}</th>
++            ))}
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Total</th>
++          </tr>
++        </thead>
++        <tbody>
++          {concepts.map((k, i) => {
++            const ch = k.chapterSlug ? getJeeChapter(k.subjectKey, k.chapterSlug) : undefined;
++            return (
++              <tr key={k.subjectKey + k.name} className="border-t border-foreground/10">
++                <td className="py-2 pr-2 text-xs text-foreground/40">{i + 1}</td>
++                <th scope="row" className="py-2 pr-3 text-[13px] font-medium leading-snug text-foreground">
++                  {k.name}
++                  {(showSubject || ch) && (
++                    <span className="block text-xs font-normal text-foreground/50">
++                      {showSubject && <>{k.subjectName}{ch ? " · " : ""}</>}
++                      {ch && <ChapterLink c={ch} />}
++                    </span>
++                  )}
++                </th>
++                <YearCells years={k.years} />
++                <td className="px-2 py-2 text-center text-xs font-bold text-foreground">{k.total}</td>
++              </tr>
++            );
++          })}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
++// ── /jee/chapter-wise-weightage ─────────────────────────────────────────────
++export function JeeHubView() {
++  const subjects = getJeeSubjects();
++  const top = topJeeChaptersOverall(15);
++  const dropped = droppedChapters();
++  return (
++    <Page>
++      <Crumbs items={[{ label: "JEE chapter-wise weightage" }]} />
++      <H1>
++        JEE Main chapter-wise weightage <span className="text-foreground/60">{JEE_RANGE}</span>
++      </H1>
++      <div className="mt-4 max-w-3xl space-y-3 text-[15px] leading-relaxed text-foreground/80">
++        {jeeHubIntro().map((p) => (
++          <p key={p}>{p}</p>
++        ))}
++      </div>
++
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
++        <Stat label="Questions counted" value={fmt(jeeTotalQuestions())} hint="across all shifts" />
++        <Stat label="Chapters in syllabus" value={jeeActiveChapters()} hint="Physics, Chemistry, Maths" />
++        <Stat label="Dropped chapters" value={dropped.length} hint="not in the 2026 syllabus" />
++        <Stat label="Years" value="5" hint={JEE_RANGE} />
++      </div>
++
++      <SectionTitle>Pick a subject</SectionTitle>
++      <div className="grid gap-4 sm:grid-cols-3">
++        {subjects.map((s) => (
++          <div key={s.key} className="clay rounded-3xl p-5">
++            <Link to="/jee/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="font-display text-xl font-bold text-foreground hover:underline">
++              JEE Main {s.name}
++            </Link>
++            <p className="mt-1 text-sm text-foreground/60">{fmt(s.total)} questions · {s.activeCount} chapters</p>
++            <ol className="mt-3 space-y-1 text-sm text-foreground/80">
++              {s.chapters.filter((c) => !c.retired).slice(0, 5).map((c) => (
++                <li key={c.slug} className="flex items-baseline justify-between gap-2">
++                  <ChapterLink c={c} />
++                  <span className="shrink-0 text-xs text-foreground/50">{c.recentShare}%</span>
++                </li>
++              ))}
++            </ol>
++            <Link to="/jee/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="mt-3 inline-block text-xs font-bold text-[var(--sky-deep)]">
++              All {s.name} chapters →
++            </Link>
++          </div>
++        ))}
++      </div>
++
++      <SectionTitle>Highest-weightage chapters across the whole paper</SectionTitle>
++      <p className="mb-3 max-w-3xl text-sm text-foreground/70">
++        Ranked by share of the full paper in {RECENT_LABEL}. Each subject carries equal marks, so a chapter's share of its subject is divided by three.
++      </p>
++      <ol className="clay space-y-2 rounded-3xl p-5 text-sm">
++        {top.map((c, i) => (
++          <li key={c.subjectKey + c.slug} className="flex items-baseline gap-3">
++            <span className="w-5 text-xs text-foreground/40">{i + 1}</span>
++            <span className="flex-1"><ChapterLink c={c} showSubject /></span>
++            <span className="shrink-0 text-xs font-bold text-foreground">{c.paperShare}% of paper</span>
++          </li>
++        ))}
++      </ol>
++
++      {dropped.length > 0 && (
++        <>
++          <SectionTitle>Chapters no longer in the JEE Main syllabus</SectionTitle>
++          <p className="mb-3 max-w-3xl text-sm text-foreground/70">These appeared in earlier papers but are not listed in NTA's 2026 syllabus.</p>
++          <ul className="clay grid gap-x-6 gap-y-1.5 rounded-3xl p-5 text-sm sm:grid-cols-2">
++            {dropped.map((c) => (
++              <li key={c.subjectKey + c.slug} className="flex items-baseline justify-between gap-2">
++                <ChapterLink c={c} showSubject />
++                <span className="shrink-0 text-xs text-foreground/50">{c.total} Qs</span>
++              </li>
++            ))}
++          </ul>
++        </>
++      )}
++
++      <div className="mt-8">
++        <Link to="/jee/most-repeated-concepts" className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
++          <p className="font-display text-lg font-bold text-foreground">Most repeated JEE Main concepts</p>
++          <p className="mt-1 text-sm text-foreground/60">See the concepts JEE Main has asked the most, ranked by questions, with year-wise counts.</p>
++        </Link>
++      </div>
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={jeeHubFaq()} />
++      <PracticeCta line="Turn weightage into marks: solve JEE PYQs chapter by chapter." />
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/chapter-wise-weightage/<subject> ───────────────────────────────────
++export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
++  const s = getJeeSubject(subjectKey) as JeeSubject;
++  const active = s.chapters.filter((c) => !c.retired);
++  const dropped = s.chapters.filter((c) => c.retired);
++  return (
++    <Page>
++      <Crumbs items={[{ label: "JEE chapter-wise weightage", to: <Link to="/jee/chapter-wise-weightage" className="hover:underline">JEE chapter-wise weightage</Link> }, { label: s.name }]} />
++      <H1>
++        JEE Main {s.name} chapter-wise weightage <span className="text-foreground/60">{JEE_RANGE}</span>
++      </H1>
++      <div className="mt-4 max-w-3xl space-y-3 text-[15px] leading-relaxed text-foreground/80">
++        {jeeSubjectIntro(s).map((p) => (
++          <p key={p}>{p}</p>
++        ))}
++      </div>
++
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
++        <Stat label="Questions counted" value={fmt(s.total)} hint="across all shifts" />
++        <Stat label="Chapters in syllabus" value={s.activeCount} />
++        <Stat label="Highest chapter" value={active[0].name} hint={`${active[0].recentShare}% in ${RECENT_LABEL}`} />
++      </div>
++
++      <SectionTitle>{s.name} questions per year</SectionTitle>
++      <div className="clay rounded-3xl p-5">
++        <YearBars years={s.yearTotals} caption={`${s.name} questions counted per year, ${JEE_RANGE}. Years differ in number of shifts.`} />
++      </div>
++
++      <SectionTitle>{s.name} chapters ranked by weightage</SectionTitle>
++      <div className="clay rounded-3xl p-5">
++        <ChapterTable chapters={active} />
++      </div>
++
++      {dropped.length > 0 && (
++        <>
++          <SectionTitle>{s.name} chapters not in the 2026 syllabus</SectionTitle>
++          <div className="clay rounded-3xl p-5">
++            <ChapterTable chapters={dropped} showRank={false} />
++          </div>
++        </>
++      )}
++
++      {s.concepts.length > 0 && (
++        <>
++          <SectionTitle>Most repeated {s.name} concepts</SectionTitle>
++          <div className="clay rounded-3xl p-5">
++            <ConceptTable concepts={s.concepts.slice(0, 15)} />
++          </div>
++          <p className="mt-3 text-sm">
++            <Link to="/jee/most-repeated-concepts" className="font-bold text-[var(--sky-deep)]">See concepts across all subjects →</Link>
++          </p>
++        </>
++      )}
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={jeeSubjectFaq(s)} />
++      <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/chapter-wise-weightage/<subject>/<chapter> ─────────────────────────
++export function JeeChapterView({ subjectKey, chapterSlug }: { subjectKey: string; chapterSlug: string }) {
++  const s = getJeeSubject(subjectKey) as JeeSubject;
++  const c = getJeeChapter(subjectKey, chapterSlug) as JeeChapter;
++  const ks = conceptsForChapter(c);
++  const { prev, next } = neighbours(c);
++  return (
++    <Page>
++      <Crumbs
++        items={[
++          { label: "JEE chapter-wise weightage", to: <Link to="/jee/chapter-wise-weightage" className="hover:underline">JEE chapter-wise weightage</Link> },
++          { label: s.name, to: <Link to="/jee/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="hover:underline">{s.name}</Link> },
++          { label: c.name },
++        ]}
++      />
++      <H1>
++        JEE Main {c.name} weightage <span className="text-foreground/60">{JEE_RANGE}</span>
++      </H1>
++      <p className="mt-2 text-sm text-foreground/55">{c.subjectName}{c.retired ? " · not in the JEE Main 2026 syllabus" : ""}</p>
++      <div className="mt-4 max-w-3xl space-y-3 text-[15px] leading-relaxed text-foreground/80">
++        {jeeChapterSummary(c, s).map((p) => (
++          <p key={p}>{p}</p>
++        ))}
++      </div>
++
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
++        <Stat label="Questions" value={c.total} hint={`${c.share}% of ${s.name}`} />
++        <Stat label={`Share ${RECENT_LABEL}`} value={`${c.recentShare}%`} hint={`${EARLIER_LABEL}: ${c.earlierAvgShare}% avg`} />
++        <Stat label="Rank in subject" value={c.retired ? "–" : `#${c.rank}`} hint={c.retired ? "not in syllabus" : `of ${s.activeCount} chapters`} />
++        <Stat label="Years asked" value={`${c.yearsAsked} of 5`} />
++      </div>
++
++      <SectionTitle>Questions per year</SectionTitle>
++      <div className="clay rounded-3xl p-5">
++        <YearBars years={c.years} caption={`${c.name} questions counted per year, ${JEE_RANGE}. Years differ in number of shifts, so compare shares, not raw counts.`} />
++        <p className="mt-3 text-xs text-foreground/55">Share of the {s.name} paper by year: {c.yearShares.map((v, i) => `${YEARS[i]} ${v}%`).join(" · ")}</p>
++      </div>
++
++      {!c.retired && c.syllabus && (
++        <>
++          <SectionTitle>What the JEE Main syllabus covers</SectionTitle>
++          <p className="clay rounded-3xl p-5 text-sm leading-relaxed text-foreground/80">{c.syllabus}</p>
++        </>
++      )}
++
++      {ks.length > 0 && (
++        <>
++          <SectionTitle>Most repeated concepts in {c.name}</SectionTitle>
++          <div className="clay rounded-3xl p-5">
++            <ConceptTable concepts={ks} />
++          </div>
++        </>
++      )}
++
++      {(prev || next) && (
++        <div className="mt-8 grid gap-3 sm:grid-cols-2">
++          {prev && (
++            <Link to="/jee/chapter-wise-weightage/$subject/$chapter" params={{ subject: prev.subjectKey, chapter: prev.slug }} className="clay block rounded-2xl p-4 transition hover:-translate-y-0.5">
++              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">Higher weightage</p>
++              <p className="mt-0.5 font-semibold text-foreground">{prev.name}</p>
++            </Link>
++          )}
++          {next && (
++            <Link to="/jee/chapter-wise-weightage/$subject/$chapter" params={{ subject: next.subjectKey, chapter: next.slug }} className="clay block rounded-2xl p-4 transition hover:-translate-y-0.5">
++              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">Next in ranking</p>
++              <p className="mt-0.5 font-semibold text-foreground">{next.name}</p>
++            </Link>
++          )}
++        </div>
++      )}
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={jeeChapterFaq(c, s)} />
++      <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/most-repeated-concepts ─────────────────────────────────────────────
++export function JeeConceptsView() {
++  const subjects = getJeeSubjects();
++  const overall = topJeeConceptsOverall(20);
++  return (
++    <Page>
++      <Crumbs items={[{ label: "Most repeated concepts" }]} />
++      <H1>
++        Most repeated concepts in JEE Main <span className="text-foreground/60">{JEE_RANGE}</span>
++      </H1>
++      <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-foreground/80">
++        The concepts JEE Main asked most often between 2022 and 2026, counted across all shifts. Pick a subject below, or start with the overall top 20. Each concept links to its chapter where the chapter page exists.
++      </p>
++      <div className="mt-5 flex flex-wrap gap-2 text-sm">
++        {subjects.map((s) => (
++          <a key={s.key} href={`#${s.key}`} className="clay-inset rounded-full px-4 py-1.5 font-semibold text-foreground">
++            {s.name}
++          </a>
++        ))}
++      </div>
++
++      <SectionTitle>Top 20 across Physics, Chemistry and Maths</SectionTitle>
++      <div className="clay rounded-3xl p-5">
++        <ConceptTable concepts={overall} showSubject />
++      </div>
++
++      {subjects.map((s) => (
++        <section key={s.key} id={s.key}>
++          <SectionTitle>{s.name} concepts</SectionTitle>
++          <div className="clay rounded-3xl p-5">
++            <ConceptTable concepts={s.concepts} />
++          </div>
++          <p className="mt-3 text-sm">
++            <Link to="/jee/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="font-bold text-[var(--sky-deep)]">{s.name} chapter-wise weightage →</Link>
++          </p>
++        </section>
++      ))}
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={jeeConceptsFaq()} />
++      <PracticeCta line="Solve JEE PYQs on the concepts that repeat." />
++      <DataNote />
++    </Page>
++  );
++}
++
++export function JeeNotFound() {
++  return (
++    <>
++      <SiteHeader backLabel="Back to home" />
++      <div className="mx-auto max-w-2xl px-4 py-24 text-center">
++        <h1 className="font-display text-2xl font-bold text-foreground">Page not found</h1>
++        <p className="mt-2 text-sm text-foreground/60">That subject or chapter isn't in the JEE Main weightage guide.</p>
++        <Link to="/jee/chapter-wise-weightage" className="clay-btn mt-6 inline-block rounded-full px-5 py-2.5 text-sm font-bold text-white">
++          See all JEE chapters
++        </Link>
++      </div>
++      <SiteFooter />
++    </>
++  );
++}
+diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
+index a51c468..857693b 100644
+--- a/src/components/landing/site-chrome.tsx
++++ b/src/components/landing/site-chrome.tsx
+@@ -80,6 +80,7 @@ export function Title({
+ // weightage guides are reachable from anywhere, not only from the homepage.
+ const HEADER_LINKS: { label: string; to: string }[] = [
+   { label: "NEET weightage", to: "/neet/chapter-wise-weightage" },
++  { label: "JEE weightage", to: "/jee/chapter-wise-weightage" },
+   { label: "PYQ practice", to: "/pyq" },
+   { label: "Blog", to: "/blog" },
+ ];
+@@ -209,6 +210,17 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
+       { label: "Free NEET tools", to: "/tools" },
+     ],
+   },
++  {
++    title: "JEE guides",
++    links: [
++      { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
++      { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
++      { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
++      { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" },
++      { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" },
++      { label: "PYQ practice", to: "/pyq" },
++    ],
++  },
+   {
+     title: "Help",
+     links: [
+@@ -241,7 +253,7 @@ export function SiteFooter() {
+   return (
+     <footer className={`${INK} pb-10 pt-16`}>
+       <div className={WRAP}>
+-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
++        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
+           <div>
+             <Link to="/" className="flex items-center gap-2">
+               <img
+diff --git a/src/lib/jee-blueprint-copy.ts b/src/lib/jee-blueprint-copy.ts
+new file mode 100644
+index 0000000..cc8882b
+--- /dev/null
++++ b/src/lib/jee-blueprint-copy.ts
+@@ -0,0 +1,165 @@
++// src/lib/jee-blueprint-copy.ts
++//
++// Page copy for the JEE Main weightage pages, generated from the dataset.
++// Every sentence is a measurement ("84 of 2,905 questions"), never a prediction,
++// so the text is specific to each chapter instead of boilerplate.
++import {
++  EARLIER_LABEL,
++  JEE_RANGE,
++  RECENT_LABEL,
++  YEARS,
++  conceptsForChapter,
++  droppedChapters,
++  getJeeSubjects,
++  jeeActiveChapters,
++  jeeTotalQuestions,
++  topJeeChaptersOverall,
++  topJeeConceptsOverall,
++  type JeeChapter,
++  type JeeSubject,
++} from "@/lib/jee-blueprint";
++import type { Faq } from "@/lib/neet-blueprint-copy";
++
++export { faqPageJsonLd, itemListJsonLd } from "@/lib/neet-blueprint-copy";
++export type { Faq };
++
++const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
++const qs = (n: number) => plural(n, "question");
++const list = (items: string[]) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
++const fmt = (n: number) => n.toLocaleString("en-IN");
++
++/** Honest provenance line shown on every JEE page. */
++export const JEE_DATA_NOTE =
++  `Counts are compiled from Careers360's JEE Main last five-year analysis (${JEE_RANGE}) and count questions across all shifts and sessions of each year. ` +
++  `Because the number of shifts changes every year, trends compare each chapter's share of the paper among chapters still in the syllabus, not raw counts. ` +
++  `Past frequency is a trend guide, not a prediction. Chapters marked "not in syllabus" are absent from NTA's JEE Main 2026 syllabus; always check the latest NTA syllabus before skipping a chapter.`;
++
++// ── Hub ────────────────────────────────────────────────────────────────────
++export const JEE_HUB_TITLE = `JEE Main Chapter-Wise Weightage ${JEE_RANGE}`;
++
++export function jeeHubDescription() {
++  return `JEE Main chapter-wise weightage from ${fmt(jeeTotalQuestions())} questions (${JEE_RANGE}): ranked Physics, Chemistry and Maths chapters, dropped chapters, repeated concepts.`;
++}
++
++export function jeeHubIntro(): string[] {
++  const top = topJeeChaptersOverall(3);
++  return [
++    `This guide counts how many JEE Main questions came from each chapter across ${JEE_RANGE} — ${fmt(jeeTotalQuestions())} questions in Physics, Chemistry and Mathematics, counted across every shift. ` +
++      `${jeeActiveChapters()} chapters are still in the syllabus; ${droppedChapters().length} that were asked earlier no longer are.`,
++    `Weighted by how much of the full paper each chapter takes (each subject carries equal marks), the biggest chapters in ${RECENT_LABEL} were ${list(top.map((c) => `${c.name} (${c.subjectShort}, about ${c.paperShare}% of the paper)`))}.`,
++  ];
++}
++
++export function jeeHubFaq(): Faq[] {
++  const subjects = getJeeSubjects();
++  const topPer = subjects.map((s) => `${s.name}: ${list(s.chapters.filter((c) => !c.retired).slice(0, 3).map((c) => c.name))}`).join("; ");
++  const dropped = droppedChapters();
++  return [
++    { q: "Which chapters have the highest weightage in JEE Main?", a: `Ranked by their share of questions in ${RECENT_LABEL}, the top three chapters in each subject were — ${topPer}.` },
++    { q: "How many questions are in this analysis?", a: `${fmt(jeeTotalQuestions())} questions across ${JEE_RANGE} and all shifts: ${list(subjects.map((s) => `${fmt(s.total)} in ${s.name}`))}. Because one year has many shifts, these are much larger than a single paper's 25 scored questions per subject.` },
++    { q: "Are there chapters I can skip for JEE Main?", a: `${dropped.length} chapters that appeared in earlier years are not in NTA's JEE Main 2026 syllabus, including ${list(dropped.slice(0, 4).map((c) => c.name))}. Check the latest NTA syllabus before dropping any chapter.` },
++    { q: "Does a high-weightage chapter guarantee questions next year?", a: "No. Past frequency shows where JEE Main has focused, not what it will ask next. Use it to decide what to study first, and still cover the full syllabus." },
++    { q: "How should I use chapter-wise weightage?", a: "Start with chapters that have both a high share and a steady or rising trend, then solve previous-year questions on each so you see how the chapter is actually tested." },
++  ];
++}
++
++// ── Subject ────────────────────────────────────────────────────────────────
++export const jeeSubjectTitle = (s: JeeSubject) => `JEE Main ${s.short} Chapter-Wise Weightage ${JEE_RANGE}`;
++
++export function jeeSubjectDescription(s: JeeSubject) {
++  const t = s.chapters.filter((c) => !c.retired).slice(0, 2).map((c) => c.name);
++  return `JEE Main ${s.short} weightage ${JEE_RANGE}: ${s.activeCount} chapters ranked. Highest: ${list(t)}.`;
++}
++
++export function jeeSubjectIntro(s: JeeSubject): string[] {
++  const active = s.chapters.filter((c) => !c.retired);
++  const top = active.slice(0, 3);
++  const dropped = s.chapters.filter((c) => c.retired);
++  const out = [
++    `JEE Main asked ${fmt(s.total)} ${s.name} questions across all shifts between 2022 and 2026. ` +
++      `In ${RECENT_LABEL} the three chapters with the largest share were ${list(top.map((c) => `${c.name} (${c.recentShare}%)`))}.`,
++  ];
++  if (dropped.length) out.push(`${plural(dropped.length, "chapter")} from earlier papers ${dropped.length === 1 ? "is" : "are"} not in the JEE Main 2026 syllabus: ${list(dropped.map((c) => c.name))}.`);
++  return out;
++}
++
++export function jeeSubjectFaq(s: JeeSubject): Faq[] {
++  const active = s.chapters.filter((c) => !c.retired);
++  const rising = active.filter((c) => c.trend === "rising").slice(0, 3);
++  const dropped = s.chapters.filter((c) => c.retired);
++  const out: Faq[] = [
++    { q: `Which JEE Main ${s.name} chapter has the highest weightage?`, a: `${active[0].name}, with ${active[0].recentShare}% of ${s.name} questions in ${RECENT_LABEL} and ${active[0].share}% across ${JEE_RANGE}.` },
++    { q: `How many ${s.name} chapters are in the JEE Main syllabus?`, a: `This guide lists ${s.activeCount} ${s.name} chapters that are still in the 2026 syllabus, grouped the way JEE Main questions are tagged.` },
++  ];
++  if (rising.length) out.push({ q: `Which ${s.name} chapters are being asked more often?`, a: `${list(rising.map((c) => c.name))} ${rising.length === 1 ? "has" : "have"} taken a bigger share of the ${s.name} paper in ${RECENT_LABEL} than in ${EARLIER_LABEL}.` });
++  if (dropped.length) out.push({ q: `Which ${s.name} chapters were removed from JEE Main?`, a: `${list(dropped.map((c) => c.name))} appeared in earlier papers but are not in NTA's JEE Main 2026 syllabus.` });
++  out.push({ q: `How should I use ${s.name} weightage?`, a: "Study high-share chapters first, give steady and rising chapters regular revision, and solve previous-year questions on each chapter to see the question style." });
++  return out;
++}
++
++// ── Chapter ────────────────────────────────────────────────────────────────
++export const jeeChapterTitle = (c: JeeChapter) => `JEE Main ${c.name} Weightage ${JEE_RANGE}`;
++
++export function jeeChapterDescription(c: JeeChapter) {
++  return c.retired
++    ? `${c.name} (JEE Main ${c.subjectShort}): ${c.total} questions in ${JEE_RANGE}, but not in the 2026 syllabus. Year-wise counts.`
++    : `${c.name} (JEE Main ${c.subjectShort}): ${c.total} Qs in ${JEE_RANGE}, ${c.share}% of the subject, #${c.rank} by recent weightage. Year-wise trend.`;
++}
++
++export function jeeChapterSummary(c: JeeChapter, s: JeeSubject): string[] {
++  const out: string[] = [];
++  const counts = list(c.years.map((n, i) => `${n} in ${YEARS[i]}`));
++
++  if (c.retired) {
++    out.push(
++      `${c.name} is not part of NTA's JEE Main 2026 syllabus. It contributed ${c.total} of the ${fmt(s.total)} ${s.name} questions between 2022 and 2026 (${c.share}%), ` +
++        (c.recent > 0 ? `but only ${c.recent} of those came in ${RECENT_LABEL}.` : `and none came in ${RECENT_LABEL}.`),
++    );
++    out.push(`Year by year it was asked ${counts}. Check the latest NTA syllabus before you decide to skip it.`);
++    return out;
++  }
++
++  out.push(
++    `${c.name} contributed ${c.total} of the ${fmt(s.total)} JEE Main ${s.name} questions asked across all shifts between 2022 and 2026 — ${c.share}% of the subject. ` +
++      `In ${RECENT_LABEL} its share was ${c.recentShare}%, which makes it the #${c.rank} chapter of ${s.activeCount} in the current syllabus by recent weightage (about ${c.paperShare}% of the whole paper).`,
++  );
++  out.push(`Year by year it was asked ${counts}. It appeared in ${c.yearsAsked} of 5 years, with its highest count in ${YEARS[c.peakIndex]}.`);
++
++  if (c.trend === "rising") out.push(`Its share has been rising: ${c.recentAvgShare}% of the ${s.name} paper on average in ${RECENT_LABEL}, against ${c.earlierAvgShare}% in ${EARLIER_LABEL}.`);
++  else if (c.trend === "falling") out.push(`Its share has been falling: ${c.recentAvgShare}% of the ${s.name} paper on average in ${RECENT_LABEL}, against ${c.earlierAvgShare}% in ${EARLIER_LABEL}.`);
++  else out.push(`Its share has stayed fairly steady: ${c.recentAvgShare}% of the ${s.name} paper on average in ${RECENT_LABEL}, against ${c.earlierAvgShare}% in ${EARLIER_LABEL}.`);
++
++  const ks = conceptsForChapter(c).slice(0, 3);
++  if (ks.length) out.push(`The most repeated concepts from this chapter in the dataset are ${list(ks.map((k) => `${k.name} (${qs(k.total)})`))}.`);
++  return out;
++}
++
++export function jeeChapterFaq(c: JeeChapter, s: JeeSubject): Faq[] {
++  const out: Faq[] = [
++    { q: `How many questions come from ${c.name} in JEE Main?`, a: `${c.name} had ${c.total} questions across all JEE Main shifts from 2022 to 2026, which is ${c.share}% of ${s.name}. Year by year: ${list(c.years.map((n, i) => `${n} in ${YEARS[i]}`))}.` },
++  ];
++  if (c.retired) {
++    out.push({ q: `Is ${c.name} still in the JEE Main syllabus?`, a: `It is not listed in NTA's JEE Main 2026 syllabus. Check the latest NTA notification before skipping it.` });
++  } else {
++    out.push({ q: `Is ${c.name} important for JEE Main?`, a: `It ranks #${c.rank} of ${s.activeCount} ${s.name} chapters by share of questions in ${RECENT_LABEL} (${c.recentShare}% of the subject). ${c.trend === "rising" ? "Its share has been rising." : c.trend === "falling" ? "Its share has been falling." : "Its share has been steady."}` });
++    const ks = conceptsForChapter(c).slice(0, 4);
++    if (ks.length) out.push({ q: `Which ${c.name} concepts are asked most in JEE Main?`, a: `${list(ks.map((k) => `${k.name} (${qs(k.total)})`))} are the most repeated concepts from this chapter in the dataset.` });
++    out.push({ q: `What does the JEE Main syllabus cover in ${c.name}?`, a: c.syllabus });
++  }
++  out.push({ q: `Does a high weightage mean ${c.name} will be asked again?`, a: "No. Weightage shows past frequency, not a promise. Use it to prioritise, and practise previous-year questions to see how the chapter is tested." });
++  return out;
++}
++
++// ── Concepts page ──────────────────────────────────────────────────────────
++export const JEE_CONCEPTS_TITLE = `Most Repeated Concepts in JEE Main ${JEE_RANGE}`;
++export const jeeConceptsDescription = () => `The most repeated JEE Main concepts in Physics, Chemistry and Maths, ranked by questions across ${JEE_RANGE}, with year-wise counts and the chapter each belongs to.`;
++
++export function jeeConceptsFaq(): Faq[] {
++  const t = topJeeConceptsOverall(1)[0];
++  return [
++    { q: "Which concepts are repeated most in JEE Main?", a: `Across ${JEE_RANGE} the most repeated concept in the dataset is ${t.name} (${t.subjectName}), with ${t.total} questions across all shifts.` },
++    { q: "Do JEE Main questions repeat from previous years?", a: "Concepts repeat often, though questions rarely repeat word for word. Solving previous-year questions shows which ideas JEE Main keeps coming back to." },
++    { q: "Why do some concepts show a dash for recent years?", a: "A dash means no questions on that concept were counted that year. Some concepts belong to chapters that are no longer in the JEE Main syllabus." },
++    { q: "Does a repeated concept guarantee a question next year?", a: "No. Past frequency is a trend guide, not a promise. Use it to prioritise, but cover the full syllabus." },
++  ];
++}
+diff --git a/src/lib/jee-blueprint-data.ts b/src/lib/jee-blueprint-data.ts
+new file mode 100644
+index 0000000..74491c7
+--- /dev/null
++++ b/src/lib/jee-blueprint-data.ts
+@@ -0,0 +1,34 @@
++// src/lib/jee-blueprint-data.ts
++//
++// Raw data for the public JEE Main chapter-wise weightage pages.
++//
++// Source: Careers360, "JEE Main Last Five-Year Analysis (2022-2026)". Counts are the number of
++// questions asked from each chapter / concept across ALL shifts and sessions of that year's
++// papers (so a year's Physics total is well above one paper's 25 questions).
++//
++// How this was cleaned (the eBook's tables were extracted from a PDF and are noisy):
++//   - Chapter rows: every per-year cell was kept and ALL totals, shares and averages are computed
++//     from those cells. The eBook's printed "Grand Total", "Percentage" and "Average" tables do not
++//     add up to its own rows for Chemistry and Maths, so they are deliberately not used.
++//   - Physics also had a 2021 column; it is dropped so all three subjects cover 2022-2026.
++//   - Concept rows: kept only when the per-year cells add up to the printed total (+/- 1).
++//     Rows that did not reconcile are in JEE_CONCEPTS_TO_VERIFY and are NOT shown on the site.
++//     Check them against the PDF and move them into JEE_RAW.concepts once confirmed.
++//   - "Stoichiometry and Limiting Reagent" was clipped in the PDF; its 2025/2026 cells were
++//     reconstructed so the row adds up to the printed total of 26.
++//   - Parent chapters of concepts are an editorial mapping (not in the eBook); omitted when ambiguous.
++//   - `retired` = not part of the JEE Main 2026 syllabus published by NTA.
++
++export const JEE_YEARS = ["2022", "2023", "2024", "2025", "2026"] as const;
++
++export type JeeRawChapter = { slug: string; name: string; years: number[]; retired: boolean; syllabus: string };
++export type JeeRawConcept = { name: string; years: number[]; chapter?: string };
++export type JeeRawSubject = { key: string; name: string; short: string; chapters: JeeRawChapter[] };
++
++export const JEE_RAW: {
++  subjects: JeeRawSubject[];
++  concepts: Record<string, JeeRawConcept[]>;
++} = {"subjects": [{"key": "physics", "name": "Physics", "short": "Physics", "chapters": [{"slug": "atoms-and-nuclei", "name": "Atoms and Nuclei", "years": [31, 46, 39, 23, 24], "retired": false, "syllabus": "Alpha-particle scattering, Rutherford and Bohr models, energy levels, hydrogen spectrum, nuclear composition and size, mass-energy relation, mass defect, binding energy, fission and fusion."}, {"slug": "communication-systems", "name": "Communication Systems", "years": [20, 21, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "current-electricity", "name": "Current Electricity", "years": [44, 52, 50, 22, 24], "retired": false, "syllabus": "Drift velocity, Ohm's law, resistivity, series and parallel combinations, temperature dependence of resistance, cells with internal resistance, Kirchhoff's laws, Wheatstone bridge, metre bridge."}, {"slug": "dual-nature-of-matter-and-radiation", "name": "Dual Nature of Matter and Radiation", "years": [21, 27, 25, 19, 16], "retired": false, "syllabus": "Photoelectric effect, Hertz and Lenard's observations, Einstein's photoelectric equation, particle nature of light, matter waves and the de Broglie relation."}, {"slug": "electromagnetic-induction-and-alternating-currents", "name": "Electromagnetic Induction and Alternating Currents", "years": [41, 48, 45, 18, 25], "retired": false, "syllabus": "Faraday's and Lenz's laws, induced emf, eddy currents, self and mutual inductance, AC, RMS values, reactance and impedance, series LCR circuit, resonance, power in AC circuits, AC generator and transformer."}, {"slug": "electromagnetic-waves", "name": "Electromagnetic Waves", "years": [21, 25, 15, 7, 17], "retired": false, "syllabus": "Displacement current, characteristics and transverse nature of electromagnetic waves, the electromagnetic spectrum and its applications."}, {"slug": "electronic-devices", "name": "Electronic Devices", "years": [26, 25, 19, 18, 20], "retired": false, "syllabus": "Semiconductors, p-n junction diode characteristics, rectifier, LED, photodiode, solar cell, Zener diode as a voltage regulator, logic gates."}, {"slug": "electrostatics", "name": "Electrostatics", "years": [51, 47, 39, 51, 39], "retired": false, "syllabus": "Coulomb's law, electric field and dipole, Gauss's law and its applications, electric potential, equipotential surfaces, conductors and dielectrics, capacitors and their combinations, energy stored in a capacitor."}, {"slug": "experimental-skills", "name": "Experimental Skills", "years": [14, 2, 11, 3, 12], "retired": false, "syllabus": "The 18 listed experiments: vernier calipers, screw gauge, simple pendulum, Young's modulus, surface tension, viscosity, speed of sound, specific heat, metre bridge, Ohm's law, galvanometer, focal lengths, prism, diode characteristics."}, {"slug": "gravitation", "name": "Gravitation", "years": [21, 36, 19, 13, 11], "retired": false, "syllabus": "Universal law of gravitation, variation of g with altitude and depth, Kepler's laws, gravitational potential energy and potential, escape velocity, satellites."}, {"slug": "kinematics", "name": "Kinematics", "years": [41, 46, 41, 22, 21], "retired": false, "syllabus": "Frame of reference, motion in a straight line, speed and velocity, uniformly accelerated motion, velocity-time and position-time graphs, relative velocity, projectile motion, uniform circular motion."}, {"slug": "kinetic-theory-of-gases", "name": "Kinetic Theory of Gases", "years": [21, 19, 17, 12, 18], "retired": false, "syllabus": "Equation of state of a perfect gas, kinetic theory assumptions and pressure, kinetic interpretation of temperature, RMS speed, degrees of freedom, law of equipartition, specific heats, mean free path, Avogadro's number."}, {"slug": "laws-of-motion", "name": "Laws of Motion", "years": [36, 30, 28, 9, 18], "retired": false, "syllabus": "Newton's three laws, momentum, impulse, conservation of linear momentum, equilibrium of concurrent forces, static and kinetic friction, dynamics of uniform circular motion, banked roads."}, {"slug": "magnetic-effects-of-current-and-magnetism", "name": "Magnetic Effects of Current and Magnetism", "years": [42, 42, 39, 30, 29], "retired": false, "syllabus": "Biot-Savart law, Ampere's law, force on moving charges and current-carrying conductors, parallel currents, moving coil galvanometer, current loop as a magnetic dipole, bar magnet, para-, dia- and ferromagnetism."}, {"slug": "optics", "name": "Optics", "years": [43, 49, 38, 63, 56], "retired": false, "syllabus": "Reflection and mirrors, refraction, total internal reflection, lenses and the lens maker's formula, prism, microscope and telescope, wave optics: Huygens' principle, Young's double slit, single-slit diffraction, polarisation and Brewster's law."}, {"slug": "oscillations-and-waves", "name": "Oscillations and Waves", "years": [37, 47, 27, 21, 24], "retired": false, "syllabus": "Periodic motion, simple harmonic motion and its equation, phase, spring oscillations, energy in SHM, simple pendulum, wave motion, superposition, standing waves in strings and organ pipes, beats."}, {"slug": "physics-and-measurement", "name": "Physics and Measurement", "years": [24, 10, 30, 29, 23], "retired": false, "syllabus": "Units and measurements, SI units, least count, significant figures, errors in measurements, dimensions of physical quantities and dimensional analysis."}, {"slug": "properties-of-solids-and-liquids", "name": "Properties of Solids and Liquids", "years": [44, 49, 49, 43, 39], "retired": false, "syllabus": "Elastic behaviour, stress-strain, Hooke's law and elastic moduli, fluid pressure, Pascal's law, viscosity, Stokes' law, terminal velocity, Bernoulli's principle, surface tension and capillary rise, calorimetry, thermal expansion and heat transfer."}, {"slug": "rotational-motion", "name": "Rotational Motion", "years": [24, 28, 31, 31, 26], "retired": false, "syllabus": "Centre of mass, torque, angular momentum and its conservation, moment of inertia, radius of gyration, parallel and perpendicular axes theorems, equilibrium of rigid bodies, equations of rotational motion."}, {"slug": "thermodynamics", "name": "Thermodynamics", "years": [21, 28, 17, 22, 18], "retired": false, "syllabus": "Thermal equilibrium, zeroth law, heat, work and internal energy, first law, isothermal and adiabatic processes, second law, reversible and irreversible processes."}, {"slug": "work-energy-and-power", "name": "Work, Energy and Power", "years": [26, 29, 21, 19, 15], "retired": false, "syllabus": "Work by constant and variable forces, kinetic and potential energy, work-energy theorem, power, potential energy of a spring, conservation of mechanical energy, motion in a vertical circle, elastic and inelastic collisions."}]}, {"key": "chemistry", "name": "Chemistry", "short": "Chemistry", "chapters": [{"slug": "atomic-structure", "name": "Atomic Structure", "years": [29, 24, 21, 32, 26], "retired": false, "syllabus": "Bohr model, hydrogen spectrum, dual nature of matter, Heisenberg uncertainty principle, quantum mechanical model, quantum numbers, shapes of s, p and d orbitals, Aufbau principle, Pauli's exclusion principle, Hund's rule, electronic configuration."}, {"slug": "biomolecules", "name": "Biomolecules", "years": [30, 22, 16, 18, 22], "retired": false, "syllabus": "Carbohydrates, proteins and amino acids, peptide bond, protein structure, enzymes, vitamins, nucleic acids, hormones."}, {"slug": "chemical-bonding-and-molecular-structure", "name": "Chemical Bonding and Molecular Structure", "years": [30, 32, 19, 43, 24], "retired": false, "syllabus": "Ionic and covalent bonding, lattice enthalpy, electronegativity, Fajan's rule, dipole moment, VSEPR theory, valence bond theory and hybridisation, resonance, molecular orbital theory and bond order, hydrogen bonding."}, {"slug": "chemical-kinetics", "name": "Chemical Kinetics", "years": [24, 23, 19, 20, 26], "retired": false, "syllabus": "Rate of reaction, rate law, order and molecularity, integrated rate equations for zero and first order, half-life, Arrhenius equation, activation energy, collision theory."}, {"slug": "chemical-thermodynamics", "name": "Chemical Thermodynamics", "years": [27, 27, 26, 22, 24], "retired": false, "syllabus": "System and surroundings, state functions, first law, enthalpy, Hess's law, enthalpies of various processes, entropy, second law, spontaneity, Gibbs energy and the equilibrium constant."}, {"slug": "chemistry-in-everyday-life", "name": "Chemistry in Everyday Life", "years": [11, 20, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "classification-of-elements-and-periodicity", "name": "Classification of Elements and Periodicity", "years": [13, 12, 16, 22, 19], "retired": false, "syllabus": "Modern periodic law, s-, p-, d- and f-block elements, periodic trends in radii, ionisation enthalpy, electron gain enthalpy, valence and oxidation states."}, {"slug": "coordination-compounds", "name": "Coordination Compounds", "years": [38, 28, 38, 40, 40], "retired": false, "syllabus": "Werner's theory, ligands, coordination number, IUPAC nomenclature, isomerism, valence bond approach, crystal field theory, colour and magnetic properties, importance of coordination compounds."}, {"slug": "d-and-f-block-elements", "name": "d- and f-Block Elements", "years": [31, 31, 24, 29, 22], "retired": false, "syllabus": "Transition elements: configuration, first-row trends, oxidation states, colour, magnetic properties, catalysis, complex formation, K2Cr2O7 and KMnO4, lanthanoids and actinoids."}, {"slug": "environmental-chemistry", "name": "Environmental Chemistry", "years": [25, 19, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "equilibrium", "name": "Equilibrium", "years": [31, 23, 22, 24, 26], "retired": false, "syllabus": "Dynamic equilibrium, Kp and Kc, Le Chatelier's principle, ionic equilibrium, acids and bases, pH, common ion effect, hydrolysis of salts, solubility product, buffer solutions, Henry's law."}, {"slug": "general-principles-and-processes-of-isolation-of-metals", "name": "General Principles and Processes of Isolation of Metals", "years": [29, 22, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "hydrocarbons", "name": "Hydrocarbons", "years": [47, 30, 17, 42, 30], "retired": false, "syllabus": "Alkanes, alkenes, alkynes and aromatic hydrocarbons: nomenclature, preparation, reactions, mechanisms of halogenation, electrophilic addition and electrophilic substitution, Friedel-Crafts reactions."}, {"slug": "hydrogen", "name": "Hydrogen", "years": [26, 15, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "organic-compounds-containing-halogens", "name": "Organic Compounds Containing Halogens", "years": [9, 11, 10, 19, 9], "retired": false, "syllabus": "Preparation, properties and reactions, nature of the C-X bond, substitution mechanisms, uses and environmental effects of chloroform, iodoform, freons and DDT."}, {"slug": "organic-compounds-containing-nitrogen", "name": "Organic Compounds Containing Nitrogen", "years": [42, 21, 21, 15, 27], "retired": false, "syllabus": "Amines: classification, basic character, identification of primary, secondary and tertiary amines, diazonium salts and their importance in synthesis."}, {"slug": "organic-compounds-containing-oxygen", "name": "Organic Compounds Containing Oxygen", "years": [64, 46, 32, 45, 36], "retired": false, "syllabus": "Alcohols, phenols, ethers, aldehydes, ketones and carboxylic acids: preparation, reactions, nucleophilic addition, Grignard reagent, aldol, Cannizzaro and haloform reactions, acidity."}, {"slug": "p-block-elements", "name": "p-Block Elements", "years": [39, 36, 40, 30, 18], "retired": false, "syllabus": "Groups 13 to 18: electronic configuration, general trends in physical and chemical properties, unique behaviour of the first element in each group."}, {"slug": "polymers", "name": "Polymers", "years": [14, 18, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "principles-related-to-practical-chemistry", "name": "Principles Related to Practical Chemistry", "years": [10, 5, 8, 16, 7], "retired": false, "syllabus": "Detection of elements and functional groups, preparation of Mohr's salt, potash alum, acetanilide and iodoform, titrimetric exercises, qualitative salt analysis, enthalpy and kinetics experiments."}, {"slug": "purification-and-characterisation-of-organic-compounds", "name": "Purification and Characterisation of Organic Compounds", "years": [21, 19, 13, 22, 19], "retired": false, "syllabus": "Crystallisation, sublimation, distillation, chromatography, qualitative detection of N, S, P and halogens, quantitative estimation, empirical and molecular formula calculations."}, {"slug": "redox-reactions-and-electrochemistry", "name": "Redox Reactions and Electrochemistry", "years": [32, 27, 30, 45, 27], "retired": false, "syllabus": "Oxidation number, balancing redox reactions, conductance, Kohlrausch's law, electrochemical cells, electrode potentials, Nernst equation, relation to Gibbs energy, fuel cells."}, {"slug": "s-block-elements", "name": "s-Block Elements", "years": [21, 19, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "solutions", "name": "Solutions", "years": [34, 26, 31, 28, 24], "retired": false, "syllabus": "Concentration terms, Raoult's law, ideal and non-ideal solutions, colligative properties, molecular mass determination, van't Hoff factor."}, {"slug": "some-basic-concepts-in-chemistry", "name": "Some Basic Concepts in Chemistry", "years": [24, 27, 27, 27, 23], "retired": false, "syllabus": "Laws of chemical combination, atomic and molecular masses, mole concept, molar mass, percentage composition, empirical and molecular formulae, chemical equations and stoichiometry."}, {"slug": "some-basic-principles-of-organic-chemistry", "name": "Some Basic Principles of Organic Chemistry", "years": [22, 23, 8, 57, 26], "retired": false, "syllabus": "Hybridisation, functional groups, homologous series, isomerism, IUPAC nomenclature, bond fission, carbocations, carbanions, free radicals, inductive, electromeric, resonance and hyperconjugation effects, types of organic reactions."}, {"slug": "states-of-matter", "name": "States of Matter", "years": [28, 23, 0, 0, 0], "retired": true, "syllabus": ""}, {"slug": "surface-chemistry", "name": "Surface Chemistry", "years": [24, 19, 0, 0, 0], "retired": true, "syllabus": ""}]}, {"key": "maths", "name": "Mathematics", "short": "Maths", "chapters": [{"slug": "binomial-theorem-and-its-simple-applications", "name": "Binomial Theorem and Its Simple Applications", "years": [42, 25, 42, 19, 18], "retired": false, "syllabus": "Binomial theorem for a positive integral index, general term and middle term."}, {"slug": "co-ordinate-geometry", "name": "Co-ordinate Geometry", "years": [88, 85, 71, 92, 73], "retired": false, "syllabus": "Straight line, circle and conic sections (parabola, ellipse, hyperbola) in standard forms, distance and section formulae, locus, centroid, orthocentre and circumcentre."}, {"slug": "complex-numbers-and-quadratic-equations", "name": "Complex Numbers and Quadratic Equations", "years": [56, 49, 45, 43, 38], "retired": false, "syllabus": "Algebra of complex numbers, Argand diagram, modulus and argument, quadratic equations in real and complex systems, relations between roots and coefficients, nature of roots."}, {"slug": "differential-equations", "name": "Differential Equations", "years": [44, 36, 26, 34, 20], "retired": false, "syllabus": "Order and degree, separation of variables, homogeneous and linear differential equations."}, {"slug": "integral-calculus", "name": "Integral Calculus", "years": [78, 65, 74, 67, 53], "retired": false, "syllabus": "Integration as an anti-derivative, substitution, by parts and partial fractions, standard integrals, fundamental theorem of calculus, definite integrals and their properties, area of regions bounded by simple curves."}, {"slug": "limit-continuity-and-differentiability", "name": "Limit, Continuity and Differentiability", "years": [91, 77, 48, 72, 35], "retired": false, "syllabus": "Functions and graphs, limits, continuity, differentiability, differentiation rules, derivatives up to order two, rate of change, monotonic functions, maxima and minima."}, {"slug": "mathematical-induction", "name": "Mathematical Induction", "years": [0, 0, 6, 0, 0], "retired": true, "syllabus": ""}, {"slug": "mathematical-reasoning", "name": "Mathematical Reasoning", "years": [24, 22, 20, 0, 0], "retired": true, "syllabus": ""}, {"slug": "matrices-and-determinants", "name": "Matrices and Determinants", "years": [60, 45, 48, 39, 33], "retired": false, "syllabus": "Matrix algebra, types of matrices, determinants, adjoint and inverse, consistency and solution of linear equations using matrices."}, {"slug": "permutations-and-combinations", "name": "Permutations and Combinations", "years": [28, 28, 46, 21, 21], "retired": false, "syllabus": "Fundamental principle of counting, permutations and combinations, P(n, r) and C(n, r), simple applications."}, {"slug": "sequence-and-series", "name": "Sequence and Series", "years": [36, 38, 48, 39, 35], "retired": false, "syllabus": "Arithmetic and geometric progressions, insertion of means, relation between A.M. and G.M."}, {"slug": "sets-relations-and-functions", "name": "Sets, Relations and Functions", "years": [36, 27, 47, 43, 34], "retired": false, "syllabus": "Sets and operations, power set, relations and their types, equivalence relations, one-one, onto and into functions, composition of functions."}, {"slug": "statistics-and-probability", "name": "Statistics and Probability", "years": [51, 41, 41, 39, 32], "retired": false, "syllabus": "Mean, median, mode, variance, standard deviation, mean deviation, probability, addition and multiplication theorems, Bayes' theorem, probability distribution of a random variable."}, {"slug": "three-dimensional-geometry", "name": "Three Dimensional Geometry", "years": [54, 47, 69, 27, 29], "retired": false, "syllabus": "Distance and section formula, direction ratios and cosines, equation of a line, skew lines and shortest distance."}, {"slug": "trigonometry", "name": "Trigonometry", "years": [53, 43, 25, 27, 29], "retired": false, "syllabus": "Trigonometric identities and functions, inverse trigonometric functions and their properties."}, {"slug": "vector-algebra", "name": "Vector Algebra", "years": [38, 29, 44, 38, 25], "retired": false, "syllabus": "Vectors and scalars, addition, components in two and three dimensions, scalar and vector products."}]}], "concepts": {"physics": [{"name": "De Broglie Wavelength of an Electron", "years": [16, 8, 10, 4, 4], "chapter": "Dual Nature of Matter and Radiation"}, {"name": "Logic Gates", "years": [12, 4, 10, 9, 10], "chapter": "Electronic Devices"}, {"name": "Parallel Grouping of Resistance", "years": [8, 9, 10, 6, 5], "chapter": "Current Electricity"}, {"name": "Projectile Motion", "years": [3, 12, 12, 5, 6], "chapter": "Kinematics"}, {"name": "Amplitude Modulation", "years": [14, 7, 0, 0, 0], "chapter": "Communication Systems"}, {"name": "Nature of Electromagnetic Waves", "years": [8, 10, 9, 4, 4], "chapter": "Electromagnetic Waves"}, {"name": "Hooke's Law", "years": [7, 2, 11, 10, 9], "chapter": "Properties of Solids and Liquids"}, {"name": "Adiabatic Process", "years": [8, 5, 6, 8, 8], "chapter": "Thermodynamics"}, {"name": "Dielectrics", "years": [9, 7, 4, 5, 5], "chapter": "Electrostatics"}, {"name": "Einstein's Photoelectric Equation", "years": [9, 10, 1, 6, 5], "chapter": "Dual Nature of Matter and Radiation"}, {"name": "Kinetic Energy", "years": [5, 3, 14, 4, 3], "chapter": "Work, Energy and Power"}, {"name": "Series LCR Circuit", "years": [9, 11, 3, 1, 1], "chapter": "Electromagnetic Induction and Alternating Currents"}, {"name": "Carnot Engine", "years": [7, 10, 5, 1, 1], "chapter": "Thermodynamics"}, {"name": "Coulomb's Law", "years": [8, 8, 4, 2, 2], "chapter": "Electrostatics"}, {"name": "Line Spectra of Hydrogen Atom", "years": [8, 3, 8, 2, 3], "chapter": "Atoms and Nuclei"}, {"name": "Newton's Second and Third Laws of Motion", "years": [4, 5, 10, 3, 3], "chapter": "Laws of Motion"}, {"name": "Lens Maker's Formula", "years": [3, 1, 6, 8, 9], "chapter": "Optics"}, {"name": "Radioactivity", "years": [10, 8, 2, 0, 0], "chapter": "Atoms and Nuclei"}, {"name": "Various Types of Speeds of Ideal Gases", "years": [4, 7, 7, 2, 2], "chapter": "Kinetic Theory of Gases"}, {"name": "Young's Double Slit Experiment", "years": [8, 2, 5, 6, 5], "chapter": "Optics"}, {"name": "Equations of Motion of SHM", "years": [11, 2, 6, 0, 0], "chapter": "Oscillations and Waves"}, {"name": "Law of Radioactive Decay", "years": [6, 5, 7, 1, 1], "chapter": "Atoms and Nuclei"}, {"name": "Electromagnetic Spectrum", "years": [3, 5, 9, 2, 1], "chapter": "Electromagnetic Waves"}, {"name": "Energy Density and Intensity of EM Waves", "years": [7, 5, 5, 1, 1], "chapter": "Electromagnetic Waves"}, {"name": "Heat and Power Developed in a Resistor", "years": [7, 4, 5, 2, 2], "chapter": "Current Electricity"}, {"name": "Propagation of Electromagnetic Waves", "years": [8, 3, 7, 0, 0], "chapter": "Electromagnetic Waves"}, {"name": "Resistance and Resistivity", "years": [5, 5, 6, 0, 2], "chapter": "Current Electricity"}, {"name": "Dimensions", "years": [3, 5, 0, 8, 9], "chapter": "Physics and Measurement"}, {"name": "Error in a Quantity Raised to Some Power", "years": [8, 3, 2, 4, 4], "chapter": "Physics and Measurement"}, {"name": "Magnetic Field Due to a Circular Current Loop", "years": [3, 4, 6, 4, 4], "chapter": "Magnetic Effects of Current and Magnetism"}], "chemistry": [{"name": "Concentration Terms", "years": [11, 5, 9, 5, 5]}, {"name": "Mole Concept and Molar Mass", "years": [4, 5, 2, 15, 16], "chapter": "Some Basic Concepts in Chemistry"}, {"name": "Stoichiometry and Limiting Reagent", "years": [7, 13, 4, 0, 2], "chapter": "Some Basic Concepts in Chemistry"}, {"name": "Applications of Crystal Field Theory", "years": [13, 5, 6, 0, 0], "chapter": "Coordination Compounds"}, {"name": "Magnetic Moment (Valence Bond Theory)", "years": [5, 7, 5, 8, 7], "chapter": "Coordination Compounds"}, {"name": "First Order Reaction", "years": [9, 2, 3, 7, 8], "chapter": "Chemical Kinetics"}, {"name": "KMnO4", "years": [4, 11, 3, 3, 3], "chapter": "d- and f-Block Elements"}, {"name": "Percentage Composition and Equivalent Weight", "years": [3, 2, 7, 8, 9], "chapter": "Some Basic Concepts in Chemistry"}, {"name": "Depression in Freezing Point", "years": [9, 5, 2, 5, 6], "chapter": "Solutions"}, {"name": "Solubility and Solubility Product", "years": [9, 4, 3, 6, 5], "chapter": "Equilibrium"}, {"name": "Disaccharides and Polysaccharides", "years": [11, 7, 1, 1, 1], "chapter": "Biomolecules"}, {"name": "Magnetic Properties and Character", "years": [4, 6, 2, 5, 6]}, {"name": "Proteins", "years": [7, 5, 1, 0, 3], "chapter": "Biomolecules"}, {"name": "Ionisation Enthalpy", "years": [5, 3, 3, 0, 6], "chapter": "Classification of Elements and Periodicity"}, {"name": "Atmospheric Pollution: Particulate Pollutants", "years": [6, 3, 6, 0, 0], "chapter": "Environmental Chemistry"}, {"name": "Chromatography", "years": [3, 4, 6, 2, 1], "chapter": "Purification and Characterisation of Organic Compounds"}, {"name": "Ideal Gas Equation", "years": [7, 7, 0, 0, 1], "chapter": "States of Matter"}, {"name": "Aromaticity", "years": [7, 5, 1, 1, 1]}, {"name": "Effect of Temperature on Rate of Reaction", "years": [6, 4, 3, 2, 1], "chapter": "Chemical Kinetics"}], "maths": [{"name": "Linear Differential Equation", "years": [20, 21, 19, 4, 15], "chapter": "Differential Equations"}, {"name": "Area Bounded by Two Curves", "years": [12, 17, 14, 18, 11], "chapter": "Integral Calculus"}, {"name": "Dispersion (Variance and Standard Deviation)", "years": [13, 10, 16, 13, 8], "chapter": "Statistics and Probability"}, {"name": "Vector (Cross) Product of Two Vectors", "years": [8, 14, 14, 16, 2], "chapter": "Vector Algebra"}, {"name": "General Term of Binomial Expansion", "years": [12, 8, 16, 5, 4], "chapter": "Binomial Theorem and Its Simple Applications"}, {"name": "Definite Integration", "years": [2, 5, 16, 14, 7], "chapter": "Integral Calculus"}, {"name": "Shortest Distance Between Two Lines", "years": [4, 5, 11, 14, 9], "chapter": "Three Dimensional Geometry"}, {"name": "Maxima and Minima of a Function", "years": [8, 6, 3, 10, 8], "chapter": "Limit, Continuity and Differentiability"}, {"name": "Cramer's Rule", "years": [12, 15, 1, 0, 5], "chapter": "Matrices and Determinants"}, {"name": "Multiplication of Two Matrices", "years": [11, 9, 2, 3, 5], "chapter": "Matrices and Determinants"}, {"name": "Sum of n Terms of an AP", "years": [8, 3, 5, 4, 8], "chapter": "Sequence and Series"}, {"name": "Monotonicity (Increasing and Decreasing Functions)", "years": [6, 8, 3, 9, 1], "chapter": "Limit, Continuity and Differentiability"}, {"name": "Nature of Roots", "years": [3, 1, 9, 10, 4], "chapter": "Complex Numbers and Quadratic Equations"}, {"name": "Piecewise Definite Integration", "years": [11, 7, 4, 2, 3], "chapter": "Integral Calculus"}, {"name": "Summation by Sigma Operator", "years": [4, 2, 12, 7, 2], "chapter": "Sequence and Series"}, {"name": "Trigonometric Equations", "years": [6, 9, 7, 0, 4], "chapter": "Trigonometry"}, {"name": "Properties of Definite Integrals: King's Property", "years": [8, 6, 3, 6, 2], "chapter": "Integral Calculus"}, {"name": "Application of Permutations", "years": [11, 7, 3, 2, 1], "chapter": "Permutations and Combinations"}, {"name": "Area of a Triangle or Circle (Formula)", "years": [7, 7, 7, 1, 2], "chapter": "Co-ordinate Geometry"}, {"name": "Continuity", "years": [9, 5, 2, 5, 3], "chapter": "Limit, Continuity and Differentiability"}, {"name": "Quadratic Equation", "years": [4, 7, 2, 6, 5], "chapter": "Complex Numbers and Quadratic Equations"}, {"name": "Reflexive, Symmetric and Transitive Relations", "years": [2, 2, 8, 5, 7], "chapter": "Sets, Relations and Functions"}, {"name": "Algebra of Statements", "years": [13, 9, 1, 0, 0], "chapter": "Mathematical Reasoning"}, {"name": "Area of a Triangle", "years": [6, 2, 3, 5, 7], "chapter": "Co-ordinate Geometry"}, {"name": "Area Bounded by a Curve and the Axes", "years": [2, 3, 8, 4, 4], "chapter": "Integral Calculus"}, {"name": "Circumcentre and Orthocentre", "years": [2, 5, 4, 5, 5], "chapter": "Co-ordinate Geometry"}, {"name": "Dot (Scalar) Product of Two Vectors", "years": [7, 5, 3, 5, 1], "chapter": "Vector Algebra"}, {"name": "Introduction to Combinations", "years": [2, 2, 4, 10, 3], "chapter": "Permutations and Combinations"}, {"name": "Relation Between Roots and Coefficients of a Quadratic", "years": [4, 5, 1, 5, 6], "chapter": "Complex Numbers and Quadratic Equations"}, {"name": "Solving Linear Equations Using the Matrix Method", "years": [5, 1, 2, 10, 3], "chapter": "Matrices and Determinants"}, {"name": "Arithmetic Progression", "years": [1, 3, 2, 10, 4], "chapter": "Sequence and Series"}, {"name": "Dot Product in Terms of Components", "years": [4, 2, 2, 6, 6], "chapter": "Vector Algebra"}]}};
++
++/** Concept rows whose per-year cells do not add up to the printed total in the source PDF. Not rendered. */
++export const JEE_CONCEPTS_TO_VERIFY: { name: string; subject: string; years: number[]; printedTotal: number; yearSum: number }[] = [{"name": "Reduction and Oxidation Reaction", "subject": "chemistry", "years": [7, 4, 7, 3, 3], "printedTotal": 28, "yearSum": 24}, {"name": "Crystal Field Splitting in Octahedral Field", "subject": "chemistry", "years": [0, 3, 8, 9, 10], "printedTotal": 32, "yearSum": 30}, {"name": "Reaction with NaNO2 + HCl", "subject": "chemistry", "years": [3, 4, 7, 3, 3], "printedTotal": 23, "yearSum": 20}, {"name": "Oxidation State", "subject": "chemistry", "years": [5, 2, 7, 2, 2], "printedTotal": 20, "yearSum": 18}, {"name": "Wet Tests for Identification of Cations", "subject": "chemistry", "years": [8, 1, 7, 0, 1], "printedTotal": 19, "yearSum": 17}, {"name": "Azo-Coupling Reaction", "subject": "chemistry", "years": [7, 3, 2, 6, 4], "printedTotal": 17, "yearSum": 22}, {"name": "Stereoisomerism", "subject": "chemistry", "years": [6, 1, 3, 5, 6], "printedTotal": 17, "yearSum": 21}, {"name": "Shapes of Molecules", "subject": "chemistry", "years": [2, 0, 7, 0, 4], "printedTotal": 16, "yearSum": 13}, {"name": "Amino Acids", "subject": "chemistry", "years": [2, 0, 7, 0, 4], "printedTotal": 15, "yearSum": 13}, {"name": "Elevation in Boiling Point", "subject": "chemistry", "years": [5, 4, 2, 4, 4], "printedTotal": 15, "yearSum": 19}, {"name": "Nucleophilic Addition Reaction", "subject": "chemistry", "years": [7, 3, 5, 3, 0], "printedTotal": 15, "yearSum": 18}, {"name": "Types of Equilibrium Constant", "subject": "chemistry", "years": [8, 4, 0, 4, 3], "printedTotal": 15, "yearSum": 19}];
+diff --git a/src/lib/jee-blueprint.ts b/src/lib/jee-blueprint.ts
+new file mode 100644
+index 0000000..da97579
+--- /dev/null
++++ b/src/lib/jee-blueprint.ts
+@@ -0,0 +1,200 @@
++// src/lib/jee-blueprint.ts
++//
++// Read-side helpers for the public JEE Main weightage pages:
++//   /jee/chapter-wise-weightage                      (hub)
++//   /jee/chapter-wise-weightage/<subject>            (physics | chemistry | maths)
++//   /jee/chapter-wise-weightage/<subject>/<chapter>  (e.g. optics)
++//   /jee/most-repeated-concepts
++//
++// Everything the pages say is computed from jee-blueprint-data.ts, so a number
++// on a page can never drift from the dataset.
++//
++// Important: the number of shifts differs from year to year (2022 had far more
++// than 2025), so raw counts are NOT comparable across years. Trends therefore
++// use each chapter's *share of that year's questions from chapters still in the syllabus*, never raw counts.
++import { JEE_RAW, JEE_YEARS, type JeeRawSubject } from "@/lib/jee-blueprint-data";
++
++export const JEE_BASE = "/jee/chapter-wise-weightage";
++export const JEE_CONCEPTS_PATH = "/jee/most-repeated-concepts";
++export const JEE_RANGE = "2022–2026";
++export const YEARS: readonly string[] = JEE_YEARS;
++/** Index of the first of the "recent" years (2024, 2025, 2026). */
++const RECENT_FROM = 2;
++export const RECENT_LABEL = "2024–2026";
++export const EARLIER_LABEL = "2022–2023";
++
++export type JeeChapter = {
++  slug: string;
++  name: string;
++  subjectKey: string;
++  subjectName: string;
++  subjectShort: string;
++  years: number[];
++  /** Share of each year's questions (chapters still in the syllabus; all chapters for dropped ones), %, one decimal. */
++  yearShares: number[];
++  total: number;
++  /** Questions in 2024–2026. */
++  recent: number;
++  /** % of the subject's questions over 2022–2026, one decimal. */
++  share: number;
++  /** % of 2024–2026 questions from chapters still in the syllabus, one decimal. */
++  recentShare: number;
++  /** Rough % of the whole paper (each subject carries equal marks). */
++  paperShare: number;
++  /** 1 = highest recent weightage among chapters still in the syllabus; 0 for dropped chapters. */
++  rank: number;
++  /** Not in the JEE Main 2026 syllabus. */
++  retired: boolean;
++  syllabus: string;
++  yearsAsked: number;
++  peakIndex: number;
++  trend: "rising" | "steady" | "falling";
++  recentAvgShare: number;
++  earlierAvgShare: number;
++};
++
++export type JeeConcept = {
++  name: string;
++  subjectKey: string;
++  subjectName: string;
++  years: number[];
++  total: number;
++  yearsAsked: number;
++  chapterSlug?: string;
++};
++
++export type JeeSubject = {
++  key: string;
++  name: string;
++  short: string;
++  total: number;
++  yearTotals: number[];
++  /** Active chapters by rank first, then dropped chapters by total. */
++  chapters: JeeChapter[];
++  activeCount: number;
++  concepts: JeeConcept[];
++};
++
++const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
++const r1 = (n: number) => Math.round(n * 10) / 10;
++const avg = (a: number[]) => (a.length ? sum(a) / a.length : 0);
++
++function build(raw: JeeRawSubject): JeeSubject {
++  const yearTotals = YEARS.map((_, i) => sum(raw.chapters.map((c) => c.years[i] ?? 0)));
++  const total = sum(yearTotals);
++  // Trends and "recent share" are measured against chapters still in the syllabus only. Otherwise every
++  // surviving chapter looks like it is "rising" just because dropped chapters stopped taking questions.
++  const activeYearTotals = YEARS.map((_, i) => sum(raw.chapters.filter((c) => !c.retired).map((c) => c.years[i] ?? 0)));
++  const recentActiveTotal = sum(activeYearTotals.slice(RECENT_FROM));
++  const slugToName = new Map(raw.chapters.map((c) => [c.name, c.slug]));
++
++  const chapters: JeeChapter[] = raw.chapters.map((c) => {
++    const t = sum(c.years);
++    const recent = sum(c.years.slice(RECENT_FROM));
++    const base = c.retired ? yearTotals : activeYearTotals;
++    const rawYearShares = c.years.map((n, i) => (base[i] > 0 ? (n / base[i]) * 100 : 0));
++    const recentAvgShare = avg(rawYearShares.slice(RECENT_FROM));
++    const earlierAvgShare = avg(rawYearShares.slice(0, RECENT_FROM));
++    const diff = recentAvgShare - earlierAvgShare;
++    const trend: JeeChapter["trend"] =
++      recentAvgShare >= earlierAvgShare * 1.25 && diff >= 0.8 ? "rising" : recentAvgShare <= earlierAvgShare * 0.75 && diff <= -0.8 ? "falling" : "steady";
++    const recentShare = recentActiveTotal > 0 ? (recent / recentActiveTotal) * 100 : 0;
++    return {
++      slug: c.slug,
++      name: c.name,
++      subjectKey: raw.key,
++      subjectName: raw.name,
++      subjectShort: raw.short,
++      years: c.years,
++      yearShares: rawYearShares.map(r1),
++      total: t,
++      recent,
++      share: total > 0 ? r1((t / total) * 100) : 0,
++      recentShare: r1(recentShare),
++      paperShare: r1(recentShare / 3),
++      rank: 0,
++      retired: c.retired,
++      syllabus: c.syllabus,
++      yearsAsked: c.years.filter((n) => n > 0).length,
++      peakIndex: c.years.indexOf(Math.max(...c.years)),
++      trend,
++      recentAvgShare: r1(recentAvgShare),
++      earlierAvgShare: r1(earlierAvgShare),
++    };
++  });
++
++  const active = chapters.filter((c) => !c.retired).sort((a, b) => b.recent - a.recent || b.total - a.total);
++  active.forEach((c, i) => (c.rank = i + 1));
++  const dropped = chapters.filter((c) => c.retired).sort((a, b) => b.total - a.total);
++
++  const concepts: JeeConcept[] = (JEE_RAW.concepts[raw.key] ?? [])
++    .map((k) => ({
++      name: k.name,
++      subjectKey: raw.key,
++      subjectName: raw.name,
++      years: k.years,
++      total: sum(k.years),
++      yearsAsked: k.years.filter((n) => n > 0).length,
++      chapterSlug: k.chapter ? slugToName.get(k.chapter) : undefined,
++    }))
++    .sort((a, b) => b.total - a.total || b.yearsAsked - a.yearsAsked || a.name.localeCompare(b.name));
++
++  return { key: raw.key, name: raw.name, short: raw.short, total, yearTotals, chapters: [...active, ...dropped], activeCount: active.length, concepts };
++}
++
++const SUBJECTS: JeeSubject[] = JEE_RAW.subjects.map(build);
++
++export const getJeeSubjects = (): JeeSubject[] => SUBJECTS;
++export const getJeeSubject = (key: string): JeeSubject | undefined => SUBJECTS.find((s) => s.key === key);
++export const getJeeChapter = (subjectKey: string, slug: string): JeeChapter | undefined => getJeeSubject(subjectKey)?.chapters.find((c) => c.slug === slug);
++
++export const jeeSubjectPath = (subjectKey: string) => `${JEE_BASE}/${subjectKey}`;
++export const jeeChapterPath = (subjectKey: string, slug: string) => `${JEE_BASE}/${subjectKey}/${slug}`;
++
++/** Every public JEE weightage URL — hub, subjects and chapters — for the sitemap. */
++export function allJeePaths(): { path: string; kind: "hub" | "subject" | "chapter" | "concepts" }[] {
++  const out: { path: string; kind: "hub" | "subject" | "chapter" | "concepts" }[] = [{ path: JEE_BASE, kind: "hub" }];
++  for (const s of SUBJECTS) {
++    out.push({ path: jeeSubjectPath(s.key), kind: "subject" });
++    for (const c of s.chapters) out.push({ path: jeeChapterPath(s.key, c.slug), kind: "chapter" });
++  }
++  out.push({ path: JEE_CONCEPTS_PATH, kind: "concepts" });
++  return out;
++}
++
++/** Search params for the existing /pyq practice page. Subject only — chapter names differ from the eBook's. */
++export function jeePracticeSearch(subjectShort?: string) {
++  return { exam: "jee" as const, ...(subjectShort ? { subject: subjectShort } : {}) };
++}
++
++export const jeeTotalQuestions = () => sum(SUBJECTS.map((s) => s.total));
++export const jeeTotalChapters = () => sum(SUBJECTS.map((s) => s.chapters.length));
++export const jeeActiveChapters = () => sum(SUBJECTS.map((s) => s.activeCount));
++
++/** Chapters still in the syllabus, highest share of the whole paper in 2024–2026 first. */
++export function topJeeChaptersOverall(limit = 15): JeeChapter[] {
++  return SUBJECTS.flatMap((s) => s.chapters)
++    .filter((c) => !c.retired)
++    .sort((a, b) => b.paperShare - a.paperShare || b.total - a.total)
++    .slice(0, limit);
++}
++
++export const droppedChapters = (): JeeChapter[] => SUBJECTS.flatMap((s) => s.chapters.filter((c) => c.retired));
++
++export function conceptsForChapter(c: JeeChapter): JeeConcept[] {
++  return (getJeeSubject(c.subjectKey)?.concepts ?? []).filter((k) => k.chapterSlug === c.slug);
++}
++
++export function topJeeConceptsOverall(limit = 20): JeeConcept[] {
++  return SUBJECTS.flatMap((s) => s.concepts)
++    .sort((a, b) => b.total - a.total || b.yearsAsked - a.yearsAsked)
++    .slice(0, limit);
++}
++
++/** Previous / next chapter in the subject's ranked order (active chapters only). */
++export function neighbours(c: JeeChapter): { prev?: JeeChapter; next?: JeeChapter } {
++  const list = (getJeeSubject(c.subjectKey)?.chapters ?? []).filter((x) => !x.retired);
++  const i = list.findIndex((x) => x.slug === c.slug);
++  if (i < 0) return {};
++  return { prev: list[i - 1], next: list[i + 1] };
++}
+diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
+index bda2c03..7f65af9 100644
+--- a/src/lib/sitemap-core.ts
++++ b/src/lib/sitemap-core.ts
+@@ -6,6 +6,7 @@
+ import { SITE_URL } from "@/lib/seo";
+ import { getDb } from "@/lib/mongo";
+ import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
++import { allJeePaths } from "@/lib/jee-blueprint";
+ import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
+ import { allPaperSubjectPages, paperSubjectPath } from "@/lib/neet-paper-subject";
+ import { TOPICS_PATH } from "@/lib/neet-topics";
+@@ -127,6 +128,13 @@ export function blueprintEntries(): string[] {
+   return allBlueprintPaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, BLUEPRINT_LASTMOD, BLUEPRINT_PRIORITY[p.kind], "monthly"));
+ }
+ 
++// JEE Main chapter-wise weightage pages (hub, subjects, chapters, concepts) — static data, always listed.
++const JEE_LASTMOD = "2026-10-21";
++const JEE_PRIORITY = { hub: 0.9, subject: 0.8, chapter: 0.7, concepts: 0.8 } as const;
++export function jeeEntries(): string[] {
++  return allJeePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
++}
++
+ // Free tools and the data-driven NEET pages. Static content, so these are always listed.
+ const SEO_LASTMOD = "2026-10-15";
+ export function seoEntries(): string[] {
+diff --git a/src/routes/jee.chapter-wise-weightage.$subject.$chapter.index.tsx b/src/routes/jee.chapter-wise-weightage.$subject.$chapter.index.tsx
+new file mode 100644
+index 0000000..f4def8f
+--- /dev/null
++++ b/src/routes/jee.chapter-wise-weightage.$subject.$chapter.index.tsx
+@@ -0,0 +1,43 @@
++// src/routes/jee.chapter-wise-weightage.$subject.$chapter.index.tsx
++//   →  /jee/chapter-wise-weightage/<subject>/<chapter>
++import { createFileRoute, notFound } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { JEE_BASE, JEE_RANGE, conceptsForChapter, getJeeChapter, getJeeSubject, jeeChapterPath, jeeSubjectPath } from "@/lib/jee-blueprint";
++import { faqPageJsonLd, itemListJsonLd, jeeChapterDescription, jeeChapterFaq, jeeChapterTitle } from "@/lib/jee-blueprint-copy";
++import { JeeChapterView, JeeNotFound } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/chapter-wise-weightage/$subject/$chapter/")({
++  loader: ({ params }) => {
++    if (!getJeeChapter(params.subject, params.chapter)) throw notFound();
++    return { subjectKey: params.subject, slug: params.chapter };
++  },
++  head: ({ loaderData }) => {
++    const s = loaderData ? getJeeSubject(loaderData.subjectKey) : undefined;
++    const c = loaderData ? getJeeChapter(loaderData.subjectKey, loaderData.slug) : undefined;
++    if (!s || !c) return { meta: [{ title: "Not found · Edurack" }, { name: "robots", content: "noindex" }] };
++    const path = jeeChapterPath(s.key, c.slug);
++    const ks = conceptsForChapter(c).slice(0, 10);
++    return pageHead({
++      title: jeeChapterTitle(c),
++      description: jeeChapterDescription(c),
++      path,
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "JEE chapter-wise weightage", path: JEE_BASE },
++          { name: s.name, path: jeeSubjectPath(s.key) },
++          { name: c.name, path },
++        ]),
++        faqPageJsonLd(jeeChapterFaq(c, s)),
++        ...(ks.length ? [itemListJsonLd(`${c.name}: most repeated JEE Main concepts ${JEE_RANGE}`, ks.map((k) => ({ name: k.name })))] : []),
++      ],
++    });
++  },
++  notFoundComponent: JeeNotFound,
++  component: ChapterPage,
++});
++
++function ChapterPage() {
++  const { subjectKey, slug } = Route.useLoaderData();
++  return <JeeChapterView subjectKey={subjectKey} chapterSlug={slug} />;
++}
+diff --git a/src/routes/jee.chapter-wise-weightage.$subject.index.tsx b/src/routes/jee.chapter-wise-weightage.$subject.index.tsx
+new file mode 100644
+index 0000000..6da9e98
+--- /dev/null
++++ b/src/routes/jee.chapter-wise-weightage.$subject.index.tsx
+@@ -0,0 +1,41 @@
++// src/routes/jee.chapter-wise-weightage.$subject.index.tsx  →  /jee/chapter-wise-weightage/<subject>
++import { createFileRoute, notFound } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { JEE_BASE, getJeeSubject, jeeChapterPath, jeeSubjectPath } from "@/lib/jee-blueprint";
++import { faqPageJsonLd, itemListJsonLd, jeeSubjectDescription, jeeSubjectFaq, jeeSubjectTitle } from "@/lib/jee-blueprint-copy";
++import { JeeNotFound, JeeSubjectView } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/chapter-wise-weightage/$subject/")({
++  loader: ({ params }) => {
++    if (!getJeeSubject(params.subject)) throw notFound();
++    return { subjectKey: params.subject };
++  },
++  head: ({ loaderData }) => {
++    const s = loaderData ? getJeeSubject(loaderData.subjectKey) : undefined;
++    if (!s) return { meta: [{ title: "Not found · Edurack" }, { name: "robots", content: "noindex" }] };
++    return pageHead({
++      title: jeeSubjectTitle(s),
++      description: jeeSubjectDescription(s),
++      path: jeeSubjectPath(s.key),
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "JEE chapter-wise weightage", path: JEE_BASE },
++          { name: s.name, path: jeeSubjectPath(s.key) },
++        ]),
++        itemListJsonLd(
++          `JEE Main ${s.name} chapters by weightage`,
++          s.chapters.map((c) => ({ name: c.name, url: `${SITE_URL}${jeeChapterPath(s.key, c.slug)}` })),
++        ),
++        faqPageJsonLd(jeeSubjectFaq(s)),
++      ],
++    });
++  },
++  notFoundComponent: JeeNotFound,
++  component: SubjectPage,
++});
++
++function SubjectPage() {
++  const { subjectKey } = Route.useLoaderData();
++  return <JeeSubjectView subjectKey={subjectKey} />;
++}
+diff --git a/src/routes/jee.chapter-wise-weightage.index.tsx b/src/routes/jee.chapter-wise-weightage.index.tsx
+new file mode 100644
+index 0000000..97ba0e4
+--- /dev/null
++++ b/src/routes/jee.chapter-wise-weightage.index.tsx
+@@ -0,0 +1,27 @@
++// src/routes/jee.chapter-wise-weightage.index.tsx  →  /jee/chapter-wise-weightage
++import { createFileRoute } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { JEE_BASE, getJeeSubjects } from "@/lib/jee-blueprint";
++import { JEE_HUB_TITLE, faqPageJsonLd, itemListJsonLd, jeeHubDescription, jeeHubFaq } from "@/lib/jee-blueprint-copy";
++import { JeeHubView } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/chapter-wise-weightage/")({
++  head: () =>
++    pageHead({
++      title: JEE_HUB_TITLE,
++      description: jeeHubDescription(),
++      path: JEE_BASE,
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "JEE chapter-wise weightage", path: JEE_BASE },
++        ]),
++        itemListJsonLd(
++          "JEE Main chapter-wise weightage by subject",
++          getJeeSubjects().map((s) => ({ name: `JEE Main ${s.name} chapter-wise weightage`, url: `${SITE_URL}${JEE_BASE}/${s.key}` })),
++        ),
++        faqPageJsonLd(jeeHubFaq()),
++      ],
++    }),
++  component: JeeHubView,
++});
+diff --git a/src/routes/jee.most-repeated-concepts.tsx b/src/routes/jee.most-repeated-concepts.tsx
+new file mode 100644
+index 0000000..0d37c04
+--- /dev/null
++++ b/src/routes/jee.most-repeated-concepts.tsx
+@@ -0,0 +1,17 @@
++// src/routes/jee.most-repeated-concepts.tsx  →  /jee/most-repeated-concepts
++import { createFileRoute } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { JEE_CONCEPTS_PATH } from "@/lib/jee-blueprint";
++import { JEE_CONCEPTS_TITLE, faqPageJsonLd, jeeConceptsDescription, jeeConceptsFaq } from "@/lib/jee-blueprint-copy";
++import { JeeConceptsView } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/most-repeated-concepts")({
++  head: () =>
++    pageHead({
++      title: JEE_CONCEPTS_TITLE,
++      description: jeeConceptsDescription(),
++      path: JEE_CONCEPTS_PATH,
++      jsonLd: [breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Most repeated concepts", path: JEE_CONCEPTS_PATH }]), faqPageJsonLd(jeeConceptsFaq())],
++    }),
++  component: JeeConceptsView,
++});
+diff --git a/src/routes/llms[.]txt.ts b/src/routes/llms[.]txt.ts
+index 6168240..1d5faf9 100644
+--- a/src/routes/llms[.]txt.ts
++++ b/src/routes/llms[.]txt.ts
+@@ -26,6 +26,7 @@ A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test
+ - Free downloadable notes, previous year papers, formula sheets and planners for NEET, JEE, CUET and IPMAT (no login needed): ${SITE_URL}/free-resources
+ - A blog with exam-specific syllabus and chapter breakdowns: ${SITE_URL}/blog
+ - NEET chapter-wise weightage for Physics, Chemistry, Botany and Zoology (previous-year question counts per chapter and topic, 2020–2026): ${SITE_URL}/neet/chapter-wise-weightage
++- JEE Main chapter-wise weightage for Physics, Chemistry and Maths (question counts per chapter and concept, 2022–2026): ${SITE_URL}/jee/chapter-wise-weightage
+ 
+ ## Who runs it
+ ${SITE_URL}/about — background on the platform, how the marketplace model works, and how mentor credentials are verified.
+@@ -39,6 +40,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
+ - Free resources (notes, PYQ PDFs, formula sheets): ${SITE_URL}/free-resources
+ - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
+ - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
++- JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
+ - FAQ: ${SITE_URL}/faq
+ - Help & Support: ${SITE_URL}/help
+ - Become a mentor: ${SITE_URL}/join-mentor
+diff --git a/src/routes/sitemap-jee[.]xml.ts b/src/routes/sitemap-jee[.]xml.ts
+new file mode 100644
+index 0000000..6c5b58e
+--- /dev/null
++++ b/src/routes/sitemap-jee[.]xml.ts
+@@ -0,0 +1,12 @@
++// src/routes/sitemap-jee[.]xml.ts — GET /sitemap-jee.xml
++// JEE Main chapter-wise weightage pages (hub, subjects, chapters) and most-repeated concepts. Static data.
++import { createFileRoute } from "@tanstack/react-router";
++import { jeeEntries, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
++
++export const Route = createFileRoute("/sitemap-jee.xml")({
++  server: {
++    handlers: {
++      GET: async () => xmlResponse(urlsetXml(jeeEntries())),
++    },
++  },
++});
+diff --git a/src/routes/sitemap[.]xml.ts b/src/routes/sitemap[.]xml.ts
+index fc8a2e4..ad72d57 100644
+--- a/src/routes/sitemap[.]xml.ts
++++ b/src/routes/sitemap[.]xml.ts
+@@ -26,6 +26,7 @@ export const Route = createFileRoute("/sitemap.xml")({
+         const locs = [
+           `${SITE_URL}/sitemap-pages.xml`,
+           `${SITE_URL}/sitemap-neet.xml`,
++          `${SITE_URL}/sitemap-jee.xml`,
+           `${SITE_URL}/sitemap-blog.xml`,
+           `${SITE_URL}/sitemap-mentors.xml`,
+           ...Array.from({ length: questionPages }, (_, i) => `${SITE_URL}/sitemap-questions.xml?page=${i + 1}`),
