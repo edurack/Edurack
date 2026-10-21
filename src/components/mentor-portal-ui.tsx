@@ -12,7 +12,7 @@ import { useRef, useState } from "react";
 import type { ComponentType } from "react";
 import { IconLoader2 as Loader2, IconAlertCircle as AlertCircle, IconCircleCheck as CheckCircle2, IconUpload as Upload, IconX as X, IconFileText as FileText, IconVideo as Video, IconHelpCircle as HelpCircle } from "@tabler/icons-react";
 import { Inbox, Camera } from "lucide-react"; // TODO: no Tabler mapping found yet
-import { uploadMentorImage, uploadSessionArtwork, uploadMentorFile, uploadMentorLecture, MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
+import { uploadMentorImage, uploadSessionArtwork, uploadMentorFile, uploadMentorLecture, MAX_PROFILE_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES, formatBytes } from "@/lib/mentor-uploads";
 
 // Any icon component works here — callers pass both Tabler and Lucide icons.
 export type IconType = ComponentType<{ className?: string }>;
@@ -327,7 +327,7 @@ export function ImageUploadField({
   }
 
   return (
-    <ClayField label={label} hint={`Max ${formatBytes(MAX_IMAGE_BYTES)}`}>
+    <ClayField label={label} hint={`Max ${formatBytes(MAX_PROFILE_IMAGE_BYTES)}`}>
       <div className="flex items-center gap-3">
         <div className="clay-inset flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full">
           {uploading ? (

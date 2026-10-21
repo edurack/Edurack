@@ -5,7 +5,7 @@
 // resumable across a tab close/reload, mirroring the old TUS behavior.
 import {
   supabase,
-  MENTOR_IMAGES_BUCKET,
+  MENTOR_UPLOADS_BUCKET,
   MENTOR_FILES_BUCKET,
   SESSION_ARTWORK_BUCKET,
   SESSION_ARTWORK_FALLBACK_BUCKETS,
@@ -22,6 +22,11 @@ import {
 } from "@/server-functions/mentor-portal";
 
 export { MAX_IMAGE_BYTES, MAX_FILE_BYTES, MAX_LECTURE_BYTES };
+
+// Profile pictures go to the same "mentor-uploads" bucket the onboarding form
+// uses (there is no separate "mentor-images" bucket). That bucket's own file
+// size limit is 5MB, so cap the dashboard upload there instead of promising 50MB.
+export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const PART_SIZE = 10 * 1024 * 1024; // 10MB — comfortably above S3's 5MB minimum part size
 const RESUME_KEY_PREFIX = "mentor-lecture-upload:";
@@ -45,10 +50,10 @@ async function simpleSupabaseUpload(bucket: string, path: string, file: File): P
 }
 
 export async function uploadMentorImage(file: File, basePath: string): Promise<string> {
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new Error(`That image is ${formatBytes(file.size)} — please choose one under ${formatBytes(MAX_IMAGE_BYTES)}.`);
+  if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+    throw new Error(`That image is ${formatBytes(file.size)} — please choose one under ${formatBytes(MAX_PROFILE_IMAGE_BYTES)}.`);
   }
-  return simpleSupabaseUpload(MENTOR_IMAGES_BUCKET, uniquePath(basePath, file.name), file);
+  return simpleSupabaseUpload(MENTOR_UPLOADS_BUCKET, uniquePath(basePath, file.name), file);
 }
 
 export async function uploadMentorFile(file: File, basePath: string): Promise<string> {
