@@ -208,6 +208,7 @@ const navLinks: NavLink[] = [
   { label: "Connect", type: "anchor", href: "#connect" },
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
   { label: "NEET Weightage", type: "route", to: "/neet/chapter-wise-weightage" },
+  { label: "JEE Weightage", type: "route", to: "/jee/chapter-wise-weightage" },
   { label: "Blog", type: "route", to: "/blog" },
   { label: "Contact", type: "route", to: "/contact" },
 ];
@@ -602,8 +603,8 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
   return (
     <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {mentors.map((m, i) => (
-        <Rise key={m.id} delay={(i % 3) * 0.08}>
-          <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="group flex h-full flex-col rounded-3xl border border-border bg-card p-5 transition-colors hover:border-primary">
+        <Rise key={m.id} delay={(i % 3) * 0.08} className="min-w-0">
+          <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="group flex h-full min-w-0 flex-col rounded-3xl border border-border bg-card p-5 transition-colors hover:border-primary">
             <div className="flex items-center gap-3">
               <MentorAvatar src={m.profilePictureUrl} name={m.name} />
               <div className="min-w-0">
@@ -615,11 +616,11 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
               </div>
             </div>
             {m.expertAt.length > 0 && (
-              <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt}</p>
+              <p className="mt-4 break-words text-sm font-semibold text-primary [overflow-wrap:anywhere]">Expert in {m.expertAt}</p>
             )}
             {m.batches.length > 0 && (
               <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
-                {m.batches.map((b) => <li key={b.id} className="truncate">{b.name} · {b.exam.toUpperCase()} · {b.track}</li>)}
+                {m.batches.map((b) => <li key={b.id} className="break-words [overflow-wrap:anywhere]">{b.name} · {b.exam.toUpperCase()} · {b.track}</li>)}
               </ul>
             )}
             <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-bold text-foreground">View profile <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
@@ -770,6 +771,7 @@ type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
   { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
+  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
 ];
@@ -778,7 +780,7 @@ function Footer() {
   return (
     <footer className={`${INK} pb-10 pt-16`}>
       <div className={WRAP}>
-        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2"><img src="/edurack-logo.webp" alt="EDURACK" width={160} height={160} className="h-10 w-auto object-contain" /><span className="font-display text-xl font-extrabold">edurack</span></Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.</p>
