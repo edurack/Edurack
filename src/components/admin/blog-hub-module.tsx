@@ -2,7 +2,8 @@
 //
 // The "Blog" tab in admin.dashboard.tsx: a post library (cards, search, status
 // tabs, bulk actions) and the full-screen editor in blog-editor.tsx.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import {
   IconLoader2 as Loader2,
   IconPlus as Plus,
@@ -17,6 +18,7 @@ import {
   IconCopy as Copy,
   IconExternalLink as ExternalLink,
   IconClock as Clock,
+  IconChecklist as ListChecks,
 } from "@tabler/icons-react";
 import { listBlogPostsAdmin, softDeleteBlogPost, bulkUpdateBlogPosts } from "@/server-functions/blog-admin";
 import type { BulkBlogAction } from "@/server-functions/blog-admin";
@@ -72,6 +74,16 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const [dialog, setDialog] = useState<null | "publish" | "feature">(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  // Fast multi-select (no tick-boxes needed): "select mode" makes the whole
+  // row clickable/draggable, Shift+click picks a range, and the quick-select
+  // panel picks by row number.
+  const [selectMode, setSelectMode] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [firstN, setFirstN] = useState("");
+  const anchorRef = useRef<number | null>(null);
+  const dragRef = useRef<{ start: number; add: boolean; base: Set<string> } | null>(null);
 
   async function loadList() {
     setListStatus("loading");
@@ -149,7 +161,27 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
   const featuredCount = useMemo(() => (posts ?? []).filter((p) => p.pinned && p.status === "published").length, [posts]);
   const totalViews = useMemo(() => (posts ?? []).reduce((sum, p) => sum + (p.viewCount ?? 0), 0), [posts]);
 
-  function toggleOne(id: string) {
+  // Adds (or removes) every visible row between two indexes, inclusive.
+  function applyRange(base: Set<string>, a: number, b: number, add: boolean) {
+    const next = new Set(base);
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    for (let i = lo; i <= hi; i++) {
+      const post = visiblePosts[i];
+      if (!post) continue;
+      if (add) next.add(post.id);
+      else next.delete(post.id);
+    }
+    return next;
+  }
+
+  function toggleOne(id: string, index?: number, shift = false) {
+    if (shift && index !== undefined && anchorRef.current !== null) {
+      const from = anchorRef.current;
+      setSelected((prev) => applyRange(prev, from, index, true));
+      return;
+    }
+    if (index !== undefined) anchorRef.current = index;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -157,6 +189,83 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
       return next;
     });
   }
+
+  // Select mode: press on a row to toggle it, keep the button down and drag
+  // over other rows to paint the same state onto all of them, or Shift+click
+  // to take everything from the last clicked row.
+  function handleRowPress(e: ReactMouseEvent, index: number, id: string) {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("[data-no-select]")) return;
+    e.preventDefault();
+    if (e.shiftKey && anchorRef.current !== null) {
+      const from = anchorRef.current;
+      setSelected((prev) => applyRange(prev, from, index, true));
+      return;
+    }
+    const add = !selected.has(id);
+    dragRef.current = { start: index, add, base: selected };
+    anchorRef.current = index;
+    setSelected(applyRange(selected, index, index, add));
+  }
+
+  function handleRowEnter(index: number) {
+    const d = dragRef.current;
+    if (!d) return;
+    setSelected(applyRange(d.base, d.start, index, d.add));
+  }
+
+  function selectRowRange() {
+    const a = parseInt(rangeFrom, 10);
+    const b = parseInt(rangeTo, 10);
+    if (!a || !b || visiblePosts.length === 0) return;
+    const lo = Math.max(1, Math.min(a, b));
+    const hi = Math.min(visiblePosts.length, Math.max(a, b));
+    if (lo > hi) return;
+    setSelected((prev) => applyRange(prev, lo - 1, hi - 1, true));
+  }
+
+  function selectFirstN() {
+    const n = parseInt(firstN, 10);
+    if (!n || n < 1 || visiblePosts.length === 0) return;
+    setSelected((prev) => applyRange(prev, 0, Math.min(n, visiblePosts.length) - 1, true));
+  }
+
+  function invertVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      visiblePosts.forEach((p) => (next.has(p.id) ? next.delete(p.id) : next.add(p.id)));
+      return next;
+    });
+  }
+
+  // Drag ends wherever the mouse is released; Esc leaves select mode (then
+  // clears the selection); Ctrl/Cmd+A selects everything visible in select mode.
+  useEffect(() => {
+    const stopDrag = () => {
+      dragRef.current = null;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      if (e.key === "Escape" && !dialog) {
+        if (selectMode) setSelectMode(false);
+        else if (selected.size > 0) setSelected(new Set());
+      } else if (selectMode && !dialog && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSelected((prev) => {
+          const next = new Set(prev);
+          visiblePosts.forEach((p) => next.add(p.id));
+          return next;
+        });
+      }
+    };
+    window.addEventListener("mouseup", stopDrag);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mouseup", stopDrag);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [selectMode, selected, dialog, visiblePosts]);
 
   function toggleAllVisible() {
     setSelected((prev) => {
@@ -297,7 +406,21 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                 <span className="ml-1.5 opacity-60">{counts[f] ?? 0}</span>
               </button>
             ))}
-            <label className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-foreground/50">
+            <button
+              onClick={() => setSelectMode((v) => !v)}
+              className={`ml-auto flex items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-bold ${selectMode ? "bg-foreground text-background" : "clay-chip text-foreground/60"}`}
+              title="Click or drag across posts to select them — no tick-boxes needed"
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              Select mode
+            </button>
+            <button
+              onClick={() => setQuickOpen((v) => !v)}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${quickOpen ? "bg-foreground text-background" : "clay-chip text-foreground/60"}`}
+            >
+              Quick select
+            </button>
+            <label className="flex items-center gap-2 text-[11px] font-semibold text-foreground/50">
               <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible posts" />
               Select all
             </label>
@@ -306,6 +429,44 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
               {featuredCount} featured (index shows {MAX_FEATURED_POSTS})
             </span>
           </div>
+          {selectMode && (
+            <p className="text-[11px] font-medium text-foreground/50">
+              Select mode: click a post to select it, hold the button and drag over posts to select many, Shift+click to select everything from the last clicked post, Ctrl/Cmd+A for all, Esc to exit.
+            </p>
+          )}
+          {quickOpen && (
+            <div className="clay-inset flex flex-wrap items-end gap-x-5 gap-y-3 rounded-2xl p-3 text-[11px] font-semibold text-foreground/60">
+              <div className="flex items-end gap-1.5">
+                <label className="flex flex-col gap-1">
+                  Rows from
+                  <input value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="1" className="w-16 rounded-lg bg-background/60 px-2 py-1 text-xs outline-none" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  to
+                  <input value={rangeTo} onChange={(e) => setRangeTo(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={String(visiblePosts.length || 1)} className="w-16 rounded-lg bg-background/60 px-2 py-1 text-xs outline-none" />
+                </label>
+                <button onClick={selectRowRange} className="clay-chip rounded-full px-3 py-1.5 text-[11px] font-bold text-foreground/70">
+                  Select
+                </button>
+              </div>
+              <div className="flex items-end gap-1.5">
+                <label className="flex flex-col gap-1">
+                  First
+                  <input value={firstN} onChange={(e) => setFirstN(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="20" className="w-16 rounded-lg bg-background/60 px-2 py-1 text-xs outline-none" />
+                </label>
+                <button onClick={selectFirstN} className="clay-chip rounded-full px-3 py-1.5 text-[11px] font-bold text-foreground/70">
+                  Select
+                </button>
+              </div>
+              <button onClick={invertVisible} className="clay-chip rounded-full px-3 py-1.5 text-[11px] font-bold text-foreground/70">
+                Invert
+              </button>
+              <button onClick={() => setSelected(new Set())} className="clay-chip rounded-full px-3 py-1.5 text-[11px] font-bold text-foreground/70">
+                Clear
+              </button>
+              <span className="text-foreground/40">Row numbers are shown on the left of each post and follow the current search/filters ({visiblePosts.length} shown).</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -413,16 +574,24 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
         <div className="clay p-8 text-center text-sm text-foreground/60">No posts match these filters.</div>
       ) : (
         <ul className="space-y-2.5">
-          {visiblePosts.map((p) => (
-            <li key={p.id} className={`clay flex items-stretch gap-3 p-3 ${selected.has(p.id) ? "ring-2 ring-foreground/30" : ""}`}>
-              <input
-                type="checkbox"
-                className="mt-1 self-start"
-                checked={selected.has(p.id)}
-                onChange={() => toggleOne(p.id)}
-                aria-label={`Select ${p.title || "untitled post"}`}
-              />
-              <button onClick={() => openEdit(p.id)} className="hidden h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-foreground/5 sm:block" aria-label="Edit post">
+          {visiblePosts.map((p, index) => (
+            <li
+              key={p.id}
+              onMouseDown={selectMode ? (e) => handleRowPress(e, index, p.id) : undefined}
+              onMouseEnter={selectMode ? () => handleRowEnter(index) : undefined}
+              className={`clay flex items-stretch gap-3 p-3 ${selected.has(p.id) ? "ring-2 ring-foreground/30" : ""} ${selectMode ? "cursor-pointer select-none" : ""}`}
+            >
+              <div className="flex shrink-0 flex-col items-center gap-1 self-start">
+                <input
+                  type="checkbox"
+                  className={`mt-1 ${selectMode ? "pointer-events-none" : ""}`}
+                  checked={selected.has(p.id)}
+                  onChange={(e) => toggleOne(p.id, index, (e.nativeEvent as MouseEvent).shiftKey === true)}
+                  aria-label={`Select ${p.title || "untitled post"}`}
+                />
+                <span className="text-[10px] font-bold tabular-nums text-foreground/35">{index + 1}</span>
+              </div>
+              <button onClick={() => (selectMode ? undefined : openEdit(p.id))} className="hidden h-20 w-32 shrink-0 overflow-hidden rounded-xl bg-foreground/5 sm:block" aria-label="Edit post">
                 {p.coverImageUrl ? (
                   <img src={p.coverImageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                 ) : (
@@ -442,7 +611,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                   )}
                   <span className="text-[11px] font-semibold text-foreground/50">{BLOG_CATEGORY_LABELS[p.category]}</span>
                 </div>
-                <button onClick={() => openEdit(p.id)} className="mt-1 block max-w-full truncate text-left text-sm font-bold text-foreground hover:underline">
+                <button onClick={() => (selectMode ? undefined : openEdit(p.id))} className="mt-1 block max-w-full truncate text-left text-sm font-bold text-foreground hover:underline">
                   {p.title || "(untitled)"}
                 </button>
                 <p className="truncate text-[11px] text-foreground/40">/blog/{p.slug}</p>
@@ -462,7 +631,7 @@ export function BlogHubModule({ adminUser }: { adminUser: { getIdToken: () => Pr
                   {p.readingTimeMinutes > 0 && <span>{p.readingTimeMinutes} min read</span>}
                 </p>
               </div>
-              <div className="flex shrink-0 items-start gap-2.5 text-foreground/40">
+              <div data-no-select className="flex shrink-0 items-start gap-2.5 text-foreground/40">
                 {p.status === "published" && (
                   <button
                     onClick={() => runBulk("setFeatured", [p.id], p.pinned ? [] : [p.id])}
