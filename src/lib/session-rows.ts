@@ -16,6 +16,7 @@ export function rowToOffering(row: any): MentorSessionOffering {
     posterUrl: row.poster_url ?? null,
     recurringDays: row.recurring_days,
     startTimes: row.start_times,
+    dayWindows: Array.isArray(row.day_windows) ? row.day_windows : [],
     dateRangeStart: row.date_range_start,
     dateRangeEnd: row.date_range_end,
     isOngoing: row.is_ongoing,

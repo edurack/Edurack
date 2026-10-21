@@ -12,7 +12,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
-import { DURATION_OPTIONS, MAX_SESSION_CAPACITY, UNLIMITED_CAPACITY, type DayOfWeek, type MentorSessionOffering, type MentorSessionBooking } from "@/lib/session-types";
+import {
+  DURATION_OPTIONS,
+  MAX_SESSION_CAPACITY,
+  UNLIMITED_CAPACITY,
+  allWindowStartTimes,
+  findWindowProblem,
+  windowDaysUnion,
+  type DayOfWeek,
+  type DayWindow,
+  type MentorSessionOffering,
+  type MentorSessionBooking,
+} from "@/lib/session-types";
 import { cancelBookings, type BookingRow } from "@/lib/session-cancel";
 import { istDateString, slotStart, addDaysIso, formatDateLong, formatTime12 } from "@/lib/session-time";
 import { findScheduleConflicts, previewSlots, slotMatchesSchedule, type ScheduleDraft } from "@/lib/session-schedule";
@@ -68,6 +79,7 @@ function rowToOffering(row: any): MentorSessionOffering {
     posterUrl: row.poster_url ?? null,
     recurringDays: row.recurring_days,
     startTimes: row.start_times,
+    dayWindows: Array.isArray(row.day_windows) ? row.day_windows : [],
     dateRangeStart: row.date_range_start,
     dateRangeEnd: row.date_range_end,
     isOngoing: row.is_ongoing,
@@ -136,6 +148,10 @@ type OfferingInput = {
   posterUrl?: string | null;
   recurringDays: DayOfWeek[];
   startTimes: string[];
+  // Per-day availability ranges (e.g. Mon–Fri 18:00–19:00, Sat–Sun 10:00–12:00).
+  // When given, these decide which slots students can book; recurringDays and
+  // startTimes are derived from them.
+  dayWindows?: DayWindow[];
   dateRangeStart: string | null;
   dateRangeEnd: string | null;
   isOngoing: boolean;
@@ -165,13 +181,34 @@ function normalizeOfferingInput(d: OfferingInput) {
     throw new Error("Set a price as a whole number of rupees between ₹1 and ₹50,000, or mark this session free.");
   }
 
-  const recurringDays = Array.from(new Set(d.recurringDays)).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).sort() as DayOfWeek[];
-  if (recurringDays.length === 0) throw new Error("Pick at least one day.");
+  let recurringDays: DayOfWeek[];
+  let startTimes: string[];
+  let dayWindows: DayWindow[] = [];
 
-  const startTimes = Array.from(new Set(d.startTimes.map((t) => t.trim()).filter(Boolean))).sort();
-  if (startTimes.length === 0) throw new Error("Add at least one start time.");
-  if (startTimes.length > 8) throw new Error("Up to 8 start times per session. Publish a second offering for more.");
-  for (const t of startTimes) if (!HHMM.test(t)) throw new Error(`"${t}" isn't a valid time.`);
+  if (Array.isArray(d.dayWindows) && d.dayWindows.length > 0) {
+    // Availability windows: the mentor says "I'm free 6–7 PM Mon–Fri and
+    // 10 AM–12 PM on weekends"; students can only book sessions that fit
+    // entirely inside those ranges.
+    if (d.dayWindows.length > 10) throw new Error("Up to 10 time ranges per session.");
+    dayWindows = d.dayWindows.map((w) => ({
+      days: Array.from(new Set((w.days ?? []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))).sort() as DayOfWeek[],
+      start: String(w.start ?? "").trim(),
+      end: String(w.end ?? "").trim(),
+    }));
+    const problem = findWindowProblem(dayWindows, d.durationMinutes);
+    if (problem) throw new Error(problem);
+    recurringDays = windowDaysUnion(dayWindows);
+    startTimes = allWindowStartTimes(dayWindows, d.durationMinutes);
+    if (startTimes.length === 0) throw new Error("Those time ranges don't fit a single session. Widen the range or pick a shorter duration.");
+  } else {
+    recurringDays = Array.from(new Set(d.recurringDays)).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).sort() as DayOfWeek[];
+    if (recurringDays.length === 0) throw new Error("Pick at least one day.");
+
+    startTimes = Array.from(new Set(d.startTimes.map((t) => t.trim()).filter(Boolean))).sort();
+    if (startTimes.length === 0) throw new Error("Add at least one start time.");
+    if (startTimes.length > 8) throw new Error("Up to 8 start times per session. Publish a second offering for more.");
+    for (const t of startTimes) if (!HHMM.test(t)) throw new Error(`"${t}" isn't a valid time.`);
+  }
 
   for (const x of [d.dateRangeStart, d.dateRangeEnd]) {
     if (x && (!ISO_DATE.test(x) || Number.isNaN(new Date(`${x}T00:00:00Z`).getTime()))) throw new Error("One of the dates isn't valid.");
@@ -198,10 +235,18 @@ function normalizeOfferingInput(d: OfferingInput) {
     capacity: d.capacity,
     recurringDays,
     startTimes,
+    dayWindows,
     dateRangeStart: d.dateRangeStart,
     dateRangeEnd: d.isOngoing ? null : d.dateRangeEnd,
     isOngoing: d.isOngoing,
   };
+}
+
+// The per-day availability feature needs the `day_windows` column
+// (sql/003_session_day_windows.sql). Say so plainly if it hasn't been added.
+function dbErrorMessage(message: string) {
+  if (/day_windows/i.test(message)) return "Per-day time ranges need a one-time database update (sql/003_session_day_windows.sql). Ask your developer to run it, then try again.";
+  return message;
 }
 
 const toDraft = (n: ReturnType<typeof normalizeOfferingInput>, id?: string): ScheduleDraft => ({
@@ -209,6 +254,7 @@ const toDraft = (n: ReturnType<typeof normalizeOfferingInput>, id?: string): Sch
   title: n.title,
   recurringDays: n.recurringDays,
   startTimes: n.startTimes,
+  dayWindows: n.dayWindows,
   dateRangeStart: n.dateRangeStart,
   dateRangeEnd: n.dateRangeEnd,
   isOngoing: n.isOngoing,
@@ -228,6 +274,7 @@ async function assertNoScheduleConflict(mentorId: string, draft: ScheduleDraft) 
       title: o.title,
       recurringDays: o.recurringDays,
       startTimes: o.startTimes,
+      dayWindows: o.dayWindows,
       dateRangeStart: o.dateRangeStart,
       dateRangeEnd: o.dateRangeEnd,
       isOngoing: o.isOngoing,
@@ -267,6 +314,7 @@ export const createOffering = createServerFn({ method: "POST" })
         ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
         recurring_days: n.recurringDays,
         start_times: n.startTimes,
+        ...(n.dayWindows.length > 0 ? { day_windows: n.dayWindows } : {}),
         date_range_start: n.dateRangeStart,
         date_range_end: n.dateRangeEnd,
         is_ongoing: n.isOngoing,
@@ -276,7 +324,7 @@ export const createOffering = createServerFn({ method: "POST" })
       })
       .select()
       .single();
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(dbErrorMessage(error.message));
     return { offering: rowToOffering(row) };
   });
 
@@ -350,6 +398,7 @@ export const updateOffering = createServerFn({ method: "POST" })
         ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
         recurring_days: n.recurringDays,
         start_times: n.startTimes,
+        day_windows: n.dayWindows,
         date_range_start: n.dateRangeStart,
         date_range_end: n.dateRangeEnd,
         is_ongoing: n.isOngoing,
@@ -359,7 +408,7 @@ export const updateOffering = createServerFn({ method: "POST" })
       })
       .eq("id", data.offeringId)
       .eq("mentor_id", mentorId); // ownership check, not just an id match
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(dbErrorMessage(error.message));
     return { ok: true };
   });
 
@@ -373,7 +422,7 @@ export const setOfferingActive = createServerFn({ method: "POST" })
       if (rowErr) throw new Error(rowErr.message);
       if (!row) throw new Error("Offering not found.");
       const o = rowToOffering(row);
-      const draft: ScheduleDraft = { id: o.id, title: o.title, recurringDays: o.recurringDays, startTimes: o.startTimes, dateRangeStart: o.dateRangeStart, dateRangeEnd: o.dateRangeEnd, isOngoing: o.isOngoing, durationMinutes: o.durationMinutes };
+      const draft: ScheduleDraft = { id: o.id, title: o.title, recurringDays: o.recurringDays, startTimes: o.startTimes, dayWindows: o.dayWindows, dateRangeStart: o.dateRangeStart, dateRangeEnd: o.dateRangeEnd, isOngoing: o.isOngoing, durationMinutes: o.durationMinutes };
       await assertNoScheduleConflict(mentorId, draft);
     }
     const { error } = await sb

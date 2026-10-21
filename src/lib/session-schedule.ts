@@ -3,13 +3,14 @@
 // the server (which enforces the same rules, so a hand-crafted request can't
 // get around them). Everything is India wall-clock via lib/session-time.
 import { addDaysIso, istDateString, slotEnd, slotStart } from "@/lib/session-time";
-import type { DayOfWeek } from "@/lib/session-types";
+import { startTimesForWeekday, type DayOfWeek, type DayWindow } from "@/lib/session-types";
 
 export type ScheduleDraft = {
   id?: string;
   title: string;
   recurringDays: DayOfWeek[];
-  startTimes: string[]; // "HH:mm"
+  startTimes: string[]; // "HH:mm" (legacy fixed times; ignored when dayWindows is non-empty)
+  dayWindows?: DayWindow[]; // per-day availability ranges
   dateRangeStart: string | null; // "YYYY-MM-DD"
   dateRangeEnd: string | null;
   isOngoing: boolean;
@@ -21,24 +22,22 @@ export type DraftSlot = { date: string; startTime: string };
 const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() as DayOfWeek;
 
 /** Does this schedule produce a session on this exact date + time (ignoring "is it in the past")? */
-export function slotMatchesSchedule(d: Pick<ScheduleDraft, "recurringDays" | "startTimes" | "dateRangeStart" | "dateRangeEnd" | "isOngoing">, date: string, time: string): boolean {
+export function slotMatchesSchedule(d: Pick<ScheduleDraft, "recurringDays" | "startTimes" | "dayWindows" | "durationMinutes" | "dateRangeStart" | "dateRangeEnd" | "isOngoing">, date: string, time: string): boolean {
   const day = date.slice(0, 10);
   const t = time.slice(0, 5);
   if (d.dateRangeStart && day < d.dateRangeStart.slice(0, 10)) return false;
   if (!d.isOngoing && d.dateRangeEnd && day > d.dateRangeEnd.slice(0, 10)) return false;
-  if (!d.recurringDays.includes(weekdayOf(day))) return false;
-  return d.startTimes.some((s) => s.slice(0, 5) === t);
+  return startTimesForWeekday(d, weekdayOf(day), d.durationMinutes).includes(t);
 }
 
 /** The next bookable occurrences of a schedule, soonest first. */
 export function previewSlots(d: ScheduleDraft, opts: { limit?: number; windowDays?: number; now?: Date } = {}): DraftSlot[] {
   const { limit = 200, windowDays = 90, now = new Date() } = opts;
   const today = istDateString(now);
-  const times = Array.from(new Set(d.startTimes.filter(Boolean))).sort();
   const out: DraftSlot[] = [];
   for (let i = 0; i < windowDays && out.length < limit; i++) {
     const date = addDaysIso(today, i);
-    for (const t of times) {
+    for (const t of startTimesForWeekday(d, weekdayOf(date), d.durationMinutes)) {
       if (!slotMatchesSchedule(d, date, t)) continue;
       if (slotStart(date, t).getTime() <= now.getTime()) continue; // already started
       out.push({ date, startTime: t });

@@ -1,0 +1,764 @@
+diff --git a/sql/003_session_day_windows.sql b/sql/003_session_day_windows.sql
+new file mode 100644
+index 0000000..f2d8581
+--- /dev/null
++++ b/sql/003_session_day_windows.sql
+@@ -0,0 +1,15 @@
++-- Per-day availability windows for mentor session offerings.
++--
++-- Each element is {"days":[1,2,3,4,5],"start":"18:00","end":"19:00"}:
++-- the weekdays (0 = Sun … 6 = Sat) it applies to and the IST time range inside
++-- which students can book. Empty = older offering that uses fixed start_times.
++--
++-- Safe to run more than once. Existing offerings keep working unchanged.
++alter table mentor_session_offerings
++  add column if not exists day_windows jsonb not null default '[]'::jsonb;
++
++alter table mentor_session_offerings
++  drop constraint if exists mentor_session_offerings_day_windows_is_array;
++alter table mentor_session_offerings
++  add constraint mentor_session_offerings_day_windows_is_array
++  check (jsonb_typeof(day_windows) = 'array');
+diff --git a/src/components/mentor-offering-dialog.tsx b/src/components/mentor-offering-dialog.tsx
+index 9dcb2f3..5c2fc6c 100644
+--- a/src/components/mentor-offering-dialog.tsx
++++ b/src/components/mentor-offering-dialog.tsx
+@@ -31,7 +31,14 @@ import {
+   formatForOffering,
+   splitSessionPrice,
+   SESSION_PLATFORM_COMMISSION_PERCENT,
++  allWindowStartTimes,
++  findWindowProblem,
++  hhmmToMinutes,
++  minutesToHhmm,
++  windowDaysUnion,
++  windowStartTimes,
+   type DayOfWeek,
++  type DayWindow,
+   type MentorSessionOffering,
+   type PublicMentorOffering,
+   type SessionFormat,
+@@ -42,13 +49,24 @@ import { SessionArtworkField, inputClass, textareaClass } from "@/components/men
+ import { FormatBadge, MentorAvatar, SessionCover, formatLabel, inr, priceLabel } from "@/components/sessions/session-ui";
+ 
+ type RepeatMode = "once" | "weekly_until" | "weekly_ongoing";
+-type FieldErrors = Partial<Record<"title" | "price" | "capacity" | "date" | "endDate" | "days" | "times" | "schedule", string>>;
++type FieldErrors = Partial<Record<"title" | "price" | "capacity" | "date" | "endDate" | "times" | "schedule", string>>;
+ 
+ const STEPS = ["Basics", "Format & price", "Schedule"] as const;
+ const SUBJECT_SUGGESTIONS = ["Physics", "Chemistry", "Biology", "Maths", "Strategy", "Admissions"];
+-const TIME_PRESETS = ["06:00", "08:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
+ const PRICE_PRESETS = [199, 299, 499, 999];
+ const DAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0]; // Monday first
++const MAX_WINDOWS = 10;
++const DAY_PRESETS: { label: string; days: DayOfWeek[] }[] = [
++  { label: "Mon–Fri", days: [1, 2, 3, 4, 5] },
++  { label: "Sat–Sun", days: [6, 0] },
++  { label: "Every day", days: [0, 1, 2, 3, 4, 5, 6] },
++];
++
++// One editable availability row: a group of days sharing a from–to range.
++type WindowRow = { key: number; days: DayOfWeek[]; start: string; end: string };
++let windowKeySeq = 0;
++const newKey = () => ++windowKeySeq;
++const sameDays = (a: DayOfWeek[], b: DayOfWeek[]) => a.length === b.length && a.every((d) => b.includes(d));
+ 
+ const FORMATS: { key: SessionFormat; icon: typeof User; title: string; desc: string }[] = [
+   { key: "one_on_one", icon: User, title: "One student", desc: "A private 1:1 with you" },
+@@ -118,8 +136,22 @@ export function MentorOfferingDialog({
+   const [repeatMode, setRepeatMode] = useState<RepeatMode>(!editing ? "once" : editing.isOngoing ? "weekly_ongoing" : isEditedOneTime ? "once" : "weekly_until");
+   const [onceDate, setOnceDate] = useState(isEditedOneTime ? (editing!.dateRangeStart as string).slice(0, 10) : "");
+   const [endDate, setEndDate] = useState(editing && !editing.isOngoing && !isEditedOneTime ? (editing.dateRangeEnd ?? "").slice(0, 10) : "");
+-  const [days, setDays] = useState<Set<DayOfWeek>>(new Set(editing?.recurringDays ?? []));
+-  const [times, setTimes] = useState<string[]>(editing?.startTimes?.length ? editing.startTimes : ["18:00"]);
++  // Availability: each row is a group of days + a from–to range. Students can
++  // only book sessions that fit completely inside a range. Offerings saved
++  // before ranges existed (fixed start times) open as one range per start time,
++  // which produces exactly the same slots.
++  const [windows, setWindows] = useState<WindowRow[]>(() => {
++    if (editing?.dayWindows?.length) return editing.dayWindows.map((w) => ({ key: newKey(), days: [...w.days], start: w.start, end: w.end }));
++    if (editing?.startTimes?.length) {
++      return editing.startTimes.map((t) => ({
++        key: newKey(),
++        days: [...editing.recurringDays],
++        start: t.slice(0, 5),
++        end: minutesToHhmm(Math.min(hhmmToMinutes(t) + editing.durationMinutes, 23 * 60 + 59)),
++      }));
++    }
++    return [{ key: newKey(), days: [], start: "18:00", end: "19:00" }];
++  });
+ 
+   // Default the thumbnail to the mentor's profile photo (new offerings only —
+   // when editing, an empty thumbnail is a deliberate choice).
+@@ -138,8 +170,8 @@ export function MentorOfferingDialog({
+     if (format === "open_unlimited") setIsFree(true);
+   }, [format]);
+ 
+-  const initialSnapshot = useMemo(() => JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, days: Array.from(days).sort(), times }), []); // eslint-disable-line react-hooks/exhaustive-deps
+-  const snapshot = JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, days: Array.from(days).sort(), times });
++  const initialSnapshot = useMemo(() => JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, windows: windows.map(({ days, start, end }) => ({ days: [...days].sort(), start, end })) }), []); // eslint-disable-line react-hooks/exhaustive-deps
++  const snapshot = JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, windows: windows.map(({ days, start, end }) => ({ days: [...days].sort(), start, end })) });
+   const dirty = snapshot !== initialSnapshot;
+ 
+   function requestClose() {
+@@ -160,23 +192,29 @@ export function MentorOfferingDialog({
+   const capacity = format === "one_on_one" ? 1 : format === "open_unlimited" ? UNLIMITED_CAPACITY : Math.max(2, Math.min(MAX_SESSION_CAPACITY, groupCapacity));
+   const free = format === "open_unlimited" ? true : isFree;
+   const priceNum = Number(price);
+-  const cleanTimes = useMemo(() => Array.from(new Set(times.filter(Boolean))).sort(), [times]);
++  // The ranges as they'll be saved. A one-off session has a single date, so
++  // every range simply applies to that date's weekday.
++  const effectiveWindows = useMemo<DayWindow[]>(
++    () => windows.map((w) => ({ days: repeatMode === "once" ? (onceDate ? [weekdayOf(onceDate)] : []) : [...w.days].sort((a, b) => a - b) as DayOfWeek[], start: w.start, end: w.end })),
++    [windows, repeatMode, onceDate],
++  );
++  const cleanTimes = useMemo(() => allWindowStartTimes(effectiveWindows.filter((w) => /^\d\d:\d\d$/.test(w.start) && /^\d\d:\d\d$/.test(w.end)), duration), [effectiveWindows, duration]);
+ 
+   // What the schedule means as concrete dates, for preview + overlap checks.
+   const draft = useMemo<ScheduleDraft>(() => {
+-    const base = { id: editing?.id, title: title || "This session", startTimes: cleanTimes, durationMinutes: duration };
++    const base = { id: editing?.id, title: title || "This session", startTimes: cleanTimes, dayWindows: effectiveWindows, durationMinutes: duration };
+     if (repeatMode === "once") {
+       return { ...base, recurringDays: onceDate ? [weekdayOf(onceDate)] : [], dateRangeStart: onceDate || null, dateRangeEnd: onceDate || null, isOngoing: false };
+     }
+     return {
+       ...base,
+-      recurringDays: Array.from(days),
++      recurringDays: windowDaysUnion(effectiveWindows),
+       dateRangeStart: null,
+       dateRangeEnd: repeatMode === "weekly_until" ? endDate || null : null,
+       // Until an end date is chosen, preview it as open-ended rather than empty.
+       isOngoing: repeatMode === "weekly_ongoing" || !endDate,
+     };
+-  }, [repeatMode, onceDate, endDate, days, cleanTimes, duration, title, editing?.id]);
++  }, [repeatMode, onceDate, endDate, effectiveWindows, cleanTimes, duration, title, editing?.id]);
+ 
+   const upcomingSlots = useMemo(() => previewSlots(draft, { windowDays: 366 }), [draft]);
+   const conflicts = useMemo(() => {
+@@ -187,6 +225,7 @@ export function MentorOfferingDialog({
+         title: o.title,
+         recurringDays: o.recurringDays,
+         startTimes: o.startTimes,
++        dayWindows: o.dayWindows,
+         dateRangeStart: o.dateRangeStart,
+         dateRangeEnd: o.dateRangeEnd,
+         isOngoing: o.isOngoing,
+@@ -206,19 +245,20 @@ export function MentorOfferingDialog({
+       if (!onceDate) e.date = "Pick a date.";
+       else if (onceDate < today) e.date = "That date has already passed.";
+     } else {
+-      if (days.size === 0) e.days = "Pick at least one day.";
+       if (repeatMode === "weekly_until") {
+         if (!endDate) e.endDate = "Pick an end date, or choose “Weekly, ongoing”.";
+         else if (endDate < today) e.endDate = "That date has already passed.";
+       }
+     }
+-    if (cleanTimes.length === 0) e.times = "Add at least one start time.";
+-    if (!e.date && !e.days && !e.endDate && !e.times && upcomingSlots.length === 0) e.schedule = "That schedule has no upcoming dates. Pick a date and time that hasn't passed yet.";
++    // Every range needs days, a valid from–to, no overlaps, and room for at least one session.
++    const windowProblem = repeatMode === "once" && !onceDate ? null : findWindowProblem(effectiveWindows, duration);
++    if (windowProblem) e.times = windowProblem;
++    if (!e.date && !e.endDate && !e.times && upcomingSlots.length === 0) e.schedule = "That schedule has no upcoming dates. Pick a date and time that hasn't passed yet.";
+     if (conflicts.length > 0) e.schedule = `Overlaps with “${conflicts[0].otherTitle}” on ${formatDateLong(conflicts[0].date)} at ${formatTime12(conflicts[0].startTime)} IST. You can't run two sessions at once.`;
+     return e;
+-  }, [title, free, priceNum, format, groupCapacity, repeatMode, onceDate, endDate, days, cleanTimes, upcomingSlots.length, conflicts, today]);
++  }, [title, free, priceNum, format, groupCapacity, repeatMode, onceDate, endDate, effectiveWindows, duration, upcomingSlots.length, conflicts, today]);
+ 
+-  const stepOf: Record<keyof FieldErrors, number> = { title: 0, price: 1, capacity: 1, date: 2, endDate: 2, days: 2, times: 2, schedule: 2 };
++  const stepOf: Record<keyof FieldErrors, number> = { title: 0, price: 1, capacity: 1, date: 2, endDate: 2, times: 2, schedule: 2 };
+   const errorSteps = new Set((Object.keys(errors) as (keyof FieldErrors)[]).map((k) => stepOf[k]));
+ 
+   function goNext() {
+@@ -253,8 +293,9 @@ export function MentorOfferingDialog({
+         // Only sent when it changed, so saving still works on databases where
+         // the poster_url column hasn't been added yet.
+         ...((editing ? posterUrl !== (editing.posterUrl ?? "") : !!posterUrl.trim()) ? { posterUrl: posterUrl.trim() || null } : {}),
+-        recurringDays: repeatMode === "once" ? [weekdayOf(onceDate)] : Array.from(days),
+-        startTimes: cleanTimes,
++        recurringDays: windowDaysUnion(effectiveWindows),
++        startTimes: cleanTimes, // summary only — the server derives it from dayWindows
++        dayWindows: effectiveWindows,
+         dateRangeStart: repeatMode === "once" ? onceDate : null,
+         dateRangeEnd: repeatMode === "once" ? onceDate : repeatMode === "weekly_until" ? endDate || null : null,
+         isOngoing: repeatMode === "weekly_ongoing",
+@@ -270,6 +311,23 @@ export function MentorOfferingDialog({
+     }
+   }
+ 
++  function updateWindow(key: number, patch: Partial<Pick<WindowRow, "days" | "start" | "end">>) {
++    setWindows((prev) => prev.map((w) => (w.key === key ? { ...w, ...patch } : w)));
++  }
++  function toggleWindowDay(key: number, d: DayOfWeek) {
++    setWindows((prev) => prev.map((w) => (w.key === key ? { ...w, days: w.days.includes(d) ? w.days.filter((x) => x !== d) : [...w.days, d] } : w)));
++  }
++  function addWindow() {
++    setWindows((prev) => {
++      if (prev.length >= MAX_WINDOWS) return prev;
++      // Pre-select the days no other range uses yet — the usual "weekdays, then weekend" case.
++      const used = new Set(prev.flatMap((w) => w.days));
++      const free = DAY_ORDER.filter((d) => !used.has(d));
++      const last = prev[prev.length - 1];
++      return [...prev, { key: newKey(), days: free, start: last?.start ?? "10:00", end: last?.end ?? "12:00" }];
++    });
++  }
++
+   const err = (k: keyof FieldErrors) => (showErrors && errors[k] ? errors[k] : null);
+   const bad = (k: keyof FieldErrors) => (showErrors && errors[k] ? "!border-rose-400" : "");
+ 
+@@ -520,35 +578,11 @@ export function MentorOfferingDialog({
+                   </div>
+                 </Section>
+ 
+-                {repeatMode === "once" ? (
++                {repeatMode === "once" && (
+                   <Section label="Date">
+                     <input type="date" value={onceDate} min={today} onChange={(e) => setOnceDate(e.target.value)} aria-label="Date" className={`${inputClass} sm:max-w-xs ${bad("date")}`} />
+                     <p className="mt-1 text-xs font-medium text-rose-600">{err("date")}</p>
+                   </Section>
+-                ) : (
+-                  <Section label="Which days?">
+-                    <div className="grid grid-cols-7 gap-1.5">
+-                      {DAY_ORDER.map((d) => (
+-                        <button
+-                          key={d}
+-                          type="button"
+-                          onClick={() =>
+-                            setDays((prev) => {
+-                              const next = new Set(prev);
+-                              if (next.has(d)) next.delete(d);
+-                              else next.add(d);
+-                              return next;
+-                            })
+-                          }
+-                          aria-pressed={days.has(d)}
+-                          className={`min-h-11 rounded-xl border text-xs font-bold transition-colors ${days.has(d) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground/70 hover:border-foreground/30"} ${bad("days") && !days.has(d) ? "!border-rose-300" : ""}`}
+-                        >
+-                          {DAY_LABELS[d]}
+-                        </button>
+-                      ))}
+-                    </div>
+-                    <p className="mt-1 text-xs font-medium text-rose-600">{err("days")}</p>
+-                  </Section>
+                 )}
+ 
+                 {repeatMode === "weekly_until" && (
+@@ -558,46 +592,71 @@ export function MentorOfferingDialog({
+                   </Section>
+                 )}
+ 
+-                <Section label="Start times (IST)" hint={repeatMode === "once" ? undefined : "These times apply to every day you picked. Need different times on different days? Publish a second session."}>
+-                  <div className="space-y-2">
+-                    {times.map((t, i) => (
+-                      <div key={i} className="flex items-center gap-2">
+-                        <input
+-                          type="time"
+-                          value={t}
+-                          onChange={(e) => setTimes((prev) => prev.map((p, idx) => (idx === i ? e.target.value : p)))}
+-                          aria-label={`Start time ${i + 1}`}
+-                          className={`${inputClass} !w-auto ${bad("times")}`}
+-                        />
+-                        <span className="text-xs text-foreground/50">{t ? formatTime12(t) : ""}</span>
+-                        {times.length > 1 && (
+-                          <button type="button" onClick={() => setTimes((prev) => prev.filter((_, idx) => idx !== i))} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70" aria-label="Remove time">
+-                            <X className="h-4 w-4" />
+-                          </button>
+-                        )}
+-                      </div>
+-                    ))}
+-                  </div>
+-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+-                    {TIME_PRESETS.map((t) => {
+-                      const on = cleanTimes.includes(t);
++                <Section
++                  label="When are you available? (IST)"
++                  hint={
++                    repeatMode === "once"
++                      ? "Students can only book a session that fits inside this time range."
++                      : "Set the hours you're free. Students can only book a session that fits inside the range for that day. Use another range if weekends differ from weekdays."
++                  }
++                >
++                  <div className="space-y-3">
++                    {windows.map((w, i) => {
++                      const slotTimes = /^\d\d:\d\d$/.test(w.start) && /^\d\d:\d\d$/.test(w.end) ? windowStartTimes(w, duration) : [];
+                       return (
+-                        <button
+-                          key={t}
+-                          type="button"
+-                          disabled={!on && times.length >= 8}
+-                          onClick={() => setTimes((prev) => (on ? (prev.filter((x) => x !== t).length ? prev.filter((x) => x !== t) : prev) : [...prev.filter(Boolean), t]))}
+-                          className={`${chipBtn(on)} disabled:opacity-40`}
+-                        >
+-                          {formatTime12(t)}
+-                        </button>
++                        <div key={w.key} className={`rounded-2xl border bg-card p-3.5 ${bad("times") ? "!border-rose-300" : "border-border"}`}>
++                          {repeatMode !== "once" && (
++                            <>
++                              <div className="grid grid-cols-7 gap-1.5">
++                                {DAY_ORDER.map((d) => (
++                                  <button
++                                    key={d}
++                                    type="button"
++                                    onClick={() => toggleWindowDay(w.key, d)}
++                                    aria-pressed={w.days.includes(d)}
++                                    className={`min-h-10 rounded-xl border text-xs font-bold transition-colors ${w.days.includes(d) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground/70 hover:border-foreground/30"}`}
++                                  >
++                                    {DAY_LABELS[d]}
++                                  </button>
++                                ))}
++                              </div>
++                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
++                                {DAY_PRESETS.map((p) => (
++                                  <button key={p.label} type="button" onClick={() => updateWindow(w.key, { days: p.days })} className={chipBtn(sameDays(w.days, p.days))}>
++                                    {p.label}
++                                  </button>
++                                ))}
++                              </div>
++                            </>
++                          )}
++                          <div className={`flex flex-wrap items-center gap-2 ${repeatMode !== "once" ? "mt-3" : ""}`}>
++                            <label className="flex items-center gap-2 text-xs font-semibold text-foreground/60">
++                              From
++                              <input type="time" value={w.start} onChange={(e) => updateWindow(w.key, { start: e.target.value })} aria-label={`Range ${i + 1} from`} className={`${inputClass} !w-auto`} />
++                            </label>
++                            <label className="flex items-center gap-2 text-xs font-semibold text-foreground/60">
++                              To
++                              <input type="time" value={w.end} onChange={(e) => updateWindow(w.key, { end: e.target.value })} aria-label={`Range ${i + 1} to`} className={`${inputClass} !w-auto`} />
++                            </label>
++                            {windows.length > 1 && (
++                              <button type="button" onClick={() => setWindows((prev) => prev.filter((x) => x.key !== w.key))} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70" aria-label="Remove time range">
++                                <X className="h-4 w-4" />
++                              </button>
++                            )}
++                          </div>
++                          <p className="mt-2 text-xs text-foreground/55">
++                            {slotTimes.length > 0
++                              ? `${slotTimes.length} ${duration}-min session${slotTimes.length === 1 ? "" : "s"} per day: ${slotTimes.map(formatTime12).join(", ")}`
++                              : "No session fits in this range yet."}
++                          </p>
++                        </div>
+                       );
+                     })}
+-                    <button type="button" onClick={() => setTimes((prev) => [...prev, ""])} disabled={times.length >= 8} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-border px-3 text-xs font-bold text-foreground/60 hover:border-foreground/40 disabled:opacity-40">
+-                      <Plus className="h-3.5 w-3.5" />
+-                      Custom
+-                    </button>
+                   </div>
++                  <button type="button" onClick={addWindow} disabled={windows.length >= MAX_WINDOWS} className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-border px-3 text-xs font-bold text-foreground/60 hover:border-foreground/40 disabled:opacity-40">
++                    <Plus className="h-3.5 w-3.5" />
++                    {repeatMode === "once" ? "Add another time range" : "Add a different time range (e.g. weekends)"}
++                  </button>
+                   <p className="mt-1 text-xs font-medium text-rose-600">{err("times")}</p>
+                 </Section>
+ 
+diff --git a/src/lib/session-rows.ts b/src/lib/session-rows.ts
+index 5e0bd2a..8e44ead 100644
+--- a/src/lib/session-rows.ts
++++ b/src/lib/session-rows.ts
+@@ -16,6 +16,7 @@ export function rowToOffering(row: any): MentorSessionOffering {
+     posterUrl: row.poster_url ?? null,
+     recurringDays: row.recurring_days,
+     startTimes: row.start_times,
++    dayWindows: Array.isArray(row.day_windows) ? row.day_windows : [],
+     dateRangeStart: row.date_range_start,
+     dateRangeEnd: row.date_range_end,
+     isOngoing: row.is_ongoing,
+diff --git a/src/lib/session-schedule.ts b/src/lib/session-schedule.ts
+index fc87b51..8db412d 100644
+--- a/src/lib/session-schedule.ts
++++ b/src/lib/session-schedule.ts
+@@ -3,13 +3,14 @@
+ // the server (which enforces the same rules, so a hand-crafted request can't
+ // get around them). Everything is India wall-clock via lib/session-time.
+ import { addDaysIso, istDateString, slotEnd, slotStart } from "@/lib/session-time";
+-import type { DayOfWeek } from "@/lib/session-types";
++import { startTimesForWeekday, type DayOfWeek, type DayWindow } from "@/lib/session-types";
+ 
+ export type ScheduleDraft = {
+   id?: string;
+   title: string;
+   recurringDays: DayOfWeek[];
+-  startTimes: string[]; // "HH:mm"
++  startTimes: string[]; // "HH:mm" (legacy fixed times; ignored when dayWindows is non-empty)
++  dayWindows?: DayWindow[]; // per-day availability ranges
+   dateRangeStart: string | null; // "YYYY-MM-DD"
+   dateRangeEnd: string | null;
+   isOngoing: boolean;
+@@ -21,24 +22,22 @@ export type DraftSlot = { date: string; startTime: string };
+ const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() as DayOfWeek;
+ 
+ /** Does this schedule produce a session on this exact date + time (ignoring "is it in the past")? */
+-export function slotMatchesSchedule(d: Pick<ScheduleDraft, "recurringDays" | "startTimes" | "dateRangeStart" | "dateRangeEnd" | "isOngoing">, date: string, time: string): boolean {
++export function slotMatchesSchedule(d: Pick<ScheduleDraft, "recurringDays" | "startTimes" | "dayWindows" | "durationMinutes" | "dateRangeStart" | "dateRangeEnd" | "isOngoing">, date: string, time: string): boolean {
+   const day = date.slice(0, 10);
+   const t = time.slice(0, 5);
+   if (d.dateRangeStart && day < d.dateRangeStart.slice(0, 10)) return false;
+   if (!d.isOngoing && d.dateRangeEnd && day > d.dateRangeEnd.slice(0, 10)) return false;
+-  if (!d.recurringDays.includes(weekdayOf(day))) return false;
+-  return d.startTimes.some((s) => s.slice(0, 5) === t);
++  return startTimesForWeekday(d, weekdayOf(day), d.durationMinutes).includes(t);
+ }
+ 
+ /** The next bookable occurrences of a schedule, soonest first. */
+ export function previewSlots(d: ScheduleDraft, opts: { limit?: number; windowDays?: number; now?: Date } = {}): DraftSlot[] {
+   const { limit = 200, windowDays = 90, now = new Date() } = opts;
+   const today = istDateString(now);
+-  const times = Array.from(new Set(d.startTimes.filter(Boolean))).sort();
+   const out: DraftSlot[] = [];
+   for (let i = 0; i < windowDays && out.length < limit; i++) {
+     const date = addDaysIso(today, i);
+-    for (const t of times) {
++    for (const t of startTimesForWeekday(d, weekdayOf(date), d.durationMinutes)) {
+       if (!slotMatchesSchedule(d, date, t)) continue;
+       if (slotStart(date, t).getTime() <= now.getTime()) continue; // already started
+       out.push({ date, startTime: t });
+diff --git a/src/lib/session-slots.ts b/src/lib/session-slots.ts
+index da257a8..23a159a 100644
+--- a/src/lib/session-slots.ts
++++ b/src/lib/session-slots.ts
+@@ -1,4 +1,4 @@
+-import type { MentorSessionOffering, OpenSlot } from "./session-types";
++import { startTimesForWeekday, type DayOfWeek, type MentorSessionOffering, type OpenSlot } from "./session-types";
+ 
+ /**
+  * Expands a recurring offering into concrete open slots over the next
+@@ -33,9 +33,12 @@ export function expandOfferingToSlots(
+ 
+     if (rangeStart && dateStr < rangeStart) continue;
+     if (rangeEnd && dateStr > rangeEnd) continue;
+-    if (!offering.recurringDays.includes(day.getUTCDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
+ 
+-    for (const startTime of offering.startTimes) {
++    // Slots come from the mentor's availability: with per-day windows only
++    // sessions that finish inside a window exist, so nothing can be booked
++    // outside the range the mentor set. Legacy offerings use fixed start times.
++    const dayStarts = startTimesForWeekday(offering, day.getUTCDay() as DayOfWeek, offering.durationMinutes);
++    for (const startTime of dayStarts) {
+       // Skip slots that have already started (start time is IST).
+       if (i === 0 && isPast(dateStr, startTime, now)) continue;
+ 
+diff --git a/src/lib/session-types.ts b/src/lib/session-types.ts
+index ef6e324..3132467 100644
+--- a/src/lib/session-types.ts
++++ b/src/lib/session-types.ts
+@@ -6,6 +6,14 @@ export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as c
+ export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+ 
+ export const DURATION_OPTIONS = [15, 30, 45, 60, 90] as const;
++/**
++ * A mentor's availability for a group of weekdays, e.g. Mon–Fri 18:00–19:00.
++ * Students can only book sessions that fit completely inside [start, end].
++ * Different day groups can have different ranges (weekdays vs. weekend), and
++ * the same weekday may appear in several windows as long as they don't overlap.
++ */
++export type DayWindow = { days: DayOfWeek[]; start: string; end: string }; // start/end are "HH:mm" IST, end > start
++
+ export type DurationMinutes = (typeof DURATION_OPTIONS)[number];
+ 
+ export type PaymentStatus = "pending" | "paid" | "free" | "failed" | "refunded";
+@@ -52,6 +60,10 @@ export type MentorSessionOffering = {
+   posterUrl?: string | null; // optional 4:5 portrait poster; shown in place of the thumbnail when set
+   recurringDays: DayOfWeek[];
+   startTimes: string[]; // "HH:mm"
++  // Per-day availability windows. When non-empty this is the source of truth
++  // for which slots exist (recurringDays/startTimes are then just a summary
++  // kept for older rows/code). Empty = legacy offering with fixed start times.
++  dayWindows: DayWindow[];
+   dateRangeStart: string | null; // ISO date
+   dateRangeEnd: string | null;
+   isOngoing: boolean;
+@@ -120,18 +132,111 @@ export type SessionRoster = {
+   students: MentorSessionBooking[];
+ };
+ 
++// ─── Availability windows ───────────────────────────────────────────────
++export const hhmmToMinutes = (t: string): number => {
++  const [h, m] = t.slice(0, 5).split(":").map(Number);
++  return h * 60 + m;
++};
++export const minutesToHhmm = (mins: number): string => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
++
++/**
++ * Bookable start times inside one window: back-to-back sessions of
++ * `durationMinutes`, and a session is only offered if it ENDS by the window's
++ * end. 18:00–19:00 with 30-min sessions → 18:00, 18:30 (never 19:00).
++ */
++export function windowStartTimes(w: { start: string; end: string }, durationMinutes: number): string[] {
++  const out: string[] = [];
++  if (!(durationMinutes > 0)) return out;
++  const end = hhmmToMinutes(w.end);
++  for (let t = hhmmToMinutes(w.start); t + durationMinutes <= end; t += durationMinutes) out.push(minutesToHhmm(t));
++  return out;
++}
++
++/** Every start time an offering has on a given weekday (sorted, unique). */
++export function startTimesForWeekday(
++  o: { recurringDays: DayOfWeek[]; startTimes: string[]; dayWindows?: DayWindow[] | null },
++  weekday: DayOfWeek,
++  durationMinutes: number,
++): string[] {
++  if (o.dayWindows && o.dayWindows.length > 0) {
++    const set = new Set<string>();
++    for (const w of o.dayWindows) if (w.days.includes(weekday)) for (const t of windowStartTimes(w, durationMinutes)) set.add(t);
++    return Array.from(set).sort();
++  }
++  return o.recurringDays.includes(weekday) ? Array.from(new Set(o.startTimes.map((t) => t.slice(0, 5)))).sort() : [];
++}
++
++/** All start times across all windows — kept in the legacy `start_times` column as a summary. */
++export function allWindowStartTimes(windows: DayWindow[], durationMinutes: number): string[] {
++  const set = new Set<string>();
++  for (const w of windows) for (const t of windowStartTimes(w, durationMinutes)) set.add(t);
++  return Array.from(set).sort();
++}
++
++export function windowDaysUnion(windows: DayWindow[]): DayOfWeek[] {
++  return Array.from(new Set(windows.flatMap((w) => w.days))).sort() as DayOfWeek[];
++}
++
++const DAY_DISPLAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0]; // Monday first
++/** "Mon–Fri", "Sat, Sun", "Mon, Wed, Fri" */
++export function formatDayGroup(days: DayOfWeek[]): string {
++  const set = new Set(days);
++  const ordered = DAY_DISPLAY_ORDER.filter((d) => set.has(d));
++  const parts: string[] = [];
++  let i = 0;
++  while (i < ordered.length) {
++    let j = i;
++    while (j + 1 < ordered.length && DAY_DISPLAY_ORDER.indexOf(ordered[j + 1]) === DAY_DISPLAY_ORDER.indexOf(ordered[j]) + 1) j++;
++    if (j - i >= 2) parts.push(`${DAY_LABELS[ordered[i]]}–${DAY_LABELS[ordered[j]]}`);
++    else for (let k = i; k <= j; k++) parts.push(DAY_LABELS[ordered[k]]);
++    i = j + 1;
++  }
++  return parts.join(", ");
++}
++
++/** Overlap between two windows on a shared weekday, or null. Used by UI + server validation. */
++export function findWindowProblem(windows: DayWindow[], durationMinutes: number): string | null {
++  for (const w of windows) {
++    if (w.days.length === 0) return "Pick at least one day for every time range.";
++    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(w.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(w.end)) return "Set a valid start and end time for every time range.";
++    const s = hhmmToMinutes(w.start);
++    const e = hhmmToMinutes(w.end);
++    if (e <= s) return `${formatTime12h(w.start)} – ${formatTime12h(w.end)}: the end time must be after the start time.`;
++    if (e - s < durationMinutes) return `${formatTime12h(w.start)} – ${formatTime12h(w.end)} is shorter than one ${durationMinutes}-minute session. Widen the range or pick a shorter duration.`;
++  }
++  for (let a = 0; a < windows.length; a++) {
++    for (let b = a + 1; b < windows.length; b++) {
++      const shared = windows[a].days.filter((d) => windows[b].days.includes(d));
++      if (shared.length === 0) continue;
++      if (hhmmToMinutes(windows[a].start) < hhmmToMinutes(windows[b].end) && hhmmToMinutes(windows[b].start) < hhmmToMinutes(windows[a].end)) {
++        return `Two time ranges overlap on ${formatDayGroup(shared)}. Make sure each day has non-overlapping ranges.`;
++      }
++    }
++  }
++  return null;
++}
++
+ // One human-readable line describing when an offering runs — "Every Mon,
+ // Wed · 5:00 PM" for a recurring one, "One-time · 3 Oct · 5:00 PM" for a
+ // single-date one — so a student can tell at a glance when the mentor is
+-// actually free, instead of reading a raw list of upcoming dates.
++// actually free, instead of reading a raw list of upcoming dates. Offerings
++// with availability windows read "Every Mon–Sun · Mon–Fri 6:00 PM – 7:00 PM,
++// Sat, Sun 10:00 AM – 12:00 PM".
+ export function describeSchedule(o: {
+   recurringDays: DayOfWeek[];
+   startTimes: string[];
++  dayWindows?: DayWindow[] | null;
+   dateRangeStart: string | null;
+   dateRangeEnd: string | null;
+   isOngoing: boolean;
+ }): string {
+-  const times = o.startTimes.map(formatTime12h).join(", ");
++  const hasWindows = !!o.dayWindows && o.dayWindows.length > 0;
++  const rangeOf = (w: DayWindow) => `${formatTime12h(w.start)} – ${formatTime12h(w.end)}`;
++  const times = hasWindows
++    ? o.dayWindows!.length === 1
++      ? rangeOf(o.dayWindows![0])
++      : o.dayWindows!.map((w) => `${formatDayGroup(w.days)} ${rangeOf(w)}`).join(", ")
++    : o.startTimes.map(formatTime12h).join(", ");
+   const isOneTime = !o.isOngoing && o.dateRangeStart && o.dateRangeEnd && o.dateRangeStart === o.dateRangeEnd;
+ 
+   if (isOneTime) {
+@@ -140,11 +245,13 @@ export function describeSchedule(o: {
+     return `One-time · ${dateLabel} · ${times}`;
+   }
+ 
+-  const dayLabels = o.recurringDays
+-    .slice()
+-    .sort()
+-    .map((d) => DAY_LABELS[d])
+-    .join(", ");
++  const dayLabels = hasWindows
++    ? formatDayGroup(windowDaysUnion(o.dayWindows!))
++    : o.recurringDays
++        .slice()
++        .sort()
++        .map((d) => DAY_LABELS[d])
++        .join(", ");
+   const until = !o.isOngoing && o.dateRangeEnd ? ` (until ${new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })})` : "";
+   return `Every ${dayLabels} · ${times}${until}`;
+ }
+diff --git a/src/server-functions/mentor-sessions.ts b/src/server-functions/mentor-sessions.ts
+index e36d7f5..80fe311 100644
+--- a/src/server-functions/mentor-sessions.ts
++++ b/src/server-functions/mentor-sessions.ts
+@@ -12,7 +12,18 @@
+ import { createServerFn } from "@tanstack/react-start";
+ import { getDb } from "@/lib/mongo";
+ import { supabase } from "@/lib/supabase";
+-import { DURATION_OPTIONS, MAX_SESSION_CAPACITY, UNLIMITED_CAPACITY, type DayOfWeek, type MentorSessionOffering, type MentorSessionBooking } from "@/lib/session-types";
++import {
++  DURATION_OPTIONS,
++  MAX_SESSION_CAPACITY,
++  UNLIMITED_CAPACITY,
++  allWindowStartTimes,
++  findWindowProblem,
++  windowDaysUnion,
++  type DayOfWeek,
++  type DayWindow,
++  type MentorSessionOffering,
++  type MentorSessionBooking,
++} from "@/lib/session-types";
+ import { cancelBookings, type BookingRow } from "@/lib/session-cancel";
+ import { istDateString, slotStart, addDaysIso, formatDateLong, formatTime12 } from "@/lib/session-time";
+ import { findScheduleConflicts, previewSlots, slotMatchesSchedule, type ScheduleDraft } from "@/lib/session-schedule";
+@@ -68,6 +79,7 @@ function rowToOffering(row: any): MentorSessionOffering {
+     posterUrl: row.poster_url ?? null,
+     recurringDays: row.recurring_days,
+     startTimes: row.start_times,
++    dayWindows: Array.isArray(row.day_windows) ? row.day_windows : [],
+     dateRangeStart: row.date_range_start,
+     dateRangeEnd: row.date_range_end,
+     isOngoing: row.is_ongoing,
+@@ -136,6 +148,10 @@ type OfferingInput = {
+   posterUrl?: string | null;
+   recurringDays: DayOfWeek[];
+   startTimes: string[];
++  // Per-day availability ranges (e.g. Mon–Fri 18:00–19:00, Sat–Sun 10:00–12:00).
++  // When given, these decide which slots students can book; recurringDays and
++  // startTimes are derived from them.
++  dayWindows?: DayWindow[];
+   dateRangeStart: string | null;
+   dateRangeEnd: string | null;
+   isOngoing: boolean;
+@@ -165,13 +181,34 @@ function normalizeOfferingInput(d: OfferingInput) {
+     throw new Error("Set a price as a whole number of rupees between ₹1 and ₹50,000, or mark this session free.");
+   }
+ 
+-  const recurringDays = Array.from(new Set(d.recurringDays)).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).sort() as DayOfWeek[];
+-  if (recurringDays.length === 0) throw new Error("Pick at least one day.");
+-
+-  const startTimes = Array.from(new Set(d.startTimes.map((t) => t.trim()).filter(Boolean))).sort();
+-  if (startTimes.length === 0) throw new Error("Add at least one start time.");
+-  if (startTimes.length > 8) throw new Error("Up to 8 start times per session. Publish a second offering for more.");
+-  for (const t of startTimes) if (!HHMM.test(t)) throw new Error(`"${t}" isn't a valid time.`);
++  let recurringDays: DayOfWeek[];
++  let startTimes: string[];
++  let dayWindows: DayWindow[] = [];
++
++  if (Array.isArray(d.dayWindows) && d.dayWindows.length > 0) {
++    // Availability windows: the mentor says "I'm free 6–7 PM Mon–Fri and
++    // 10 AM–12 PM on weekends"; students can only book sessions that fit
++    // entirely inside those ranges.
++    if (d.dayWindows.length > 10) throw new Error("Up to 10 time ranges per session.");
++    dayWindows = d.dayWindows.map((w) => ({
++      days: Array.from(new Set((w.days ?? []).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6))).sort() as DayOfWeek[],
++      start: String(w.start ?? "").trim(),
++      end: String(w.end ?? "").trim(),
++    }));
++    const problem = findWindowProblem(dayWindows, d.durationMinutes);
++    if (problem) throw new Error(problem);
++    recurringDays = windowDaysUnion(dayWindows);
++    startTimes = allWindowStartTimes(dayWindows, d.durationMinutes);
++    if (startTimes.length === 0) throw new Error("Those time ranges don't fit a single session. Widen the range or pick a shorter duration.");
++  } else {
++    recurringDays = Array.from(new Set(d.recurringDays)).filter((x) => Number.isInteger(x) && x >= 0 && x <= 6).sort() as DayOfWeek[];
++    if (recurringDays.length === 0) throw new Error("Pick at least one day.");
++
++    startTimes = Array.from(new Set(d.startTimes.map((t) => t.trim()).filter(Boolean))).sort();
++    if (startTimes.length === 0) throw new Error("Add at least one start time.");
++    if (startTimes.length > 8) throw new Error("Up to 8 start times per session. Publish a second offering for more.");
++    for (const t of startTimes) if (!HHMM.test(t)) throw new Error(`"${t}" isn't a valid time.`);
++  }
+ 
+   for (const x of [d.dateRangeStart, d.dateRangeEnd]) {
+     if (x && (!ISO_DATE.test(x) || Number.isNaN(new Date(`${x}T00:00:00Z`).getTime()))) throw new Error("One of the dates isn't valid.");
+@@ -198,17 +235,26 @@ function normalizeOfferingInput(d: OfferingInput) {
+     capacity: d.capacity,
+     recurringDays,
+     startTimes,
++    dayWindows,
+     dateRangeStart: d.dateRangeStart,
+     dateRangeEnd: d.isOngoing ? null : d.dateRangeEnd,
+     isOngoing: d.isOngoing,
+   };
+ }
+ 
++// The per-day availability feature needs the `day_windows` column
++// (sql/003_session_day_windows.sql). Say so plainly if it hasn't been added.
++function dbErrorMessage(message: string) {
++  if (/day_windows/i.test(message)) return "Per-day time ranges need a one-time database update (sql/003_session_day_windows.sql). Ask your developer to run it, then try again.";
++  return message;
++}
++
+ const toDraft = (n: ReturnType<typeof normalizeOfferingInput>, id?: string): ScheduleDraft => ({
+   id,
+   title: n.title,
+   recurringDays: n.recurringDays,
+   startTimes: n.startTimes,
++  dayWindows: n.dayWindows,
+   dateRangeStart: n.dateRangeStart,
+   dateRangeEnd: n.dateRangeEnd,
+   isOngoing: n.isOngoing,
+@@ -228,6 +274,7 @@ async function assertNoScheduleConflict(mentorId: string, draft: ScheduleDraft)
+       title: o.title,
+       recurringDays: o.recurringDays,
+       startTimes: o.startTimes,
++      dayWindows: o.dayWindows,
+       dateRangeStart: o.dateRangeStart,
+       dateRangeEnd: o.dateRangeEnd,
+       isOngoing: o.isOngoing,
+@@ -267,6 +314,7 @@ export const createOffering = createServerFn({ method: "POST" })
+         ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
+         recurring_days: n.recurringDays,
+         start_times: n.startTimes,
++        ...(n.dayWindows.length > 0 ? { day_windows: n.dayWindows } : {}),
+         date_range_start: n.dateRangeStart,
+         date_range_end: n.dateRangeEnd,
+         is_ongoing: n.isOngoing,
+@@ -276,7 +324,7 @@ export const createOffering = createServerFn({ method: "POST" })
+       })
+       .select()
+       .single();
+-    if (error) throw new Error(error.message);
++    if (error) throw new Error(dbErrorMessage(error.message));
+     return { offering: rowToOffering(row) };
+   });
+ 
+@@ -350,6 +398,7 @@ export const updateOffering = createServerFn({ method: "POST" })
+         ...(data.posterUrl !== undefined ? { poster_url: data.posterUrl } : {}),
+         recurring_days: n.recurringDays,
+         start_times: n.startTimes,
++        day_windows: n.dayWindows,
+         date_range_start: n.dateRangeStart,
+         date_range_end: n.dateRangeEnd,
+         is_ongoing: n.isOngoing,
+@@ -359,7 +408,7 @@ export const updateOffering = createServerFn({ method: "POST" })
+       })
+       .eq("id", data.offeringId)
+       .eq("mentor_id", mentorId); // ownership check, not just an id match
+-    if (error) throw new Error(error.message);
++    if (error) throw new Error(dbErrorMessage(error.message));
+     return { ok: true };
+   });
+ 
+@@ -373,7 +422,7 @@ export const setOfferingActive = createServerFn({ method: "POST" })
+       if (rowErr) throw new Error(rowErr.message);
+       if (!row) throw new Error("Offering not found.");
+       const o = rowToOffering(row);
+-      const draft: ScheduleDraft = { id: o.id, title: o.title, recurringDays: o.recurringDays, startTimes: o.startTimes, dateRangeStart: o.dateRangeStart, dateRangeEnd: o.dateRangeEnd, isOngoing: o.isOngoing, durationMinutes: o.durationMinutes };
++      const draft: ScheduleDraft = { id: o.id, title: o.title, recurringDays: o.recurringDays, startTimes: o.startTimes, dayWindows: o.dayWindows, dateRangeStart: o.dateRangeStart, dateRangeEnd: o.dateRangeEnd, isOngoing: o.isOngoing, durationMinutes: o.durationMinutes };
+       await assertNoScheduleConflict(mentorId, draft);
+     }
+     const { error } = await sb

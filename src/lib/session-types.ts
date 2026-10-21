@@ -6,6 +6,14 @@ export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as c
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export const DURATION_OPTIONS = [15, 30, 45, 60, 90] as const;
+/**
+ * A mentor's availability for a group of weekdays, e.g. Mon–Fri 18:00–19:00.
+ * Students can only book sessions that fit completely inside [start, end].
+ * Different day groups can have different ranges (weekdays vs. weekend), and
+ * the same weekday may appear in several windows as long as they don't overlap.
+ */
+export type DayWindow = { days: DayOfWeek[]; start: string; end: string }; // start/end are "HH:mm" IST, end > start
+
 export type DurationMinutes = (typeof DURATION_OPTIONS)[number];
 
 export type PaymentStatus = "pending" | "paid" | "free" | "failed" | "refunded";
@@ -52,6 +60,10 @@ export type MentorSessionOffering = {
   posterUrl?: string | null; // optional 4:5 portrait poster; shown in place of the thumbnail when set
   recurringDays: DayOfWeek[];
   startTimes: string[]; // "HH:mm"
+  // Per-day availability windows. When non-empty this is the source of truth
+  // for which slots exist (recurringDays/startTimes are then just a summary
+  // kept for older rows/code). Empty = legacy offering with fixed start times.
+  dayWindows: DayWindow[];
   dateRangeStart: string | null; // ISO date
   dateRangeEnd: string | null;
   isOngoing: boolean;
@@ -120,18 +132,111 @@ export type SessionRoster = {
   students: MentorSessionBooking[];
 };
 
+// ─── Availability windows ───────────────────────────────────────────────
+export const hhmmToMinutes = (t: string): number => {
+  const [h, m] = t.slice(0, 5).split(":").map(Number);
+  return h * 60 + m;
+};
+export const minutesToHhmm = (mins: number): string => `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+
+/**
+ * Bookable start times inside one window: back-to-back sessions of
+ * `durationMinutes`, and a session is only offered if it ENDS by the window's
+ * end. 18:00–19:00 with 30-min sessions → 18:00, 18:30 (never 19:00).
+ */
+export function windowStartTimes(w: { start: string; end: string }, durationMinutes: number): string[] {
+  const out: string[] = [];
+  if (!(durationMinutes > 0)) return out;
+  const end = hhmmToMinutes(w.end);
+  for (let t = hhmmToMinutes(w.start); t + durationMinutes <= end; t += durationMinutes) out.push(minutesToHhmm(t));
+  return out;
+}
+
+/** Every start time an offering has on a given weekday (sorted, unique). */
+export function startTimesForWeekday(
+  o: { recurringDays: DayOfWeek[]; startTimes: string[]; dayWindows?: DayWindow[] | null },
+  weekday: DayOfWeek,
+  durationMinutes: number,
+): string[] {
+  if (o.dayWindows && o.dayWindows.length > 0) {
+    const set = new Set<string>();
+    for (const w of o.dayWindows) if (w.days.includes(weekday)) for (const t of windowStartTimes(w, durationMinutes)) set.add(t);
+    return Array.from(set).sort();
+  }
+  return o.recurringDays.includes(weekday) ? Array.from(new Set(o.startTimes.map((t) => t.slice(0, 5)))).sort() : [];
+}
+
+/** All start times across all windows — kept in the legacy `start_times` column as a summary. */
+export function allWindowStartTimes(windows: DayWindow[], durationMinutes: number): string[] {
+  const set = new Set<string>();
+  for (const w of windows) for (const t of windowStartTimes(w, durationMinutes)) set.add(t);
+  return Array.from(set).sort();
+}
+
+export function windowDaysUnion(windows: DayWindow[]): DayOfWeek[] {
+  return Array.from(new Set(windows.flatMap((w) => w.days))).sort() as DayOfWeek[];
+}
+
+const DAY_DISPLAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0]; // Monday first
+/** "Mon–Fri", "Sat, Sun", "Mon, Wed, Fri" */
+export function formatDayGroup(days: DayOfWeek[]): string {
+  const set = new Set(days);
+  const ordered = DAY_DISPLAY_ORDER.filter((d) => set.has(d));
+  const parts: string[] = [];
+  let i = 0;
+  while (i < ordered.length) {
+    let j = i;
+    while (j + 1 < ordered.length && DAY_DISPLAY_ORDER.indexOf(ordered[j + 1]) === DAY_DISPLAY_ORDER.indexOf(ordered[j]) + 1) j++;
+    if (j - i >= 2) parts.push(`${DAY_LABELS[ordered[i]]}–${DAY_LABELS[ordered[j]]}`);
+    else for (let k = i; k <= j; k++) parts.push(DAY_LABELS[ordered[k]]);
+    i = j + 1;
+  }
+  return parts.join(", ");
+}
+
+/** Overlap between two windows on a shared weekday, or null. Used by UI + server validation. */
+export function findWindowProblem(windows: DayWindow[], durationMinutes: number): string | null {
+  for (const w of windows) {
+    if (w.days.length === 0) return "Pick at least one day for every time range.";
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(w.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(w.end)) return "Set a valid start and end time for every time range.";
+    const s = hhmmToMinutes(w.start);
+    const e = hhmmToMinutes(w.end);
+    if (e <= s) return `${formatTime12h(w.start)} – ${formatTime12h(w.end)}: the end time must be after the start time.`;
+    if (e - s < durationMinutes) return `${formatTime12h(w.start)} – ${formatTime12h(w.end)} is shorter than one ${durationMinutes}-minute session. Widen the range or pick a shorter duration.`;
+  }
+  for (let a = 0; a < windows.length; a++) {
+    for (let b = a + 1; b < windows.length; b++) {
+      const shared = windows[a].days.filter((d) => windows[b].days.includes(d));
+      if (shared.length === 0) continue;
+      if (hhmmToMinutes(windows[a].start) < hhmmToMinutes(windows[b].end) && hhmmToMinutes(windows[b].start) < hhmmToMinutes(windows[a].end)) {
+        return `Two time ranges overlap on ${formatDayGroup(shared)}. Make sure each day has non-overlapping ranges.`;
+      }
+    }
+  }
+  return null;
+}
+
 // One human-readable line describing when an offering runs — "Every Mon,
 // Wed · 5:00 PM" for a recurring one, "One-time · 3 Oct · 5:00 PM" for a
 // single-date one — so a student can tell at a glance when the mentor is
-// actually free, instead of reading a raw list of upcoming dates.
+// actually free, instead of reading a raw list of upcoming dates. Offerings
+// with availability windows read "Every Mon–Sun · Mon–Fri 6:00 PM – 7:00 PM,
+// Sat, Sun 10:00 AM – 12:00 PM".
 export function describeSchedule(o: {
   recurringDays: DayOfWeek[];
   startTimes: string[];
+  dayWindows?: DayWindow[] | null;
   dateRangeStart: string | null;
   dateRangeEnd: string | null;
   isOngoing: boolean;
 }): string {
-  const times = o.startTimes.map(formatTime12h).join(", ");
+  const hasWindows = !!o.dayWindows && o.dayWindows.length > 0;
+  const rangeOf = (w: DayWindow) => `${formatTime12h(w.start)} – ${formatTime12h(w.end)}`;
+  const times = hasWindows
+    ? o.dayWindows!.length === 1
+      ? rangeOf(o.dayWindows![0])
+      : o.dayWindows!.map((w) => `${formatDayGroup(w.days)} ${rangeOf(w)}`).join(", ")
+    : o.startTimes.map(formatTime12h).join(", ");
   const isOneTime = !o.isOngoing && o.dateRangeStart && o.dateRangeEnd && o.dateRangeStart === o.dateRangeEnd;
 
   if (isOneTime) {
@@ -140,11 +245,13 @@ export function describeSchedule(o: {
     return `One-time · ${dateLabel} · ${times}`;
   }
 
-  const dayLabels = o.recurringDays
-    .slice()
-    .sort()
-    .map((d) => DAY_LABELS[d])
-    .join(", ");
+  const dayLabels = hasWindows
+    ? formatDayGroup(windowDaysUnion(o.dayWindows!))
+    : o.recurringDays
+        .slice()
+        .sort()
+        .map((d) => DAY_LABELS[d])
+        .join(", ");
   const until = !o.isOngoing && o.dateRangeEnd ? ` (until ${new Date(o.dateRangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })})` : "";
   return `Every ${dayLabels} · ${times}${until}`;
 }

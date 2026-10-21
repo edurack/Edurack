@@ -1,4 +1,4 @@
-import type { MentorSessionOffering, OpenSlot } from "./session-types";
+import { startTimesForWeekday, type DayOfWeek, type MentorSessionOffering, type OpenSlot } from "./session-types";
 
 /**
  * Expands a recurring offering into concrete open slots over the next
@@ -33,9 +33,12 @@ export function expandOfferingToSlots(
 
     if (rangeStart && dateStr < rangeStart) continue;
     if (rangeEnd && dateStr > rangeEnd) continue;
-    if (!offering.recurringDays.includes(day.getUTCDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
 
-    for (const startTime of offering.startTimes) {
+    // Slots come from the mentor's availability: with per-day windows only
+    // sessions that finish inside a window exist, so nothing can be booked
+    // outside the range the mentor set. Legacy offerings use fixed start times.
+    const dayStarts = startTimesForWeekday(offering, day.getUTCDay() as DayOfWeek, offering.durationMinutes);
+    for (const startTime of dayStarts) {
       // Skip slots that have already started (start time is IST).
       if (i === 0 && isPast(dateStr, startTime, now)) continue;
 

@@ -31,7 +31,14 @@ import {
   formatForOffering,
   splitSessionPrice,
   SESSION_PLATFORM_COMMISSION_PERCENT,
+  allWindowStartTimes,
+  findWindowProblem,
+  hhmmToMinutes,
+  minutesToHhmm,
+  windowDaysUnion,
+  windowStartTimes,
   type DayOfWeek,
+  type DayWindow,
   type MentorSessionOffering,
   type PublicMentorOffering,
   type SessionFormat,
@@ -42,13 +49,24 @@ import { SessionArtworkField, inputClass, textareaClass } from "@/components/men
 import { FormatBadge, MentorAvatar, SessionCover, formatLabel, inr, priceLabel } from "@/components/sessions/session-ui";
 
 type RepeatMode = "once" | "weekly_until" | "weekly_ongoing";
-type FieldErrors = Partial<Record<"title" | "price" | "capacity" | "date" | "endDate" | "days" | "times" | "schedule", string>>;
+type FieldErrors = Partial<Record<"title" | "price" | "capacity" | "date" | "endDate" | "times" | "schedule", string>>;
 
 const STEPS = ["Basics", "Format & price", "Schedule"] as const;
 const SUBJECT_SUGGESTIONS = ["Physics", "Chemistry", "Biology", "Maths", "Strategy", "Admissions"];
-const TIME_PRESETS = ["06:00", "08:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 const PRICE_PRESETS = [199, 299, 499, 999];
 const DAY_ORDER: DayOfWeek[] = [1, 2, 3, 4, 5, 6, 0]; // Monday first
+const MAX_WINDOWS = 10;
+const DAY_PRESETS: { label: string; days: DayOfWeek[] }[] = [
+  { label: "Mon–Fri", days: [1, 2, 3, 4, 5] },
+  { label: "Sat–Sun", days: [6, 0] },
+  { label: "Every day", days: [0, 1, 2, 3, 4, 5, 6] },
+];
+
+// One editable availability row: a group of days sharing a from–to range.
+type WindowRow = { key: number; days: DayOfWeek[]; start: string; end: string };
+let windowKeySeq = 0;
+const newKey = () => ++windowKeySeq;
+const sameDays = (a: DayOfWeek[], b: DayOfWeek[]) => a.length === b.length && a.every((d) => b.includes(d));
 
 const FORMATS: { key: SessionFormat; icon: typeof User; title: string; desc: string }[] = [
   { key: "one_on_one", icon: User, title: "One student", desc: "A private 1:1 with you" },
@@ -118,8 +136,22 @@ export function MentorOfferingDialog({
   const [repeatMode, setRepeatMode] = useState<RepeatMode>(!editing ? "once" : editing.isOngoing ? "weekly_ongoing" : isEditedOneTime ? "once" : "weekly_until");
   const [onceDate, setOnceDate] = useState(isEditedOneTime ? (editing!.dateRangeStart as string).slice(0, 10) : "");
   const [endDate, setEndDate] = useState(editing && !editing.isOngoing && !isEditedOneTime ? (editing.dateRangeEnd ?? "").slice(0, 10) : "");
-  const [days, setDays] = useState<Set<DayOfWeek>>(new Set(editing?.recurringDays ?? []));
-  const [times, setTimes] = useState<string[]>(editing?.startTimes?.length ? editing.startTimes : ["18:00"]);
+  // Availability: each row is a group of days + a from–to range. Students can
+  // only book sessions that fit completely inside a range. Offerings saved
+  // before ranges existed (fixed start times) open as one range per start time,
+  // which produces exactly the same slots.
+  const [windows, setWindows] = useState<WindowRow[]>(() => {
+    if (editing?.dayWindows?.length) return editing.dayWindows.map((w) => ({ key: newKey(), days: [...w.days], start: w.start, end: w.end }));
+    if (editing?.startTimes?.length) {
+      return editing.startTimes.map((t) => ({
+        key: newKey(),
+        days: [...editing.recurringDays],
+        start: t.slice(0, 5),
+        end: minutesToHhmm(Math.min(hhmmToMinutes(t) + editing.durationMinutes, 23 * 60 + 59)),
+      }));
+    }
+    return [{ key: newKey(), days: [], start: "18:00", end: "19:00" }];
+  });
 
   // Default the thumbnail to the mentor's profile photo (new offerings only —
   // when editing, an empty thumbnail is a deliberate choice).
@@ -138,8 +170,8 @@ export function MentorOfferingDialog({
     if (format === "open_unlimited") setIsFree(true);
   }, [format]);
 
-  const initialSnapshot = useMemo(() => JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, days: Array.from(days).sort(), times }), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const snapshot = JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, days: Array.from(days).sort(), times });
+  const initialSnapshot = useMemo(() => JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, windows: windows.map(({ days, start, end }) => ({ days: [...days].sort(), start, end })) }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const snapshot = JSON.stringify({ title, description, subject, thumbnailUrl, posterUrl, format, groupCapacity, duration, isFree, price, repeatMode, onceDate, endDate, windows: windows.map(({ days, start, end }) => ({ days: [...days].sort(), start, end })) });
   const dirty = snapshot !== initialSnapshot;
 
   function requestClose() {
@@ -160,23 +192,29 @@ export function MentorOfferingDialog({
   const capacity = format === "one_on_one" ? 1 : format === "open_unlimited" ? UNLIMITED_CAPACITY : Math.max(2, Math.min(MAX_SESSION_CAPACITY, groupCapacity));
   const free = format === "open_unlimited" ? true : isFree;
   const priceNum = Number(price);
-  const cleanTimes = useMemo(() => Array.from(new Set(times.filter(Boolean))).sort(), [times]);
+  // The ranges as they'll be saved. A one-off session has a single date, so
+  // every range simply applies to that date's weekday.
+  const effectiveWindows = useMemo<DayWindow[]>(
+    () => windows.map((w) => ({ days: repeatMode === "once" ? (onceDate ? [weekdayOf(onceDate)] : []) : [...w.days].sort((a, b) => a - b) as DayOfWeek[], start: w.start, end: w.end })),
+    [windows, repeatMode, onceDate],
+  );
+  const cleanTimes = useMemo(() => allWindowStartTimes(effectiveWindows.filter((w) => /^\d\d:\d\d$/.test(w.start) && /^\d\d:\d\d$/.test(w.end)), duration), [effectiveWindows, duration]);
 
   // What the schedule means as concrete dates, for preview + overlap checks.
   const draft = useMemo<ScheduleDraft>(() => {
-    const base = { id: editing?.id, title: title || "This session", startTimes: cleanTimes, durationMinutes: duration };
+    const base = { id: editing?.id, title: title || "This session", startTimes: cleanTimes, dayWindows: effectiveWindows, durationMinutes: duration };
     if (repeatMode === "once") {
       return { ...base, recurringDays: onceDate ? [weekdayOf(onceDate)] : [], dateRangeStart: onceDate || null, dateRangeEnd: onceDate || null, isOngoing: false };
     }
     return {
       ...base,
-      recurringDays: Array.from(days),
+      recurringDays: windowDaysUnion(effectiveWindows),
       dateRangeStart: null,
       dateRangeEnd: repeatMode === "weekly_until" ? endDate || null : null,
       // Until an end date is chosen, preview it as open-ended rather than empty.
       isOngoing: repeatMode === "weekly_ongoing" || !endDate,
     };
-  }, [repeatMode, onceDate, endDate, days, cleanTimes, duration, title, editing?.id]);
+  }, [repeatMode, onceDate, endDate, effectiveWindows, cleanTimes, duration, title, editing?.id]);
 
   const upcomingSlots = useMemo(() => previewSlots(draft, { windowDays: 366 }), [draft]);
   const conflicts = useMemo(() => {
@@ -187,6 +225,7 @@ export function MentorOfferingDialog({
         title: o.title,
         recurringDays: o.recurringDays,
         startTimes: o.startTimes,
+        dayWindows: o.dayWindows,
         dateRangeStart: o.dateRangeStart,
         dateRangeEnd: o.dateRangeEnd,
         isOngoing: o.isOngoing,
@@ -206,19 +245,20 @@ export function MentorOfferingDialog({
       if (!onceDate) e.date = "Pick a date.";
       else if (onceDate < today) e.date = "That date has already passed.";
     } else {
-      if (days.size === 0) e.days = "Pick at least one day.";
       if (repeatMode === "weekly_until") {
         if (!endDate) e.endDate = "Pick an end date, or choose “Weekly, ongoing”.";
         else if (endDate < today) e.endDate = "That date has already passed.";
       }
     }
-    if (cleanTimes.length === 0) e.times = "Add at least one start time.";
-    if (!e.date && !e.days && !e.endDate && !e.times && upcomingSlots.length === 0) e.schedule = "That schedule has no upcoming dates. Pick a date and time that hasn't passed yet.";
+    // Every range needs days, a valid from–to, no overlaps, and room for at least one session.
+    const windowProblem = repeatMode === "once" && !onceDate ? null : findWindowProblem(effectiveWindows, duration);
+    if (windowProblem) e.times = windowProblem;
+    if (!e.date && !e.endDate && !e.times && upcomingSlots.length === 0) e.schedule = "That schedule has no upcoming dates. Pick a date and time that hasn't passed yet.";
     if (conflicts.length > 0) e.schedule = `Overlaps with “${conflicts[0].otherTitle}” on ${formatDateLong(conflicts[0].date)} at ${formatTime12(conflicts[0].startTime)} IST. You can't run two sessions at once.`;
     return e;
-  }, [title, free, priceNum, format, groupCapacity, repeatMode, onceDate, endDate, days, cleanTimes, upcomingSlots.length, conflicts, today]);
+  }, [title, free, priceNum, format, groupCapacity, repeatMode, onceDate, endDate, effectiveWindows, duration, upcomingSlots.length, conflicts, today]);
 
-  const stepOf: Record<keyof FieldErrors, number> = { title: 0, price: 1, capacity: 1, date: 2, endDate: 2, days: 2, times: 2, schedule: 2 };
+  const stepOf: Record<keyof FieldErrors, number> = { title: 0, price: 1, capacity: 1, date: 2, endDate: 2, times: 2, schedule: 2 };
   const errorSteps = new Set((Object.keys(errors) as (keyof FieldErrors)[]).map((k) => stepOf[k]));
 
   function goNext() {
@@ -253,8 +293,9 @@ export function MentorOfferingDialog({
         // Only sent when it changed, so saving still works on databases where
         // the poster_url column hasn't been added yet.
         ...((editing ? posterUrl !== (editing.posterUrl ?? "") : !!posterUrl.trim()) ? { posterUrl: posterUrl.trim() || null } : {}),
-        recurringDays: repeatMode === "once" ? [weekdayOf(onceDate)] : Array.from(days),
-        startTimes: cleanTimes,
+        recurringDays: windowDaysUnion(effectiveWindows),
+        startTimes: cleanTimes, // summary only — the server derives it from dayWindows
+        dayWindows: effectiveWindows,
         dateRangeStart: repeatMode === "once" ? onceDate : null,
         dateRangeEnd: repeatMode === "once" ? onceDate : repeatMode === "weekly_until" ? endDate || null : null,
         isOngoing: repeatMode === "weekly_ongoing",
@@ -268,6 +309,23 @@ export function MentorOfferingDialog({
       setServerError(err instanceof Error ? err.message : "Couldn't save this session. Please try again.");
       setSubmitting(false);
     }
+  }
+
+  function updateWindow(key: number, patch: Partial<Pick<WindowRow, "days" | "start" | "end">>) {
+    setWindows((prev) => prev.map((w) => (w.key === key ? { ...w, ...patch } : w)));
+  }
+  function toggleWindowDay(key: number, d: DayOfWeek) {
+    setWindows((prev) => prev.map((w) => (w.key === key ? { ...w, days: w.days.includes(d) ? w.days.filter((x) => x !== d) : [...w.days, d] } : w)));
+  }
+  function addWindow() {
+    setWindows((prev) => {
+      if (prev.length >= MAX_WINDOWS) return prev;
+      // Pre-select the days no other range uses yet — the usual "weekdays, then weekend" case.
+      const used = new Set(prev.flatMap((w) => w.days));
+      const free = DAY_ORDER.filter((d) => !used.has(d));
+      const last = prev[prev.length - 1];
+      return [...prev, { key: newKey(), days: free, start: last?.start ?? "10:00", end: last?.end ?? "12:00" }];
+    });
   }
 
   const err = (k: keyof FieldErrors) => (showErrors && errors[k] ? errors[k] : null);
@@ -520,34 +578,10 @@ export function MentorOfferingDialog({
                   </div>
                 </Section>
 
-                {repeatMode === "once" ? (
+                {repeatMode === "once" && (
                   <Section label="Date">
                     <input type="date" value={onceDate} min={today} onChange={(e) => setOnceDate(e.target.value)} aria-label="Date" className={`${inputClass} sm:max-w-xs ${bad("date")}`} />
                     <p className="mt-1 text-xs font-medium text-rose-600">{err("date")}</p>
-                  </Section>
-                ) : (
-                  <Section label="Which days?">
-                    <div className="grid grid-cols-7 gap-1.5">
-                      {DAY_ORDER.map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() =>
-                            setDays((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(d)) next.delete(d);
-                              else next.add(d);
-                              return next;
-                            })
-                          }
-                          aria-pressed={days.has(d)}
-                          className={`min-h-11 rounded-xl border text-xs font-bold transition-colors ${days.has(d) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground/70 hover:border-foreground/30"} ${bad("days") && !days.has(d) ? "!border-rose-300" : ""}`}
-                        >
-                          {DAY_LABELS[d]}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="mt-1 text-xs font-medium text-rose-600">{err("days")}</p>
                   </Section>
                 )}
 
@@ -558,46 +592,71 @@ export function MentorOfferingDialog({
                   </Section>
                 )}
 
-                <Section label="Start times (IST)" hint={repeatMode === "once" ? undefined : "These times apply to every day you picked. Need different times on different days? Publish a second session."}>
-                  <div className="space-y-2">
-                    {times.map((t, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          value={t}
-                          onChange={(e) => setTimes((prev) => prev.map((p, idx) => (idx === i ? e.target.value : p)))}
-                          aria-label={`Start time ${i + 1}`}
-                          className={`${inputClass} !w-auto ${bad("times")}`}
-                        />
-                        <span className="text-xs text-foreground/50">{t ? formatTime12(t) : ""}</span>
-                        {times.length > 1 && (
-                          <button type="button" onClick={() => setTimes((prev) => prev.filter((_, idx) => idx !== i))} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70" aria-label="Remove time">
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {TIME_PRESETS.map((t) => {
-                      const on = cleanTimes.includes(t);
+                <Section
+                  label="When are you available? (IST)"
+                  hint={
+                    repeatMode === "once"
+                      ? "Students can only book a session that fits inside this time range."
+                      : "Set the hours you're free. Students can only book a session that fits inside the range for that day. Use another range if weekends differ from weekdays."
+                  }
+                >
+                  <div className="space-y-3">
+                    {windows.map((w, i) => {
+                      const slotTimes = /^\d\d:\d\d$/.test(w.start) && /^\d\d:\d\d$/.test(w.end) ? windowStartTimes(w, duration) : [];
                       return (
-                        <button
-                          key={t}
-                          type="button"
-                          disabled={!on && times.length >= 8}
-                          onClick={() => setTimes((prev) => (on ? (prev.filter((x) => x !== t).length ? prev.filter((x) => x !== t) : prev) : [...prev.filter(Boolean), t]))}
-                          className={`${chipBtn(on)} disabled:opacity-40`}
-                        >
-                          {formatTime12(t)}
-                        </button>
+                        <div key={w.key} className={`rounded-2xl border bg-card p-3.5 ${bad("times") ? "!border-rose-300" : "border-border"}`}>
+                          {repeatMode !== "once" && (
+                            <>
+                              <div className="grid grid-cols-7 gap-1.5">
+                                {DAY_ORDER.map((d) => (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => toggleWindowDay(w.key, d)}
+                                    aria-pressed={w.days.includes(d)}
+                                    className={`min-h-10 rounded-xl border text-xs font-bold transition-colors ${w.days.includes(d) ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-foreground/70 hover:border-foreground/30"}`}
+                                  >
+                                    {DAY_LABELS[d]}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                {DAY_PRESETS.map((p) => (
+                                  <button key={p.label} type="button" onClick={() => updateWindow(w.key, { days: p.days })} className={chipBtn(sameDays(w.days, p.days))}>
+                                    {p.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                          <div className={`flex flex-wrap items-center gap-2 ${repeatMode !== "once" ? "mt-3" : ""}`}>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-foreground/60">
+                              From
+                              <input type="time" value={w.start} onChange={(e) => updateWindow(w.key, { start: e.target.value })} aria-label={`Range ${i + 1} from`} className={`${inputClass} !w-auto`} />
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-foreground/60">
+                              To
+                              <input type="time" value={w.end} onChange={(e) => updateWindow(w.key, { end: e.target.value })} aria-label={`Range ${i + 1} to`} className={`${inputClass} !w-auto`} />
+                            </label>
+                            {windows.length > 1 && (
+                              <button type="button" onClick={() => setWindows((prev) => prev.filter((x) => x.key !== w.key))} className="ml-auto grid h-8 w-8 place-items-center rounded-full text-foreground/40 hover:bg-foreground/5 hover:text-foreground/70" aria-label="Remove time range">
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-2 text-xs text-foreground/55">
+                            {slotTimes.length > 0
+                              ? `${slotTimes.length} ${duration}-min session${slotTimes.length === 1 ? "" : "s"} per day: ${slotTimes.map(formatTime12).join(", ")}`
+                              : "No session fits in this range yet."}
+                          </p>
+                        </div>
                       );
                     })}
-                    <button type="button" onClick={() => setTimes((prev) => [...prev, ""])} disabled={times.length >= 8} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-border px-3 text-xs font-bold text-foreground/60 hover:border-foreground/40 disabled:opacity-40">
-                      <Plus className="h-3.5 w-3.5" />
-                      Custom
-                    </button>
                   </div>
+                  <button type="button" onClick={addWindow} disabled={windows.length >= MAX_WINDOWS} className="mt-2 inline-flex min-h-9 items-center gap-1 rounded-full border border-dashed border-border px-3 text-xs font-bold text-foreground/60 hover:border-foreground/40 disabled:opacity-40">
+                    <Plus className="h-3.5 w-3.5" />
+                    {repeatMode === "once" ? "Add another time range" : "Add a different time range (e.g. weekends)"}
+                  </button>
                   <p className="mt-1 text-xs font-medium text-rose-600">{err("times")}</p>
                 </Section>
 
