@@ -3,11 +3,11 @@
 // them and takes the student to checkout. While no plan is published nothing is limited and the builder is open to all.
 import { useCallback, useEffect, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { Lock, Sparkles, Timer } from "lucide-react";
+import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
-import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, drillsLeft, type CustomDrillInput, type DrillAccess, type ProPlanPublic } from "@/lib/pro";
+import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
 import type { Difficulty, PyqTree } from "@/lib/pyq-types";
 
@@ -26,10 +26,48 @@ function loadRazorpayScript(): Promise<void> {
   });
 }
 
+const ProTag = () => <span className="rounded-full bg-[var(--sky-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--sky-deep)]">Pro</span>;
+
+// One number with a caption, for the drill facts grid.
+function Fact({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div className="clay-inset rounded-xl px-3 py-2.5">
+      <p className="font-display text-lg font-bold leading-tight text-foreground">{value}</p>
+      <p className="text-[11px] leading-snug text-foreground/55">{label}</p>
+    </div>
+  );
+}
+
 const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
-function UpgradePanel({ user, plans, onPurchased, headline }: { user: LauncherUser; plans: ProPlanPublic[]; onPurchased: () => Promise<void>; headline: string }) {
+// The always-visible Edurack Pro card: what Pro includes, where this student stands, and (for students
+// who don't have it yet and when plans are on sale) the buy buttons. `canBuy` false = show the features only.
+function UpgradePanel({
+  user,
+  plans,
+  onPurchased,
+  headline,
+  badge,
+  badgeTone = "muted",
+  freeLimit,
+  proOnly,
+  owned,
+  canBuy = true,
+}: {
+  user: LauncherUser;
+  plans: ProPlanPublic[];
+  onPurchased: () => Promise<void>;
+  headline: string;
+  badge?: string;
+  badgeTone?: "green" | "muted";
+  freeLimit?: number;
+  /** Which features are Pro-only right now (admin setting); only those are listed as benefits. */
+  proOnly: Record<ProFeatureKey, boolean>;
+  /** Features this student's Pro already includes (shown ticked). */
+  owned: ProFeatureKey[];
+  canBuy?: boolean;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -71,27 +109,66 @@ function UpgradePanel({ user, plans, onPurchased, headline }: { user: LauncherUs
     }
   }
 
+  // The plan with the lowest price per day gets a "Best value" tag, but only when there is a choice.
+  const perDay = (p: ProPlanPublic) => p.price / Math.max(1, p.durationDays);
+  const bestId = plans.length > 1 ? [...plans].sort((x, y) => perDay(x) - perDay(y))[0]?.id : null;
+  const hasPro = owned.length > 0;
+
   return (
-    <div className="clay-inset mt-5 rounded-2xl p-4 text-left">
-      <p className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-        <Sparkles className="h-4 w-4 text-[var(--sky-deep)]" aria-hidden /> {headline}
-      </p>
-      <ul className="mt-2 space-y-1 text-xs text-foreground/70">
-        <li>• Unlimited timed drills, every day</li>
-        <li>• Build your own drill: chapter, topic, difficulty, paper years, length</li>
-        <li>• Everything you use free today stays free</li>
-      </ul>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {plans.map((p) => (
-          <button key={p.id} type="button" disabled={busy !== null} onClick={() => void buy(p)} className="clay-btn inline-flex min-h-11 items-center gap-2 rounded-full px-5 text-sm font-bold text-white disabled:opacity-60">
-            {busy === p.id && <Loader2 className="h-4 w-4 animate-spin" />}
-            {p.name} · {rupees(p.price)} · {p.durationDays} days
-          </button>
-        ))}
+    <section className="ink-section rounded-2xl p-5 text-left sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white/60">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden /> Edurack Pro
+        </p>
+        {badge && <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badgeTone === "green" ? "bg-emerald-400/20 text-emerald-300" : "bg-white/10 text-white/70"}`}>{badge}</span>}
       </div>
-      {plans.some((p) => p.blurb) && <p className="mt-2 text-[11px] text-foreground/55">{plans.find((p) => p.blurb)?.blurb}</p>}
-      {err && <p role="alert" className="mt-2 text-xs font-semibold text-destructive">{err}</p>}
-    </div>
+      <h2 className="font-display mt-2 text-xl font-bold text-white">{headline}</h2>
+
+      <ul className="mt-4 space-y-3">
+        {PRO_FEATURE_KEYS.filter((k) => proOnly[k]).map((k) => (
+          <li key={k} className="flex gap-3">
+            <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${owned.includes(k) ? "bg-emerald-400/20" : "bg-white/10"}`}>
+              {owned.includes(k) ? <Check className="h-4 w-4 text-emerald-300" aria-hidden /> : k === "unlimitedDrills" ? <Timer className="h-4 w-4 text-sky-300" aria-hidden /> : <Sparkles className="h-4 w-4 text-sky-300" aria-hidden />}
+            </span>
+            <span className="min-w-0 text-sm">
+              <b className="block text-white">{PRO_FEATURES[k].label}</b>
+              <span className="text-white/65">
+                {PRO_FEATURES[k].description}
+                {k === "unlimitedDrills" && freeLimit !== undefined ? (freeLimit === 0 ? " Not part of the free plan." : ` Free plan: ${freeLimit} a day.`) : ""}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-4 text-xs text-white/50">Everything you use free today (practice, answers, solutions, notebook, the standard drill) stays free.</p>
+
+      {canBuy && plans.length > 0 && (
+        <div className={`mt-5 grid gap-3 ${plans.length > 1 ? "sm:grid-cols-2" : ""}`}>
+          {plans.map((p) => (
+            <div key={p.id} className="flex flex-col rounded-xl border border-white/15 bg-white/5 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-bold text-white">{p.name}</p>
+                {p.id === bestId && <span className="shrink-0 rounded-full bg-amber-300/20 px-2 py-0.5 text-[10px] font-bold text-amber-200">Best value</span>}
+              </div>
+              <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
+                <span className="font-display text-3xl font-bold text-white">{rupees(p.price)}</span>
+                <span className="text-xs text-white/55">for {p.durationDays} days</span>
+              </p>
+              {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-[11px] text-white/45">about {rupees(Math.round(perDay(p)))} a day</p>}
+              {plans.length > 1 && (
+                <p className="mt-2 text-[11px] text-white/55">Includes: {PRO_FEATURE_KEYS.filter((k) => proOnly[k] && p.features.includes(k)).map((k) => PRO_FEATURES[k].label).join(", ") || "—"}</p>
+              )}
+              {p.blurb && <p className="mt-2 text-xs text-white/60">{p.blurb}</p>}
+              <button type="button" disabled={busy !== null} onClick={() => void buy(p)} className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-bold text-[#141b2b] transition hover:bg-white/90 active:scale-[0.98] disabled:opacity-60">
+                {busy === p.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                {hasPro ? `Add ${p.durationDays} days` : "Get Pro"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {err && <p role="alert" className="mt-3 text-xs font-semibold text-rose-300">{err}</p>}
+    </section>
   );
 }
 
@@ -226,64 +303,111 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
 
   const left = access ? drillsLeft(access) : Infinity;
   const blocked = left === 0;
-  const canBuild = access ? !access.gatingOn || access.isPro : false;
+  const canBuild = access ? hasFeature(access, "customDrillBuilder") : false;
   const locked = access ? access.gatingOn && !access.isPro : false;
+  // Something Pro-only is still out of reach for this student (free plan, or a plan that doesn't include everything).
+  const missing = access ? access.gatingOn && PRO_FEATURE_KEYS.some((k) => access.proOnly[k] && !access.features.includes(k)) : false;
+
+  const limitedFree = access ? access.gatingOn && !hasFeature(access, "unlimitedDrills") : false;
+  const builderIsPro = access ? access.gatingOn && access.proOnly.customDrillBuilder : false;
 
   return (
-    <div className="clay p-6 text-center sm:p-8">
-      <div className="clay-inset mx-auto grid h-14 w-14 place-items-center rounded-2xl">
-        <Timer className="h-6 w-6 text-[var(--sky-deep)]" aria-hidden />
+    <div className="space-y-4">
+      <div className="clay p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
+            <Timer className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-xl font-bold text-foreground">Timed PYQ drill</h1>
+            <p className="text-sm text-foreground/60">Practise under exam pressure, not at your own pace.</p>
+          </div>
+          {access?.isPro && (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-800">
+              <Sparkles className="h-3 w-3" aria-hidden /> Pro
+            </span>
+          )}
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <Fact value={DRILL_QUESTIONS} label="previous year questions" />
+          <Fact value={`${DRILL_MINUTES} min`} label="on a server-side clock" />
+          <Fact value={`+${DRILL_MARKS.correct} / ${DRILL_MARKS.wrongMcq}`} label="right / wrong MCQ" />
+          <Fact value="New first" label="unseen questions lead" />
+        </div>
+        <p className="mt-3 text-xs text-foreground/55">A refresh won't reset the clock, skipping costs nothing, and every wrong answer goes to your notebook.</p>
+
+        {access && limitedFree && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs font-semibold text-foreground/70">
+              <span>{access.freeLimit === 0 ? "Timed drills are part of Edurack Pro" : blocked ? "No free drills left today" : `${left} of ${access.freeLimit} free drills left today`}</span>
+              {access.freeLimit > 0 && <span className="text-foreground/40">resets at midnight</span>}
+            </div>
+            {access.freeLimit > 0 && (
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="presentation">
+                <div className="h-full rounded-full bg-[var(--sky-deep)] transition-all" style={{ width: `${Math.max(0, Math.min(100, (Number(left) / access.freeLimit) * 100))}%` }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {error && !limitMessage && <p className="mt-4 text-xs font-semibold text-destructive">{error}</p>}
+        {limitMessage && <p className="mt-4 rounded-xl bg-[var(--sky-soft)] px-3 py-2 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
+
+        <button type="button" onClick={() => onStart({})} disabled={starting || blocked} className="clay-btn mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50">
+          {starting && <Loader2 className="h-4 w-4 animate-spin" />}
+          {blocked ? "No free drills left today" : "Start drill"}
+        </button>
       </div>
-      <h1 className="font-display mt-4 text-2xl font-bold text-foreground">Timed PYQ drill</h1>
-      <p className="mt-2 text-sm text-foreground/60">Practise under exam pressure, not at your own pace.</p>
 
-      {access?.isPro && access.proUntil && (
-        <p className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden /> Edurack Pro · until {dateLabel(access.proUntil)}
-        </p>
+      {access && (
+        <UpgradePanel
+          user={user}
+          plans={access.plans}
+          onPurchased={refresh}
+          freeLimit={access.freeLimit}
+          proOnly={access.proOnly}
+          owned={access.features}
+          canBuy={missing}
+          headline={access.isPro ? "You're on Edurack Pro" : blocked || limitMessage ? "Keep going with Edurack Pro" : missing ? "Practise without limits" : "What Edurack Pro adds"}
+          badge={access.isPro ? (access.proUntil ? `Active until ${dateLabel(access.proUntil)}` : "Active") : locked ? "Free plan" : "Free for everyone right now"}
+          badgeTone={access.isPro ? "green" : "muted"}
+        />
       )}
-      {access && locked && (
-        <p className="mt-3 text-xs font-semibold text-foreground/70">
-          {blocked ? "No free drills left today" : `${left} of ${access.freeLimit} free drills left today`}
-        </p>
+
+      {(canBuild || missing) && (
+        <div className="clay p-5 sm:p-6">
+          {canBuild ? (
+            <>
+              <button type="button" aria-expanded={showBuilder} onClick={() => setShowBuilder((v) => !v)} className="flex w-full items-center gap-3 text-left">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
+                  <Sparkles className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill {builderIsPro && <ProTag />}</span>
+                  <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length.</span>
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-foreground/50 transition-transform ${showBuilder ? "rotate-180" : ""}`} aria-hidden />
+              </button>
+              {showBuilder && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <CustomDrillBuilder user={user} exam={exam} starting={starting} onStart={onStart} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-foreground/5">
+                <Lock className="h-5 w-5 text-foreground/50" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill <ProTag /></span>
+                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: see the plans above.</span>
+              </span>
+            </div>
+          )}
+        </div>
       )}
-
-      <ul className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-foreground/80">
-        <li>• {DRILL_QUESTIONS} previous year questions, mixed across subjects</li>
-        <li>• {DRILL_MINUTES} minutes — the clock runs on our server, so a refresh won't reset it</li>
-        <li>• +{DRILL_MARKS.correct} for right, {DRILL_MARKS.wrongMcq} for a wrong MCQ, no penalty for skipping</li>
-        <li>• Questions you haven't seen come first; every wrong answer goes to your notebook</li>
-      </ul>
-
-      {error && !limitMessage && <p className="mt-4 text-xs font-semibold text-destructive">{error}</p>}
-      {limitMessage && <p className="mt-4 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
-
-      <button type="button" onClick={() => onStart({})} disabled={starting || blocked} className="clay-btn mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
-        {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-        Start drill
-      </button>
-
-      {access && locked && (blocked || limitMessage) && <UpgradePanel user={user} plans={access.plans} onPurchased={refresh} headline="Keep going with Edurack Pro" />}
-
-      <div className="mt-8 border-t border-border pt-5 text-left">
-        {canBuild ? (
-          <>
-            <button type="button" aria-expanded={showBuilder} onClick={() => setShowBuilder((v) => !v)} className="flex w-full items-center justify-between text-sm font-bold text-foreground">
-              <span className="flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-[var(--sky-deep)]" aria-hidden /> Build your own drill</span>
-              <span className="text-xs font-semibold text-foreground/50">{showBuilder ? "Hide" : "Open"}</span>
-            </button>
-            {showBuilder && <CustomDrillBuilder user={user} exam={exam} starting={starting} onStart={onStart} />}
-          </>
-        ) : locked ? (
-          <>
-            <p className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-              <Lock className="h-4 w-4 text-foreground/50" aria-hidden /> Build your own drill
-            </p>
-            <p className="mt-1 text-xs text-foreground/60">Pick a chapter or topic, difficulty, paper years and length. Included in Edurack Pro.</p>
-            {!(blocked || limitMessage) && access && <UpgradePanel user={user} plans={access.plans} onPurchased={refresh} headline="Unlock custom drills" />}
-          </>
-        ) : null}
-      </div>
     </div>
   );
 }

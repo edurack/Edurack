@@ -3,9 +3,10 @@ import { PromoterHubModule } from "@/components/promoter-hub-module";
 import { useEffect, useMemo, useState, useRef, type FormEvent } from "react";
 import { listAllMentorTickets, respondToMentorTicket } from "@/server-functions/admin";
 import { IconLoader2 as Loader2, IconShieldCheck as ShieldCheck, IconLayoutDashboard as LayoutDashboard, IconTrash as Trash2, IconUsers as Users, IconSchool as GraduationCap, IconLogout as LogOut, IconUsersGroup as Users2, IconCurrencyRupee as IndianRupee, IconX as X, IconMenu2 as Menu, IconClipboardList as ClipboardList, IconSearch as Search, IconChevronDown as ChevronDown, IconAlertCircle as AlertCircle, IconLifebuoy as LifeBuoy, IconSend as Send, IconArrowUpRight as ArrowUpRight, IconArrowLeft as ArrowLeft, IconShoppingBag as ShoppingBag, IconCircleCheck as CheckCircle2, IconStack2 as Layers3, IconMail as Mail, IconPhone as Phone, IconMapPin as MapPin, IconStar as Star, IconFileText as FileText, IconCopy as Copy, IconBrandYoutube as Youtube, IconBrandInstagram as Instagram, IconBrandLinkedin as Linkedin, IconBrandX as Twitter, IconSpeakerphone as Megaphone, IconSend as SendIcon, IconBuilding as Building2, IconCalendar as Calendar, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconProps, IconUserCheck as UserCheck, IconFlask as FlaskConical } from "@tabler/icons-react";
-import { ClipboardCheck, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, Flame, History } from "lucide-react";
+import { ClipboardCheck, Sparkles, Smartphone, MonitorOff, Package, Boxes, ListChecks, RefreshCw, Inbox, MessageSquareText, Wallet, FileCheck, UserPlus, ThumbsUp, ThumbsDown, Link2, PhoneCall, Flame, History } from "lucide-react";
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
+import { ProModule } from "@/components/admin/pro-module";
 import { ResourcesModule } from "@/components/admin/resources-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
 import { OutreachModule } from "@/components/admin/outreach-module";
@@ -70,6 +71,7 @@ type ModuleKey =
   | "testCore"
   | "questions"
   | "sellTests"
+  | "pro"
   | "inspector"
   | "students"
   | "outreach"
@@ -103,6 +105,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "testCore", label: "Test Core", icon: ClipboardList  as any },
       { key: "questions", label: "Questions", icon: ListChecks  as any },
       { key: "sellTests", label: "Sell Tests", icon: Tag },
+      { key: "pro", label: "Edurack Pro", icon: Sparkles as any },
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "blogs", label: "Blog", icon: FileText },
       { key: "resources", label: "Free Resources", icon: FileText },
@@ -389,6 +392,8 @@ function ModuleRouter({
       return <BundleInspectorModule adminUser={adminUser} />;
     case "sellTests":
       return <SellTestsAdminModule adminUser={adminUser} />;
+    case "pro":
+      return <ProModule adminUser={adminUser} />;
     case "students":
       return <StudentsModule adminUser={adminUser} />;
     case "outreach":

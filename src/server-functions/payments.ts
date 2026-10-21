@@ -259,7 +259,7 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
         originalPrice: String(sellingPrice),
         ...(commissionPercent != null ? { platformCommissionPercent: String(commissionPercent) } : {}),
         ...(data.itemType === "mentorSession" ? { sessionDate: data.sessionDate!, sessionStartTime: data.sessionStartTime! } : {}),
-        ...(proPlan ? { durationDays: String(proPlan.durationDays), planName: proPlan.name } : {}),
+        ...(proPlan ? { durationDays: String(proPlan.durationDays), planName: proPlan.name, features: proPlan.features.join(",") } : {}),
         ...(coupon
           ? {
               couponCode: coupon.couponCode,

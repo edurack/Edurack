@@ -12,7 +12,9 @@ import type { PyqTree } from "@/lib/pyq-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { BookMarked, Timer } from "lucide-react";
+import { BookMarked, Sparkles, Timer } from "lucide-react";
+import { getDrillAccess } from "@/server-functions/pro";
+import { PRO_FEATURES, PRO_FEATURE_KEYS, type DrillAccess } from "@/lib/pro";
 import type { SessionKind } from "@/lib/pyq-types";
 
 // Everything lives in the URL (?subject=&chapter=&topic=&practice=true) so the
@@ -54,6 +56,23 @@ function PyqPage() {
 
   const [tree, setTree] = useState<PyqTree | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Edurack Pro status, for the banner under the drill/notebook tiles. Failing quietly is fine: the banner just doesn't show.
+  const [proAccess, setProAccess] = useState<DrillAccess | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const a = await getDrillAccess({ data: { token: await user.getIdToken() } });
+        if (!cancelled) setProAccess(a);
+      } catch {
+        /* leave the banner out */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Logged out is fine: guests get the browse tree and a few free questions.
   const guest = !loading && !user;
@@ -201,6 +220,35 @@ function PyqPage() {
                 </Link>
               </div>
             )}
+            {!guest && !search.subject && proAccess && (() => {
+              // Dark banner when there's something to buy; a quiet card otherwise (Pro active, or Pro not on sale yet).
+              const dark = proAccess.gatingOn && !proAccess.isPro;
+              const unlocks = PRO_FEATURE_KEYS.filter((k) => proAccess.proOnly[k]).map((k) => PRO_FEATURES[k].label.toLowerCase()).join(" + ");
+              const title = proAccess.isPro ? "Edurack Pro is active" : proAccess.gatingOn ? "Go Pro" : "Build your own drill";
+              const sub = proAccess.isPro
+                ? `Active until ${new Date(proAccess.proUntil ?? Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`
+                : proAccess.gatingOn
+                  ? `Unlock ${unlocks || "more practice tools"}.`
+                  : "Pick chapter or topic, difficulty, paper years and length for a timed drill.";
+              return (
+                <Link
+                  to="/pyq-drill"
+                  search={{ exam: tree.exam ?? undefined }}
+                  className={cn("mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
+                >
+                  <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", dark ? "bg-white/10" : "bg-[var(--sky-soft)]")}>
+                    <Sparkles className={cn("h-5 w-5", dark ? "text-sky-300" : "text-[var(--sky-deep)]")} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={cn("block text-sm font-bold", dark ? "text-white" : "text-foreground")}>{title}</span>
+                    <span className={cn("block text-xs", dark ? "text-white/65" : "text-foreground/60")}>{sub}</span>
+                  </span>
+                  <span className={cn("shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold", dark ? "bg-white text-[#141b2b]" : proAccess.isPro ? "bg-emerald-100 text-emerald-800" : "bg-primary text-primary-foreground")}>
+                    {proAccess.isPro ? "Open" : proAccess.gatingOn ? "See plans" : "Try it"}
+                  </span>
+                </Link>
+              );
+            })()}
             <PyqBrowser tree={tree} subject={search.subject} chapter={search.chapter} onNavigate={go} />
           </>
         )}

@@ -1,12 +1,14 @@
 // SERVER-ONLY. Plans, grants and the daily drill count behind Edurack Pro.
 //
-//   proPlans   — what's for sale: { name, price (₹), durationDays, active, blurb? }. Added by the team in the
-//                database; nothing is limited until at least one active plan exists.
-//   proGrants  — one row per successful payment: { uid, planId, razorpayPaymentId (unique), startsAt, endsAt }.
+//   proPlans   — what's for sale: { name, price (₹), durationDays, active, blurb?, features? }. Managed from the
+//                admin "Edurack Pro" tab; nothing is limited until at least one active plan exists. A plan with
+//                no `features` list includes every feature.
+//   proSettings — one row { key: "main", freeDrillsPerDay, proOnly: { [feature]: boolean } }: the free-plan rules.
+//   proGrants  — one row per successful payment (or admin gift): { uid, planId, features, razorpayPaymentId (unique), startsAt, endsAt }.
 //                Buying while Pro is active stacks: the new period starts when the current one ends.
 //                Pro is active while any grant has endsAt in the future.
 import type { Db } from "@/lib/pyq-server";
-import { FREE_DRILLS_PER_DAY, istDayRange, type DrillAccess, type ProPlanPublic } from "@/lib/pro";
+import { PRO_FEATURE_KEYS, cleanPlanFeatures, cleanProSettings, istDayRange, type DrillAccess, type ProFeatureKey, type ProPlanPublic, type ProSettings } from "@/lib/pro";
 
 const DAY_MS = 86_400_000;
 let indexed = false;
@@ -30,8 +32,27 @@ export async function listActivePlans(db: Db): Promise<ProPlanPublic[]> {
   const docs = await db.collection("proPlans").find({ active: true }).toArray();
   return docs
     .filter(validPlan)
-    .map((d) => ({ id: String(d._id), name: String(d.name ?? "Edurack Pro"), price: d.price as number, durationDays: d.durationDays as number, blurb: String(d.blurb ?? "") }))
+    .map((d) => ({ id: String(d._id), name: String(d.name ?? "Edurack Pro"), price: d.price as number, durationDays: d.durationDays as number, blurb: String(d.blurb ?? ""), features: cleanPlanFeatures(d.features) }))
     .sort((a, b) => a.price - b.price);
+}
+
+/** The free-plan rules the admin set (defaults until they save any). */
+export async function getProSettings(db: Db): Promise<ProSettings> {
+  const doc = await db.collection("proSettings").findOne({ key: "main" });
+  return cleanProSettings(doc);
+}
+
+/** When this student's Pro ends and which features it includes right now. A period stacked for later adds its features once it starts. */
+export async function proEntitlements(db: Db, uid: string, now = new Date()): Promise<{ until: Date | null; features: ProFeatureKey[] }> {
+  const grants = await db.collection("proGrants").find({ uid, endsAt: { $gt: now } }).toArray();
+  if (grants.length === 0) return { until: null, features: [] };
+  const until = new Date(Math.max(...grants.map((g) => (g.endsAt as Date).getTime())));
+  const have = new Set<ProFeatureKey>();
+  for (const g of grants) {
+    if ((g.startsAt as Date).getTime() > now.getTime()) continue;
+    cleanPlanFeatures(g.features).forEach((k) => have.add(k));
+  }
+  return { until, features: PRO_FEATURE_KEYS.filter((k) => have.has(k)) };
 }
 
 /** When this student's Pro ends, or null if they aren't Pro right now. */
@@ -47,22 +68,23 @@ export async function countDrillsToday(db: Db, uid: string, now = new Date()): P
 }
 
 export async function getDrillAccess(db: Db, uid: string, now = new Date()): Promise<DrillAccess> {
-  const plans = await listActivePlans(db);
-  const until = await proUntil(db, uid, now);
+  const [plans, settings, ent] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now)]);
   return {
     gatingOn: plans.length > 0,
-    isPro: until !== null,
-    proUntil: until ? until.toISOString() : null,
+    isPro: ent.until !== null,
+    proUntil: ent.until ? ent.until.toISOString() : null,
     usedToday: await countDrillsToday(db, uid, now),
-    freeLimit: FREE_DRILLS_PER_DAY,
+    freeLimit: settings.freeDrillsPerDay,
     plans,
+    features: ent.features,
+    proOnly: settings.proOnly,
   };
 }
 
 /** Records a paid Pro period, once per payment. Returns the date Pro now runs until. */
 export async function grantProPlan(
   db: Db,
-  p: { uid: string; planId: string; planName: string; durationDays: number; orderId: string; paymentId: string; amount: number },
+  p: { uid: string; planId: string; planName: string; durationDays: number; orderId: string; paymentId: string; amount: number; features?: ProFeatureKey[]; extra?: Record<string, unknown> },
   now = new Date(),
 ): Promise<{ granted: boolean; until: Date }> {
   await ensureProIndexes(db);
@@ -78,6 +100,8 @@ export async function grantProPlan(
       uid: p.uid,
       planId: p.planId,
       planName: p.planName,
+      features: p.features?.length ? p.features : PRO_FEATURE_KEYS,
+      ...(p.extra ?? {}),
       durationDays: p.durationDays,
       amount: p.amount,
       razorpayOrderId: p.orderId,

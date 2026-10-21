@@ -55,7 +55,10 @@ import { Route as InternCertificateRouteImport } from './routes/intern/certifica
 import { Route as InternDashboardRouteImport } from './routes/intern/dashboard'
 import { Route as InternOfferLetterRouteImport } from './routes/intern/offer-letter'
 import { Route as InternProfileRouteImport } from './routes/intern/profile'
+import { Route as JeeChapterTrendsRouteImport } from './routes/jee.chapter-trends'
+import { Route as JeeHighWeightageChaptersRouteImport } from './routes/jee.high-weightage-chapters'
 import { Route as JeeMostRepeatedConceptsRouteImport } from './routes/jee.most-repeated-concepts'
+import { Route as JeeRemovedChaptersRouteImport } from './routes/jee.removed-chapters'
 import { Route as LectureSessionIdRouteImport } from './routes/lecture.$sessionId'
 import { Route as LegalPrivacyRouteImport } from './routes/legal/privacy'
 import { Route as LegalRefundRouteImport } from './routes/legal/refund'
@@ -82,9 +85,14 @@ import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certif
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 import { Route as JeeChapterWiseWeightageIndexRouteImport } from './routes/jee.chapter-wise-weightage.index'
+import { Route as JeePaperAnalysisIndexRouteImport } from './routes/jee.paper-analysis.index'
+import { Route as JeeSyllabusIndexRouteImport } from './routes/jee.syllabus.index'
+import { Route as JeeSyllabusSubjectRouteImport } from './routes/jee.syllabus.$subject'
 import { Route as NeetChapterWiseWeightageIndexRouteImport } from './routes/neet.chapter-wise-weightage.index'
 import { Route as NeetPaperAnalysisIndexRouteImport } from './routes/neet.paper-analysis.index'
 import { Route as JeeChapterWiseWeightageSubjectIndexRouteImport } from './routes/jee.chapter-wise-weightage.$subject.index'
+import { Route as JeePaperAnalysisYearIndexRouteImport } from './routes/jee.paper-analysis.$year.index'
+import { Route as JeePaperAnalysisYearSubjectRouteImport } from './routes/jee.paper-analysis.$year.$subject'
 import { Route as NeetChapterWiseWeightageSubjectIndexRouteImport } from './routes/neet.chapter-wise-weightage.$subject.index'
 import { Route as NeetPaperAnalysisYearIndexRouteImport } from './routes/neet.paper-analysis.$year.index'
 import { Route as NeetPaperAnalysisYearSubjectRouteImport } from './routes/neet.paper-analysis.$year.$subject'
@@ -322,9 +330,25 @@ const InternProfileRoute = InternProfileRouteImport.update({
   path: '/intern/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JeeChapterTrendsRoute = JeeChapterTrendsRouteImport.update({
+  id: '/jee/chapter-trends',
+  path: '/jee/chapter-trends',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JeeHighWeightageChaptersRoute =
+  JeeHighWeightageChaptersRouteImport.update({
+    id: '/jee/high-weightage-chapters',
+    path: '/jee/high-weightage-chapters',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const JeeMostRepeatedConceptsRoute = JeeMostRepeatedConceptsRouteImport.update({
   id: '/jee/most-repeated-concepts',
   path: '/jee/most-repeated-concepts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JeeRemovedChaptersRoute = JeeRemovedChaptersRouteImport.update({
+  id: '/jee/removed-chapters',
+  path: '/jee/removed-chapters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LectureSessionIdRoute = LectureSessionIdRouteImport.update({
@@ -461,6 +485,21 @@ const JeeChapterWiseWeightageIndexRoute =
     path: '/jee/chapter-wise-weightage/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const JeePaperAnalysisIndexRoute = JeePaperAnalysisIndexRouteImport.update({
+  id: '/jee/paper-analysis/',
+  path: '/jee/paper-analysis/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JeeSyllabusIndexRoute = JeeSyllabusIndexRouteImport.update({
+  id: '/jee/syllabus/',
+  path: '/jee/syllabus/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JeeSyllabusSubjectRoute = JeeSyllabusSubjectRouteImport.update({
+  id: '/jee/syllabus/$subject',
+  path: '/jee/syllabus/$subject',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NeetChapterWiseWeightageIndexRoute =
   NeetChapterWiseWeightageIndexRouteImport.update({
     id: '/neet/chapter-wise-weightage/',
@@ -476,6 +515,18 @@ const JeeChapterWiseWeightageSubjectIndexRoute =
   JeeChapterWiseWeightageSubjectIndexRouteImport.update({
     id: '/jee/chapter-wise-weightage/$subject/',
     path: '/jee/chapter-wise-weightage/$subject/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const JeePaperAnalysisYearIndexRoute =
+  JeePaperAnalysisYearIndexRouteImport.update({
+    id: '/jee/paper-analysis/$year/',
+    path: '/jee/paper-analysis/$year/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const JeePaperAnalysisYearSubjectRoute =
+  JeePaperAnalysisYearSubjectRouteImport.update({
+    id: '/jee/paper-analysis/$year/$subject',
+    path: '/jee/paper-analysis/$year/$subject',
     getParentRoute: () => rootRouteImport,
   } as any)
 const NeetChapterWiseWeightageSubjectIndexRoute =
@@ -561,7 +612,10 @@ export interface FileRoutesByFullPath {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/chapter-trends': typeof JeeChapterTrendsRoute
+  '/jee/high-weightage-chapters': typeof JeeHighWeightageChaptersRoute
   '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
+  '/jee/removed-chapters': typeof JeeRemovedChaptersRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -588,11 +642,16 @@ export interface FileRoutesByFullPath {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
+  '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
+  '/jee/syllabus/': typeof JeeSyllabusIndexRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
+  '/jee/paper-analysis/$year/$subject': typeof JeePaperAnalysisYearSubjectRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/jee/chapter-wise-weightage/$subject/': typeof JeeChapterWiseWeightageSubjectIndexRoute
+  '/jee/paper-analysis/$year/': typeof JeePaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
@@ -645,7 +704,10 @@ export interface FileRoutesByTo {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/chapter-trends': typeof JeeChapterTrendsRoute
+  '/jee/high-weightage-chapters': typeof JeeHighWeightageChaptersRoute
   '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
+  '/jee/removed-chapters': typeof JeeRemovedChaptersRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -672,11 +734,16 @@ export interface FileRoutesByTo {
   '/tools': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee/chapter-wise-weightage': typeof JeeChapterWiseWeightageIndexRoute
+  '/jee/paper-analysis': typeof JeePaperAnalysisIndexRoute
+  '/jee/syllabus': typeof JeeSyllabusIndexRoute
   '/neet/chapter-wise-weightage': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis': typeof NeetPaperAnalysisIndexRoute
+  '/jee/paper-analysis/$year/$subject': typeof JeePaperAnalysisYearSubjectRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/jee/chapter-wise-weightage/$subject': typeof JeeChapterWiseWeightageSubjectIndexRoute
+  '/jee/paper-analysis/$year': typeof JeePaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
@@ -730,7 +797,10 @@ export interface FileRoutesById {
   '/intern/dashboard': typeof InternDashboardRoute
   '/intern/offer-letter': typeof InternOfferLetterRoute
   '/intern/profile': typeof InternProfileRoute
+  '/jee/chapter-trends': typeof JeeChapterTrendsRoute
+  '/jee/high-weightage-chapters': typeof JeeHighWeightageChaptersRoute
   '/jee/most-repeated-concepts': typeof JeeMostRepeatedConceptsRoute
+  '/jee/removed-chapters': typeof JeeRemovedChaptersRoute
   '/lecture/$sessionId': typeof LectureSessionIdRoute
   '/legal/privacy': typeof LegalPrivacyRoute
   '/legal/refund': typeof LegalRefundRoute
@@ -757,11 +827,16 @@ export interface FileRoutesById {
   '/tools/': typeof ToolsIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
+  '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
+  '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
+  '/jee/syllabus/': typeof JeeSyllabusIndexRoute
   '/neet/chapter-wise-weightage/': typeof NeetChapterWiseWeightageIndexRoute
   '/neet/paper-analysis/': typeof NeetPaperAnalysisIndexRoute
+  '/jee/paper-analysis/$year/$subject': typeof JeePaperAnalysisYearSubjectRoute
   '/neet/paper-analysis/$year/$subject': typeof NeetPaperAnalysisYearSubjectRoute
   '/jee/chapter-wise-weightage/$subject/': typeof JeeChapterWiseWeightageSubjectIndexRoute
+  '/jee/paper-analysis/$year/': typeof JeePaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/': typeof NeetChapterWiseWeightageSubjectIndexRoute
   '/neet/paper-analysis/$year/': typeof NeetPaperAnalysisYearIndexRoute
   '/neet/chapter-wise-weightage/$subject/$chapter/sheet': typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
@@ -816,7 +891,10 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/chapter-trends'
+    | '/jee/high-weightage-chapters'
     | '/jee/most-repeated-concepts'
+    | '/jee/removed-chapters'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -843,11 +921,16 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/syllabus/$subject'
     | '/jee/chapter-wise-weightage/'
+    | '/jee/paper-analysis/'
+    | '/jee/syllabus/'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
+    | '/jee/paper-analysis/$year/$subject'
     | '/neet/paper-analysis/$year/$subject'
     | '/jee/chapter-wise-weightage/$subject/'
+    | '/jee/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/'
     | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
@@ -900,7 +983,10 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/chapter-trends'
+    | '/jee/high-weightage-chapters'
     | '/jee/most-repeated-concepts'
+    | '/jee/removed-chapters'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -927,11 +1013,16 @@ export interface FileRouteTypes {
     | '/tools'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/syllabus/$subject'
     | '/jee/chapter-wise-weightage'
+    | '/jee/paper-analysis'
+    | '/jee/syllabus'
     | '/neet/chapter-wise-weightage'
     | '/neet/paper-analysis'
+    | '/jee/paper-analysis/$year/$subject'
     | '/neet/paper-analysis/$year/$subject'
     | '/jee/chapter-wise-weightage/$subject'
+    | '/jee/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/$subject'
     | '/neet/paper-analysis/$year'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
@@ -984,7 +1075,10 @@ export interface FileRouteTypes {
     | '/intern/dashboard'
     | '/intern/offer-letter'
     | '/intern/profile'
+    | '/jee/chapter-trends'
+    | '/jee/high-weightage-chapters'
     | '/jee/most-repeated-concepts'
+    | '/jee/removed-chapters'
     | '/lecture/$sessionId'
     | '/legal/privacy'
     | '/legal/refund'
@@ -1011,11 +1105,16 @@ export interface FileRouteTypes {
     | '/tools/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
+    | '/jee/syllabus/$subject'
     | '/jee/chapter-wise-weightage/'
+    | '/jee/paper-analysis/'
+    | '/jee/syllabus/'
     | '/neet/chapter-wise-weightage/'
     | '/neet/paper-analysis/'
+    | '/jee/paper-analysis/$year/$subject'
     | '/neet/paper-analysis/$year/$subject'
     | '/jee/chapter-wise-weightage/$subject/'
+    | '/jee/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/'
     | '/neet/paper-analysis/$year/'
     | '/neet/chapter-wise-weightage/$subject/$chapter/sheet'
@@ -1069,7 +1168,10 @@ export interface RootRouteChildren {
   InternDashboardRoute: typeof InternDashboardRoute
   InternOfferLetterRoute: typeof InternOfferLetterRoute
   InternProfileRoute: typeof InternProfileRoute
+  JeeChapterTrendsRoute: typeof JeeChapterTrendsRoute
+  JeeHighWeightageChaptersRoute: typeof JeeHighWeightageChaptersRoute
   JeeMostRepeatedConceptsRoute: typeof JeeMostRepeatedConceptsRoute
+  JeeRemovedChaptersRoute: typeof JeeRemovedChaptersRoute
   LectureSessionIdRoute: typeof LectureSessionIdRoute
   LegalPrivacyRoute: typeof LegalPrivacyRoute
   LegalRefundRoute: typeof LegalRefundRoute
@@ -1095,11 +1197,16 @@ export interface RootRouteChildren {
   ToolsIndexRoute: typeof ToolsIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
+  JeeSyllabusSubjectRoute: typeof JeeSyllabusSubjectRoute
   JeeChapterWiseWeightageIndexRoute: typeof JeeChapterWiseWeightageIndexRoute
+  JeePaperAnalysisIndexRoute: typeof JeePaperAnalysisIndexRoute
+  JeeSyllabusIndexRoute: typeof JeeSyllabusIndexRoute
   NeetChapterWiseWeightageIndexRoute: typeof NeetChapterWiseWeightageIndexRoute
   NeetPaperAnalysisIndexRoute: typeof NeetPaperAnalysisIndexRoute
+  JeePaperAnalysisYearSubjectRoute: typeof JeePaperAnalysisYearSubjectRoute
   NeetPaperAnalysisYearSubjectRoute: typeof NeetPaperAnalysisYearSubjectRoute
   JeeChapterWiseWeightageSubjectIndexRoute: typeof JeeChapterWiseWeightageSubjectIndexRoute
+  JeePaperAnalysisYearIndexRoute: typeof JeePaperAnalysisYearIndexRoute
   NeetChapterWiseWeightageSubjectIndexRoute: typeof NeetChapterWiseWeightageSubjectIndexRoute
   NeetPaperAnalysisYearIndexRoute: typeof NeetPaperAnalysisYearIndexRoute
   NeetChapterWiseWeightageSubjectChapterSheetRoute: typeof NeetChapterWiseWeightageSubjectChapterSheetRoute
@@ -1431,11 +1538,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InternProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jee/chapter-trends': {
+      id: '/jee/chapter-trends'
+      path: '/jee/chapter-trends'
+      fullPath: '/jee/chapter-trends'
+      preLoaderRoute: typeof JeeChapterTrendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/high-weightage-chapters': {
+      id: '/jee/high-weightage-chapters'
+      path: '/jee/high-weightage-chapters'
+      fullPath: '/jee/high-weightage-chapters'
+      preLoaderRoute: typeof JeeHighWeightageChaptersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jee/most-repeated-concepts': {
       id: '/jee/most-repeated-concepts'
       path: '/jee/most-repeated-concepts'
       fullPath: '/jee/most-repeated-concepts'
       preLoaderRoute: typeof JeeMostRepeatedConceptsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/removed-chapters': {
+      id: '/jee/removed-chapters'
+      path: '/jee/removed-chapters'
+      fullPath: '/jee/removed-chapters'
+      preLoaderRoute: typeof JeeRemovedChaptersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/lecture/$sessionId': {
@@ -1620,6 +1748,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JeeChapterWiseWeightageIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jee/paper-analysis/': {
+      id: '/jee/paper-analysis/'
+      path: '/jee/paper-analysis'
+      fullPath: '/jee/paper-analysis/'
+      preLoaderRoute: typeof JeePaperAnalysisIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/syllabus/': {
+      id: '/jee/syllabus/'
+      path: '/jee/syllabus'
+      fullPath: '/jee/syllabus/'
+      preLoaderRoute: typeof JeeSyllabusIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/syllabus/$subject': {
+      id: '/jee/syllabus/$subject'
+      path: '/jee/syllabus/$subject'
+      fullPath: '/jee/syllabus/$subject'
+      preLoaderRoute: typeof JeeSyllabusSubjectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/neet/chapter-wise-weightage/': {
       id: '/neet/chapter-wise-weightage/'
       path: '/neet/chapter-wise-weightage'
@@ -1639,6 +1788,20 @@ declare module '@tanstack/react-router' {
       path: '/jee/chapter-wise-weightage/$subject'
       fullPath: '/jee/chapter-wise-weightage/$subject/'
       preLoaderRoute: typeof JeeChapterWiseWeightageSubjectIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/paper-analysis/$year/': {
+      id: '/jee/paper-analysis/$year/'
+      path: '/jee/paper-analysis/$year'
+      fullPath: '/jee/paper-analysis/$year/'
+      preLoaderRoute: typeof JeePaperAnalysisYearIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jee/paper-analysis/$year/$subject': {
+      id: '/jee/paper-analysis/$year/$subject'
+      path: '/jee/paper-analysis/$year/$subject'
+      fullPath: '/jee/paper-analysis/$year/$subject'
+      preLoaderRoute: typeof JeePaperAnalysisYearSubjectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/neet/chapter-wise-weightage/$subject/': {
@@ -1743,7 +1906,10 @@ const rootRouteChildren: RootRouteChildren = {
   InternDashboardRoute: InternDashboardRoute,
   InternOfferLetterRoute: InternOfferLetterRoute,
   InternProfileRoute: InternProfileRoute,
+  JeeChapterTrendsRoute: JeeChapterTrendsRoute,
+  JeeHighWeightageChaptersRoute: JeeHighWeightageChaptersRoute,
   JeeMostRepeatedConceptsRoute: JeeMostRepeatedConceptsRoute,
+  JeeRemovedChaptersRoute: JeeRemovedChaptersRoute,
   LectureSessionIdRoute: LectureSessionIdRoute,
   LegalPrivacyRoute: LegalPrivacyRoute,
   LegalRefundRoute: LegalRefundRoute,
@@ -1769,12 +1935,17 @@ const rootRouteChildren: RootRouteChildren = {
   ToolsIndexRoute: ToolsIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
+  JeeSyllabusSubjectRoute: JeeSyllabusSubjectRoute,
   JeeChapterWiseWeightageIndexRoute: JeeChapterWiseWeightageIndexRoute,
+  JeePaperAnalysisIndexRoute: JeePaperAnalysisIndexRoute,
+  JeeSyllabusIndexRoute: JeeSyllabusIndexRoute,
   NeetChapterWiseWeightageIndexRoute: NeetChapterWiseWeightageIndexRoute,
   NeetPaperAnalysisIndexRoute: NeetPaperAnalysisIndexRoute,
+  JeePaperAnalysisYearSubjectRoute: JeePaperAnalysisYearSubjectRoute,
   NeetPaperAnalysisYearSubjectRoute: NeetPaperAnalysisYearSubjectRoute,
   JeeChapterWiseWeightageSubjectIndexRoute:
     JeeChapterWiseWeightageSubjectIndexRoute,
+  JeePaperAnalysisYearIndexRoute: JeePaperAnalysisYearIndexRoute,
   NeetChapterWiseWeightageSubjectIndexRoute:
     NeetChapterWiseWeightageSubjectIndexRoute,
   NeetPaperAnalysisYearIndexRoute: NeetPaperAnalysisYearIndexRoute,

@@ -41,7 +41,7 @@ import {
   weakChapterAvailability,
   type Db,
 } from "@/lib/pyq-server";
-import { DRILL_LIMIT_PREFIX, FREE_DRILLS_PER_DAY, cleanCustomDrill, drillBlockReason, isCustomDrill } from "@/lib/pro";
+import { DRILL_LIMIT_PREFIX, cleanCustomDrill, drillBlockReason, hasFeature, isCustomDrill } from "@/lib/pro";
 import {
   GENERAL_TOPIC,
   UNTAGGED_CHAPTER,
@@ -279,18 +279,27 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     const running = await col.find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
     if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return drillSetFor(db, uid, running, now);
 
-    // Edurack Pro: a free student gets FREE_DRILLS_PER_DAY standard drills a day; unlimited drills and the
-    // custom builder need Pro. Nothing is limited until the team publishes a plan (so there's always something to buy).
+    // Edurack Pro: a free student gets the admin-set number of standard drills a day; the features the admin
+    // marked Pro-only (unlimited drills, the custom builder, ...) need a plan that includes them. Nothing is
+    // limited until the team publishes a plan (so there's always something to buy).
     const custom = cleanCustomDrill(data.custom);
     const wantsCustom = isCustomDrill(custom);
-    const { listActivePlans, proUntil, countDrillsToday } = await import("@/lib/pro-server");
-    const gatingOn = (await listActivePlans(db)).length > 0;
-    const isPro = gatingOn ? (await proUntil(db, uid, now)) !== null : false;
-    const usedToday = gatingOn && !isPro && !wantsCustom ? await countDrillsToday(db, uid, now) : 0;
-    const blocked = drillBlockReason({ gatingOn, isPro, wantsCustom, usedToday });
+    const { getDrillAccess } = await import("@/lib/pro-server");
+    const access = await getDrillAccess(db, uid, now);
+    const blocked = drillBlockReason({
+      wantsCustom,
+      usedToday: access.usedToday,
+      freeLimit: access.freeLimit,
+      canCustom: hasFeature(access, "customDrillBuilder"),
+      unlimited: hasFeature(access, "unlimitedDrills"),
+    });
     if (blocked === "custom") throw new Error(`${DRILL_LIMIT_PREFIX}: Building your own drill is part of Edurack Pro.`);
     if (blocked === "limit") {
-      throw new Error(`${DRILL_LIMIT_PREFIX}: You've used today's ${FREE_DRILLS_PER_DAY} free timed drills. They reset at midnight, or go unlimited with Edurack Pro.`);
+      throw new Error(
+        access.freeLimit === 0
+          ? `${DRILL_LIMIT_PREFIX}: Timed drills are part of Edurack Pro.`
+          : `${DRILL_LIMIT_PREFIX}: You've used today's ${access.freeLimit} free timed drill${access.freeLimit === 1 ? "" : "s"}. They reset at midnight, or go unlimited with Edurack Pro.`,
+      );
     }
 
     const exam = await resolveExam(db, uid, data.exam);

@@ -66,7 +66,8 @@ export async function lookupProPlan(planId: string) {
   if (!plan || typeof price !== "number" || !Number.isFinite(price) || price < 1 || !Number.isInteger(days) || (days as number) < 1) {
     throw new Error("This plan isn't available right now.");
   }
-  return { name: String(plan.name ?? "Edurack Pro"), price, durationDays: days as number };
+  const { cleanPlanFeatures } = await import("@/lib/pro");
+  return { name: String(plan.name ?? "Edurack Pro"), price, durationDays: days as number, features: cleanPlanFeatures(plan.features) };
 }
 
 export async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
@@ -453,7 +454,11 @@ export async function completeProPlanPayment(p: {
   if (!Number.isInteger(days) || days < 1) throw new Error("Pro plan details are missing from the order.");
   const { grantProPlan } = await import("@/lib/pro-server");
   const planName = p.notes.planName || "Edurack Pro";
-  const result = await grantProPlan(await getDb(), { uid: p.uid, planId: p.planId, planName, durationDays: days, orderId: p.orderId, paymentId: p.paymentId, amount: p.amountCharged });
+  // The features the student was quoted at checkout (orders made before plans had features get every feature).
+  const { PRO_FEATURES, PRO_FEATURE_KEYS, cleanPlanFeatures } = await import("@/lib/pro");
+  const quoted = cleanPlanFeatures((p.notes.features ?? "").split(",").filter(Boolean));
+  const features = quoted.length ? quoted : [...PRO_FEATURE_KEYS];
+  const result = await grantProPlan(await getDb(), { uid: p.uid, planId: p.planId, planName, durationDays: days, orderId: p.orderId, paymentId: p.paymentId, amount: p.amountCharged, features });
 
   if (result.granted && p.email) {
     try {
@@ -461,7 +466,7 @@ export async function completeProPlanPayment(p: {
       await sendMail({
         to: p.email,
         subject: "Edurack Pro is active",
-        html: `<p>Thanks for upgrading. <strong>${planName}</strong> is active until <strong>${until}</strong>.</p><p>You now have unlimited timed PYQ drills and the custom drill builder. Open any drill to start.</p>`,
+        html: `<p>Thanks for upgrading. <strong>${planName}</strong> is active until <strong>${until}</strong>.</p><p>You now have: ${features.map((k) => PRO_FEATURES[k].label.toLowerCase()).join(", ")}. Open any drill to start.</p>`,
       });
     } catch (err) {
       console.error(`[completeProPlanPayment] email failed for uid=${p.uid}:`, err);
