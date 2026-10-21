@@ -6,7 +6,7 @@
 import { SITE_URL } from "@/lib/seo";
 import { getDb } from "@/lib/mongo";
 import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
-import { allJeePaths } from "@/lib/jee-blueprint";
+import { allJeeSitePaths } from "@/lib/jee-site-paths";
 import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
 import { allPaperSubjectPages, paperSubjectPath } from "@/lib/neet-paper-subject";
 import { TOPICS_PATH } from "@/lib/neet-topics";
@@ -130,9 +130,20 @@ export function blueprintEntries(): string[] {
 
 // JEE Main chapter-wise weightage pages (hub, subjects, chapters, concepts) — static data, always listed.
 const JEE_LASTMOD = "2026-10-21";
-const JEE_PRIORITY = { hub: 0.9, subject: 0.8, chapter: 0.7, concepts: 0.8 } as const;
+const JEE_PRIORITY = {
+  hub: 0.9,
+  subject: 0.8,
+  chapter: 0.7,
+  concepts: 0.8,
+  "paper-hub": 0.8,
+  "paper-year": 0.7,
+  "paper-subject": 0.6,
+  "syllabus-hub": 0.9,
+  syllabus: 0.8,
+  guide: 0.8,
+} as const;
 export function jeeEntries(): string[] {
-  return allJeePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
+  return allJeeSitePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
 }
 
 // Free tools and the data-driven NEET pages. Static content, so these are always listed.

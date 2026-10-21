@@ -41,6 +41,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
 - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
 - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
 - JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
+- JEE Main 2026 syllabus (unit-wise, Paper 1, 2A and 2B), year-wise paper analysis, high-weightage chapters, chapter trends and removed chapters: ${SITE_URL}/jee/syllabus , ${SITE_URL}/jee/paper-analysis , ${SITE_URL}/jee/high-weightage-chapters , ${SITE_URL}/jee/chapter-trends , ${SITE_URL}/jee/removed-chapters
 - FAQ: ${SITE_URL}/faq
 - Help & Support: ${SITE_URL}/help
 - Become a mentor: ${SITE_URL}/join-mentor

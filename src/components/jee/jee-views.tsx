@@ -27,10 +27,11 @@ import {
 } from "@/lib/jee-blueprint";
 import { JEE_DATA_NOTE, jeeChapterFaq, jeeChapterSummary, jeeHubFaq, jeeHubIntro, jeeSubjectFaq, jeeSubjectIntro, jeeConceptsFaq, type Faq } from "@/lib/jee-blueprint-copy";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
+import { RelatedGuides } from "@/components/jee/jee-related";
 
 const fmt = (n: number) => n.toLocaleString("en-IN");
 
-function Page({ children }: { children: ReactNode }) {
+export function Page({ children }: { children: ReactNode }) {
   return (
     <>
       <SiteHeader backLabel="Back to home" />
@@ -40,7 +41,7 @@ function Page({ children }: { children: ReactNode }) {
   );
 }
 
-function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
+export function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
   return (
     <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-foreground/55">
       <Link to="/" className="hover:underline">Home</Link>
@@ -54,10 +55,10 @@ function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
   );
 }
 
-const H1 = ({ children }: { children: ReactNode }) => <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{children}</h1>;
-const SectionTitle = ({ children }: { children: ReactNode }) => <h2 className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">{children}</h2>;
+export const H1 = ({ children }: { children: ReactNode }) => <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{children}</h1>;
+export const SectionTitle = ({ children }: { children: ReactNode }) => <h2 className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">{children}</h2>;
 
-function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
+export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
     <div className="clay-inset rounded-2xl px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{label}</p>
@@ -67,7 +68,7 @@ function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: 
   );
 }
 
-function FaqList({ faqs }: { faqs: Faq[] }) {
+export function FaqList({ faqs }: { faqs: Faq[] }) {
   return (
     <div className="space-y-2">
       {faqs.map((f) => (
@@ -80,7 +81,7 @@ function FaqList({ faqs }: { faqs: Faq[] }) {
   );
 }
 
-function YearBars({ years, caption }: { years: number[]; caption: string }) {
+export function YearBars({ years, caption }: { years: number[]; caption: string }) {
   const max = Math.max(1, ...years);
   return (
     <figure>
@@ -98,7 +99,7 @@ function YearBars({ years, caption }: { years: number[]; caption: string }) {
   );
 }
 
-function PracticeCta({ line, subject }: { line: string; subject?: string }) {
+export function PracticeCta({ line, subject }: { line: string; subject?: string }) {
   return (
     <div className="ink-section mt-10 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -112,7 +113,7 @@ function PracticeCta({ line, subject }: { line: string; subject?: string }) {
   );
 }
 
-function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: boolean }) {
+export function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: boolean }) {
   return (
     <Link to="/jee/chapter-wise-weightage/$subject/$chapter" params={{ subject: c.subjectKey, chapter: c.slug }} className="font-semibold text-foreground hover:underline">
       {c.name}
@@ -121,17 +122,17 @@ function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: 
   );
 }
 
-function TrendBadge({ c }: { c: JeeChapter }) {
+export function TrendBadge({ c }: { c: JeeChapter }) {
   if (c.retired) return <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-bold uppercase text-foreground/60">Not in syllabus</span>;
   const label = c.trend === "rising" ? "↑ Rising" : c.trend === "falling" ? "↓ Falling" : "→ Steady";
   return <span className="text-xs font-semibold text-foreground/70">{label}</span>;
 }
 
-function DataNote() {
+export function DataNote() {
   return <p className="mt-8 text-xs leading-relaxed text-foreground/50">{JEE_DATA_NOTE}</p>;
 }
 
-function YearCells({ years }: { years: number[] }) {
+export function YearCells({ years }: { years: number[] }) {
   return (
     <>
       {years.map((n, i) => (
@@ -299,6 +300,8 @@ export function JeeHubView() {
         </Link>
       </div>
 
+      <RelatedGuides exclude={["weightage", "concepts"]} />
+
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={jeeHubFaq()} />
       <PracticeCta line="Turn weightage into marks: solve JEE PYQs chapter by chapter." />
@@ -364,6 +367,7 @@ export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={jeeSubjectFaq(s)} />
       <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
+      <RelatedGuides exclude={["weightage"]} limit={6} />
       <DataNote />
     </Page>
   );
@@ -443,6 +447,7 @@ export function JeeChapterView({ subjectKey, chapterSlug }: { subjectKey: string
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={jeeChapterFaq(c, s)} />
       <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
+      <RelatedGuides exclude={["weightage", "concepts"]} limit={4} />
       <DataNote />
     </Page>
   );
@@ -489,6 +494,7 @@ export function JeeConceptsView() {
       <SectionTitle>Frequently asked questions</SectionTitle>
       <FaqList faqs={jeeConceptsFaq()} />
       <PracticeCta line="Solve JEE PYQs on the concepts that repeat." />
+      <RelatedGuides exclude={["concepts"]} />
       <DataNote />
     </Page>
   );

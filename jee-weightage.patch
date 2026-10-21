@@ -1,54 +1,1683 @@
+diff --git a/src/components/jee/jee-extra-views.tsx b/src/components/jee/jee-extra-views.tsx
+new file mode 100644
+index 0000000..864a05f
+--- /dev/null
++++ b/src/components/jee/jee-extra-views.tsx
+@@ -0,0 +1,581 @@
++// src/components/jee/jee-extra-views.tsx
++//
++// Extra public JEE pages: paper analysis (hub, year, year + subject), syllabus (hub, subject, Paper 2),
++// removed chapters, high-weightage chapters and chapter trends. Server-rendered like the rest of the
++// public site, so all text, tables and links are in the HTML Google reads.
++import { Link } from "@tanstack/react-router";
++import type { ReactNode } from "react";
++import {
++  EARLIER_LABEL,
++  JEE_RANGE,
++  RECENT_LABEL,
++  YEARS,
++  droppedChapters,
++  getJeeSubject,
++  getJeeSubjects,
++  jeeActiveChapters,
++  topJeeChaptersOverall,
++} from "@/lib/jee-blueprint";
++import { analyzeSubjectYear, analyzeYear, yearDataCaution, type ChapterYearRow } from "@/lib/jee-paper-analysis";
++import { coverage, movers, removedByLastYear } from "@/lib/jee-insights";
++import { CHEM_PRACTICAL, PAPER2, PHYSICS_EXPERIMENTS, getPaper2, syllabusUnits } from "@/lib/jee-syllabus";
++import {
++  highFaq,
++  highIntro,
++  paper2Faq,
++  paperHubFaq,
++  removedFaq,
++  removedIntro,
++  syllabusHubFaq,
++  syllabusHubIntro,
++  syllabusSubjectFaq,
++  syllabusSubjectIntro,
++  trendsFaq,
++  trendsIntro,
++  yearFaq,
++  yearIntro,
++  yearSubjectFaq,
++  yearSubjectIntro,
++} from "@/lib/jee-extra-copy";
++import { JEE_DATA_NOTE } from "@/lib/jee-blueprint-copy";
++import { ChapterLink, Crumbs, DataNote, FaqList, H1, Page, PracticeCta, SectionTitle, Stat, TrendBadge } from "@/components/jee/jee-views";
++import { RelatedGuides } from "@/components/jee/jee-related";
++
++const fmt = (n: number) => n.toLocaleString("en-IN");
++const Card = ({ children }: { children: ReactNode }) => <div className="clay rounded-3xl p-5">{children}</div>;
++const Lead = ({ paras }: { paras: string[] }) => (
++  <div className="mt-4 max-w-3xl space-y-3 text-[15px] leading-relaxed text-foreground/80">
++    {paras.map((p) => (
++      <p key={p}>{p}</p>
++    ))}
++  </div>
++);
++const hubCrumb = (label: string, to: ReactNode) => ({ label, to });
++
++function YearLinks({ current, subjectKey }: { current: string; subjectKey?: string }) {
++  return (
++    <div className="mt-3 flex flex-wrap gap-2 text-sm">
++      {YEARS.map((y) =>
++        y === current ? (
++          <span key={y} className="clay-inset rounded-full px-4 py-1.5 font-bold text-foreground">{y}</span>
++        ) : subjectKey ? (
++          <Link key={y} to="/jee/paper-analysis/$year/$subject" params={{ year: y, subject: subjectKey }} className="clay rounded-full px-4 py-1.5 font-semibold text-foreground">{y}</Link>
++        ) : (
++          <Link key={y} to="/jee/paper-analysis/$year" params={{ year: y }} className="clay rounded-full px-4 py-1.5 font-semibold text-foreground">{y}</Link>
++        ),
++      )}
++    </div>
++  );
++}
++
++function Delta({ d }: { d?: number }) {
++  if (d === undefined) return <span className="text-foreground/30">–</span>;
++  if (d === 0) return <span className="text-foreground/50">0</span>;
++  return <span className={d > 0 ? "font-semibold text-foreground" : "font-semibold text-foreground/60"}>{d > 0 ? `+${d}` : d}</span>;
++}
++
++function YearTable({ rows, hasPrev, showSubject = false }: { rows: ChapterYearRow[]; hasPrev: boolean; showSubject?: boolean }) {
++  return (
++    <div className="overflow-x-auto rounded-2xl" role="region" aria-label="Chapter-wise question counts for the year" tabIndex={0}>
++      <table className="w-full min-w-[520px] border-collapse text-left text-sm">
++        <thead>
++          <tr className="text-[11px] uppercase tracking-wide text-foreground/50">
++            <th scope="col" className="w-8 py-2 pr-2 font-semibold">#</th>
++            <th scope="col" className="py-2 pr-3 font-semibold">Chapter</th>
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Questions</th>
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Share</th>
++            {hasPrev && <th scope="col" className="px-2 py-2 text-center font-semibold">Share last year</th>}
++            {hasPrev && <th scope="col" className="px-2 py-2 text-center font-semibold">Change (pts)</th>}
++            <th scope="col" className="px-2 py-2 text-center font-semibold">Now</th>
++          </tr>
++        </thead>
++        <tbody>
++          {rows.map((r, i) => (
++            <tr key={r.chapter.subjectKey + r.chapter.slug} className="border-t border-foreground/10">
++              <td className="py-2 pr-2 text-xs text-foreground/40">{i + 1}</td>
++              <th scope="row" className="py-2 pr-3 text-[13px] font-medium leading-snug"><ChapterLink c={r.chapter} showSubject={showSubject} /></th>
++              <td className="px-2 py-2 text-center text-xs font-bold text-foreground">{r.count}</td>
++              <td className="px-2 py-2 text-center text-xs text-foreground/70">{r.share}%</td>
++              {hasPrev && <td className="px-2 py-2 text-center text-xs text-foreground/70">{r.prevShare !== undefined ? `${r.prevShare}%` : "–"}</td>}
++              {hasPrev && <td className="px-2 py-2 text-center text-xs"><Delta d={r.delta} /></td>}
++              <td className="px-2 py-2 text-center"><TrendBadge c={r.chapter} /></td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  );
++}
++
++// ── /jee/paper-analysis ─────────────────────────────────────────────────────
++export function PaperHubView() {
++  const years = [...YEARS].reverse();
++  return (
++    <Page>
++      <Crumbs items={[{ label: "JEE paper analysis" }]} />
++      <H1>JEE Main paper analysis <span className="text-foreground/60">{JEE_RANGE}</span></H1>
++      <Lead paras={[`See where each year's JEE Main questions came from. Pick a year for chapter-wise counts across Physics, Chemistry and Maths, the chapters that gained or lost share, and the most repeated concepts of that year.`]} />
++      <div className="mt-7 grid gap-4 sm:grid-cols-2">
++        {years.map((y) => {
++          const a = analyzeYear(y)!;
++          return (
++            <Link key={y} to="/jee/paper-analysis/$year" params={{ year: y }} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
++              <h2 className="font-display text-xl font-bold text-foreground">JEE Main {y} analysis</h2>
++              <p className="mt-1 text-sm text-foreground/60">{fmt(a.total)} questions · {a.subjects.map((s) => `${s.subject.short.slice(0, 4)} ${fmt(s.total)}`).join(" · ")}</p>
++              <p className="mt-3 text-sm text-foreground/80">Biggest chapter: <span className="font-semibold">{a.top[0].chapter.name}</span> ({a.top[0].chapter.subjectShort})</p>
++            </Link>
++          );
++        })}
++      </div>
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={paperHubFaq()} />
++      <RelatedGuides exclude={["paper-analysis"]} />
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/paper-analysis/<year> ──────────────────────────────────────────────
++export function PaperYearView({ year }: { year: string }) {
++  const a = analyzeYear(year)!;
++  const caution = yearDataCaution(year);
++  return (
++    <Page>
++      <Crumbs items={[hubCrumb("JEE paper analysis", <Link to="/jee/paper-analysis" className="hover:underline">JEE paper analysis</Link>), { label: year }]} />
++      <H1>JEE Main {year} paper analysis <span className="text-foreground/60">chapter-wise</span></H1>
++      <Lead paras={yearIntro(a)} />
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
++        <Stat label="Questions counted" value={fmt(a.total)} hint="across all shifts" />
++        {a.subjects.map((s) => (
++          <Stat key={s.subject.key} label={s.subject.name} value={fmt(s.total)} hint={`${s.rows.length} chapters asked`} />
++        ))}
++      </div>
++      <YearLinks current={year} />
++
++      <SectionTitle>Highest-weightage chapters in {year}</SectionTitle>
++      <Card>
++        <ol className="space-y-2 text-sm">
++          {a.top.map((r, i) => (
++            <li key={r.chapter.subjectKey + r.chapter.slug} className="flex items-baseline gap-3">
++              <span className="w-5 text-xs text-foreground/40">{i + 1}</span>
++              <span className="flex-1"><ChapterLink c={r.chapter} showSubject /></span>
++              <span className="shrink-0 text-xs font-bold text-foreground">{r.count} Qs · {r.paperShare}% of paper</span>
++            </li>
++          ))}
++        </ol>
++      </Card>
++
++      <SectionTitle>{year} by subject</SectionTitle>
++      <div className="grid gap-4 sm:grid-cols-3">
++        {a.subjects.map((s) => (
++          <div key={s.subject.key} className="clay rounded-3xl p-5">
++            <Link to="/jee/paper-analysis/$year/$subject" params={{ year, subject: s.subject.key }} className="font-display text-lg font-bold text-foreground hover:underline">
++              {s.subject.name} {year} analysis
++            </Link>
++            <ol className="mt-3 space-y-1 text-sm text-foreground/80">
++              {s.rows.slice(0, 5).map((r) => (
++                <li key={r.chapter.slug} className="flex items-baseline justify-between gap-2">
++                  <ChapterLink c={r.chapter} />
++                  <span className="shrink-0 text-xs text-foreground/50">{r.count}</span>
++                </li>
++              ))}
++            </ol>
++            <Link to="/jee/paper-analysis/$year/$subject" params={{ year, subject: s.subject.key }} className="mt-3 inline-block text-xs font-bold text-[var(--sky-deep)]">All {s.subject.short} chapters →</Link>
++          </div>
++        ))}
++      </div>
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={yearFaq(a)} />
++      <PracticeCta line={`Practise what JEE Main ${year} asked`} />
++      <RelatedGuides exclude={["paper-analysis"]} />
++      {caution && <p className="mt-8 text-xs leading-relaxed text-foreground/50">{caution}</p>}
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/paper-analysis/<year>/<subject> ────────────────────────────────────
++export function PaperSubjectView({ year, subjectKey }: { year: string; subjectKey: string }) {
++  const sy = analyzeSubjectYear(year, subjectKey)!;
++  const s = sy.subject;
++  const caution = yearDataCaution(year, subjectKey);
++  return (
++    <Page>
++      <Crumbs
++        items={[
++          hubCrumb("JEE paper analysis", <Link to="/jee/paper-analysis" className="hover:underline">JEE paper analysis</Link>),
++          hubCrumb(year, <Link to="/jee/paper-analysis/$year" params={{ year }} className="hover:underline">{year}</Link>),
++          { label: s.name },
++        ]}
++      />
++      <H1>JEE Main {year} {s.name} <span className="text-foreground/60">chapter-wise analysis</span></H1>
++      <Lead paras={yearSubjectIntro(sy)} />
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
++        <Stat label="Questions counted" value={fmt(sy.total)} hint="across all shifts" />
++        <Stat label="Chapters asked" value={sy.rows.length} hint={`of ${s.chapters.length} in the dataset`} />
++        <Stat label="Most asked" value={sy.rows[0].chapter.name} hint={`${sy.rows[0].count} Qs (${sy.rows[0].share}%)`} />
++      </div>
++      <p className="mt-3 text-sm text-foreground/60">Other years:</p>
++      <YearLinks current={year} subjectKey={subjectKey} />
++
++      <SectionTitle>{s.name} chapters in {year}</SectionTitle>
++      <Card><YearTable rows={sy.rows} hasPrev={sy.yi > 0} /></Card>
++
++      {sy.concepts.length > 0 && (
++        <>
++          <SectionTitle>Most repeated {s.name} concepts in {year}</SectionTitle>
++          <Card>
++            <ol className="space-y-2 text-sm">
++              {sy.concepts.map((x, i) => (
++                <li key={x.concept.name} className="flex items-baseline gap-3">
++                  <span className="w-5 text-xs text-foreground/40">{i + 1}</span>
++                  <span className="flex-1 font-medium text-foreground">{x.concept.name}</span>
++                  <span className="shrink-0 text-xs font-bold text-foreground">{x.count} Qs</span>
++                </li>
++              ))}
++            </ol>
++          </Card>
++        </>
++      )}
++
++      {sy.skipped.length > 0 && (
++        <>
++          <SectionTitle>Chapters with no questions in {year}</SectionTitle>
++          <Card>
++            <ul className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
++              {sy.skipped.map((c) => (
++                <li key={c.slug}><ChapterLink c={c} /></li>
++              ))}
++            </ul>
++          </Card>
++        </>
++      )}
++
++      <p className="mt-8 text-sm">
++        <Link to="/jee/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="font-bold text-[var(--sky-deep)]">{s.name} chapter-wise weightage {JEE_RANGE} →</Link>
++        {"  "}
++        <Link to="/jee/syllabus/$subject" params={{ subject: s.key }} className="ml-4 font-bold text-[var(--sky-deep)]">{s.name} syllabus 2026 →</Link>
++      </p>
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={yearSubjectFaq(sy)} />
++      <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <RelatedGuides exclude={["paper-analysis"]} />
++      {caution && <p className="mt-8 text-xs leading-relaxed text-foreground/50">{caution}</p>}
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/syllabus ───────────────────────────────────────────────────────────
++export function SyllabusHubView() {
++  return (
++    <Page>
++      <Crumbs items={[{ label: "JEE Main syllabus" }]} />
++      <H1>JEE Main syllabus <span className="text-foreground/60">2026</span></H1>
++      <Lead paras={syllabusHubIntro()} />
++      <SectionTitle>Paper 1 (B.E./B.Tech.)</SectionTitle>
++      <div className="grid gap-4 sm:grid-cols-3">
++        {getJeeSubjects().map((s) => (
++          <Link key={s.key} to="/jee/syllabus/$subject" params={{ subject: s.key }} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
++            <h2 className="font-display text-xl font-bold text-foreground">{s.name} syllabus</h2>
++            <p className="mt-1 text-sm text-foreground/60">{s.activeCount} units</p>
++            <p className="mt-3 text-xs text-foreground/60">Largest unit: <span className="font-semibold text-foreground">{s.chapters[0].name}</span></p>
++          </Link>
++        ))}
++      </div>
++      <SectionTitle>Paper 2 (B.Arch and B.Planning)</SectionTitle>
++      <div className="grid gap-4 sm:grid-cols-2">
++        {PAPER2.map((p) => (
++          <Link key={p.key} to="/jee/syllabus/$subject" params={{ subject: p.key }} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
++            <h2 className="font-display text-xl font-bold text-foreground">{p.name} syllabus</h2>
++            <p className="mt-1 text-sm text-foreground/60">{p.parts.map((x) => x.title.replace(/^Part [IV]+: /, "")).join(" · ")}</p>
++          </Link>
++        ))}
++      </div>
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={syllabusHubFaq()} />
++      <RelatedGuides exclude={["syllabus"]} />
++      <p className="mt-8 text-xs leading-relaxed text-foreground/50">Topic lists paraphrase the JEE Main 2026 syllabus published by NTA. Weightage figures come from the Careers360 JEE Main analysis for {JEE_RANGE}. Confirm the latest syllabus on the official NTA website.</p>
++    </Page>
++  );
++}
++
++// ── /jee/syllabus/<physics|chemistry|maths> ─────────────────────────────────
++export function SyllabusSubjectView({ subjectKey }: { subjectKey: string }) {
++  const s = getJeeSubject(subjectKey)!;
++  const units = syllabusUnits(subjectKey);
++  const dropped = s.chapters.filter((c) => c.retired);
++  return (
++    <Page>
++      <Crumbs items={[hubCrumb("JEE Main syllabus", <Link to="/jee/syllabus" className="hover:underline">JEE Main syllabus</Link>), { label: s.name }]} />
++      <H1>JEE Main {s.name} syllabus <span className="text-foreground/60">2026, unit-wise</span></H1>
++      <Lead paras={syllabusSubjectIntro(subjectKey)} />
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
++        <Stat label="Units" value={units.length} />
++        <Stat label="Largest unit" value={s.chapters[0].name} hint={`${s.chapters[0].recentShare}% in ${RECENT_LABEL}`} />
++        <Stat label="Not in syllabus" value={dropped.length} hint="chapters from earlier papers" />
++      </div>
++
++      <SectionTitle>{s.name} units and topics</SectionTitle>
++      <ol className="space-y-3">
++        {units.map(({ unit, chapter: c }) => (
++          <li key={c.slug} className="clay rounded-3xl p-5">
++            <div className="flex flex-wrap items-baseline justify-between gap-2">
++              <h3 className="font-display text-lg font-bold text-foreground">Unit {unit}: <ChapterLink c={c} /></h3>
++              <span className="text-xs font-semibold text-foreground/60">{c.recentShare}% of {s.short} in {RECENT_LABEL} · #{c.rank}</span>
++            </div>
++            <p className="mt-2 text-sm leading-relaxed text-foreground/75">{c.syllabus}</p>
++            {subjectKey === "physics" && unit === 20 && (
++              <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-foreground/75">
++                {PHYSICS_EXPERIMENTS.map((e) => (
++                  <li key={e}>{e}</li>
++                ))}
++              </ul>
++            )}
++            {subjectKey === "chemistry" && unit === 20 && (
++              <div className="mt-3 space-y-3 text-sm text-foreground/75">
++                {CHEM_PRACTICAL.map((g) => (
++                  <div key={g.title}>
++                    <p className="font-semibold text-foreground">{g.title}</p>
++                    <ul className="mt-1 list-disc space-y-1 pl-5">
++                      {g.items.map((i) => (
++                        <li key={i}>{i}</li>
++                      ))}
++                    </ul>
++                  </div>
++                ))}
++              </div>
++            )}
++          </li>
++        ))}
++      </ol>
++
++      {dropped.length > 0 && (
++        <p className="mt-6 text-sm text-foreground/70">
++          Not in this syllabus: {dropped.map((c) => c.name).join(", ")}. <Link to="/jee/removed-chapters" className="font-bold text-[var(--sky-deep)]">See removed chapters →</Link>
++        </p>
++      )}
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={syllabusSubjectFaq(subjectKey)} />
++      <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <RelatedGuides exclude={["syllabus"]} />
++      <p className="mt-8 text-xs leading-relaxed text-foreground/50">Topic lists paraphrase the JEE Main 2026 syllabus published by NTA. Weightage figures come from the Careers360 JEE Main analysis for {JEE_RANGE}. Confirm the latest syllabus on the official NTA website.</p>
++    </Page>
++  );
++}
++
++// ── /jee/syllabus/<paper-2a-barch|paper-2b-bplanning> ───────────────────────
++export function Paper2View({ paperKey }: { paperKey: string }) {
++  const p = getPaper2(paperKey)!;
++  const other = PAPER2.find((x) => x.key !== paperKey)!;
++  return (
++    <Page>
++      <Crumbs items={[hubCrumb("JEE Main syllabus", <Link to="/jee/syllabus" className="hover:underline">JEE Main syllabus</Link>), { label: p.name }]} />
++      <H1>JEE Main {p.course} syllabus <span className="text-foreground/60">2026 · {p.name}</span></H1>
++      <Lead paras={[`${p.name} has ${p.parts.length} parts: ${p.parts.map((x) => x.title.replace(/^Part [IV]+: /, "").toLowerCase()).join(", ")}.`]} />
++      <div className="mt-6 space-y-4">
++        {p.parts.map((part) => (
++          <section key={part.title} className="clay rounded-3xl p-5">
++            <h2 className="font-display text-lg font-bold text-foreground">{part.title}</h2>
++            <p className="mt-1 text-sm text-foreground/70">{part.summary}</p>
++            {part.items && (
++              <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-foreground/75">
++                {part.items.map((i) => (
++                  <li key={i}>{i}</li>
++                ))}
++              </ul>
++            )}
++            {part.title.startsWith("Part I:") && (
++              <ol className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
++                {syllabusUnits("maths").map(({ unit, chapter }) => (
++                  <li key={chapter.slug}>Unit {unit}: <ChapterLink c={chapter} /></li>
++                ))}
++              </ol>
++            )}
++          </section>
++        ))}
++      </div>
++      <p className="mt-6 text-sm">
++        Also see the <Link to="/jee/syllabus/$subject" params={{ subject: other.key }} className="font-bold text-[var(--sky-deep)]">{other.name} syllabus →</Link>
++      </p>
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={paper2Faq(p)} />
++      <RelatedGuides exclude={["syllabus"]} />
++      <p className="mt-8 text-xs leading-relaxed text-foreground/50">Paraphrased from the JEE Main 2026 syllabus published by NTA. Confirm the latest syllabus on the official NTA website.</p>
++    </Page>
++  );
++}
++
++// ── /jee/removed-chapters ───────────────────────────────────────────────────
++export function RemovedView() {
++  const subjects = getJeeSubjects().filter((s) => s.chapters.some((c) => c.retired));
++  return (
++    <Page>
++      <Crumbs items={[{ label: "Removed chapters" }]} />
++      <H1>JEE Main chapters <span className="text-foreground/60">not in the 2026 syllabus</span></H1>
++      <Lead paras={removedIntro()} />
++      {subjects.map((s) => {
++        const rows = s.chapters.filter((c) => c.retired);
++        return (
++          <section key={s.key}>
++            <SectionTitle>{s.name}: {rows.length} chapter{rows.length === 1 ? "" : "s"}</SectionTitle>
++            <Card>
++              <div className="overflow-x-auto" role="region" aria-label={`${s.name} chapters not in the syllabus`} tabIndex={0}>
++                <table className="w-full min-w-[520px] border-collapse text-left text-sm">
++                  <thead>
++                    <tr className="text-[11px] uppercase tracking-wide text-foreground/50">
++                      <th scope="col" className="py-2 pr-3 font-semibold">Chapter</th>
++                      {YEARS.map((y) => (
++                        <th key={y} scope="col" className="px-1 py-2 text-center font-semibold">{y}</th>
++                      ))}
++                      <th scope="col" className="px-2 py-2 text-center font-semibold">Total</th>
++                      <th scope="col" className="px-2 py-2 text-center font-semibold">Last asked</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    {rows.map((c) => (
++                      <tr key={c.slug} className="border-t border-foreground/10">
++                        <th scope="row" className="py-2 pr-3 text-[13px] font-medium"><ChapterLink c={c} /></th>
++                        {c.years.map((n, i) => (
++                          <td key={i} className="px-1 py-2 text-center text-xs">{n > 0 ? <span className="font-bold text-foreground">{n}</span> : <span className="text-foreground/25">–</span>}</td>
++                        ))}
++                        <td className="px-2 py-2 text-center text-xs font-bold text-foreground">{c.total}</td>
++                        <td className="px-2 py-2 text-center text-xs text-foreground/70">{removedByLastYear(c)}</td>
++                      </tr>
++                    ))}
++                  </tbody>
++                </table>
++              </div>
++            </Card>
++          </section>
++        );
++      })}
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={removedFaq()} />
++      <RelatedGuides exclude={["removed"]} />
++      <p className="mt-8 text-xs leading-relaxed text-foreground/50">{droppedChapters().length} chapters here are absent from NTA's JEE Main 2026 syllabus. Always check NTA's latest notice before skipping a chapter. {JEE_DATA_NOTE.split(" Because")[0]}</p>
++    </Page>
++  );
++}
++
++// ── /jee/high-weightage-chapters ────────────────────────────────────────────
++export function HighWeightView() {
++  const cov = coverage();
++  const top = topJeeChaptersOverall(20);
++  return (
++    <Page>
++      <Crumbs items={[{ label: "High-weightage chapters" }]} />
++      <H1>High-weightage JEE Main chapters <span className="text-foreground/60">{JEE_RANGE}</span></H1>
++      <Lead paras={highIntro()} />
++      <div className="mt-6 grid gap-3 sm:grid-cols-3">
++        {cov.map((c) => (
++          <div key={c.subject.key} className="clay-inset rounded-2xl px-4 py-3">
++            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{c.subject.name}</p>
++            <p className="mt-1 text-sm text-foreground/80">
++              {c.need.map((n) => (
++                <span key={n.target} className="block"><strong className="text-foreground">{n.chapters}</strong> chapters → {n.target}%</span>
++              ))}
++            </p>
++          </div>
++        ))}
++      </div>
++
++      {cov.map((c) => (
++        <section key={c.subject.key}>
++          <SectionTitle>{c.subject.name}: chapters by share of questions</SectionTitle>
++          <Card>
++            <div className="overflow-x-auto" role="region" aria-label={`${c.subject.name} cumulative chapter share`} tabIndex={0}>
++              <table className="w-full min-w-[420px] border-collapse text-left text-sm">
++                <thead>
++                  <tr className="text-[11px] uppercase tracking-wide text-foreground/50">
++                    <th scope="col" className="w-8 py-2 pr-2 font-semibold">#</th>
++                    <th scope="col" className="py-2 pr-3 font-semibold">Chapter</th>
++                    <th scope="col" className="px-2 py-2 text-center font-semibold">Share {RECENT_LABEL}</th>
++                    <th scope="col" className="px-2 py-2 text-center font-semibold">Running total</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {c.rows.map((r, i) => (
++                    <tr key={r.chapter.slug} className="border-t border-foreground/10">
++                      <td className="py-2 pr-2 text-xs text-foreground/40">{i + 1}</td>
++                      <th scope="row" className="py-2 pr-3 text-[13px] font-medium"><ChapterLink c={r.chapter} /></th>
++                      <td className="px-2 py-2 text-center text-xs text-foreground/70">{r.share}%</td>
++                      <td className="px-2 py-2 text-center text-xs font-bold text-foreground">{r.cumulative}%</td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          </Card>
++        </section>
++      ))}
++
++      <SectionTitle>Top 20 chapters across the whole paper</SectionTitle>
++      <Card>
++        <ol className="space-y-2 text-sm">
++          {top.map((c, i) => (
++            <li key={c.subjectKey + c.slug} className="flex items-baseline gap-3">
++              <span className="w-5 text-xs text-foreground/40">{i + 1}</span>
++              <span className="flex-1"><ChapterLink c={c} showSubject /></span>
++              <span className="shrink-0 text-xs font-bold text-foreground">{c.paperShare}% of paper</span>
++            </li>
++          ))}
++        </ol>
++      </Card>
++
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={highFaq()} />
++      <PracticeCta line="Start with the chapters that carry the most questions." />
++      <RelatedGuides exclude={["high-weightage"]} />
++      <DataNote />
++    </Page>
++  );
++}
++
++// ── /jee/chapter-trends ─────────────────────────────────────────────────────
++export function TrendsView() {
++  const m = movers();
++  return (
++    <Page>
++      <Crumbs items={[{ label: "Chapter trends" }]} />
++      <H1>JEE Main chapter trends <span className="text-foreground/60">rising and falling</span></H1>
++      <Lead paras={trendsIntro()} />
++      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
++        <Stat label="Rising" value={m.rising.length} hint={`chapters, ${RECENT_LABEL} vs ${EARLIER_LABEL}`} />
++        <Stat label="Falling" value={m.falling.length} />
++        <Stat label="Steady" value={jeeActiveChapters() - m.rising.length - m.falling.length} />
++      </div>
++      {m.byPerSubject.map(({ subject, rising, falling, steady }) => (
++        <section key={subject.key}>
++          <SectionTitle>{subject.name}: {rising.length} rising, {falling.length} falling, {steady} steady</SectionTitle>
++          <div className="grid gap-4 sm:grid-cols-2">
++            {([["Rising", rising], ["Falling", falling]] as const).map(([label, items]) => (
++              <div key={label} className="clay rounded-3xl p-5">
++                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{label}</p>
++                {items.length === 0 ? (
++                  <p className="mt-2 text-sm text-foreground/50">None clearly {label.toLowerCase()}.</p>
++                ) : (
++                  <ul className="mt-2 space-y-2 text-sm">
++                    {items.map((x) => (
++                      <li key={x.chapter.slug} className="flex items-baseline justify-between gap-3">
++                        <ChapterLink c={x.chapter} />
++                        <span className="shrink-0 text-xs text-foreground/60">{x.chapter.earlierAvgShare}% → {x.chapter.recentAvgShare}% ({x.diff > 0 ? "+" : ""}{x.diff})</span>
++                      </li>
++                    ))}
++                  </ul>
++                )}
++              </div>
++            ))}
++          </div>
++        </section>
++      ))}
++      <SectionTitle>Frequently asked questions</SectionTitle>
++      <FaqList faqs={trendsFaq()} />
++      <PracticeCta line="See how rising chapters are actually tested." />
++      <RelatedGuides exclude={["trends"]} />
++      <DataNote />
++    </Page>
++  );
++}
+diff --git a/src/components/jee/jee-related.tsx b/src/components/jee/jee-related.tsx
+new file mode 100644
+index 0000000..ee23614
+--- /dev/null
++++ b/src/components/jee/jee-related.tsx
+@@ -0,0 +1,33 @@
++// src/components/jee/jee-related.tsx — cross-links between the JEE guides, so no page is a dead end.
++import { Link } from "@tanstack/react-router";
++
++const GUIDES = [
++  { id: "weightage", to: "/jee/chapter-wise-weightage", title: "Chapter-wise weightage", desc: "Every chapter ranked by share of questions." },
++  { id: "syllabus", to: "/jee/syllabus", title: "JEE Main syllabus 2026", desc: "Unit-wise topics for Paper 1, 2A and 2B." },
++  { id: "paper-analysis", to: "/jee/paper-analysis", title: "Paper analysis by year", desc: "What each year's papers asked, chapter by chapter." },
++  { id: "high-weightage", to: "/jee/high-weightage-chapters", title: "High-weightage chapters", desc: "How few chapters cover most of the paper." },
++  { id: "trends", to: "/jee/chapter-trends", title: "Rising and falling chapters", desc: "Which chapters are gaining or losing share." },
++  { id: "removed", to: "/jee/removed-chapters", title: "Removed chapters", desc: "Chapters not in the 2026 syllabus." },
++  { id: "concepts", to: "/jee/most-repeated-concepts", title: "Most repeated concepts", desc: "The concepts JEE Main asks most." },
++] as const;
++
++export type GuideId = (typeof GUIDES)[number]["id"];
++
++export function RelatedGuides({ exclude = [] as GuideId[], limit = 6 }: { exclude?: GuideId[]; limit?: number }) {
++  const items = GUIDES.filter((g) => !exclude.includes(g.id)).slice(0, limit);
++  return (
++    <section aria-labelledby="more-jee-guides">
++      <h2 id="more-jee-guides" className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">
++        More JEE Main guides
++      </h2>
++      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
++        {items.map((g) => (
++          <Link key={g.id} to={g.to} className="clay block rounded-2xl p-4 transition hover:-translate-y-0.5">
++            <p className="font-semibold text-foreground">{g.title}</p>
++            <p className="mt-0.5 text-xs text-foreground/60">{g.desc}</p>
++          </Link>
++        ))}
++      </div>
++    </section>
++  );
++}
+diff --git a/src/components/jee/jee-views.tsx b/src/components/jee/jee-views.tsx
+index 906b00c..de57e1f 100644
+--- a/src/components/jee/jee-views.tsx
++++ b/src/components/jee/jee-views.tsx
+@@ -27,10 +27,11 @@ import {
+ } from "@/lib/jee-blueprint";
+ import { JEE_DATA_NOTE, jeeChapterFaq, jeeChapterSummary, jeeHubFaq, jeeHubIntro, jeeSubjectFaq, jeeSubjectIntro, jeeConceptsFaq, type Faq } from "@/lib/jee-blueprint-copy";
+ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
++import { RelatedGuides } from "@/components/jee/jee-related";
+ 
+ const fmt = (n: number) => n.toLocaleString("en-IN");
+ 
+-function Page({ children }: { children: ReactNode }) {
++export function Page({ children }: { children: ReactNode }) {
+   return (
+     <>
+       <SiteHeader backLabel="Back to home" />
+@@ -40,7 +41,7 @@ function Page({ children }: { children: ReactNode }) {
+   );
+ }
+ 
+-function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
++export function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
+   return (
+     <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-foreground/55">
+       <Link to="/" className="hover:underline">Home</Link>
+@@ -54,10 +55,10 @@ function Crumbs({ items }: { items: { label: string; to?: ReactNode }[] }) {
+   );
+ }
+ 
+-const H1 = ({ children }: { children: ReactNode }) => <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{children}</h1>;
+-const SectionTitle = ({ children }: { children: ReactNode }) => <h2 className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">{children}</h2>;
++export const H1 = ({ children }: { children: ReactNode }) => <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{children}</h1>;
++export const SectionTitle = ({ children }: { children: ReactNode }) => <h2 className="mb-3 mt-10 font-display text-xl font-bold tracking-tight text-foreground">{children}</h2>;
+ 
+-function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
++export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
+   return (
+     <div className="clay-inset rounded-2xl px-4 py-3">
+       <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-foreground/50">{label}</p>
+@@ -67,7 +68,7 @@ function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?:
+   );
+ }
+ 
+-function FaqList({ faqs }: { faqs: Faq[] }) {
++export function FaqList({ faqs }: { faqs: Faq[] }) {
+   return (
+     <div className="space-y-2">
+       {faqs.map((f) => (
+@@ -80,7 +81,7 @@ function FaqList({ faqs }: { faqs: Faq[] }) {
+   );
+ }
+ 
+-function YearBars({ years, caption }: { years: number[]; caption: string }) {
++export function YearBars({ years, caption }: { years: number[]; caption: string }) {
+   const max = Math.max(1, ...years);
+   return (
+     <figure>
+@@ -98,7 +99,7 @@ function YearBars({ years, caption }: { years: number[]; caption: string }) {
+   );
+ }
+ 
+-function PracticeCta({ line, subject }: { line: string; subject?: string }) {
++export function PracticeCta({ line, subject }: { line: string; subject?: string }) {
+   return (
+     <div className="ink-section mt-10 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
+       <div>
+@@ -112,7 +113,7 @@ function PracticeCta({ line, subject }: { line: string; subject?: string }) {
+   );
+ }
+ 
+-function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: boolean }) {
++export function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?: boolean }) {
+   return (
+     <Link to="/jee/chapter-wise-weightage/$subject/$chapter" params={{ subject: c.subjectKey, chapter: c.slug }} className="font-semibold text-foreground hover:underline">
+       {c.name}
+@@ -121,17 +122,17 @@ function ChapterLink({ c, showSubject = false }: { c: JeeChapter; showSubject?:
+   );
+ }
+ 
+-function TrendBadge({ c }: { c: JeeChapter }) {
++export function TrendBadge({ c }: { c: JeeChapter }) {
+   if (c.retired) return <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-[10px] font-bold uppercase text-foreground/60">Not in syllabus</span>;
+   const label = c.trend === "rising" ? "↑ Rising" : c.trend === "falling" ? "↓ Falling" : "→ Steady";
+   return <span className="text-xs font-semibold text-foreground/70">{label}</span>;
+ }
+ 
+-function DataNote() {
++export function DataNote() {
+   return <p className="mt-8 text-xs leading-relaxed text-foreground/50">{JEE_DATA_NOTE}</p>;
+ }
+ 
+-function YearCells({ years }: { years: number[] }) {
++export function YearCells({ years }: { years: number[] }) {
+   return (
+     <>
+       {years.map((n, i) => (
+@@ -299,6 +300,8 @@ export function JeeHubView() {
+         </Link>
+       </div>
+ 
++      <RelatedGuides exclude={["weightage", "concepts"]} />
++
+       <SectionTitle>Frequently asked questions</SectionTitle>
+       <FaqList faqs={jeeHubFaq()} />
+       <PracticeCta line="Turn weightage into marks: solve JEE PYQs chapter by chapter." />
+@@ -364,6 +367,7 @@ export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
+       <SectionTitle>Frequently asked questions</SectionTitle>
+       <FaqList faqs={jeeSubjectFaq(s)} />
+       <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <RelatedGuides exclude={["weightage"]} limit={6} />
+       <DataNote />
+     </Page>
+   );
+@@ -443,6 +447,7 @@ export function JeeChapterView({ subjectKey, chapterSlug }: { subjectKey: string
+       <SectionTitle>Frequently asked questions</SectionTitle>
+       <FaqList faqs={jeeChapterFaq(c, s)} />
+       <PracticeCta line={`Practise JEE Main ${s.name} PYQs`} subject={s.short} />
++      <RelatedGuides exclude={["weightage", "concepts"]} limit={4} />
+       <DataNote />
+     </Page>
+   );
+@@ -489,6 +494,7 @@ export function JeeConceptsView() {
+       <SectionTitle>Frequently asked questions</SectionTitle>
+       <FaqList faqs={jeeConceptsFaq()} />
+       <PracticeCta line="Solve JEE PYQs on the concepts that repeat." />
++      <RelatedGuides exclude={["concepts"]} />
+       <DataNote />
+     </Page>
+   );
+diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
+index 857693b..f75de6d 100644
+--- a/src/components/landing/site-chrome.tsx
++++ b/src/components/landing/site-chrome.tsx
+@@ -217,6 +217,9 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
+       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
+       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
+       { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" },
++      { label: "JEE syllabus 2026", to: "/jee/syllabus" },
++      { label: "Paper analysis", to: "/jee/paper-analysis" },
++      { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" },
+       { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" },
+       { label: "PYQ practice", to: "/pyq" },
+     ],
+diff --git a/src/lib/jee-extra-copy.ts b/src/lib/jee-extra-copy.ts
+new file mode 100644
+index 0000000..d516681
+--- /dev/null
++++ b/src/lib/jee-extra-copy.ts
+@@ -0,0 +1,237 @@
++// src/lib/jee-extra-copy.ts
++//
++// Copy for the extra JEE pages (paper analysis, syllabus, removed chapters, high-weightage chapters,
++// chapter trends). Like jee-blueprint-copy.ts, every sentence is a measurement from the dataset.
++import {
++  EARLIER_LABEL,
++  JEE_RANGE,
++  RECENT_LABEL,
++  YEARS,
++  droppedChapters,
++  getJeeSubjects,
++  jeeActiveChapters,
++  jeeTotalQuestions,
++  type JeeChapter,
++} from "@/lib/jee-blueprint";
++import type { Faq } from "@/lib/jee-blueprint-copy";
++import type { ChapterYearRow, SubjectYear, YearAnalysis } from "@/lib/jee-paper-analysis";
++import { coverage, movers } from "@/lib/jee-insights";
++import { PAPER2, syllabusUnits, type Paper2 } from "@/lib/jee-syllabus";
++
++const fmt = (n: number) => n.toLocaleString("en-IN");
++const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
++const list = (items: string[]) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
++const prevYear = (y: string) => YEARS[YEARS.indexOf(y) - 1];
++
++// ── Paper analysis ─────────────────────────────────────────────────────────
++export const PAPER_HUB_TITLE = `JEE Main Paper Analysis ${JEE_RANGE}, Chapter-Wise`;
++export const paperHubDescription = () => `Year-wise JEE Main paper analysis, ${JEE_RANGE}: chapter-wise question counts, the biggest chapters and shifts in weightage for Physics, Chemistry and Maths.`;
++
++export function paperHubFaq(): Faq[] {
++  return [
++    { q: "How is a JEE Main paper analysis done here?", a: `Each page counts how many questions came from every chapter in a year, across all shifts, and compares each chapter's share of its subject with the previous year.` },
++    { q: "Why use shares instead of raw counts?", a: "The number of shifts changes from year to year, so raw counts are not comparable across years. A chapter's share of its subject's questions is." },
++    { q: "Which years are covered?", a: `${YEARS.join(", ")}: ${fmt(jeeTotalQuestions())} questions across Physics, Chemistry and Mathematics.` },
++    { q: "Can past analysis predict the next paper?", a: "Not reliably. It shows where JEE Main has focused and how that has shifted, which helps you prioritise, but you should still cover the full syllabus." },
++  ];
++}
++
++export const yearTitle = (y: string) => `JEE Main ${y} Paper Analysis, Chapter-Wise`;
++
++function overallMoves(a: YearAnalysis, key: "rises" | "drops"): ChapterYearRow[] {
++  return a.subjects
++    .flatMap((s) => s[key])
++    .sort((x, y) => (key === "rises" ? (y.delta ?? 0) - (x.delta ?? 0) : (x.delta ?? 0) - (y.delta ?? 0)))
++    .slice(0, 3);
++}
++
++export function yearDescription(a: YearAnalysis) {
++  return `JEE Main ${a.year} analysis: ${fmt(a.total)} questions across all shifts, chapter by chapter. Biggest: ${a.top[0].chapter.name}.`;
++}
++
++export function yearIntro(a: YearAnalysis): string[] {
++  const out = [
++    `JEE Main ${a.year} adds ${fmt(a.total)} questions to this analysis, counted across all shifts: ${list(a.subjects.map((s) => `${fmt(s.total)} in ${s.subject.name}`))}. ` +
++      `The chapters with the largest share of the paper were ${list(a.top.slice(0, 3).map((r) => `${r.chapter.name} (${r.chapter.subjectShort}, about ${r.paperShare}% of the paper)`))}.`,
++  ];
++  if (a.yi > 0) {
++    const up = overallMoves(a, "rises");
++    const down = overallMoves(a, "drops");
++    const parts: string[] = [];
++    if (up.length) parts.push(`${list(up.map((r) => `${r.chapter.name} (+${r.delta} points of its subject)`))} gained share`);
++    if (down.length) parts.push(`${list(down.map((r) => `${r.chapter.name} (${r.delta} points)`))} lost share`);
++    if (parts.length) out.push(`Compared with ${prevYear(a.year)}, ${parts.join(" while ")}.`);
++  }
++  if (a.retiredCount > 0) out.push(`${fmt(a.retiredCount)} of the year's questions came from chapters that are no longer in the JEE Main 2026 syllabus.`);
++  return out;
++}
++
++export function yearFaq(a: YearAnalysis): Faq[] {
++  const out: Faq[] = a.subjects.map((s) => ({
++    q: `Which chapter had the most questions in JEE Main ${a.year} ${s.subject.short}?`,
++    a: `${s.rows[0].chapter.name}, with ${s.rows[0].count} of ${fmt(s.total)} ${s.subject.name} questions (${s.rows[0].share}%) across all shifts.`,
++  }));
++  out.push({ q: `How many questions are counted for JEE Main ${a.year}?`, a: `${fmt(a.total)} across Physics, Chemistry and Mathematics, counted across all shifts of the year.` });
++  return out;
++}
++
++export const yearSubjectTitle = (y: string, s: SubjectYear) => `JEE Main ${y} ${s.subject.short} Chapter-Wise Analysis`;
++
++export function yearSubjectDescription(sy: SubjectYear) {
++  return `JEE Main ${sy.year} ${sy.subject.short}: ${fmt(sy.total)} questions across all shifts. Most asked: ${sy.rows[0].chapter.name}. Chapter counts and shares.`;
++}
++
++export function yearSubjectIntro(sy: SubjectYear): string[] {
++  const top = sy.rows.slice(0, 3);
++  const out = [
++    `JEE Main ${sy.year} had ${fmt(sy.total)} ${sy.subject.name} questions across all shifts. The three chapters with the most were ${list(top.map((r) => `${r.chapter.name} (${r.count}, ${r.share}%)`))}.`,
++  ];
++  if (sy.yi > 0 && (sy.rises.length || sy.drops.length)) {
++    const parts: string[] = [];
++    if (sy.rises.length) parts.push(`${list(sy.rises.map((r) => `${r.chapter.name} (+${r.delta} points)`))} gained share`);
++    if (sy.drops.length) parts.push(`${list(sy.drops.map((r) => `${r.chapter.name} (${r.delta} points)`))} lost share`);
++    out.push(`Against ${prevYear(sy.year)}, ${parts.join(" while ")}.`);
++  }
++  if (sy.skipped.length) out.push(`No question came from ${list(sy.skipped.map((c) => c.name))} in ${sy.year}.`);
++  if (sy.disappeared.length) out.push(`${list(sy.disappeared.map((c) => c.name))} ${sy.disappeared.length === 1 ? "was" : "were"} asked in ${prevYear(sy.year)} but not in ${sy.year}${sy.disappeared.every((c) => c.retired) ? `, and ${sy.disappeared.length === 1 ? "is" : "are"} no longer in the JEE Main 2026 syllabus` : ""}.`);
++  if (sy.concepts.length) out.push(`The most repeated concepts that year were ${list(sy.concepts.slice(0, 3).map((x) => `${x.concept.name} (${x.count})`))}.`);
++  return out;
++}
++
++export function yearSubjectFaq(sy: SubjectYear): Faq[] {
++  const r0 = sy.rows[0];
++  const out: Faq[] = [
++    { q: `Which ${sy.subject.name} chapter had the most questions in JEE Main ${sy.year}?`, a: `${r0.chapter.name}, with ${r0.count} of ${fmt(sy.total)} questions (${r0.share}%) across all shifts.` },
++    { q: `How many ${sy.subject.name} questions are counted for JEE Main ${sy.year}?`, a: `${fmt(sy.total)}, counted across all shifts of the year.` },
++  ];
++  if (sy.skipped.length) out.push({ q: `Which ${sy.subject.name} chapters had no questions in JEE Main ${sy.year}?`, a: `${list(sy.skipped.map((c) => c.name))} had no questions in the dataset for ${sy.year}.` });
++  return out;
++}
++
++// ── Syllabus ───────────────────────────────────────────────────────────────
++export const SYLLABUS_HUB_TITLE = "JEE Main Syllabus 2026: Physics, Chemistry, Maths";
++export const syllabusHubDescription = () => `JEE Main 2026 syllabus by unit for Paper 1 (Physics, Chemistry, Maths), plus Paper 2A (B.Arch) and 2B (B.Planning), with each unit's weightage.`;
++
++export function syllabusHubIntro(): string[] {
++  const n = getJeeSubjects().map((s) => `${s.activeCount} units in ${s.name}`);
++  return [
++    `The JEE Main 2026 syllabus for Paper 1 (B.E./B.Tech.) has ${list(n)}. Open a subject for its unit-by-unit topics, each linked to the unit's weightage across ${RECENT_LABEL}.`,
++    `Paper 2A (B.Arch) and Paper 2B (B.Planning) share the same Mathematics syllabus and add an aptitude test, plus a drawing test or a planning section.`,
++  ];
++}
++
++export function syllabusHubFaq(): Faq[] {
++  return [
++    { q: "How many units are in the JEE Main 2026 syllabus?", a: `Paper 1 lists ${list(getJeeSubjects().map((s) => `${s.activeCount} units in ${s.name}`))}.` },
++    { q: "Which chapters are no longer in the JEE Main syllabus?", a: `${droppedChapters().length} chapters from earlier papers are not listed in NTA's 2026 syllabus, including ${list(droppedChapters().slice(0, 4).map((c) => c.name))}. See the removed chapters page for the full list.` },
++    { q: "Is the Mathematics syllabus the same for Paper 1 and Paper 2?", a: "Yes. Paper 2A (B.Arch) and Paper 2B (B.Planning) use the same 14 mathematics units as Paper 1." },
++    { q: "Where does this syllabus come from?", a: "It paraphrases the JEE Main 2026 syllabus published by NTA. Always confirm the latest version on the official NTA website." },
++  ];
++}
++
++export const syllabusSubjectTitle = (short: string) => `JEE Main ${short} Syllabus 2026, Unit-Wise`;
++export const syllabusSubjectDescription = (key: string) => {
++  const s = getJeeSubjects().find((x) => x.key === key)!;
++  return `JEE Main 2026 ${s.name} syllabus: ${s.activeCount} units with topics, and each unit's weightage in ${RECENT_LABEL}.`;
++};
++
++export function syllabusSubjectIntro(key: string): string[] {
++  const s = getJeeSubjects().find((x) => x.key === key)!;
++  const units = syllabusUnits(key);
++  const top = [...units].filter((u) => u.chapter.rank > 0).sort((a, b) => a.chapter.rank - b.chapter.rank).slice(0, 3);
++  const out = [
++    `The JEE Main 2026 ${s.name} syllabus has ${units.length} units. By share of questions in ${RECENT_LABEL}, the largest are ${list(top.map((u) => `Unit ${u.unit}, ${u.chapter.name} (${u.chapter.recentShare}%)`))}.`,
++  ];
++  const dropped = s.chapters.filter((c) => c.retired);
++  if (dropped.length) out.push(`${plural(dropped.length, "chapter")} that earlier papers asked ${dropped.length === 1 ? "is" : "are"} not part of this syllabus: ${list(dropped.map((c) => c.name))}.`);
++  return out;
++}
++
++export function syllabusSubjectFaq(key: string): Faq[] {
++  const s = getJeeSubjects().find((x) => x.key === key)!;
++  const units = syllabusUnits(key);
++  const top = [...units].sort((a, b) => a.chapter.rank - b.chapter.rank)[0];
++  return [
++    { q: `How many units are in the JEE Main ${s.name} syllabus?`, a: `${units.length} units in the 2026 syllabus.` },
++    { q: `Which JEE Main ${s.name} unit has the highest weightage?`, a: `Unit ${top.unit}, ${top.chapter.name}, with ${top.chapter.recentShare}% of ${s.name} questions in ${RECENT_LABEL}.` },
++    { q: `Has the JEE Main ${s.name} syllabus changed?`, a: `${s.chapters.filter((c) => c.retired).length} chapters that earlier papers asked are not in the 2026 syllabus. Check NTA's official notice for the latest version.` },
++  ];
++}
++
++export const paper2Title = (p: Paper2) => `JEE Main ${p.course} Syllabus 2026 (${p.name.split(" ").slice(0, 2).join(" ")})`;
++export const paper2Description = (p: Paper2) => `JEE Main 2026 ${p.name} syllabus: mathematics, aptitude test and ${p.course === "B.Arch" ? "drawing test" : "planning"} topics.`;
++export function paper2Faq(p: Paper2): Faq[] {
++  return [
++    { q: `What is in the JEE Main ${p.name} syllabus?`, a: `${list(p.parts.map((x) => x.title.replace(/^Part [IV]+: /, "")))}.` },
++    { q: `Is the Mathematics syllabus for ${p.name} different from Paper 1?`, a: "No. It uses the same 14 mathematics units as Paper 1." },
++    { q: "Where can I confirm the syllabus?", a: "The official JEE Main syllabus is published by NTA. Confirm it there, since it can change between years." },
++  ];
++}
++export const paper2Others = () => PAPER2;
++
++// ── Removed chapters ───────────────────────────────────────────────────────
++export const REMOVED_TITLE = "JEE Main Removed Chapters: Not in 2026 Syllabus";
++export const removedDescription = () => `${droppedChapters().length} chapters that JEE Main asked in 2022–2023 are not in NTA's 2026 syllabus: see them by subject with question counts.`;
++
++export function removedIntro(): string[] {
++  const d = droppedChapters();
++  const qs = d.reduce((n, c) => n + c.total, 0);
++  return [
++    `${d.length} chapters that appear in earlier JEE Main papers are not listed in NTA's JEE Main 2026 syllabus: ${list(getJeeSubjects().map((s) => `${s.chapters.filter((c) => c.retired).length} in ${s.name}`))}. Together they accounted for ${fmt(qs)} questions between 2022 and 2026.`,
++    `Most of those questions came in 2022 and 2023. If you are following the current syllabus, these chapters are not needed for JEE Main, though you may still need them for boards or other exams.`,
++  ];
++}
++
++export function removedFaq(): Faq[] {
++  const d = droppedChapters();
++  return [
++    { q: "Which chapters were removed from the JEE Main syllabus?", a: `${list(d.map((c) => c.name))} are not in NTA's JEE Main 2026 syllabus.` },
++    { q: "Do I still need these chapters for JEE Main?", a: "Not for the 2026 syllabus as published. Check NTA's latest notice before dropping a chapter, since syllabus details can change." },
++    { q: "Why do these chapters appear in earlier papers' data?", a: "Earlier papers were set on a wider syllabus, so the question counts for 2022 and 2023 still include them." },
++  ];
++}
++
++// ── High-weightage chapters ────────────────────────────────────────────────
++export const HIGH_TITLE = `High-Weightage JEE Main Chapters ${JEE_RANGE}`;
++export const highDescription = () => `Which JEE Main chapters cover most of the paper? See how many Physics, Chemistry and Maths chapters make up 50%, 70% and 80% of recent questions.`;
++
++export function highIntro(): string[] {
++  const c = coverage();
++  return [
++    `A small set of chapters makes up most of each subject's questions. In ${RECENT_LABEL}: ${list(c.map((x) => `${x.need[1].chapters} of ${x.subject.activeCount} ${x.subject.short} chapters cover 70% of its questions`))}.`,
++    `The tables rank chapters by their share of ${RECENT_LABEL} questions and add a running total so you can see where the cut-off falls.`,
++  ];
++}
++
++export function highFaq(): Faq[] {
++  const c = coverage();
++  return [
++    { q: "How many chapters cover most of JEE Main?", a: c.map((x) => `${x.subject.name}: ${x.need[2].chapters} of ${x.subject.activeCount} chapters cover 80% of questions in ${RECENT_LABEL}`).join("; ") + "." },
++    { q: "Can I skip the low-weightage chapters?", a: "They carry fewer questions, but they still appear. Treat the ranking as a study order, not a reason to leave chapters out." },
++    { q: "How is the running total calculated?", a: `Each chapter's share of ${RECENT_LABEL} questions from chapters still in the syllabus is added to the ones above it.` },
++  ];
++}
++
++// ── Trends ─────────────────────────────────────────────────────────────────
++export const TRENDS_TITLE = "JEE Main Chapter Trends: Rising and Falling";
++export const trendsDescription = () => `JEE Main chapters gaining and losing share, ${RECENT_LABEL} against ${EARLIER_LABEL}, for Physics, Chemistry and Maths.`;
++
++export function trendsIntro(): string[] {
++  const m = movers();
++  const top = m.rising.slice(0, 3);
++  return [
++    `Comparing ${RECENT_LABEL} with ${EARLIER_LABEL}, ${m.rising.length} of the ${jeeActiveChapters()} current chapters took a clearly bigger share of their subject and ${m.falling.length} took a clearly smaller one. The biggest gains were ${list(top.map((x) => `${x.chapter.name} (+${x.diff} points)`))}.`,
++    `Shares are measured among chapters still in the syllabus, so removing a chapter does not make the others look like they are rising.`,
++  ];
++}
++
++export function trendsFaq(): Faq[] {
++  const m = movers();
++  return [
++    { q: "Which JEE Main chapters are asked more often now?", a: `${list(m.rising.slice(0, 5).map((x) => `${x.chapter.name} (${x.chapter.subjectShort})`))} gained the most share in ${RECENT_LABEL}.` },
++    { q: "Which chapters are asked less often now?", a: `${list(m.falling.slice(0, 5).map((x) => `${x.chapter.name} (${x.chapter.subjectShort})`))} lost the most share in ${RECENT_LABEL}.` },
++    { q: "What counts as rising or falling?", a: `A chapter is rising or falling when its average share in ${RECENT_LABEL} is at least a quarter higher or lower than in ${EARLIER_LABEL}, and the gap is at least 0.8 points.` },
++  ];
++}
++
++export type { JeeChapter };
+diff --git a/src/lib/jee-insights.ts b/src/lib/jee-insights.ts
+new file mode 100644
+index 0000000..a21fdc0
+--- /dev/null
++++ b/src/lib/jee-insights.ts
+@@ -0,0 +1,53 @@
++// src/lib/jee-insights.ts
++//
++// Derived views over the JEE dataset for three page types:
++//   /jee/high-weightage-chapters   cumulative share (how few chapters cover most of the paper)
++//   /jee/chapter-trends            chapters gaining / losing share
++//   /jee/removed-chapters          chapters not in the 2026 syllabus
++import { getJeeSubjects, type JeeChapter, type JeeSubject } from "@/lib/jee-blueprint";
++
++export const HIGH_WEIGHT_PATH = "/jee/high-weightage-chapters";
++export const TRENDS_PATH = "/jee/chapter-trends";
++export const REMOVED_PATH = "/jee/removed-chapters";
++
++const r1 = (n: number) => Math.round(n * 10) / 10;
++
++export type CumRow = { chapter: JeeChapter; share: number; cumulative: number };
++export type Coverage = { subject: JeeSubject; rows: CumRow[]; need: { target: number; chapters: number }[] };
++
++/** Active chapters by recent share with a running total, plus how many chapters reach 50/70/80%. */
++export function coverage(): Coverage[] {
++  return getJeeSubjects().map((subject) => {
++    let run = 0;
++    const rows: CumRow[] = subject.chapters
++      .filter((c) => !c.retired)
++      .map((c) => {
++        run += c.recentShare;
++        return { chapter: c, share: c.recentShare, cumulative: r1(Math.min(run, 100)) };
++      });
++    const need = [50, 70, 80].map((target) => ({ target, chapters: rows.findIndex((r) => r.cumulative >= target) + 1 }));
++    return { subject, rows, need };
++  });
++}
++
++export type Mover = { chapter: JeeChapter; diff: number };
++
++export function movers(): { rising: Mover[]; falling: Mover[]; byPerSubject: { subject: JeeSubject; rising: Mover[]; falling: Mover[]; steady: number }[] } {
++  const all: Mover[] = getJeeSubjects().flatMap((s) =>
++    s.chapters.filter((c) => !c.retired).map((c) => ({ chapter: c, diff: r1(c.recentAvgShare - c.earlierAvgShare) })),
++  );
++  const rising = all.filter((m) => m.chapter.trend === "rising").sort((a, b) => b.diff - a.diff);
++  const falling = all.filter((m) => m.chapter.trend === "falling").sort((a, b) => a.diff - b.diff);
++  const byPerSubject = getJeeSubjects().map((subject) => ({
++    subject,
++    rising: rising.filter((m) => m.chapter.subjectKey === subject.key),
++    falling: falling.filter((m) => m.chapter.subjectKey === subject.key),
++    steady: subject.chapters.filter((c) => !c.retired && c.trend === "steady").length,
++  }));
++  return { rising, falling, byPerSubject };
++}
++
++export function removedByLastYear(c: JeeChapter): string {
++  const last = [...c.years].map((n, i) => (n > 0 ? i : -1)).filter((i) => i >= 0).pop();
++  return last === undefined ? "–" : ["2022", "2023", "2024", "2025", "2026"][last];
++}
+diff --git a/src/lib/jee-paper-analysis.ts b/src/lib/jee-paper-analysis.ts
+new file mode 100644
+index 0000000..89b70a2
+--- /dev/null
++++ b/src/lib/jee-paper-analysis.ts
+@@ -0,0 +1,108 @@
++// src/lib/jee-paper-analysis.ts
++//
++// Year-by-year analysis built from the same JEE dataset as the weightage pages:
++//   /jee/paper-analysis                    (hub)
++//   /jee/paper-analysis/<year>             (2022 ... 2026)
++//   /jee/paper-analysis/<year>/<subject>   (physics | chemistry | maths)
++//
++// Counts are questions across all shifts of that year, so a chapter's *share* of the subject's
++// questions is what gets compared between years.
++import { YEARS, getJeeSubject, getJeeSubjects, type JeeChapter, type JeeConcept, type JeeSubject } from "@/lib/jee-blueprint";
++
++export const PAPER_BASE = "/jee/paper-analysis";
++export const paperYearPath = (year: string) => `${PAPER_BASE}/${year}`;
++export const paperSubjectPath = (year: string, subjectKey: string) => `${PAPER_BASE}/${year}/${subjectKey}`;
++export const isJeeYear = (y: string) => YEARS.includes(y);
++
++const r1 = (n: number) => Math.round(n * 10) / 10;
++
++export type ChapterYearRow = { chapter: JeeChapter; count: number; share: number; prevShare?: number; delta?: number };
++
++export type SubjectYear = {
++  subject: JeeSubject;
++  year: string;
++  yi: number;
++  total: number;
++  rows: ChapterYearRow[];
++  /** Chapters still in the syllabus with no question this year. */
++  skipped: JeeChapter[];
++  /** Asked the previous year, absent this year. */
++  disappeared: JeeChapter[];
++  rises: ChapterYearRow[];
++  drops: ChapterYearRow[];
++  concepts: { concept: JeeConcept; count: number }[];
++  /** Questions this year from chapters that are no longer in the syllabus. */
++  retiredCount: number;
++};
++
++export function analyzeSubjectYear(year: string, subjectKey: string): SubjectYear | undefined {
++  const subject = getJeeSubject(subjectKey);
++  const yi = YEARS.indexOf(year);
++  if (!subject || yi < 0) return undefined;
++  const total = subject.yearTotals[yi];
++  const prevTotal = yi > 0 ? subject.yearTotals[yi - 1] : 0;
++  const rows: ChapterYearRow[] = subject.chapters
++    .filter((c) => c.years[yi] > 0)
++    .map((c) => {
++      const share = total > 0 ? r1((c.years[yi] / total) * 100) : 0;
++      const prevShare = yi > 0 && prevTotal > 0 ? r1((c.years[yi - 1] / prevTotal) * 100) : undefined;
++      return { chapter: c, count: c.years[yi], share, prevShare, delta: prevShare === undefined ? undefined : r1(share - prevShare) };
++    })
++    .sort((a, b) => b.count - a.count || a.chapter.name.localeCompare(b.chapter.name));
++  const withDelta = rows.filter((r) => r.delta !== undefined);
++  return {
++    subject,
++    year,
++    yi,
++    total,
++    rows,
++    skipped: subject.chapters.filter((c) => !c.retired && c.years[yi] === 0),
++    disappeared: yi > 0 ? subject.chapters.filter((c) => c.years[yi] === 0 && c.years[yi - 1] > 0) : [],
++    rises: withDelta.filter((r) => (r.delta ?? 0) >= 1.5).sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0)).slice(0, 3),
++    drops: withDelta.filter((r) => (r.delta ?? 0) <= -1.5).sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0)).slice(0, 3),
++    concepts: subject.concepts
++      .map((k) => ({ concept: k, count: k.years[yi] }))
++      .filter((x) => x.count > 0)
++      .sort((a, b) => b.count - a.count || b.concept.total - a.concept.total)
++      .slice(0, 8),
++    retiredCount: subject.chapters.filter((c) => c.retired).reduce((n, c) => n + c.years[yi], 0),
++  };
++}
++
++export type YearAnalysis = {
++  year: string;
++  yi: number;
++  total: number;
++  subjects: SubjectYear[];
++  /** Highest-share chapters of the year across the paper (each subject carries equal marks). */
++  top: (ChapterYearRow & { paperShare: number })[];
++  retiredCount: number;
++};
++
++export function analyzeYear(year: string): YearAnalysis | undefined {
++  const yi = YEARS.indexOf(year);
++  if (yi < 0) return undefined;
++  const subjects = getJeeSubjects().map((s) => analyzeSubjectYear(year, s.key) as SubjectYear);
++  const top = subjects
++    .flatMap((sy) => sy.rows.map((r) => ({ ...r, paperShare: r1(r.share / 3) })))
++    .sort((a, b) => b.paperShare - a.paperShare || b.count - a.count)
++    .slice(0, 10);
++  return { year, yi, total: subjects.reduce((n, s) => n + s.total, 0), subjects, top, retiredCount: subjects.reduce((n, s) => n + s.retiredCount, 0) };
++}
++
++/** Source caveat: the eBook's Chemistry 2024 and 2025 columns are split unevenly. */
++export function yearDataCaution(year: string, subjectKey?: string): string | null {
++  if ((year === "2024" || year === "2025") && (!subjectKey || subjectKey === "chemistry")) {
++    return "In the source data the Chemistry counts for 2024 and 2025 look unevenly split between the two years, so read those two years together rather than as separate trends.";
++  }
++  return null;
++}
++
++export function allPaperPaths(): { path: string; kind: "paper-hub" | "paper-year" | "paper-subject" }[] {
++  const out: { path: string; kind: "paper-hub" | "paper-year" | "paper-subject" }[] = [{ path: PAPER_BASE, kind: "paper-hub" }];
++  for (const y of YEARS) {
++    out.push({ path: paperYearPath(y), kind: "paper-year" });
++    for (const s of getJeeSubjects()) out.push({ path: paperSubjectPath(y, s.key), kind: "paper-subject" });
++  }
++  return out;
++}
+diff --git a/src/lib/jee-site-paths.ts b/src/lib/jee-site-paths.ts
+new file mode 100644
+index 0000000..ef58864
+--- /dev/null
++++ b/src/lib/jee-site-paths.ts
+@@ -0,0 +1,19 @@
++// src/lib/jee-site-paths.ts — every public JEE URL (weightage, analysis, syllabus, guides) for the sitemap.
++import { allJeePaths } from "@/lib/jee-blueprint";
++import { allPaperPaths } from "@/lib/jee-paper-analysis";
++import { HIGH_WEIGHT_PATH, REMOVED_PATH, TRENDS_PATH } from "@/lib/jee-insights";
++import { SYLLABUS_BASE, syllabusKeys, syllabusPath } from "@/lib/jee-syllabus";
++
++export type JeePathKind = "hub" | "subject" | "chapter" | "concepts" | "paper-hub" | "paper-year" | "paper-subject" | "syllabus-hub" | "syllabus" | "guide";
++
++export function allJeeSitePaths(): { path: string; kind: JeePathKind }[] {
++  return [
++    ...allJeePaths(),
++    ...allPaperPaths(),
++    { path: SYLLABUS_BASE, kind: "syllabus-hub" },
++    ...syllabusKeys().map((k) => ({ path: syllabusPath(k), kind: "syllabus" as const })),
++    { path: HIGH_WEIGHT_PATH, kind: "guide" },
++    { path: TRENDS_PATH, kind: "guide" },
++    { path: REMOVED_PATH, kind: "guide" },
++  ];
++}
+diff --git a/src/lib/jee-syllabus.ts b/src/lib/jee-syllabus.ts
+new file mode 100644
+index 0000000..30cc84c
+--- /dev/null
++++ b/src/lib/jee-syllabus.ts
+@@ -0,0 +1,126 @@
++// src/lib/jee-syllabus.ts
++//
++// Unit order and extra detail for the JEE Main 2026 syllabus pages. Unit numbers follow the order of
++// the syllabus NTA published for JEE Main 2026 (Paper 1); the topic text for each unit lives in
++// jee-blueprint-data.ts (a paraphrase of that syllabus). Paper 2A / 2B descriptions are paraphrased
++// from the same document.
++import { getJeeSubject, type JeeChapter } from "@/lib/jee-blueprint";
++
++export const SYLLABUS_BASE = "/jee/syllabus";
++export const syllabusPath = (key: string) => `${SYLLABUS_BASE}/${key}`;
++
++const ORDER: Record<string, string[]> = {
++  physics: [
++    "Physics and Measurement", "Kinematics", "Laws of Motion", "Work, Energy and Power", "Rotational Motion", "Gravitation",
++    "Properties of Solids and Liquids", "Thermodynamics", "Kinetic Theory of Gases", "Oscillations and Waves", "Electrostatics",
++    "Current Electricity", "Magnetic Effects of Current and Magnetism", "Electromagnetic Induction and Alternating Currents",
++    "Electromagnetic Waves", "Optics", "Dual Nature of Matter and Radiation", "Atoms and Nuclei", "Electronic Devices", "Experimental Skills",
++  ],
++  chemistry: [
++    "Some Basic Concepts in Chemistry", "Atomic Structure", "Chemical Bonding and Molecular Structure", "Chemical Thermodynamics", "Solutions",
++    "Equilibrium", "Redox Reactions and Electrochemistry", "Chemical Kinetics", "Classification of Elements and Periodicity", "p-Block Elements",
++    "d- and f-Block Elements", "Coordination Compounds", "Purification and Characterisation of Organic Compounds",
++    "Some Basic Principles of Organic Chemistry", "Hydrocarbons", "Organic Compounds Containing Halogens", "Organic Compounds Containing Oxygen",
++    "Organic Compounds Containing Nitrogen", "Biomolecules", "Principles Related to Practical Chemistry",
++  ],
++  maths: [
++    "Sets, Relations and Functions", "Complex Numbers and Quadratic Equations", "Matrices and Determinants", "Permutations and Combinations",
++    "Binomial Theorem and Its Simple Applications", "Sequence and Series", "Limit, Continuity and Differentiability", "Integral Calculus",
++    "Differential Equations", "Co-ordinate Geometry", "Three Dimensional Geometry", "Vector Algebra", "Statistics and Probability", "Trigonometry",
++  ],
++};
++
++export type SyllabusUnit = { unit: number; chapter: JeeChapter };
++
++export function syllabusUnits(subjectKey: string): SyllabusUnit[] {
++  const s = getJeeSubject(subjectKey);
++  if (!s) return [];
++  return (ORDER[subjectKey] ?? []).flatMap((name, i) => {
++    const chapter = s.chapters.find((c) => c.name === name);
++    return chapter ? [{ unit: i + 1, chapter }] : [];
++  });
++}
++
++export const PHYSICS_EXPERIMENTS: string[] = [
++  "Vernier calipers: internal and external diameter and depth of a vessel",
++  "Screw gauge: thickness or diameter of a thin sheet or wire",
++  "Simple pendulum: dissipation of energy by plotting amplitude squared against time",
++  "Metre scale: mass of an object using the principle of moments",
++  "Young's modulus of elasticity of a metallic wire",
++  "Surface tension of water by capillary rise, and the effect of detergents",
++  "Coefficient of viscosity of a liquid from the terminal velocity of a sphere",
++  "Speed of sound in air at room temperature using a resonance tube",
++  "Specific heat capacity of a solid and a liquid by the method of mixtures",
++  "Resistivity of a wire material using a metre bridge",
++  "Resistance of a wire using Ohm's law",
++  "Resistance and figure of merit of a galvanometer by the half-deflection method",
++  "Focal length of a convex mirror, concave mirror and convex lens using the parallax method",
++  "Plot of angle of deviation against angle of incidence for a triangular prism",
++  "Refractive index of a glass slab using a travelling microscope",
++  "Characteristic curves of a p-n junction diode in forward and reverse bias",
++  "Characteristic curves of a Zener diode and its reverse breakdown voltage",
++  "Identifying a diode, LED, resistor and capacitor from a mixed collection",
++];
++
++export const CHEM_PRACTICAL: { title: string; items: string[] }[] = [
++  { title: "Detection", items: ["Extra elements (nitrogen, sulphur, halogens) in organic compounds", "Hydroxyl (alcoholic and phenolic), carbonyl (aldehydes and ketones), carboxyl and amino groups"] },
++  { title: "Preparations", items: ["Inorganic: Mohr's salt, potash alum", "Organic: acetanilide, p-nitroacetanilide, aniline yellow, iodoform"] },
++  { title: "Titrations", items: ["Acids and bases with indicators", "Oxalic acid against KMnO4", "Mohr's salt against KMnO4"] },
++  { title: "Qualitative salt analysis", items: ["Cations: Pb2+, Cu2+, Al3+, Fe3+, Zn2+, Ni2+, Ca2+, Ba2+, Mg2+, NH4+", "Anions: CO3 2-, S2-, SO4 2-, NO3-, NO2-, Cl-, Br-, I- (insoluble salts excluded)"] },
++  { title: "Other experiments", items: ["Enthalpy of solution of CuSO4", "Enthalpy of neutralisation of a strong acid and strong base", "Preparation of lyophilic and lyophobic sols", "Kinetic study of the reaction of iodide ions with hydrogen peroxide at room temperature"] },
++];
++
++export type Paper2Part = { title: string; summary: string; items?: string[] };
++export type Paper2 = { key: string; name: string; course: string; parts: Paper2Part[] };
++
++const APTITUDE: Paper2Part = {
++  title: "Part II: Aptitude test",
++  summary: "Tests visual and analytical ability for architecture and the built environment.",
++  items: [
++    "Awareness of buildings, materials, objects and textures related to architecture and the built environment",
++    "Visualising three-dimensional objects from two-dimensional drawings and seeing different sides of 3D objects",
++    "Analytical reasoning and mental ability (visual, numerical and verbal)",
++    "Three-dimensional perception: scale and proportion, building forms, colour, texture, harmony and contrast",
++    "Design and drawing of geometrical or abstract shapes and patterns in pencil",
++    "Transformation of forms in 2D and 3D: union, subtraction, rotation, development of surfaces and volumes",
++    "Plans, elevations and 3D views of objects, and 2D and 3D compositions from given shapes",
++  ],
++};
++
++export const PAPER2: Paper2[] = [
++  {
++    key: "paper-2a-barch",
++    name: "Paper 2A (B.Arch)",
++    course: "B.Arch",
++    parts: [
++      { title: "Part I: Mathematics", summary: "The same 14 mathematics units as Paper 1, from sets and functions to trigonometry." },
++      APTITUDE,
++      {
++        title: "Part III: Drawing test",
++        summary: "Sketching of scenes and activities from memory, done on a drawing sheet.",
++        items: ["Urbanscape: public spaces, markets, festivals, street scenes, monuments, recreational spaces", "Landscape: riverfronts, jungles, gardens, trees and plants", "Rural life", "Bring pencils, your own geometry box, erasers, colour pencils and crayons"],
++      },
++    ],
++  },
++  {
++    key: "paper-2b-bplanning",
++    name: "Paper 2B (B.Planning)",
++    course: "B.Planning",
++    parts: [
++      { title: "Part I: Mathematics", summary: "The same 14 mathematics units as Paper 1, from sets and functions to trigonometry." },
++      APTITUDE,
++      {
++        title: "Part III: Planning",
++        summary: "General awareness, social sciences and thinking skills.",
++        items: [
++          "General awareness: prominent cities, development issues, government programmes",
++          "Social sciences: nationalism in India, the 19th-century global economy, colonial cities, resources and development, agriculture, water and minerals, industries, human settlements, power sharing, federalism, democracy, the Constitution, economic sectors, globalisation, poverty, population, urbanisation, rural development",
++          "Thinking skills: comprehension of an unseen passage, map reading (scale, distance, direction, area), critical reasoning, charts, graphs and tables, basic statistics and quantitative reasoning",
++        ],
++      },
++    ],
++  },
++];
++
++export const getPaper2 = (key: string) => PAPER2.find((p) => p.key === key);
++export const syllabusKeys = () => ["physics", "chemistry", "maths", ...PAPER2.map((p) => p.key)];
+diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
+index 7f65af9..0efb917 100644
+--- a/src/lib/sitemap-core.ts
++++ b/src/lib/sitemap-core.ts
+@@ -6,7 +6,7 @@
+ import { SITE_URL } from "@/lib/seo";
+ import { getDb } from "@/lib/mongo";
+ import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
+-import { allJeePaths } from "@/lib/jee-blueprint";
++import { allJeeSitePaths } from "@/lib/jee-site-paths";
+ import { PAPER_BASE, PAPER_SLUGS, paperPath } from "@/lib/neet-paper-analysis";
+ import { allPaperSubjectPages, paperSubjectPath } from "@/lib/neet-paper-subject";
+ import { TOPICS_PATH } from "@/lib/neet-topics";
+@@ -130,9 +130,20 @@ export function blueprintEntries(): string[] {
+ 
+ // JEE Main chapter-wise weightage pages (hub, subjects, chapters, concepts) — static data, always listed.
+ const JEE_LASTMOD = "2026-10-21";
+-const JEE_PRIORITY = { hub: 0.9, subject: 0.8, chapter: 0.7, concepts: 0.8 } as const;
++const JEE_PRIORITY = {
++  hub: 0.9,
++  subject: 0.8,
++  chapter: 0.7,
++  concepts: 0.8,
++  "paper-hub": 0.8,
++  "paper-year": 0.7,
++  "paper-subject": 0.6,
++  "syllabus-hub": 0.9,
++  syllabus: 0.8,
++  guide: 0.8,
++} as const;
+ export function jeeEntries(): string[] {
+-  return allJeePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
++  return allJeeSitePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
+ }
+ 
+ // Free tools and the data-driven NEET pages. Static content, so these are always listed.
 diff --git a/src/routes/index.tsx b/src/routes/index.tsx
-index 7b0d4f3..95e8a3c 100644
+index 95e8a3c..bf4d5c1 100644
 --- a/src/routes/index.tsx
 +++ b/src/routes/index.tsx
-@@ -208,6 +208,7 @@ const navLinks: NavLink[] = [
-   { label: "Connect", type: "anchor", href: "#connect" },
-   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
-   { label: "NEET Weightage", type: "route", to: "/neet/chapter-wise-weightage" },
-+  { label: "JEE Weightage", type: "route", to: "/jee/chapter-wise-weightage" },
-   { label: "Blog", type: "route", to: "/blog" },
-   { label: "Contact", type: "route", to: "/contact" },
- ];
-@@ -602,8 +603,8 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
-   return (
-     <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-       {mentors.map((m, i) => (
--        <Rise key={m.id} delay={(i % 3) * 0.08}>
--          <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="group flex h-full flex-col rounded-3xl border border-border bg-card p-5 transition-colors hover:border-primary">
-+        <Rise key={m.id} delay={(i % 3) * 0.08} className="min-w-0">
-+          <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="group flex h-full min-w-0 flex-col rounded-3xl border border-border bg-card p-5 transition-colors hover:border-primary">
-             <div className="flex items-center gap-3">
-               <MentorAvatar src={m.profilePictureUrl} name={m.name} />
-               <div className="min-w-0">
-@@ -615,11 +616,11 @@ function MentorsResolved({ mentors }: { mentors: LandingMentor[] }) {
-               </div>
-             </div>
-             {m.expertAt.length > 0 && (
--              <p className="mt-4 text-sm font-semibold text-primary">Expert in {m.expertAt}</p>
-+              <p className="mt-4 break-words text-sm font-semibold text-primary [overflow-wrap:anywhere]">Expert in {m.expertAt}</p>
-             )}
-             {m.batches.length > 0 && (
-               <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
--                {m.batches.map((b) => <li key={b.id} className="truncate">{b.name} · {b.exam.toUpperCase()} · {b.track}</li>)}
-+                {m.batches.map((b) => <li key={b.id} className="break-words [overflow-wrap:anywhere]">{b.name} · {b.exam.toUpperCase()} · {b.track}</li>)}
-               </ul>
-             )}
-             <span className="mt-auto inline-flex items-center gap-1.5 pt-5 text-sm font-bold text-foreground">View profile <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
-@@ -770,6 +771,7 @@ type FooterLink = { label: string; to: string };
+@@ -771,7 +771,7 @@ type FooterLink = { label: string; to: string };
  const footerColumns: { title: string; links: FooterLink[] }[] = [
    { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
    { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
-+  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
+-  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
++  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
    { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
    { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
  ];
-@@ -778,7 +780,7 @@ function Footer() {
-   return (
-     <footer className={`${INK} pb-10 pt-16`}>
-       <div className={WRAP}>
--        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
-+        <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
-           <div>
-             <Link to="/" className="flex items-center gap-2"><img src="/edurack-logo.webp" alt="EDURACK" width={160} height={160} className="h-10 w-auto object-contain" /><span className="font-display text-xl font-extrabold">edurack</span></Link>
-             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.</p>
+diff --git a/src/routes/jee.chapter-trends.tsx b/src/routes/jee.chapter-trends.tsx
+new file mode 100644
+index 0000000..dac5e79
+--- /dev/null
++++ b/src/routes/jee.chapter-trends.tsx
+@@ -0,0 +1,18 @@
++// src/routes/jee.chapter-trends.tsx  →  /jee/chapter-trends
++import { createFileRoute } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { TRENDS_PATH } from "@/lib/jee-insights";
++import { TRENDS_TITLE, trendsDescription, trendsFaq } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd } from "@/lib/jee-blueprint-copy";
++import { TrendsView } from "@/components/jee/jee-extra-views";
++
++export const Route = createFileRoute("/jee/chapter-trends")({
++  head: () =>
++    pageHead({
++      title: TRENDS_TITLE,
++      description: trendsDescription(),
++      path: TRENDS_PATH,
++      jsonLd: [breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Chapter trends", path: TRENDS_PATH }]), faqPageJsonLd(trendsFaq())],
++    }),
++  component: TrendsView,
++});
+diff --git a/src/routes/jee.high-weightage-chapters.tsx b/src/routes/jee.high-weightage-chapters.tsx
+new file mode 100644
+index 0000000..2da6cd9
+--- /dev/null
++++ b/src/routes/jee.high-weightage-chapters.tsx
+@@ -0,0 +1,18 @@
++// src/routes/jee.high-weightage-chapters.tsx  →  /jee/high-weightage-chapters
++import { createFileRoute } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { HIGH_WEIGHT_PATH } from "@/lib/jee-insights";
++import { HIGH_TITLE, highDescription, highFaq } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd } from "@/lib/jee-blueprint-copy";
++import { HighWeightView } from "@/components/jee/jee-extra-views";
++
++export const Route = createFileRoute("/jee/high-weightage-chapters")({
++  head: () =>
++    pageHead({
++      title: HIGH_TITLE,
++      description: highDescription(),
++      path: HIGH_WEIGHT_PATH,
++      jsonLd: [breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "High-weightage chapters", path: HIGH_WEIGHT_PATH }]), faqPageJsonLd(highFaq())],
++    }),
++  component: HighWeightView,
++});
+diff --git a/src/routes/jee.paper-analysis.$year.$subject.tsx b/src/routes/jee.paper-analysis.$year.$subject.tsx
+new file mode 100644
+index 0000000..b9b9f44
+--- /dev/null
++++ b/src/routes/jee.paper-analysis.$year.$subject.tsx
+@@ -0,0 +1,42 @@
++// src/routes/jee.paper-analysis.$year.$subject.tsx  →  /jee/paper-analysis/<year>/<subject>
++import { createFileRoute, notFound } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { PAPER_BASE, analyzeSubjectYear, paperSubjectPath, paperYearPath } from "@/lib/jee-paper-analysis";
++import { yearSubjectDescription, yearSubjectFaq, yearSubjectTitle } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd, itemListJsonLd } from "@/lib/jee-blueprint-copy";
++import { PaperSubjectView } from "@/components/jee/jee-extra-views";
++import { JeeNotFound } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/paper-analysis/$year/$subject")({
++  loader: ({ params }) => {
++    if (!analyzeSubjectYear(params.year, params.subject)) throw notFound();
++    return { year: params.year, subjectKey: params.subject };
++  },
++  head: ({ loaderData }) => {
++    const sy = loaderData ? analyzeSubjectYear(loaderData.year, loaderData.subjectKey) : undefined;
++    if (!sy) return { meta: [{ title: "Not found · Edurack" }, { name: "robots", content: "noindex" }] };
++    const path = paperSubjectPath(sy.year, sy.subject.key);
++    return pageHead({
++      title: yearSubjectTitle(sy.year, sy),
++      description: yearSubjectDescription(sy),
++      path,
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "JEE paper analysis", path: PAPER_BASE },
++          { name: sy.year, path: paperYearPath(sy.year) },
++          { name: sy.subject.name, path },
++        ]),
++        itemListJsonLd(`JEE Main ${sy.year} ${sy.subject.name}: chapters by questions`, sy.rows.slice(0, 10).map((r) => ({ name: r.chapter.name }))),
++        faqPageJsonLd(yearSubjectFaq(sy)),
++      ],
++    });
++  },
++  notFoundComponent: JeeNotFound,
++  component: SubjectYearPage,
++});
++
++function SubjectYearPage() {
++  const { year, subjectKey } = Route.useLoaderData();
++  return <PaperSubjectView year={year} subjectKey={subjectKey} />;
++}
+diff --git a/src/routes/jee.paper-analysis.$year.index.tsx b/src/routes/jee.paper-analysis.$year.index.tsx
+new file mode 100644
+index 0000000..785e564
+--- /dev/null
++++ b/src/routes/jee.paper-analysis.$year.index.tsx
+@@ -0,0 +1,40 @@
++// src/routes/jee.paper-analysis.$year.index.tsx  →  /jee/paper-analysis/<year>
++import { createFileRoute, notFound } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { PAPER_BASE, analyzeYear, isJeeYear, paperSubjectPath, paperYearPath } from "@/lib/jee-paper-analysis";
++import { yearDescription, yearFaq, yearTitle } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd, itemListJsonLd } from "@/lib/jee-blueprint-copy";
++import { PaperYearView } from "@/components/jee/jee-extra-views";
++import { JeeNotFound } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/paper-analysis/$year/")({
++  loader: ({ params }) => {
++    if (!isJeeYear(params.year)) throw notFound();
++    return { year: params.year };
++  },
++  head: ({ loaderData }) => {
++    const a = loaderData ? analyzeYear(loaderData.year) : undefined;
++    if (!a) return { meta: [{ title: "Not found · Edurack" }, { name: "robots", content: "noindex" }] };
++    return pageHead({
++      title: yearTitle(a.year),
++      description: yearDescription(a),
++      path: paperYearPath(a.year),
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "JEE paper analysis", path: PAPER_BASE },
++          { name: a.year, path: paperYearPath(a.year) },
++        ]),
++        itemListJsonLd(`JEE Main ${a.year} analysis by subject`, a.subjects.map((s) => ({ name: `${s.subject.name} ${a.year} analysis`, url: `${SITE_URL}${paperSubjectPath(a.year, s.subject.key)}` }))),
++        faqPageJsonLd(yearFaq(a)),
++      ],
++    });
++  },
++  notFoundComponent: JeeNotFound,
++  component: YearPage,
++});
++
++function YearPage() {
++  const { year } = Route.useLoaderData();
++  return <PaperYearView year={year} />;
++}
+diff --git a/src/routes/jee.paper-analysis.index.tsx b/src/routes/jee.paper-analysis.index.tsx
+new file mode 100644
+index 0000000..a6c5dd8
+--- /dev/null
++++ b/src/routes/jee.paper-analysis.index.tsx
+@@ -0,0 +1,23 @@
++// src/routes/jee.paper-analysis.index.tsx  →  /jee/paper-analysis
++import { createFileRoute } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { YEARS } from "@/lib/jee-blueprint";
++import { PAPER_BASE, paperYearPath } from "@/lib/jee-paper-analysis";
++import { PAPER_HUB_TITLE, paperHubDescription, paperHubFaq } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd, itemListJsonLd } from "@/lib/jee-blueprint-copy";
++import { PaperHubView } from "@/components/jee/jee-extra-views";
++
++export const Route = createFileRoute("/jee/paper-analysis/")({
++  head: () =>
++    pageHead({
++      title: PAPER_HUB_TITLE,
++      description: paperHubDescription(),
++      path: PAPER_BASE,
++      jsonLd: [
++        breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "JEE paper analysis", path: PAPER_BASE }]),
++        itemListJsonLd("JEE Main paper analysis by year", [...YEARS].reverse().map((y) => ({ name: `JEE Main ${y} paper analysis`, url: `${SITE_URL}${paperYearPath(y)}` }))),
++        faqPageJsonLd(paperHubFaq()),
++      ],
++    }),
++  component: PaperHubView,
++});
+diff --git a/src/routes/jee.removed-chapters.tsx b/src/routes/jee.removed-chapters.tsx
+new file mode 100644
+index 0000000..8bb8b2d
+--- /dev/null
++++ b/src/routes/jee.removed-chapters.tsx
+@@ -0,0 +1,18 @@
++// src/routes/jee.removed-chapters.tsx  →  /jee/removed-chapters
++import { createFileRoute } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { REMOVED_PATH } from "@/lib/jee-insights";
++import { REMOVED_TITLE, removedDescription, removedFaq } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd } from "@/lib/jee-blueprint-copy";
++import { RemovedView } from "@/components/jee/jee-extra-views";
++
++export const Route = createFileRoute("/jee/removed-chapters")({
++  head: () =>
++    pageHead({
++      title: REMOVED_TITLE,
++      description: removedDescription(),
++      path: REMOVED_PATH,
++      jsonLd: [breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Removed chapters", path: REMOVED_PATH }]), faqPageJsonLd(removedFaq())],
++    }),
++  component: RemovedView,
++});
+diff --git a/src/routes/jee.syllabus.$subject.tsx b/src/routes/jee.syllabus.$subject.tsx
+new file mode 100644
+index 0000000..655c078
+--- /dev/null
++++ b/src/routes/jee.syllabus.$subject.tsx
+@@ -0,0 +1,50 @@
++// src/routes/jee.syllabus.$subject.tsx
++//   →  /jee/syllabus/<physics | chemistry | maths | paper-2a-barch | paper-2b-bplanning>
++import { createFileRoute, notFound } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { getJeeSubject } from "@/lib/jee-blueprint";
++import { SYLLABUS_BASE, getPaper2, syllabusPath, syllabusUnits } from "@/lib/jee-syllabus";
++import { paper2Description, paper2Faq, paper2Title, syllabusSubjectDescription, syllabusSubjectFaq, syllabusSubjectTitle } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd, itemListJsonLd } from "@/lib/jee-blueprint-copy";
++import { Paper2View, SyllabusSubjectView } from "@/components/jee/jee-extra-views";
++import { JeeNotFound } from "@/components/jee/jee-views";
++
++export const Route = createFileRoute("/jee/syllabus/$subject")({
++  loader: ({ params }) => {
++    if (!getJeeSubject(params.subject) && !getPaper2(params.subject)) throw notFound();
++    return { key: params.subject };
++  },
++  head: ({ loaderData }) => {
++    const key = loaderData?.key;
++    const subject = key ? getJeeSubject(key) : undefined;
++    const paper2 = key ? getPaper2(key) : undefined;
++    if (!key || (!subject && !paper2)) return { meta: [{ title: "Not found · Edurack" }, { name: "robots", content: "noindex" }] };
++    const crumbs = (name: string) =>
++      breadcrumbJsonLd([
++        { name: "Home", path: "/" },
++        { name: "JEE Main syllabus", path: SYLLABUS_BASE },
++        { name, path: syllabusPath(key) },
++      ]);
++    if (subject) {
++      return pageHead({
++        title: syllabusSubjectTitle(subject.short),
++        description: syllabusSubjectDescription(key),
++        path: syllabusPath(key),
++        jsonLd: [
++          crumbs(subject.name),
++          itemListJsonLd(`JEE Main ${subject.name} syllabus units`, syllabusUnits(key).map((u) => ({ name: `Unit ${u.unit}: ${u.chapter.name}` }))),
++          faqPageJsonLd(syllabusSubjectFaq(key)),
++        ],
++      });
++    }
++    const p = paper2!;
++    return pageHead({ title: paper2Title(p), description: paper2Description(p), path: syllabusPath(key), jsonLd: [crumbs(p.name), faqPageJsonLd(paper2Faq(p))] });
++  },
++  notFoundComponent: JeeNotFound,
++  component: SyllabusPage,
++});
++
++function SyllabusPage() {
++  const { key } = Route.useLoaderData();
++  return getPaper2(key) ? <Paper2View paperKey={key} /> : <SyllabusSubjectView subjectKey={key} />;
++}
+diff --git a/src/routes/jee.syllabus.index.tsx b/src/routes/jee.syllabus.index.tsx
+new file mode 100644
+index 0000000..44e28a0
+--- /dev/null
++++ b/src/routes/jee.syllabus.index.tsx
+@@ -0,0 +1,22 @@
++// src/routes/jee.syllabus.index.tsx  →  /jee/syllabus
++import { createFileRoute } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { SYLLABUS_BASE, syllabusKeys, syllabusPath } from "@/lib/jee-syllabus";
++import { SYLLABUS_HUB_TITLE, syllabusHubDescription, syllabusHubFaq } from "@/lib/jee-extra-copy";
++import { faqPageJsonLd, itemListJsonLd } from "@/lib/jee-blueprint-copy";
++import { SyllabusHubView } from "@/components/jee/jee-extra-views";
++
++export const Route = createFileRoute("/jee/syllabus/")({
++  head: () =>
++    pageHead({
++      title: SYLLABUS_HUB_TITLE,
++      description: syllabusHubDescription(),
++      path: SYLLABUS_BASE,
++      jsonLd: [
++        breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "JEE Main syllabus", path: SYLLABUS_BASE }]),
++        itemListJsonLd("JEE Main 2026 syllabus by paper", syllabusKeys().map((k) => ({ name: `JEE Main ${k} syllabus`, url: `${SITE_URL}${syllabusPath(k)}` }))),
++        faqPageJsonLd(syllabusHubFaq()),
++      ],
++    }),
++  component: SyllabusHubView,
++});
+diff --git a/src/routes/llms[.]txt.ts b/src/routes/llms[.]txt.ts
+index 1d5faf9..d49017a 100644
+--- a/src/routes/llms[.]txt.ts
++++ b/src/routes/llms[.]txt.ts
+@@ -41,6 +41,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
+ - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
+ - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
+ - JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
++- JEE Main 2026 syllabus (unit-wise, Paper 1, 2A and 2B), year-wise paper analysis, high-weightage chapters, chapter trends and removed chapters: ${SITE_URL}/jee/syllabus , ${SITE_URL}/jee/paper-analysis , ${SITE_URL}/jee/high-weightage-chapters , ${SITE_URL}/jee/chapter-trends , ${SITE_URL}/jee/removed-chapters
+ - FAQ: ${SITE_URL}/faq
+ - Help & Support: ${SITE_URL}/help
+ - Become a mentor: ${SITE_URL}/join-mentor
