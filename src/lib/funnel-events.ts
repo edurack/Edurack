@@ -2,6 +2,7 @@
 // Fire-and-forget: it never blocks the UI, never throws, and does nothing when the
 // browser sends Do Not Track.
 import { recordFunnelEvent } from "@/server-functions/funnel";
+import { track } from "@/lib/analytics";
 
 export type FunnelEvent = "question_view" | "answer_checked" | "gate_shown" | "gate_signup_click" | "gate_login_click" | "auth_return";
 
@@ -50,6 +51,7 @@ export function trackEvent(event: FunnelEvent, opts: { path?: string; detail?: s
   if (typeof window === "undefined" || navigator.doNotTrack === "1") return;
   try {
     const { source, landing } = sessionSource();
+    track(event, { path: opts.path ?? window.location.pathname, source, landing, detail: opts.detail }); // same events, also in PostHog
     void recordFunnelEvent({ data: { event, path: opts.path ?? window.location.pathname, source, landing, detail: opts.detail } }).catch(() => {});
   } catch {
     // never let analytics break the page

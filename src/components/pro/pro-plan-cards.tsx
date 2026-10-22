@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Check } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { track } from "@/lib/analytics";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
 import { PRO_FEATURES, PRO_FEATURE_KEYS, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 
@@ -39,6 +40,7 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
     setBusy(plan.id);
     try {
       const token = await user.getIdToken();
+      track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "pro_page" });
       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
       await loadRazorpayScript();
       const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
@@ -55,6 +57,7 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
             await verifyRazorpayPayment({
               data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
             });
+            track("pro_purchased", { plan_id: plan.id, price: plan.price, from: "pro_page" });
             setBought(true);
           } catch (e) {
             setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");

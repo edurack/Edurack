@@ -38,6 +38,7 @@ import {
 import { SITE_URL } from "@/lib/seo";
 import { FormatBadge, MentorAvatar, SessionCover, formatLabel, priceLabel, seatsNote } from "@/components/sessions/session-ui";
 import { SlotPicker } from "@/components/sessions/slot-picker";
+import { track } from "@/lib/analytics";
 
 function loadRazorpayScript() {
   return new Promise<void>((resolve, reject) => {
@@ -95,6 +96,8 @@ export function BookingDialog({
     if (submitting) return;
     setSubmitting(true);
     setError(null);
+    const ev = { offering_id: offering.id, is_free: offering.isFree, price: offering.isFree ? 0 : offering.price };
+    track("session_booking_started", ev);
     try {
       const token = await getToken();
 
@@ -102,6 +105,7 @@ export function BookingDialog({
         await claimFreeItem({
           data: { token, itemType: "mentorSession", itemId: offering.id, sessionDate: current.date, sessionStartTime: current.startTime, studentNote: note },
         });
+        track("session_booked", ev);
         setBooked(true);
         setSubmitting(false);
         return;
@@ -132,8 +136,10 @@ export function BookingDialog({
                 studentNote: note,
               },
             });
+            track("session_booked", ev);
             setBooked(true);
           } catch (err) {
+            track("session_booking_failed", { ...ev, stage: "confirm_after_payment" });
             setError(err instanceof Error ? err.message : "Payment went through but we couldn't confirm the booking. Contact support with your payment ID.");
           } finally {
             setSubmitting(false);
@@ -143,6 +149,7 @@ export function BookingDialog({
       });
       rzp.open();
     } catch (err) {
+      track("session_booking_failed", { ...ev, stage: "start" });
       setError(err instanceof Error ? err.message : "Could not book this session.");
       setSubmitting(false);
     }

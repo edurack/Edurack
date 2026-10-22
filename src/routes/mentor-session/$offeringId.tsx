@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate, Link, notFound } from "@tanstack/react-router";
 import { pageHead, noindexHead } from "@/lib/seo";
+import { track } from "@/lib/analytics";
 import { SESSIONS_HUB_PATH, buildSessionSeo } from "@/lib/session-seo";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -114,6 +115,13 @@ function MentorSessionDetailPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, offeringId]);
+
+  // One "viewed" event per session page, once its details are on screen.
+  const viewedId = data?.offering.id;
+  useEffect(() => {
+    if (data) track("session_viewed", { offering_id: data.offering.id, is_free: data.offering.isFree, price: data.offering.isFree ? 0 : data.offering.price, open_slots: data.slots.length });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedId]);
 
   function handleBook() {
     if (!selected || loading) return;

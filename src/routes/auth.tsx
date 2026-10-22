@@ -10,6 +10,7 @@ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/se
 import { recordSession } from "@/server-functions/sessions";
 import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
@@ -69,7 +70,10 @@ async function completeLogin(user: FirebaseUser, provider: "password" | "google.
   });
 
   const { profile } = await getProfile({ data: { token } });
-  return { needsOnboarding: needsOnboarding(profile) };
+  const incomplete = needsOnboarding(profile);
+  // needs_onboarding = true is a brand-new account (or one that never finished setup).
+  track("login_completed", { provider, needs_onboarding: incomplete });
+  return { needsOnboarding: incomplete };
 }
 
 function AuthPage() {

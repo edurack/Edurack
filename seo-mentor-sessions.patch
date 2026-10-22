@@ -1,628 +1,423 @@
-diff --git a/src/components/landing-pro-section.tsx b/src/components/landing-pro-section.tsx
+diff --git a/src/components/analytics-provider.tsx b/src/components/analytics-provider.tsx
 new file mode 100644
-index 0000000..c9e113a
+index 0000000..c62247f
 --- /dev/null
-+++ b/src/components/landing-pro-section.tsx
-@@ -0,0 +1,92 @@
-+import { useEffect, useState } from "react";
-+import { Link } from "@tanstack/react-router";
-+import { IconArrowRight as ArrowRight } from "@tabler/icons-react";
-+import { Sparkles } from "lucide-react";
-+import { CUSTOM_DRILL_COUNTS, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
-+import { getPublicProOffer, type PublicProOffer } from "@/server-functions/pro-public";
-+import { bestValueId, rupees } from "@/components/pro/pro-plan-cards";
++++ b/src/components/analytics-provider.tsx
+@@ -0,0 +1,28 @@
++import { useEffect } from "react";
++import { useRouter } from "@tanstack/react-router";
++import { useAuth } from "@/lib/auth-context";
++import { identifyUser, initAnalytics, trackPageview } from "@/lib/analytics";
 +
-+// A short Edurack Pro teaser for the homepage. The plans come from the same place the mock drill page reads them,
-+// so prices here can never drift from what checkout charges. The full comparison lives on /pro.
-+export function LandingProSection() {
-+  const [offer, setOffer] = useState<PublicProOffer | null>(null);
++// Mounted once in the root layout. Renders nothing.
++export function AnalyticsProvider() {
++  const router = useRouter();
++  const { user, loading } = useAuth();
 +
 +  useEffect(() => {
-+    let alive = true;
-+    getPublicProOffer()
-+      .then((o) => alive && setOffer(o))
-+      .catch(() => alive && setOffer({ gatingOn: false, freeLimit: 0, proOnly: {} as PublicProOffer["proOnly"], plans: [] }));
-+    return () => {
-+      alive = false;
++    // Wait until the page is idle so analytics never competes with the first paint.
++    const start = () => {
++      initAnalytics();
++      trackPageview(window.location.pathname);
 +    };
-+  }, []);
++    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
++    if (idle) idle(start);
++    else setTimeout(start, 1);
++    return router.subscribe("onResolved", (e) => trackPageview(e.toLocation.pathname));
++  }, [router]);
 +
-+  // Nothing for sale (or still loading): show nothing rather than a section that promises a plan that isn't there.
-+  if (!offer || offer.plans.length === 0) return null;
++  useEffect(() => {
++    if (!loading) identifyUser(user?.uid ?? null);
++  }, [user?.uid, loading]);
 +
-+  const features = PRO_FEATURE_KEYS.filter((k) => offer.proOnly[k]);
-+  const best = bestValueId(offer.plans);
-+
-+  return (
-+    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-+      <div className="ink-section grid gap-8 rounded-3xl p-6 sm:p-10 lg:grid-cols-2 lg:items-center">
-+        <div>
-+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white/60">
-+            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Edurack Pro
-+          </p>
-+          <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl">Build the mock drill you actually need.</h2>
-+          <p className="mt-3 text-white/70">Choose the chapter, difficulty and paper years, then solve it in real timed CBT mode. Everything you use free today stays free.</p>
-+
-+          {features.length > 0 && (
-+            <ul className="mt-4 space-y-1.5 text-sm text-white/80">
-+              {features.map((k) => (
-+                <li key={k}>
-+                  <b className="text-white">{PRO_FEATURES[k].label}.</b> {PRO_FEATURES[k].description}
-+                </li>
-+              ))}
-+            </ul>
-+          )}
-+
-+          <div className="mt-5 flex flex-wrap gap-2">
-+            {offer.plans.map((p) => (
-+              <span key={p.id} className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85">
-+                {p.name} · {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
-+              </span>
-+            ))}
-+          </div>
-+
-+          <Link to="/pro" className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-white px-6 text-sm font-bold text-[#141b2b] transition hover:bg-white/90">
-+            See Pro plans
-+            <ArrowRight className="h-4 w-4" />
-+          </Link>
-+        </div>
-+
-+        {/* A picture of the builder, not the real thing: it shows what you get to choose. */}
-+        <div aria-hidden className="rounded-2xl border border-white/15 bg-white/5 p-4 sm:p-5">
-+          <p className="text-xs font-bold uppercase tracking-wide text-white/50">Your custom drill (example)</p>
-+          <div className="mt-3 space-y-3 text-sm">
-+            {[
-+              ["Subject", "Physics"],
-+              ["Chapter", "Current Electricity"],
-+              ["Difficulty", "Medium + Hard"],
-+              ["Paper years", "2020 – 2026"],
-+            ].map(([k, v]) => (
-+              <div key={k} className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5">
-+                <span className="text-white/60">{k}</span>
-+                <span className="font-semibold text-white">{v}</span>
-+              </div>
-+            ))}
-+            <div className="flex flex-wrap items-center gap-2 pt-1">
-+              <span className="text-white/60">Length</span>
-+              {CUSTOM_DRILL_COUNTS.map((n, i) => (
-+                <span key={n} className={`rounded-full px-3 py-1 text-xs font-bold ${i === 1 ? "bg-white text-[#141b2b]" : "border border-white/25 text-white/80"}`}>
-+                  {n}
-+                </span>
-+              ))}
-+            </div>
-+          </div>
-+        </div>
-+      </div>
-+    </section>
-+  );
++  return null;
 +}
-diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
-index 2472cac..8661cb3 100644
---- a/src/components/landing/site-chrome.tsx
-+++ b/src/components/landing/site-chrome.tsx
-@@ -191,6 +191,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
-       { label: "CBT Simulator", to: "/simulator/live" },
-       { label: "Dashboard", to: "/dashboard" },
-       { label: "Mentorship sessions", to: "/mentorship-sessions" },
-+      { label: "Edurack Pro", to: "/pro" },
-       { label: "Become a mentor", to: "/join-mentor" },
-       { label: "Internships", to: "/join-intern" },
-       { label: "Blog", to: "/blog" },
 diff --git a/src/components/pro/pro-plan-cards.tsx b/src/components/pro/pro-plan-cards.tsx
-new file mode 100644
-index 0000000..d3e4288
---- /dev/null
+index d3e4288..40a9ab8 100644
+--- a/src/components/pro/pro-plan-cards.tsx
 +++ b/src/components/pro/pro-plan-cards.tsx
-@@ -0,0 +1,144 @@
-+// The Edurack Pro plan cards, visible to everyone. Signed-in students buy right here (same Razorpay order +
-+// verify calls as the upgrade card on the mock drill page); signed-out visitors are sent to create an account
-+// and come straight back to this page.
-+import { useState } from "react";
-+import { Link } from "@tanstack/react-router";
-+import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-+import { Check } from "lucide-react";
-+import { useAuth } from "@/lib/auth-context";
-+import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
-+import { PRO_FEATURES, PRO_FEATURE_KEYS, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+ import { Check } from "lucide-react";
+ import { useAuth } from "@/lib/auth-context";
++import { track } from "@/lib/analytics";
+ import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
+ import { PRO_FEATURES, PRO_FEATURE_KEYS, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+ 
+@@ -39,6 +40,7 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
+     setBusy(plan.id);
+     try {
+       const token = await user.getIdToken();
++      track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "pro_page" });
+       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
+       await loadRazorpayScript();
+       const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
+@@ -55,6 +57,7 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
+             await verifyRazorpayPayment({
+               data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
+             });
++            track("pro_purchased", { plan_id: plan.id, price: plan.price, from: "pro_page" });
+             setBought(true);
+           } catch (e) {
+             setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");
+diff --git a/src/components/pyq/drill-launcher.tsx b/src/components/pyq/drill-launcher.tsx
+index 848d25b..e25b48d 100644
+--- a/src/components/pyq/drill-launcher.tsx
++++ b/src/components/pyq/drill-launcher.tsx
+@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+ import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
+ import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
++import { track } from "@/lib/analytics";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
+ import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+@@ -77,6 +78,7 @@ function UpgradePanel({
+     setBusy(plan.id);
+     try {
+       const token = await user.getIdToken();
++      track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
+       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
+       await loadRazorpayScript();
+       const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
+@@ -93,6 +95,7 @@ function UpgradePanel({
+             await verifyRazorpayPayment({
+               data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
+             });
++            track("pro_purchased", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
+             await onPurchased();
+           } catch (e) {
+             setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");
+diff --git a/src/components/sessions/booking-dialog.tsx b/src/components/sessions/booking-dialog.tsx
+index a924350..8f58e4f 100644
+--- a/src/components/sessions/booking-dialog.tsx
++++ b/src/components/sessions/booking-dialog.tsx
+@@ -38,6 +38,7 @@ import {
+ import { SITE_URL } from "@/lib/seo";
+ import { FormatBadge, MentorAvatar, SessionCover, formatLabel, priceLabel, seatsNote } from "@/components/sessions/session-ui";
+ import { SlotPicker } from "@/components/sessions/slot-picker";
++import { track } from "@/lib/analytics";
+ 
+ function loadRazorpayScript() {
+   return new Promise<void>((resolve, reject) => {
+@@ -95,6 +96,8 @@ export function BookingDialog({
+     if (submitting) return;
+     setSubmitting(true);
+     setError(null);
++    const ev = { offering_id: offering.id, is_free: offering.isFree, price: offering.isFree ? 0 : offering.price };
++    track("session_booking_started", ev);
+     try {
+       const token = await getToken();
+ 
+@@ -102,6 +105,7 @@ export function BookingDialog({
+         await claimFreeItem({
+           data: { token, itemType: "mentorSession", itemId: offering.id, sessionDate: current.date, sessionStartTime: current.startTime, studentNote: note },
+         });
++        track("session_booked", ev);
+         setBooked(true);
+         setSubmitting(false);
+         return;
+@@ -132,8 +136,10 @@ export function BookingDialog({
+                 studentNote: note,
+               },
+             });
++            track("session_booked", ev);
+             setBooked(true);
+           } catch (err) {
++            track("session_booking_failed", { ...ev, stage: "confirm_after_payment" });
+             setError(err instanceof Error ? err.message : "Payment went through but we couldn't confirm the booking. Contact support with your payment ID.");
+           } finally {
+             setSubmitting(false);
+@@ -143,6 +149,7 @@ export function BookingDialog({
+       });
+       rzp.open();
+     } catch (err) {
++      track("session_booking_failed", { ...ev, stage: "start" });
+       setError(err instanceof Error ? err.message : "Could not book this session.");
+       setSubmitting(false);
+     }
+diff --git a/src/lib/analytics-policy.ts b/src/lib/analytics-policy.ts
+new file mode 100644
+index 0000000..41e0e6a
+--- /dev/null
++++ b/src/lib/analytics-policy.ts
+@@ -0,0 +1,16 @@
++// Which pages analytics may look at. Pure, so it can be tested without a browser.
++//
++// Edurack's students are often teenagers, and some pages show other people's personal data or contain
++// links that shouldn't be copied around. Two tiers:
++//   NO_CAPTURE: nothing is sent at all (staff/mentor/partner portals and mentor onboarding, which holds documents).
++//   NO_REPLAY : normal events are fine, but the screen is never recorded (sign-in, profile, purchases,
++//               booked sessions with their join links, support tickets, private notes, application forms).
++export const NO_CAPTURE_PREFIXES = ["/admin", "/promoter", "/intern", "/mentor/dashboard", "/mentor-onboarding"] as const;
++export const NO_REPLAY_PREFIXES = ["/auth", "/login", "/forgot-password", "/profile", "/purchases", "/my-sessions", "/tickets", "/notebook", "/join-mentor", "/join-intern"] as const;
 +
-+export const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-+export const perDay = (p: ProPlanPublic) => p.price / Math.max(1, p.durationDays);
-+/** The plan with the lowest price per day, but only when there is a choice to make. */
-+export const bestValueId = (plans: ProPlanPublic[]) => (plans.length > 1 ? [...plans].sort((a, b) => perDay(a) - perDay(b))[0]?.id : null);
++const matches = (path: string, prefixes: readonly string[]) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
 +
-+const SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
-+function loadRazorpayScript(): Promise<void> {
-+  return new Promise((resolve, reject) => {
-+    if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve();
-+    const s = document.createElement("script");
-+    s.src = SCRIPT_SRC;
-+    s.onload = () => resolve();
-+    s.onerror = () => reject(new Error("Couldn't load the payment window. Check your connection and try again."));
-+    document.body.appendChild(s);
++/** May analytics record events on this path? */
++export const captureAllowed = (path: string) => !matches(path, NO_CAPTURE_PREFIXES);
++/** May the screen be recorded on this path? (Implies captureAllowed.) */
++export const replayAllowed = (path: string) => captureAllowed(path) && !matches(path, NO_REPLAY_PREFIXES);
+diff --git a/src/lib/analytics.ts b/src/lib/analytics.ts
+new file mode 100644
+index 0000000..5135e53
+--- /dev/null
++++ b/src/lib/analytics.ts
+@@ -0,0 +1,102 @@
++// Product analytics with PostHog: funnels, session replay and error tracking.
++//
++// - Does NOTHING until VITE_PUBLIC_POSTHOG_KEY is set, so this is safe to deploy before the account exists.
++// - Honours the browser's Do Not Track setting (same as the existing funnel tracker in funnel-events.ts).
++// - Students are identified by their account id only: no name, email or phone is ever sent.
++// - Every form field is masked in replays, and pages in analytics-policy.ts are excluded or never recorded.
++// - Loaded lazily after the page is interactive, so it doesn't slow first paint.
++//
++// Env: VITE_PUBLIC_POSTHOG_KEY (the project API key; it is public by design)
++//      VITE_PUBLIC_POSTHOG_HOST (optional; default https://us.i.posthog.com, use https://eu.i.posthog.com for the EU cloud)
++import type { PostHog } from "posthog-js";
++import { captureAllowed, replayAllowed } from "@/lib/analytics-policy";
++
++type Props = Record<string, string | number | boolean | null | undefined>;
++
++const KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as string | undefined;
++const HOST = (import.meta.env.VITE_PUBLIC_POSTHOG_HOST as string | undefined) || "https://us.i.posthog.com";
++
++let ph: PostHog | null = null;
++let started = false;
++let lastPath: string | null = null;
++let identifiedUid: string | null = null;
++const queue: Array<(p: PostHog) => void> = [];
++
++const enabled = () => typeof window !== "undefined" && Boolean(KEY) && navigator.doNotTrack !== "1";
++const run = (fn: (p: PostHog) => void) => {
++  if (ph) fn(ph);
++  else if (started) queue.push(fn); // init is still loading: replay these once it's ready
++};
++
++/** Start analytics once per page load. Safe to call repeatedly. */
++export function initAnalytics(): void {
++  if (started || !enabled()) return;
++  started = true;
++  void import("posthog-js")
++    .then(({ default: posthog }) => {
++      posthog.init(KEY as string, {
++        api_host: HOST,
++        person_profiles: "identified_only", // anonymous visitors stay anonymous (and cheaper)
++        capture_pageview: false, // this is a single-page app: pageviews are sent on route change below
++        capture_pageleave: true,
++        autocapture: false, // only the deliberate events in this file, so the numbers stay clean
++        respect_dnt: true,
++        capture_exceptions: true, // unhandled errors show up in PostHog's error tracking
++        session_recording: { maskAllInputs: true, blockSelector: "[data-ph-block]" },
++        // Last line of defence: even if some code tries to send an event from a private page, drop it.
++        before_send: (event) => (event && !captureAllowed(window.location.pathname) ? null : event),
++      });
++      ph = posthog;
++      for (const fn of queue.splice(0)) fn(posthog);
++    })
++    .catch(() => {
++      // blocked by an ad blocker or offline: analytics must never break the app
++      started = false;
++    });
++}
++
++/** Call on every route change. Sends the pageview and turns screen recording on/off for that page. */
++export function trackPageview(path: string): void {
++  if (!enabled() || path === lastPath) return;
++  lastPath = path;
++  run((p) => {
++    if (!captureAllowed(path)) {
++      p.stopSessionRecording();
++      return;
++    }
++    if (replayAllowed(path)) {
++      if (!p.sessionRecordingStarted()) p.startSessionRecording();
++    } else {
++      p.stopSessionRecording();
++    }
++    p.capture("$pageview");
 +  });
 +}
 +
-+export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOnly: Record<ProFeatureKey, boolean> }) {
-+  const { user, loading } = useAuth();
-+  const [busy, setBusy] = useState<string | null>(null);
-+  const [err, setErr] = useState<string | null>(null);
-+  const [bought, setBought] = useState(false);
-+  const bestId = bestValueId(plans);
-+
-+  async function buy(plan: ProPlanPublic) {
-+    if (!user || busy) return;
-+    setErr(null);
-+    setBusy(plan.id);
-+    try {
-+      const token = await user.getIdToken();
-+      const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
-+      await loadRazorpayScript();
-+      const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
-+        key: order.keyId,
-+        amount: order.amount,
-+        currency: order.currency,
-+        order_id: order.orderId,
-+        name: "Edurack",
-+        description: order.itemTitle,
-+        prefill: { email: user.email ?? undefined },
-+        theme: { color: "#2b4ea8" },
-+        handler: async (r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-+          try {
-+            await verifyRazorpayPayment({
-+              data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
-+            });
-+            setBought(true);
-+          } catch (e) {
-+            setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");
-+          } finally {
-+            setBusy(null);
-+          }
-+        },
-+        modal: { ondismiss: () => setBusy(null) },
-+      });
-+      rzp.open();
-+    } catch (e) {
-+      setErr(e instanceof Error ? e.message : "Could not start checkout. Please try again.");
-+      setBusy(null);
-+    }
++/** Tie events to the signed-in student (by id only). Pass null on sign-out. */
++export function identifyUser(uid: string | null): void {
++  if (!enabled()) return;
++  if (uid && uid !== identifiedUid) {
++    identifiedUid = uid;
++    run((p) => p.identify(uid));
++  } else if (!uid && identifiedUid) {
++    identifiedUid = null;
++    run((p) => p.reset()); // a shared computer shouldn't carry one student's identity to the next
 +  }
-+
-+  if (plans.length === 0) return null;
-+
-+  return (
-+    <div>
-+      {bought && (
-+        <div role="status" className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
-+          <b>You're on Edurack Pro.</b> Open{" "}
-+          <Link to="/pyq" className="font-bold underline">
-+            PYQ practice
-+          </Link>{" "}
-+          to start a drill.
-+        </div>
-+      )}
-+      <ul className={`grid grid-cols-1 gap-4 ${plans.length === 2 ? "sm:grid-cols-2" : plans.length >= 3 ? "sm:grid-cols-2 lg:grid-cols-3" : "max-w-md"}`}>
-+        {plans.map((p) => {
-+          const included = PRO_FEATURE_KEYS.filter((k) => proOnly[k] && p.features.includes(k));
-+          const featured = p.id === bestId;
-+          return (
-+            <li key={p.id} className={`flex flex-col rounded-3xl border bg-card p-5 sm:p-6 ${featured ? "border-primary" : "border-border"}`}>
-+              <div className="flex items-start justify-between gap-2">
-+                <h3 className="font-display text-lg font-bold">{p.name}</h3>
-+                {featured && <span className="shrink-0 rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-bold text-primary-foreground">Best value</span>}
-+              </div>
-+              <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
-+                <span className="font-display text-4xl font-extrabold tracking-tight">{rupees(p.price)}</span>
-+                <span className="text-sm text-muted-foreground">for {p.durationDays} days</span>
-+              </p>
-+              {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-xs text-muted-foreground">about {rupees(Math.round(perDay(p)))} a day</p>}
-+              {p.blurb && <p className="mt-3 text-sm text-muted-foreground">{p.blurb}</p>}
-+              <ul className="mt-4 space-y-2 text-sm">
-+                {included.map((k) => (
-+                  <li key={k} className="flex gap-2">
-+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-+                    <span>{PRO_FEATURES[k].label}</span>
-+                  </li>
-+                ))}
-+              </ul>
-+              <div className="mt-auto pt-5">
-+                {user ? (
-+                  <button
-+                    type="button"
-+                    disabled={busy !== null}
-+                    onClick={() => void buy(p)}
-+                    className="clay-btn inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm disabled:opacity-60"
-+                  >
-+                    {busy === p.id && <Loader2 className="h-4 w-4 animate-spin" />}
-+                    Get {p.name}
-+                  </button>
-+                ) : (
-+                  <Link
-+                    to="/auth"
-+                    search={{ tab: "signup", redirect: "/pro" } as any}
-+                    className={`clay-btn inline-flex min-h-11 w-full items-center justify-center px-5 text-sm ${loading ? "pointer-events-none opacity-60" : ""}`}
-+                  >
-+                    Sign up to get {p.name}
-+                  </Link>
-+                )}
-+              </div>
-+            </li>
-+          );
-+        })}
-+      </ul>
-+      {!user && !loading && <p className="mt-3 text-xs text-muted-foreground">Already have an account? <Link to="/auth" search={{ tab: "signin", redirect: "/pro" } as any} className="font-semibold text-foreground hover:underline">Log in</Link> to buy.</p>}
-+      {err && (
-+        <p role="alert" className="mt-3 text-sm font-semibold text-rose-600">
-+          {err}
-+        </p>
-+      )}
-+    </div>
-+  );
 +}
-diff --git a/src/components/sessions/slot-picker.tsx b/src/components/sessions/slot-picker.tsx
-index 958076d..d828529 100644
---- a/src/components/sessions/slot-picker.tsx
-+++ b/src/components/sessions/slot-picker.tsx
-@@ -59,13 +59,15 @@ export function SlotPicker({
-               role="tab"
-               aria-selected={active}
-               onClick={() => setDay(d)}
--              className={`flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
-+              className={`relative flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
-                 active ? "border-foreground bg-foreground text-background" : "border-border bg-card text-foreground hover:border-foreground/40"
-               }`}
-             >
-               <span className={`text-[11px] font-semibold ${active ? "text-background/70" : "text-muted-foreground"}`}>{relativeDay(d) === "Today" ? "Today" : relativeDay(d) === "Tomorrow" ? "Tmrw" : p.weekday}</span>
-               <span className="font-display text-xl font-extrabold leading-tight tabular-nums">{p.day}</span>
-               <span className={`text-[10px] ${active ? "text-background/60" : "text-muted-foreground"}`}>{p.month}</span>
-+              {/* The button is `relative` so this hidden label is positioned (and clipped) inside the scrolling strip.
-+                  Without that, 21 of them sit far off-screen to the right, the page becomes ~1400px wide and phones zoom out. */}
-               <span className="sr-only">{list.length} times</span>
-             </button>
-           );
-diff --git a/src/lib/blog-content.tsx b/src/lib/blog-content.tsx
-index 573113b..1d52ce1 100644
---- a/src/lib/blog-content.tsx
-+++ b/src/lib/blog-content.tsx
-@@ -379,7 +379,7 @@ function renderTable(headerLine: string, sepLine: string, bodyLines: string[]):
-   // role="region" + tabindex + aria-label make a horizontally-scrollable
-   // table keyboard-reachable and announced correctly by screen readers,
-   // instead of silently clipping on narrow viewports.
--  return `<div class="blog-table-wrap my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
-+  return `<div class="blog-table-wrap relative my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
++
++/** Record a product event. Never throws; never blocks. Keep property values free of personal data. */
++export function track(event: string, props: Props = {}): void {
++  if (!enabled() || !captureAllowed(window.location.pathname)) return;
++  try {
++    run((p) => p.capture(event, props));
++  } catch {
++    // analytics must never break the page
++  }
++}
++
++/** Send a caught error to PostHog's error tracking. */
++export function reportError(error: unknown): void {
++  if (!enabled()) return;
++  run((p) => (p as unknown as { captureException?: (e: unknown) => void }).captureException?.(error));
++}
+diff --git a/src/lib/funnel-events.ts b/src/lib/funnel-events.ts
+index 5a87f0e..aa5b925 100644
+--- a/src/lib/funnel-events.ts
++++ b/src/lib/funnel-events.ts
+@@ -2,6 +2,7 @@
+ // Fire-and-forget: it never blocks the UI, never throws, and does nothing when the
+ // browser sends Do Not Track.
+ import { recordFunnelEvent } from "@/server-functions/funnel";
++import { track } from "@/lib/analytics";
+ 
+ export type FunnelEvent = "question_view" | "answer_checked" | "gate_shown" | "gate_signup_click" | "gate_login_click" | "auth_return";
+ 
+@@ -50,6 +51,7 @@ export function trackEvent(event: FunnelEvent, opts: { path?: string; detail?: s
+   if (typeof window === "undefined" || navigator.doNotTrack === "1") return;
+   try {
+     const { source, landing } = sessionSource();
++    track(event, { path: opts.path ?? window.location.pathname, source, landing, detail: opts.detail }); // same events, also in PostHog
+     void recordFunnelEvent({ data: { event, path: opts.path ?? window.location.pathname, source, landing, detail: opts.detail } }).catch(() => {});
+   } catch {
+     // never let analytics break the page
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 80988bc..2c43a81 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -8,7 +8,7 @@ import {
+   HeadContent,
+   Scripts,
+ } from "@tanstack/react-router";
+-import type { ReactNode } from "react";
++import { useEffect, type ReactNode } from "react";
+ 
+ import appCss from "../styles.css?url";
+ // Fonts are self-hosted via Fontsource instead of the Google Fonts CDN, which
+@@ -25,6 +25,8 @@ import "@fontsource/plus-jakarta-sans/500.css";
+ import "@fontsource/plus-jakarta-sans/600.css";
+ import "@fontsource/plus-jakarta-sans/700.css";
+ import { AuthProvider } from "../lib/auth-context";
++import { AnalyticsProvider } from "../components/analytics-provider";
++import { reportError } from "../lib/analytics";
+ 
+ // ─── Site-wide SEO constants ────────────────────────────────────────────────
+ // One place to change branding/copy. Nothing here is exam-specific on
+@@ -110,6 +112,7 @@ function NotFoundComponent() {
+ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+   console.error(error);
+   const router = useRouter();
++  useEffect(() => reportError(error), [error]);
+ 
+   return (
+     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+@@ -222,6 +225,7 @@ function RootComponent() {
+     <QueryClientProvider client={queryClient}>
+       <ThemeProvider>
+         <AuthProvider>
++          <AnalyticsProvider />
+           <Outlet />
+         </AuthProvider>
+       </ThemeProvider>
+diff --git a/src/routes/auth.tsx b/src/routes/auth.tsx
+index 7399edb..d38a364 100644
+--- a/src/routes/auth.tsx
++++ b/src/routes/auth.tsx
+@@ -10,6 +10,7 @@ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/se
+ import { recordSession } from "@/server-functions/sessions";
+ import { trackEvent } from "@/lib/funnel-events";
+ import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
++import { track } from "@/lib/analytics";
+ 
+ export const Route = createFileRoute("/auth")({
+   validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
+@@ -69,7 +70,10 @@ async function completeLogin(user: FirebaseUser, provider: "password" | "google.
+   });
+ 
+   const { profile } = await getProfile({ data: { token } });
+-  return { needsOnboarding: needsOnboarding(profile) };
++  const incomplete = needsOnboarding(profile);
++  // needs_onboarding = true is a brand-new account (or one that never finished setup).
++  track("login_completed", { provider, needs_onboarding: incomplete });
++  return { needsOnboarding: incomplete };
  }
  
- export type BlogHeading = { id: string; level: 2 | 3; text: string };
-diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
-index 7586331..e7d294d 100644
---- a/src/lib/sitemap-core.ts
-+++ b/src/lib/sitemap-core.ts
-@@ -26,6 +26,7 @@ export const staticRoutes: { path: string; lastmod: string; priority: number; ch
-   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
-   { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
-   { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
-+  { path: "/pro", lastmod: "2026-10-22", priority: 0.7, changefreq: "weekly" },
-   { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
-   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
-   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
-diff --git a/src/routeTree.gen.ts b/src/routeTree.gen.ts
-index 8efba71..bcb1e71 100644
---- a/src/routeTree.gen.ts
-+++ b/src/routeTree.gen.ts
-@@ -19,6 +19,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
- import { Route as FreeResourcesRouteImport } from './routes/free-resources'
- import { Route as HelpRouteImport } from './routes/help'
- import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
-+import { Route as ProRouteImport } from './routes/pro'
- import { Route as JoinInternRouteImport } from './routes/join-intern'
- import { Route as JoinMentorRouteImport } from './routes/join-mentor'
- import { Route as LeaderboardRouteImport } from './routes/leaderboard'
-@@ -151,6 +152,11 @@ const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
-   path: '/mentorship-sessions',
-   getParentRoute: () => rootRouteImport,
- } as any)
-+const ProRoute = ProRouteImport.update({
-+  id: '/pro',
-+  path: '/pro',
-+  getParentRoute: () => rootRouteImport,
-+} as any)
- const JoinInternRoute = JoinInternRouteImport.update({
-   id: '/join-intern',
-   path: '/join-intern',
-@@ -583,6 +589,7 @@ export interface FileRoutesByFullPath {
-   '/free-resources': typeof FreeResourcesRoute
-   '/help': typeof HelpRoute
-   '/mentorship-sessions': typeof MentorshipSessionsRoute
-+  '/pro': typeof ProRoute
-   '/join-intern': typeof JoinInternRoute
-   '/join-mentor': typeof JoinMentorRoute
-   '/leaderboard': typeof LeaderboardRoute
-@@ -676,6 +683,7 @@ export interface FileRoutesByTo {
-   '/free-resources': typeof FreeResourcesRoute
-   '/help': typeof HelpRoute
-   '/mentorship-sessions': typeof MentorshipSessionsRoute
-+  '/pro': typeof ProRoute
-   '/join-intern': typeof JoinInternRoute
-   '/join-mentor': typeof JoinMentorRoute
-   '/leaderboard': typeof LeaderboardRoute
-@@ -770,6 +778,7 @@ export interface FileRoutesById {
-   '/free-resources': typeof FreeResourcesRoute
-   '/help': typeof HelpRoute
-   '/mentorship-sessions': typeof MentorshipSessionsRoute
-+  '/pro': typeof ProRoute
-   '/join-intern': typeof JoinInternRoute
-   '/join-mentor': typeof JoinMentorRoute
-   '/leaderboard': typeof LeaderboardRoute
-@@ -865,6 +874,7 @@ export interface FileRouteTypes {
-     | '/free-resources'
-     | '/help'
-     | '/mentorship-sessions'
-+    | '/pro'
-     | '/join-intern'
-     | '/join-mentor'
-     | '/leaderboard'
-@@ -958,6 +968,7 @@ export interface FileRouteTypes {
-     | '/free-resources'
-     | '/help'
-     | '/mentorship-sessions'
-+    | '/pro'
-     | '/join-intern'
-     | '/join-mentor'
-     | '/leaderboard'
-@@ -1051,6 +1062,7 @@ export interface FileRouteTypes {
-     | '/free-resources'
-     | '/help'
-     | '/mentorship-sessions'
-+    | '/pro'
-     | '/join-intern'
-     | '/join-mentor'
-     | '/leaderboard'
-@@ -1145,6 +1157,7 @@ export interface RootRouteChildren {
-   FreeResourcesRoute: typeof FreeResourcesRoute
-   HelpRoute: typeof HelpRoute
-   MentorshipSessionsRoute: typeof MentorshipSessionsRoute
-+  ProRoute: typeof ProRoute
-   JoinInternRoute: typeof JoinInternRoute
-   JoinMentorRoute: typeof JoinMentorRoute
-   LeaderboardRoute: typeof LeaderboardRoute
-@@ -1299,6 +1312,13 @@ declare module '@tanstack/react-router' {
-       preLoaderRoute: typeof MentorshipSessionsRouteImport
-       parentRoute: typeof rootRouteImport
-     }
-+    '/pro': {
-+      id: '/pro'
-+      path: '/pro'
-+      fullPath: '/pro'
-+      preLoaderRoute: typeof ProRouteImport
-+      parentRoute: typeof rootRouteImport
-+    }
-     '/join-intern': {
-       id: '/join-intern'
-       path: '/join-intern'
-@@ -1891,6 +1911,7 @@ const rootRouteChildren: RootRouteChildren = {
-   FreeResourcesRoute: FreeResourcesRoute,
-   HelpRoute: HelpRoute,
-   MentorshipSessionsRoute: MentorshipSessionsRoute,
-+  ProRoute: ProRoute,
-   JoinInternRoute: JoinInternRoute,
-   JoinMentorRoute: JoinMentorRoute,
-   LeaderboardRoute: LeaderboardRoute,
-diff --git a/src/routes/index.tsx b/src/routes/index.tsx
-index fc00cf7..15a9ee4 100644
---- a/src/routes/index.tsx
-+++ b/src/routes/index.tsx
-@@ -40,6 +40,7 @@ import type { PublicBlogPostSummary } from "@/lib/blog-types";
- import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
- import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
- import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
-+import { LandingProSection } from "@/components/landing-pro-section";
- import { FreeResourcesSection } from "@/components/landing/free-resources-section";
+ function AuthPage() {
+diff --git a/src/routes/mentor-session/$offeringId.tsx b/src/routes/mentor-session/$offeringId.tsx
+index f0678f7..77553b8 100644
+--- a/src/routes/mentor-session/$offeringId.tsx
++++ b/src/routes/mentor-session/$offeringId.tsx
+@@ -1,5 +1,6 @@
+ import { createFileRoute, useNavigate, Link, notFound } from "@tanstack/react-router";
+ import { pageHead, noindexHead } from "@/lib/seo";
++import { track } from "@/lib/analytics";
+ import { SESSIONS_HUB_PATH, buildSessionSeo } from "@/lib/session-seo";
+ import { useEffect, useMemo, useState } from "react";
+ import {
+@@ -115,6 +116,13 @@ function MentorSessionDetailPage() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [loading, user, offeringId]);
  
- // FIX: CbtSimulator is a heavy, below-the-fold interactive component
-@@ -351,6 +352,7 @@ function Index() {
-           <SimulatorSection />
-           <MentorShowcase />
-           <FeaturesSection />
-+          <LandingProSection />
-           <BlogShowcase />
-           <FreeResourcesSection />
-           <MentorBanner />
-@@ -770,7 +772,7 @@ function FinalCta() {
- // ── Footer ─────────────────────────────────────────────────────────────────
- type FooterLink = { label: string; to: string };
- const footerColumns: { title: string; links: FooterLink[] }[] = [
--  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
-+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Edurack Pro", to: "/pro" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
-   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
-   { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
-   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
-diff --git a/src/routes/pro.tsx b/src/routes/pro.tsx
-new file mode 100644
-index 0000000..6294dcd
---- /dev/null
-+++ b/src/routes/pro.tsx
-@@ -0,0 +1,148 @@
-+import { createFileRoute, Link } from "@tanstack/react-router";
-+import { IconChevronDown as ChevronDown } from "@tabler/icons-react";
-+import { Sparkles } from "lucide-react";
-+import { SITE_URL, breadcrumbJsonLd, noindexHead, pageHead } from "@/lib/seo";
-+import { CUSTOM_DRILL_COUNTS, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
-+import { getPublicProOffer } from "@/server-functions/pro-public";
-+import { ProPlanCards, rupees } from "@/components/pro/pro-plan-cards";
-+import { SiteHeader, SiteFooter, WRAP } from "@/components/landing/site-chrome";
++  // One "viewed" event per session page, once its details are on screen.
++  const viewedId = data?.offering.id;
++  useEffect(() => {
++    if (data) track("session_viewed", { offering_id: data.offering.id, is_free: data.offering.isFree, price: data.offering.isFree ? 0 : data.offering.price, open_slots: data.slots.length });
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [viewedId]);
 +
-+export const Route = createFileRoute("/pro")({
-+  // Server-side, so the plans and prices are in the HTML for search engines and for people on slow phones.
-+  loader: async () => {
-+    try {
-+      return { offer: await getPublicProOffer() };
-+    } catch {
-+      return { offer: null };
-+    }
-+  },
-+  head: ({ loaderData }) => {
-+    const offer = loaderData?.offer;
-+    // No published plan = nothing is for sale, so there's nothing for search engines to index.
-+    if (!offer || offer.plans.length === 0) return noindexHead("Edurack Pro");
-+    const prices = offer.plans.map((p) => p.price);
-+    return pageHead({
-+      title: "Edurack Pro: Custom NEET Mock Drills",
-+      path: "/pro",
-+      description: `Build your own timed NEET drill by chapter, topic, difficulty and paper year, with unlimited drills. Edurack Pro plans start at ${rupees(Math.min(...prices))}. Everything else on Edurack stays free.`,
-+      jsonLd: [
-+        {
-+          "@context": "https://schema.org",
-+          "@type": "Product",
-+          name: "Edurack Pro",
-+          description: "Unlimited timed PYQ drills and a custom drill builder for exam preparation.",
-+          url: `${SITE_URL}/pro`,
-+          brand: { "@type": "Brand", name: "Edurack" },
-+          offers: {
-+            "@type": "AggregateOffer",
-+            priceCurrency: "INR",
-+            lowPrice: Math.min(...prices),
-+            highPrice: Math.max(...prices),
-+            offerCount: offer.plans.length,
-+            offers: offer.plans.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "INR", url: `${SITE_URL}/pro`, availability: "https://schema.org/InStock" })),
-+          },
-+        },
-+        breadcrumbJsonLd([
-+          { name: "Home", path: "/" },
-+          { name: "Edurack Pro", path: "/pro" },
-+        ]),
-+      ],
-+    });
-+  },
-+  component: ProPage,
-+});
-+
-+function ProPage() {
-+  const { offer } = Route.useLoaderData();
-+  const plans = offer?.plans ?? [];
-+  const proOnly = offer?.proOnly;
-+  const proFeatures = proOnly ? PRO_FEATURE_KEYS.filter((k) => proOnly[k]) : [];
-+  const freeLimit = offer?.freeLimit ?? 0;
-+
-+  const faqs: { q: string; a: string }[] = [
-+    { q: "What is free, and what is Pro?", a: `Everything you use free today stays free: practice, answers, solutions, the notebook and the standard timed drill${freeLimit > 0 ? ` (${freeLimit} a day)` : ""}. Pro adds ${proFeatures.map((k) => PRO_FEATURES[k].label.toLowerCase()).join(" and ") || "extra drill features"}.` },
-+    { q: "What can I choose in a custom drill?", a: `A chapter or topic, the difficulty, the paper years to draw questions from, and the length: ${CUSTOM_DRILL_COUNTS.join(", ")} questions.` },
-+    { q: "How long does a plan last, and what if I buy again?", a: "Each plan runs for a fixed number of days. If you buy while Pro is still active, the new period starts when the current one ends, so you never lose days." },
-+    { q: "What happens when Pro ends?", a: "You go back to the free plan. Nothing you practised or saved is deleted." },
-+    { q: "How do I pay?", a: "Checkout is handled by Razorpay. You choose a plan, pay in the Razorpay window, and Pro switches on as soon as the payment is confirmed." },
-+  ];
-+
-+  return (
-+    <div className="min-h-screen bg-background">
-+      <SiteHeader />
-+      <main>
-+        <section className="py-12 sm:py-16">
-+          <div className={WRAP}>
-+            <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
-+              <Link to="/" className="hover:text-foreground hover:underline">
-+                Home
-+              </Link>
-+              <span className="mx-1.5">›</span>
-+              <span className="font-semibold text-foreground">Edurack Pro</span>
-+            </nav>
-+
-+            <div className="mt-5 max-w-3xl">
-+              <div className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
-+                <Sparkles className="h-4 w-4" aria-hidden />
-+                Edurack Pro
-+              </div>
-+              <h1 className="mt-5 font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
-+                <span className="block font-light">Build your own mock drill.</span>
-+                <span className="block font-extrabold">Practise exactly what you need.</span>
-+              </h1>
-+              <p className="mt-4 text-muted-foreground">
-+                Pick the chapter or topic, the difficulty, the paper years and how many questions, then solve it in real timed CBT mode. Pro also removes the daily cap on timed drills.
-+                Everything else on Edurack stays free.
-+              </p>
-+            </div>
-+
-+            {proFeatures.length > 0 && (
-+              <ul className="mt-8 grid max-w-3xl gap-3 sm:grid-cols-2">
-+                {proFeatures.map((k) => (
-+                  <li key={k} className="rounded-2xl border border-border bg-card p-4">
-+                    <p className="font-display font-bold">{PRO_FEATURES[k].label}</p>
-+                    <p className="mt-1 text-sm text-muted-foreground">
-+                      {PRO_FEATURES[k].description}
-+                      {k === "unlimitedDrills" ? (freeLimit === 0 ? " Not part of the free plan." : ` Free plan: ${freeLimit} a day.`) : ""}
-+                    </p>
-+                  </li>
-+                ))}
-+              </ul>
-+            )}
-+
-+            <h2 className="mt-12 font-display text-2xl font-extrabold tracking-tight">Choose a plan</h2>
-+            <div className="mt-5">
-+              {plans.length > 0 && proOnly ? (
-+                <ProPlanCards plans={plans} proOnly={proOnly} />
-+              ) : (
-+                <div className="rounded-3xl border border-dashed border-border p-8 text-center">
-+                  <p className="font-semibold">Pro plans aren't on sale right now</p>
-+                  <p className="mt-1 text-sm text-muted-foreground">Every drill feature is open to everyone for now. Jump in and practise.</p>
-+                  <Link to="/pyq" className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
-+                    Start free PYQ practice
-+                  </Link>
-+                </div>
-+              )}
-+            </div>
-+
-+            <div className="mt-16 max-w-3xl">
-+              <h2 className="font-display text-2xl font-extrabold tracking-tight">Questions about Edurack Pro</h2>
-+              <div className="mt-5 space-y-3">
-+                {faqs.map((f) => (
-+                  <details key={f.q} className="group clay overflow-hidden">
-+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display font-bold text-foreground sm:px-6">
-+                      {f.q}
-+                      <ChevronDown className="h-5 w-5 shrink-0 text-foreground/40 transition-transform group-open:rotate-180" />
-+                    </summary>
-+                    <p className="px-5 pb-5 text-sm leading-relaxed text-muted-foreground sm:px-6">{f.a}</p>
-+                  </details>
-+                ))}
-+              </div>
-+            </div>
-+          </div>
-+        </section>
-+      </main>
-+      <SiteFooter />
-+    </div>
-+  );
-+}
-diff --git a/src/server-functions/pro-public.ts b/src/server-functions/pro-public.ts
-new file mode 100644
-index 0000000..797e9d8
---- /dev/null
-+++ b/src/server-functions/pro-public.ts
-@@ -0,0 +1,31 @@
-+// The Edurack Pro offer, readable WITHOUT signing in — the same plans and free-plan rules the mock drill page
-+// shows a logged-in student, so the homepage and /pro can show them to anyone. Nothing personal is in here.
-+import { createServerFn } from "@tanstack/react-start";
-+import { getDb } from "@/lib/mongo";
-+import { createTtlCache } from "@/lib/simple-cache";
-+import type { ProFeatureKey, ProPlanPublic } from "@/lib/pro";
-+
-+export type PublicProOffer = {
-+  /** False until the team publishes a plan; while false nothing is limited and there is nothing to sell. */
-+  gatingOn: boolean;
-+  /** Free timed drills per day. */
-+  freeLimit: number;
-+  /** Which features are Pro-only right now (admin setting). */
-+  proOnly: Record<ProFeatureKey, boolean>;
-+  plans: ProPlanPublic[];
-+};
-+
-+// Same for every visitor and changes only when an admin edits a plan, so a minute's delay is fine —
-+// and the homepage must not hit the database once per visitor.
-+const cache = createTtlCache<PublicProOffer>(60_000);
-+
-+export const getPublicProOffer = createServerFn({ method: "GET" }).handler(async (): Promise<PublicProOffer> => {
-+  const hit = cache.get("offer");
-+  if (hit) return hit;
-+  const { listActivePlans, getProSettings } = await import("@/lib/pro-server");
-+  const db = await getDb();
-+  const [plans, settings] = await Promise.all([listActivePlans(db), getProSettings(db)]);
-+  const offer: PublicProOffer = { gatingOn: plans.length > 0, freeLimit: settings.freeDrillsPerDay, proOnly: settings.proOnly, plans };
-+  cache.set("offer", offer);
-+  return offer;
-+});
+   function handleBook() {
+     if (!selected || loading) return;
+     if (!user) {
+diff --git a/src/routes/pyq-drill.tsx b/src/routes/pyq-drill.tsx
+index f17b742..143bea1 100644
+--- a/src/routes/pyq-drill.tsx
++++ b/src/routes/pyq-drill.tsx
+@@ -10,6 +10,7 @@ import { DrillLauncher, type StartOptions } from "@/components/pyq/drill-launche
+ import { getPyqDrill, startPyqDrill, submitPyqDrill } from "@/server-functions/practice-extras";
+ import type { DrillState } from "@/lib/pyq-types";
+ import type { DrillAnswer } from "@/lib/practice-schedule";
++import { track } from "@/lib/analytics";
+ 
+ // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
+ // the server's clock, and a finished drill reopens its result.
+@@ -66,6 +67,7 @@ function DrillPage() {
+       const token = await user.getIdToken();
+       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
+       setState({ status: "running", set });
++      track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
+       navigate({ search: { exam, drillId: set.drillId }, replace: true });
+     } catch (e) {
+       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
+@@ -80,6 +82,7 @@ function DrillPage() {
+       const token = await user.getIdToken();
+       const result = await submitPyqDrill({ data: { token, drillId, answers } });
+       setState({ status: "done", result });
++      track("drill_submitted");
+       try {
+         sessionStorage.removeItem(`edurack:drill:${drillId}`);
+       } catch {
+diff --git a/src/routes/test.$testId.tsx b/src/routes/test.$testId.tsx
+index 6a9d701..af4a57d 100644
+--- a/src/routes/test.$testId.tsx
++++ b/src/routes/test.$testId.tsx
+@@ -8,6 +8,7 @@ import { getProfile } from "@/server-functions/profile";
+ import { getTestForTaking, submitTestAttempt } from "@/server-functions/test-engine";
+ import { findRuleForQuestion, ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
+ import { SmartContent } from "@/lib/smart-content";
++import { track } from "@/lib/analytics";
+ 
+ export const Route = createFileRoute("/test/$testId")({
+   head: () => noindexHead("Test in Progress"),
+@@ -176,6 +177,7 @@ function TestEnginePage() {
+       const res = await submitTestAttempt({
+         data: { token, testId, answers, timeTakenMinutes },
+       });
++      track("test_submitted", { test_id: testId, minutes: timeTakenMinutes, auto_submitted: Boolean(autoSubmitReason) });
+       // Results are shown on their own dedicated page, not inline here.
+       navigate({ to: "/test-result/$attemptId", params: { attemptId: res.attemptId } });
+     } catch (err) {

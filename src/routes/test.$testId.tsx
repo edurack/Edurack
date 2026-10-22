@@ -8,6 +8,7 @@ import { getProfile } from "@/server-functions/profile";
 import { getTestForTaking, submitTestAttempt } from "@/server-functions/test-engine";
 import { findRuleForQuestion, ruleGroupSize, type AttemptRule } from "@/lib/attempt-rules";
 import { SmartContent } from "@/lib/smart-content";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/test/$testId")({
   head: () => noindexHead("Test in Progress"),
@@ -176,6 +177,7 @@ function TestEnginePage() {
       const res = await submitTestAttempt({
         data: { token, testId, answers, timeTakenMinutes },
       });
+      track("test_submitted", { test_id: testId, minutes: timeTakenMinutes, auto_submitted: Boolean(autoSubmitReason) });
       // Results are shown on their own dedicated page, not inline here.
       navigate({ to: "/test-result/$attemptId", params: { attemptId: res.attemptId } });
     } catch (err) {

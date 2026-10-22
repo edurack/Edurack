@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 // Fonts are self-hosted via Fontsource instead of the Google Fonts CDN, which
@@ -25,6 +25,8 @@ import "@fontsource/plus-jakarta-sans/500.css";
 import "@fontsource/plus-jakarta-sans/600.css";
 import "@fontsource/plus-jakarta-sans/700.css";
 import { AuthProvider } from "../lib/auth-context";
+import { AnalyticsProvider } from "../components/analytics-provider";
+import { reportError } from "../lib/analytics";
 
 // ─── Site-wide SEO constants ────────────────────────────────────────────────
 // One place to change branding/copy. Nothing here is exam-specific on
@@ -110,6 +112,7 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  useEffect(() => reportError(error), [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -222,6 +225,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
+          <AnalyticsProvider />
           <Outlet />
         </AuthProvider>
       </ThemeProvider>

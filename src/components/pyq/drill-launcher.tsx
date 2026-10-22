@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
+import { track } from "@/lib/analytics";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
 import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
@@ -77,6 +78,7 @@ function UpgradePanel({
     setBusy(plan.id);
     try {
       const token = await user.getIdToken();
+      track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
       await loadRazorpayScript();
       const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
@@ -93,6 +95,7 @@ function UpgradePanel({
             await verifyRazorpayPayment({
               data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
             });
+            track("pro_purchased", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
             await onPurchased();
           } catch (e) {
             setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");
