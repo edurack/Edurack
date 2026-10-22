@@ -40,6 +40,7 @@ import type { PublicBlogPostSummary } from "@/lib/blog-types";
 import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
 import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
 import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
+import { LandingProSection } from "@/components/landing-pro-section";
 import { FreeResourcesSection } from "@/components/landing/free-resources-section";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
@@ -351,6 +352,7 @@ function Index() {
           <SimulatorSection />
           <MentorShowcase />
           <FeaturesSection />
+          <LandingProSection />
           <BlogShowcase />
           <FreeResourcesSection />
           <MentorBanner />
@@ -770,7 +772,7 @@ function FinalCta() {
 // ── Footer ─────────────────────────────────────────────────────────────────
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
-  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Edurack Pro", to: "/pro" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },

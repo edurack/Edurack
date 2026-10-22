@@ -26,6 +26,7 @@ export const staticRoutes: { path: string; lastmod: string; priority: number; ch
   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
   { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
   { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
+  { path: "/pro", lastmod: "2026-10-22", priority: 0.7, changefreq: "weekly" },
   { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
   { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },

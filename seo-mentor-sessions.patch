@@ -1,922 +1,514 @@
-diff --git a/src/components/landing-free-sessions-section.tsx b/src/components/landing-free-sessions-section.tsx
-index 7f40766..6fd929c 100644
---- a/src/components/landing-free-sessions-section.tsx
-+++ b/src/components/landing-free-sessions-section.tsx
-@@ -30,6 +30,10 @@ export function LandingFreeSessionsSection() {
-         <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
-           Live sessions with mentors who cracked the exam you're preparing for. Pick a time that works, no payment needed.
-         </p>
-+        <Link to="/mentorship-sessions" className="mt-2 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
-+          Browse all mentorship sessions
-+          <ArrowRight className="h-3.5 w-3.5" />
-+        </Link>
-       </div>
- 
-       {sessions === null ? (
+diff --git a/src/components/landing-pro-section.tsx b/src/components/landing-pro-section.tsx
+new file mode 100644
+index 0000000..c9e113a
+--- /dev/null
++++ b/src/components/landing-pro-section.tsx
+@@ -0,0 +1,92 @@
++import { useEffect, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { IconArrowRight as ArrowRight } from "@tabler/icons-react";
++import { Sparkles } from "lucide-react";
++import { CUSTOM_DRILL_COUNTS, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
++import { getPublicProOffer, type PublicProOffer } from "@/server-functions/pro-public";
++import { bestValueId, rupees } from "@/components/pro/pro-plan-cards";
++
++// A short Edurack Pro teaser for the homepage. The plans come from the same place the mock drill page reads them,
++// so prices here can never drift from what checkout charges. The full comparison lives on /pro.
++export function LandingProSection() {
++  const [offer, setOffer] = useState<PublicProOffer | null>(null);
++
++  useEffect(() => {
++    let alive = true;
++    getPublicProOffer()
++      .then((o) => alive && setOffer(o))
++      .catch(() => alive && setOffer({ gatingOn: false, freeLimit: 0, proOnly: {} as PublicProOffer["proOnly"], plans: [] }));
++    return () => {
++      alive = false;
++    };
++  }, []);
++
++  // Nothing for sale (or still loading): show nothing rather than a section that promises a plan that isn't there.
++  if (!offer || offer.plans.length === 0) return null;
++
++  const features = PRO_FEATURE_KEYS.filter((k) => offer.proOnly[k]);
++  const best = bestValueId(offer.plans);
++
++  return (
++    <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
++      <div className="ink-section grid gap-8 rounded-3xl p-6 sm:p-10 lg:grid-cols-2 lg:items-center">
++        <div>
++          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white/60">
++            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Edurack Pro
++          </p>
++          <h2 className="mt-3 font-display text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl">Build the mock drill you actually need.</h2>
++          <p className="mt-3 text-white/70">Choose the chapter, difficulty and paper years, then solve it in real timed CBT mode. Everything you use free today stays free.</p>
++
++          {features.length > 0 && (
++            <ul className="mt-4 space-y-1.5 text-sm text-white/80">
++              {features.map((k) => (
++                <li key={k}>
++                  <b className="text-white">{PRO_FEATURES[k].label}.</b> {PRO_FEATURES[k].description}
++                </li>
++              ))}
++            </ul>
++          )}
++
++          <div className="mt-5 flex flex-wrap gap-2">
++            {offer.plans.map((p) => (
++              <span key={p.id} className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85">
++                {p.name} · {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
++              </span>
++            ))}
++          </div>
++
++          <Link to="/pro" className="mt-6 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-white px-6 text-sm font-bold text-[#141b2b] transition hover:bg-white/90">
++            See Pro plans
++            <ArrowRight className="h-4 w-4" />
++          </Link>
++        </div>
++
++        {/* A picture of the builder, not the real thing: it shows what you get to choose. */}
++        <div aria-hidden className="rounded-2xl border border-white/15 bg-white/5 p-4 sm:p-5">
++          <p className="text-xs font-bold uppercase tracking-wide text-white/50">Your custom drill (example)</p>
++          <div className="mt-3 space-y-3 text-sm">
++            {[
++              ["Subject", "Physics"],
++              ["Chapter", "Current Electricity"],
++              ["Difficulty", "Medium + Hard"],
++              ["Paper years", "2020 – 2026"],
++            ].map(([k, v]) => (
++              <div key={k} className="flex items-center justify-between rounded-xl bg-white/10 px-3.5 py-2.5">
++                <span className="text-white/60">{k}</span>
++                <span className="font-semibold text-white">{v}</span>
++              </div>
++            ))}
++            <div className="flex flex-wrap items-center gap-2 pt-1">
++              <span className="text-white/60">Length</span>
++              {CUSTOM_DRILL_COUNTS.map((n, i) => (
++                <span key={n} className={`rounded-full px-3 py-1 text-xs font-bold ${i === 1 ? "bg-white text-[#141b2b]" : "border border-white/25 text-white/80"}`}>
++                  {n}
++                </span>
++              ))}
++            </div>
++          </div>
++        </div>
++      </div>
++    </section>
++  );
++}
 diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
-index f01a991..2472cac 100644
+index 2472cac..8661cb3 100644
 --- a/src/components/landing/site-chrome.tsx
 +++ b/src/components/landing/site-chrome.tsx
-@@ -82,6 +82,7 @@ const HEADER_LINKS: { label: string; to: string }[] = [
-   { label: "NEET weightage", to: "/neet/chapter-wise-weightage" },
-   { label: "JEE weightage", to: "/jee/chapter-wise-weightage" },
-   { label: "PYQ practice", to: "/pyq" },
-+  { label: "Mentor sessions", to: "/mentorship-sessions" },
-   { label: "Blog", to: "/blog" },
- ];
- 
-@@ -189,6 +190,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
-       { label: "About us", to: "/about" },
+@@ -191,6 +191,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
        { label: "CBT Simulator", to: "/simulator/live" },
        { label: "Dashboard", to: "/dashboard" },
-+      { label: "Mentorship sessions", to: "/mentorship-sessions" },
+       { label: "Mentorship sessions", to: "/mentorship-sessions" },
++      { label: "Edurack Pro", to: "/pro" },
        { label: "Become a mentor", to: "/join-mentor" },
        { label: "Internships", to: "/join-intern" },
        { label: "Blog", to: "/blog" },
-diff --git a/src/components/mentor-offering-dialog.tsx b/src/components/mentor-offering-dialog.tsx
-index 5c2fc6c..d4f740a 100644
---- a/src/components/mentor-offering-dialog.tsx
-+++ b/src/components/mentor-offering-dialog.tsx
-@@ -422,7 +422,7 @@ export function MentorOfferingDialog({
-                   </div>
-                 </Section>
- 
--                <Section label="What will students get out of it?" hint="Optional, but sessions with a description get booked more.">
-+                <Section label="What will students get out of it?" hint="Optional, but sessions with a description get booked more, and show up better in Google. Aim for 2–3 sentences: who it's for, what you'll cover, and your own result (rank, college).">
-                   <textarea
-                     value={description}
-                     onChange={(e) => setDescription(e.target.value)}
-@@ -432,7 +432,12 @@ export function MentorOfferingDialog({
-                     aria-label="Description"
-                     className={textareaClass}
-                   />
--                  <p className="mt-1 text-right text-[11px] text-foreground/40">{description.length}/600</p>
-+                  <p className="mt-1 flex justify-between gap-3 text-[11px] text-foreground/40">
-+                    <span className={description.trim().length > 0 && description.trim().length < 90 ? "text-amber-700" : ""}>
-+                      {description.trim().length > 0 && description.trim().length < 90 ? "A bit short — add a little more so it shows up well in search." : ""}
-+                    </span>
-+                    <span>{description.length}/600</span>
-+                  </p>
-                 </Section>
- 
-                 <Section label="Cover image" hint="We use your profile photo until you add your own.">
-diff --git a/src/components/sessions/session-card.tsx b/src/components/sessions/session-card.tsx
+diff --git a/src/components/pro/pro-plan-cards.tsx b/src/components/pro/pro-plan-cards.tsx
 new file mode 100644
-index 0000000..7d7cf3d
+index 0000000..d3e4288
 --- /dev/null
-+++ b/src/components/sessions/session-card.tsx
-@@ -0,0 +1,42 @@
++++ b/src/components/pro/pro-plan-cards.tsx
+@@ -0,0 +1,144 @@
++// The Edurack Pro plan cards, visible to everyone. Signed-in students buy right here (same Razorpay order +
++// verify calls as the upgrade card on the mock drill page); signed-out visitors are sent to create an account
++// and come straight back to this page.
++import { useState } from "react";
 +import { Link } from "@tanstack/react-router";
-+import { IconArrowRight as ArrowRight, IconClock as Clock } from "@tabler/icons-react";
-+import type { PublicSessionCard } from "@/server-functions/public-sessions";
-+import { formatSlot } from "@/lib/session-time";
-+import { FormatBadge, MentorAvatar, SessionCover, priceLabel, seatsNote } from "./session-ui";
++import { IconLoader2 as Loader2 } from "@tabler/icons-react";
++import { Check } from "lucide-react";
++import { useAuth } from "@/lib/auth-context";
++import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
++import { PRO_FEATURES, PRO_FEATURE_KEYS, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 +
-+// One browsable session card, shared by the /mentorship-sessions hub and a
-+// mentor's public profile. It's a real <a href> to the session page, so
-+// crawlers (and people with JS off) can follow it.
-+export function SessionCard({ s }: { s: PublicSessionCard }) {
-+  const seats = seatsNote(s, s.nextSlot);
++export const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
++export const perDay = (p: ProPlanPublic) => p.price / Math.max(1, p.durationDays);
++/** The plan with the lowest price per day, but only when there is a choice to make. */
++export const bestValueId = (plans: ProPlanPublic[]) => (plans.length > 1 ? [...plans].sort((a, b) => perDay(a) - perDay(b))[0]?.id : null);
++
++const SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
++function loadRazorpayScript(): Promise<void> {
++  return new Promise((resolve, reject) => {
++    if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve();
++    const s = document.createElement("script");
++    s.src = SCRIPT_SRC;
++    s.onload = () => resolve();
++    s.onerror = () => reject(new Error("Couldn't load the payment window. Check your connection and try again."));
++    document.body.appendChild(s);
++  });
++}
++
++export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOnly: Record<ProFeatureKey, boolean> }) {
++  const { user, loading } = useAuth();
++  const [busy, setBusy] = useState<string | null>(null);
++  const [err, setErr] = useState<string | null>(null);
++  const [bought, setBought] = useState(false);
++  const bestId = bestValueId(plans);
++
++  async function buy(plan: ProPlanPublic) {
++    if (!user || busy) return;
++    setErr(null);
++    setBusy(plan.id);
++    try {
++      const token = await user.getIdToken();
++      const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
++      await loadRazorpayScript();
++      const rzp = new (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } }).Razorpay({
++        key: order.keyId,
++        amount: order.amount,
++        currency: order.currency,
++        order_id: order.orderId,
++        name: "Edurack",
++        description: order.itemTitle,
++        prefill: { email: user.email ?? undefined },
++        theme: { color: "#2b4ea8" },
++        handler: async (r: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
++          try {
++            await verifyRazorpayPayment({
++              data: { token: await user.getIdToken(), itemType: "proPlan", itemId: plan.id, razorpayOrderId: r.razorpay_order_id, razorpayPaymentId: r.razorpay_payment_id, razorpaySignature: r.razorpay_signature },
++            });
++            setBought(true);
++          } catch (e) {
++            setErr(e instanceof Error ? e.message : "Payment went through but we couldn't confirm it yet. If you were charged, Pro will switch on within a few minutes — please don't pay again.");
++          } finally {
++            setBusy(null);
++          }
++        },
++        modal: { ondismiss: () => setBusy(null) },
++      });
++      rzp.open();
++    } catch (e) {
++      setErr(e instanceof Error ? e.message : "Could not start checkout. Please try again.");
++      setBusy(null);
++    }
++  }
++
++  if (plans.length === 0) return null;
++
 +  return (
-+    <Link
-+      to="/mentor-session/$offeringId"
-+      params={{ offeringId: s.id }}
-+      className="group flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card transition-colors hover:border-foreground/40"
-+    >
-+      <div className="relative">
-+        <SessionCover offering={s} className="aspect-[16/10] w-full" />
-+        {s.subject && <span className="absolute left-3 top-3 rounded-full bg-background/95 px-2.5 py-1 text-[11px] font-bold text-primary">{s.subject}</span>}
-+        <FormatBadge offering={s} className="absolute right-3 top-3" />
-+      </div>
-+      <div className="flex flex-1 flex-col p-4">
-+        <div className="flex items-center gap-2">
-+          <MentorAvatar name={s.mentorName} photoUrl={s.mentorPhotoUrl} size={22} />
-+          <span className="truncate text-xs font-semibold text-muted-foreground">{s.mentorName}</span>
-+          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{s.durationMinutes} min</span>
++    <div>
++      {bought && (
++        <div role="status" className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
++          <b>You're on Edurack Pro.</b> Open{" "}
++          <Link to="/pyq" className="font-bold underline">
++            PYQ practice
++          </Link>{" "}
++          to start a drill.
 +        </div>
-+        <h3 className="mt-1.5 font-display text-lg font-bold leading-snug tracking-tight">{s.title}</h3>
-+        <p className="mt-2 flex items-center gap-1.5 text-sm font-semibold">
-+          <Clock className="h-4 w-4 text-muted-foreground" />
-+          {formatSlot(s.nextSlot.date, s.nextSlot.startTime)}
-+          {seats && <span className={`ml-auto text-xs font-bold ${seats.urgent ? "text-amber-700" : "text-muted-foreground"}`}>{seats.text}</span>}
++      )}
++      <ul className={`grid grid-cols-1 gap-4 ${plans.length === 2 ? "sm:grid-cols-2" : plans.length >= 3 ? "sm:grid-cols-2 lg:grid-cols-3" : "max-w-md"}`}>
++        {plans.map((p) => {
++          const included = PRO_FEATURE_KEYS.filter((k) => proOnly[k] && p.features.includes(k));
++          const featured = p.id === bestId;
++          return (
++            <li key={p.id} className={`flex flex-col rounded-3xl border bg-card p-5 sm:p-6 ${featured ? "border-primary" : "border-border"}`}>
++              <div className="flex items-start justify-between gap-2">
++                <h3 className="font-display text-lg font-bold">{p.name}</h3>
++                {featured && <span className="shrink-0 rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-bold text-primary-foreground">Best value</span>}
++              </div>
++              <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
++                <span className="font-display text-4xl font-extrabold tracking-tight">{rupees(p.price)}</span>
++                <span className="text-sm text-muted-foreground">for {p.durationDays} days</span>
++              </p>
++              {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-xs text-muted-foreground">about {rupees(Math.round(perDay(p)))} a day</p>}
++              {p.blurb && <p className="mt-3 text-sm text-muted-foreground">{p.blurb}</p>}
++              <ul className="mt-4 space-y-2 text-sm">
++                {included.map((k) => (
++                  <li key={k} className="flex gap-2">
++                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
++                    <span>{PRO_FEATURES[k].label}</span>
++                  </li>
++                ))}
++              </ul>
++              <div className="mt-auto pt-5">
++                {user ? (
++                  <button
++                    type="button"
++                    disabled={busy !== null}
++                    onClick={() => void buy(p)}
++                    className="clay-btn inline-flex min-h-11 w-full items-center justify-center gap-2 px-5 text-sm disabled:opacity-60"
++                  >
++                    {busy === p.id && <Loader2 className="h-4 w-4 animate-spin" />}
++                    Get {p.name}
++                  </button>
++                ) : (
++                  <Link
++                    to="/auth"
++                    search={{ tab: "signup", redirect: "/pro" } as any}
++                    className={`clay-btn inline-flex min-h-11 w-full items-center justify-center px-5 text-sm ${loading ? "pointer-events-none opacity-60" : ""}`}
++                  >
++                    Sign up to get {p.name}
++                  </Link>
++                )}
++              </div>
++            </li>
++          );
++        })}
++      </ul>
++      {!user && !loading && <p className="mt-3 text-xs text-muted-foreground">Already have an account? <Link to="/auth" search={{ tab: "signin", redirect: "/pro" } as any} className="font-semibold text-foreground hover:underline">Log in</Link> to buy.</p>}
++      {err && (
++        <p role="alert" className="mt-3 text-sm font-semibold text-rose-600">
++          {err}
 +        </p>
-+        <span className="mt-4 inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-foreground px-4 text-sm font-bold text-background">
-+          {s.isFree ? "Reserve a free seat" : `Book · ${priceLabel(s)}`}
-+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-+        </span>
-+      </div>
-+    </Link>
++      )}
++    </div>
 +  );
 +}
-diff --git a/src/components/sessions/session-ui.tsx b/src/components/sessions/session-ui.tsx
-index dedaa8c..929cae3 100644
---- a/src/components/sessions/session-ui.tsx
-+++ b/src/components/sessions/session-ui.tsx
-@@ -29,18 +29,19 @@ export function seatsNote(o: { capacity: number; isFree: boolean }, slot: Pick<O
- // (which my first pass did) cuts off the text printed on the poster. So a
- // poster is shown whole, contained, over a blurred copy of itself; a plain
- // thumbnail or profile photo still fills the frame.
--export function SessionCover({ offering, className = "" }: { offering: PublicMentorOffering; className?: string }) {
-+export function SessionCover({ offering, className = "", alt = "", priority = false }: { offering: PublicMentorOffering; className?: string; alt?: string; priority?: boolean }) {
-   const poster = offering.posterUrl ?? null;
-+  const loadingAttr = priority ? undefined : "lazy"; // the page's main image shouldn't be lazy-loaded (hurts LCP)
-   const fallback = offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? null;
-   return (
-     <div className={`relative overflow-hidden bg-primary/10 ${className}`}>
-       {poster ? (
-         <>
-           <img src={poster} alt="" aria-hidden loading="lazy" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-xl" />
--          <img src={poster} alt="" loading="lazy" className="relative h-full w-full object-contain" />
-+          <img src={poster} alt={alt} loading={loadingAttr} fetchPriority={priority ? "high" : undefined} className="relative h-full w-full object-contain" />
-         </>
-       ) : fallback ? (
--        <img src={fallback} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
-+        <img src={fallback} alt={alt} loading={loadingAttr} fetchPriority={priority ? "high" : undefined} className="h-full w-full object-cover object-top" />
-       ) : (
-         <div className="grid h-full w-full place-items-center text-primary/50">
-           <Video className="h-9 w-9" strokeWidth={1.5} />
-diff --git a/src/lib/session-seo.ts b/src/lib/session-seo.ts
-new file mode 100644
-index 0000000..04e9087
---- /dev/null
-+++ b/src/lib/session-seo.ts
-@@ -0,0 +1,84 @@
-+// Search/social metadata for a public mentor-session page, in one place so the
-+// route's head() and anything else describing a session stay consistent.
-+import { SITE_URL, breadcrumbJsonLd, truncate } from "@/lib/seo";
-+import { formatForOffering, type MentorBioForOffering, type OpenSlot, type PublicMentorOffering } from "@/lib/session-types";
-+
-+export const SESSIONS_HUB_PATH = "/mentorship-sessions";
-+
-+const absoluteUrl = (url: string | null | undefined): string | undefined => {
-+  if (!url) return undefined;
-+  if (/^https?:\/\//i.test(url)) return url;
-+  return `${SITE_URL}${url.startsWith("/") ? "" : "/"}${url}`;
-+};
-+
-+function kindLabel(o: { capacity: number; isFree: boolean }): string {
-+  const f = formatForOffering(o);
-+  if (f === "one_on_one") return "1:1 session";
-+  if (f === "open_unlimited") return "open session";
-+  return "group session";
-+}
-+
-+/** "AIR 342, AIIMS Delhi" — whatever credentials the mentor has filled in. */
-+function credentialLine(bio: Pick<MentorBioForOffering, "aiimsIitRank" | "enrolledCollege">): string {
-+  return [bio.aiimsIitRank, bio.enrolledCollege].map((s) => (s ?? "").trim()).filter(Boolean).join(", ");
-+}
-+
-+export function buildSessionSeo(input: { offering: PublicMentorOffering; mentorBio: MentorBioForOffering; slots: OpenSlot[] }, path: string) {
-+  const { offering, mentorBio, slots } = input;
-+  const url = `${SITE_URL}${path}`;
-+  const cred = credentialLine(mentorBio);
-+  const mentorWithCred = cred ? `${mentorBio.name} (${cred})` : mentorBio.name;
-+  const subject = (offering.subject ?? "").trim();
-+  const priceText = offering.isFree ? "Free to join." : `₹${offering.price}.`;
-+
-+  // A mentor-written description is the best snippet — but only if it says
-+  // enough. A one-liner gets the standard facts appended so the result isn't thin.
-+  const written = (offering.description ?? "").replace(/\s+/g, " ").trim();
-+  const generated = `${offering.durationMinutes}-minute ${kindLabel(offering)}${subject ? ` on ${subject}` : ""} with ${mentorWithCred}. ${priceText} Pick a time and book on Edurack.`;
-+  const description = written.length >= 90 ? written : written ? `${written} ${generated}` : generated;
-+
-+  const image = offering.posterUrl ?? offering.thumbnailUrl ?? mentorBio.photoUrl ?? null;
-+  const profileUrl = `${SITE_URL}/mentor-profile/${offering.mentorId}`;
-+
-+  const service: Record<string, unknown> = {
-+    "@context": "https://schema.org",
-+    "@type": "Service",
-+    "@id": `${url}#service`,
-+    name: offering.title,
-+    description: truncate(description, 300),
-+    serviceType: `${subject ? `${subject} ` : ""}mentorship session`,
-+    url,
-+    image: absoluteUrl(image),
-+    areaServed: { "@type": "Country", name: "India" },
-+    audience: { "@type": "EducationalAudience", educationalRole: "student", audienceType: "Students preparing for competitive exams" },
-+    provider: {
-+      "@type": "Person",
-+      name: mentorBio.name,
-+      url: profileUrl,
-+      image: absoluteUrl(mentorBio.photoUrl),
-+      ...(mentorBio.enrolledCollege ? { alumniOf: { "@type": "CollegeOrUniversity", name: mentorBio.enrolledCollege } } : {}),
-+    },
-+    offers: {
-+      "@type": "Offer",
-+      url,
-+      price: offering.isFree ? 0 : Number(offering.price) || 0,
-+      priceCurrency: "INR",
-+      availability: slots.length > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-+      seller: { "@type": "Organization", name: "Edurack", url: SITE_URL },
-+    },
-+  };
-+
-+  return {
-+    title: `${offering.title} with ${mentorBio.name}`,
-+    description,
-+    image,
-+    jsonLd: [
-+      service,
-+      breadcrumbJsonLd([
-+        { name: "Home", path: "/" },
-+        { name: "Mentorship sessions", path: SESSIONS_HUB_PATH },
-+        { name: offering.title, path },
-+      ]),
-+    ],
-+  };
-+}
+diff --git a/src/components/sessions/slot-picker.tsx b/src/components/sessions/slot-picker.tsx
+index 958076d..d828529 100644
+--- a/src/components/sessions/slot-picker.tsx
++++ b/src/components/sessions/slot-picker.tsx
+@@ -59,13 +59,15 @@ export function SlotPicker({
+               role="tab"
+               aria-selected={active}
+               onClick={() => setDay(d)}
+-              className={`flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
++              className={`relative flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
+                 active ? "border-foreground bg-foreground text-background" : "border-border bg-card text-foreground hover:border-foreground/40"
+               }`}
+             >
+               <span className={`text-[11px] font-semibold ${active ? "text-background/70" : "text-muted-foreground"}`}>{relativeDay(d) === "Today" ? "Today" : relativeDay(d) === "Tomorrow" ? "Tmrw" : p.weekday}</span>
+               <span className="font-display text-xl font-extrabold leading-tight tabular-nums">{p.day}</span>
+               <span className={`text-[10px] ${active ? "text-background/60" : "text-muted-foreground"}`}>{p.month}</span>
++              {/* The button is `relative` so this hidden label is positioned (and clipped) inside the scrolling strip.
++                  Without that, 21 of them sit far off-screen to the right, the page becomes ~1400px wide and phones zoom out. */}
+               <span className="sr-only">{list.length} times</span>
+             </button>
+           );
+diff --git a/src/lib/blog-content.tsx b/src/lib/blog-content.tsx
+index 573113b..1d52ce1 100644
+--- a/src/lib/blog-content.tsx
++++ b/src/lib/blog-content.tsx
+@@ -379,7 +379,7 @@ function renderTable(headerLine: string, sepLine: string, bodyLines: string[]):
+   // role="region" + tabindex + aria-label make a horizontally-scrollable
+   // table keyboard-reachable and announced correctly by screen readers,
+   // instead of silently clipping on narrow viewports.
+-  return `<div class="blog-table-wrap my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
++  return `<div class="blog-table-wrap relative my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
+ }
+ 
+ export type BlogHeading = { id: string; level: 2 | 3; text: string };
 diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
-index 0efb917..7586331 100644
+index 7586331..e7d294d 100644
 --- a/src/lib/sitemap-core.ts
 +++ b/src/lib/sitemap-core.ts
-@@ -25,6 +25,7 @@ export const staticRoutes: { path: string; lastmod: string; priority: number; ch
-   { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
+@@ -26,6 +26,7 @@ export const staticRoutes: { path: string; lastmod: string; priority: number; ch
    { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
    { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
-+  { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
+   { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
++  { path: "/pro", lastmod: "2026-10-22", priority: 0.7, changefreq: "weekly" },
    { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
    { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
    { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
 diff --git a/src/routeTree.gen.ts b/src/routeTree.gen.ts
-index 65ebe95..8efba71 100644
+index 8efba71..bcb1e71 100644
 --- a/src/routeTree.gen.ts
 +++ b/src/routeTree.gen.ts
-@@ -18,6 +18,7 @@ import { Route as FaqRouteImport } from './routes/faq'
- import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+@@ -19,6 +19,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
  import { Route as FreeResourcesRouteImport } from './routes/free-resources'
  import { Route as HelpRouteImport } from './routes/help'
-+import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
+ import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
++import { Route as ProRouteImport } from './routes/pro'
  import { Route as JoinInternRouteImport } from './routes/join-intern'
  import { Route as JoinMentorRouteImport } from './routes/join-mentor'
  import { Route as LeaderboardRouteImport } from './routes/leaderboard'
-@@ -145,6 +146,11 @@ const HelpRoute = HelpRouteImport.update({
-   path: '/help',
+@@ -151,6 +152,11 @@ const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
+   path: '/mentorship-sessions',
    getParentRoute: () => rootRouteImport,
  } as any)
-+const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
-+  id: '/mentorship-sessions',
-+  path: '/mentorship-sessions',
++const ProRoute = ProRouteImport.update({
++  id: '/pro',
++  path: '/pro',
 +  getParentRoute: () => rootRouteImport,
 +} as any)
  const JoinInternRoute = JoinInternRouteImport.update({
    id: '/join-intern',
    path: '/join-intern',
-@@ -576,6 +582,7 @@ export interface FileRoutesByFullPath {
-   '/forgot-password': typeof ForgotPasswordRoute
+@@ -583,6 +589,7 @@ export interface FileRoutesByFullPath {
    '/free-resources': typeof FreeResourcesRoute
    '/help': typeof HelpRoute
-+  '/mentorship-sessions': typeof MentorshipSessionsRoute
+   '/mentorship-sessions': typeof MentorshipSessionsRoute
++  '/pro': typeof ProRoute
    '/join-intern': typeof JoinInternRoute
    '/join-mentor': typeof JoinMentorRoute
    '/leaderboard': typeof LeaderboardRoute
-@@ -668,6 +675,7 @@ export interface FileRoutesByTo {
-   '/forgot-password': typeof ForgotPasswordRoute
+@@ -676,6 +683,7 @@ export interface FileRoutesByTo {
    '/free-resources': typeof FreeResourcesRoute
    '/help': typeof HelpRoute
-+  '/mentorship-sessions': typeof MentorshipSessionsRoute
+   '/mentorship-sessions': typeof MentorshipSessionsRoute
++  '/pro': typeof ProRoute
    '/join-intern': typeof JoinInternRoute
    '/join-mentor': typeof JoinMentorRoute
    '/leaderboard': typeof LeaderboardRoute
-@@ -761,6 +769,7 @@ export interface FileRoutesById {
-   '/forgot-password': typeof ForgotPasswordRoute
+@@ -770,6 +778,7 @@ export interface FileRoutesById {
    '/free-resources': typeof FreeResourcesRoute
    '/help': typeof HelpRoute
-+  '/mentorship-sessions': typeof MentorshipSessionsRoute
+   '/mentorship-sessions': typeof MentorshipSessionsRoute
++  '/pro': typeof ProRoute
    '/join-intern': typeof JoinInternRoute
    '/join-mentor': typeof JoinMentorRoute
    '/leaderboard': typeof LeaderboardRoute
-@@ -855,6 +864,7 @@ export interface FileRouteTypes {
-     | '/forgot-password'
+@@ -865,6 +874,7 @@ export interface FileRouteTypes {
      | '/free-resources'
      | '/help'
-+    | '/mentorship-sessions'
+     | '/mentorship-sessions'
++    | '/pro'
      | '/join-intern'
      | '/join-mentor'
      | '/leaderboard'
-@@ -947,6 +957,7 @@ export interface FileRouteTypes {
-     | '/forgot-password'
+@@ -958,6 +968,7 @@ export interface FileRouteTypes {
      | '/free-resources'
      | '/help'
-+    | '/mentorship-sessions'
+     | '/mentorship-sessions'
++    | '/pro'
      | '/join-intern'
      | '/join-mentor'
      | '/leaderboard'
-@@ -1039,6 +1050,7 @@ export interface FileRouteTypes {
-     | '/forgot-password'
+@@ -1051,6 +1062,7 @@ export interface FileRouteTypes {
      | '/free-resources'
      | '/help'
-+    | '/mentorship-sessions'
+     | '/mentorship-sessions'
++    | '/pro'
      | '/join-intern'
      | '/join-mentor'
      | '/leaderboard'
-@@ -1132,6 +1144,7 @@ export interface RootRouteChildren {
-   ForgotPasswordRoute: typeof ForgotPasswordRoute
+@@ -1145,6 +1157,7 @@ export interface RootRouteChildren {
    FreeResourcesRoute: typeof FreeResourcesRoute
    HelpRoute: typeof HelpRoute
-+  MentorshipSessionsRoute: typeof MentorshipSessionsRoute
+   MentorshipSessionsRoute: typeof MentorshipSessionsRoute
++  ProRoute: typeof ProRoute
    JoinInternRoute: typeof JoinInternRoute
    JoinMentorRoute: typeof JoinMentorRoute
    LeaderboardRoute: typeof LeaderboardRoute
-@@ -1279,6 +1292,13 @@ declare module '@tanstack/react-router' {
-       preLoaderRoute: typeof HelpRouteImport
+@@ -1299,6 +1312,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof MentorshipSessionsRouteImport
        parentRoute: typeof rootRouteImport
      }
-+    '/mentorship-sessions': {
-+      id: '/mentorship-sessions'
-+      path: '/mentorship-sessions'
-+      fullPath: '/mentorship-sessions'
-+      preLoaderRoute: typeof MentorshipSessionsRouteImport
++    '/pro': {
++      id: '/pro'
++      path: '/pro'
++      fullPath: '/pro'
++      preLoaderRoute: typeof ProRouteImport
 +      parentRoute: typeof rootRouteImport
 +    }
      '/join-intern': {
        id: '/join-intern'
        path: '/join-intern'
-@@ -1870,6 +1890,7 @@ const rootRouteChildren: RootRouteChildren = {
-   ForgotPasswordRoute: ForgotPasswordRoute,
+@@ -1891,6 +1911,7 @@ const rootRouteChildren: RootRouteChildren = {
    FreeResourcesRoute: FreeResourcesRoute,
    HelpRoute: HelpRoute,
-+  MentorshipSessionsRoute: MentorshipSessionsRoute,
+   MentorshipSessionsRoute: MentorshipSessionsRoute,
++  ProRoute: ProRoute,
    JoinInternRoute: JoinInternRoute,
    JoinMentorRoute: JoinMentorRoute,
    LeaderboardRoute: LeaderboardRoute,
 diff --git a/src/routes/index.tsx b/src/routes/index.tsx
-index 3ee3d67..6c505f8 100644
+index fc00cf7..15a9ee4 100644
 --- a/src/routes/index.tsx
 +++ b/src/routes/index.tsx
-@@ -209,6 +209,7 @@ const navLinks: NavLink[] = [
-   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
-   { label: "NEET Weightage", type: "route", to: "/neet/chapter-wise-weightage" },
-   { label: "JEE Weightage", type: "route", to: "/jee/chapter-wise-weightage" },
-+  { label: "Mentor Sessions", type: "route", to: "/mentorship-sessions" },
-   { label: "Blog", type: "route", to: "/blog" },
-   { label: "Contact", type: "route", to: "/contact" },
- ];
-@@ -390,7 +391,7 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
-   );
- }
+@@ -40,6 +40,7 @@ import type { PublicBlogPostSummary } from "@/lib/blog-types";
+ import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/react";
+ import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
+ import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
++import { LandingProSection } from "@/components/landing-pro-section";
+ import { FreeResourcesSection } from "@/components/landing/free-resources-section";
  
--const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Blog", "Contact"].includes(l.label));
-+const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
- 
- function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
-   const cls = "inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground";
-@@ -769,7 +770,7 @@ function FinalCta() {
+ // FIX: CbtSimulator is a heavy, below-the-fold interactive component
+@@ -351,6 +352,7 @@ function Index() {
+           <SimulatorSection />
+           <MentorShowcase />
+           <FeaturesSection />
++          <LandingProSection />
+           <BlogShowcase />
+           <FreeResourcesSection />
+           <MentorBanner />
+@@ -770,7 +772,7 @@ function FinalCta() {
  // ── Footer ─────────────────────────────────────────────────────────────────
  type FooterLink = { label: string; to: string };
  const footerColumns: { title: string; links: FooterLink[] }[] = [
--  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
-+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
+-  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
++  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Edurack Pro", to: "/pro" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
    { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
    { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
    { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
-diff --git a/src/routes/llms[.]txt.ts b/src/routes/llms[.]txt.ts
-index 873c8c1..75b0b19 100644
---- a/src/routes/llms[.]txt.ts
-+++ b/src/routes/llms[.]txt.ts
-@@ -21,7 +21,7 @@ A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test
- ## What this site offers
- - A free, no-signup CBT mock test that replicates the real NTA exam interface: ${SITE_URL}/simulator/live
- - Paid test-series bundles and mentor-led mentorship batches, covering NEET, JEE, CUET and IPMAT
--- Live 1:1 and group mentor sessions, plus recorded lectures
-+- Live 1:1 and group mentor sessions (some free, some paid), plus recorded lectures. Browse every bookable session: ${SITE_URL}/mentorship-sessions
- - Subject- and topic-wise performance analytics on every test attempt
- - Free downloadable notes, previous year papers, formula sheets and planners for NEET, JEE, CUET and IPMAT (no login needed): ${SITE_URL}/free-resources
- - A blog with exam-specific syllabus and chapter breakdowns: ${SITE_URL}/blog
-@@ -38,6 +38,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
- - Free demo test: ${SITE_URL}/simulator/live
- - What Edurack offers (overview): ${SITE_URL}/blog/what-edurack-offers
- - Free resources (notes, PYQ PDFs, formula sheets): ${SITE_URL}/free-resources
-+- Mentorship sessions (live 1:1 and group sessions with verified mentors; each session has its own page at ${SITE_URL}/mentor-session/<id>): ${SITE_URL}/mentorship-sessions
- - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
- - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
- - JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
-diff --git a/src/routes/mentor-profile.$mentorId.tsx b/src/routes/mentor-profile.$mentorId.tsx
-index 1b7df3d..f3d39e4 100644
---- a/src/routes/mentor-profile.$mentorId.tsx
-+++ b/src/routes/mentor-profile.$mentorId.tsx
-@@ -1,4 +1,4 @@
--import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-+import { createFileRoute, useNavigate, Link, notFound, isNotFound } from "@tanstack/react-router";
- import { pageHead, noindexHead, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
- import { useEffect, useState } from "react";
- import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
-@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
- import { AppHeader } from "@/components/app-header";
- import { VideoPlayer } from "@/components/clay-video-player";
- import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
-+import { listPublicMentorSessions } from "@/server-functions/public-sessions";
-+import { SessionCard } from "@/components/sessions/session-card";
- import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
- 
- export const Route = createFileRoute("/mentor-profile/$mentorId")({
-@@ -15,18 +17,29 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
-   // generic site title. The page component still does its own fetch.
-   loader: async ({ params }) => {
-     try {
--      const { mentor } = await getPublicMentorFullProfile({ data: { token: "", mentorId: params.mentorId } });
--      if (!mentor) return { seo: null };
-+      const { mentor, batches } = await getPublicMentorFullProfile({ data: { token: "", mentorId: params.mentorId } });
-+      // A mentor who doesn't exist is a real 404 for search engines.
-+      if (!mentor) throw notFound();
-+      // Their bookable sessions, so the profile links to them in the HTML.
-+      const sessions = await listPublicMentorSessions({ data: { mentorId: params.mentorId, limit: 12 } })
-+        .then((r) => r.sessions)
-+        .catch(() => []);
-       return {
-         seo: {
-           name: mentor.name as string,
-           about: (mentor.aboutText as string) ?? "",
-           photo: (mentor.profilePictureUrl as string | null) ?? null,
-           expertAt: (mentor.expertAt as string) ?? "",
-+          college: ((mentor.enrolledCollege as string) ?? "").trim(),
-+          rank: ((mentor.aiimsIitRank as string) ?? "").trim(),
-         },
-+        // The page renders from this on the server and refreshes in the browser.
-+        initial: { mentor, batches },
-+        sessions,
-       };
--    } catch {
--      return { seo: null };
-+    } catch (err) {
-+      if (isNotFound(err)) throw err;
-+      return { seo: null, initial: null, sessions: [] };
-     }
-   },
-   head: ({ loaderData, params }) => {
-@@ -38,7 +51,7 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
-       title: `${m.name} — ${role}`,
-       description:
-         m.about ||
--        `${m.name} is a mentor on Edurack. See their background, mentorship batches and test series, and book a session.`,
-+        `${m.name}${[m.rank, m.college].filter(Boolean).length ? ` (${[m.rank, m.college].filter(Boolean).join(", ")})` : ""} is a mentor on Edurack. See their background, mentorship batches and test series, and book a session.`,
-       path,
-       image: m.photo,
-       type: "profile",
-@@ -50,6 +63,8 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
-           image: m.photo ?? undefined,
-           description: m.about || undefined,
-           jobTitle: role,
-+          ...(m.college ? { alumniOf: { "@type": "CollegeOrUniversity", name: m.college } } : {}),
-+          ...(m.expertAt ? { knowsAbout: m.expertAt.split(/[,/]/).map((x: string) => x.trim()).filter(Boolean) } : {}),
-           url: `${SITE_URL}${path}`,
-           worksFor: { "@type": "Organization", name: "Edurack", url: SITE_URL },
-         },
-@@ -140,8 +155,9 @@ function MentorProfilePage() {
-   const { mentorId } = Route.useParams();
-   const { user, loading } = useAuth();
-   const navigate = useNavigate();
--  const [mentor, setMentor] = useState<Mentor | null>(null);
--  const [batches, setBatches] = useState<Batch[]>([]);
-+  const { initial, sessions } = Route.useLoaderData();
-+  const [mentor, setMentor] = useState<Mentor | null>((initial?.mentor as Mentor | undefined) ?? null);
-+  const [batches, setBatches] = useState<Batch[]>((initial?.batches as Batch[] | undefined) ?? []);
-   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
-   const [notFound, setNotFound] = useState(false);
- 
-@@ -343,6 +359,21 @@ function MentorProfilePage() {
-               </div>
-             </div>
- 
-+            {sessions.length > 0 && (
-+              <div className="clay p-5 sm:p-6">
-+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
-+                  Book a session with {mentor.name.split(" ")[0]}
-+                </h2>
-+                <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-+                  {sessions.map((s) => (
-+                    <li key={s.id}>
-+                      <SessionCard s={s} />
-+                    </li>
-+                  ))}
-+                </ul>
-+              </div>
-+            )}
-+
-             <div className="clay p-5 sm:p-6">
-               <div className="mb-4 flex items-center justify-between">
-                 <div className="flex items-center gap-2">
-diff --git a/src/routes/mentor-session/$offeringId.tsx b/src/routes/mentor-session/$offeringId.tsx
-index f2c72b2..f0678f7 100644
---- a/src/routes/mentor-session/$offeringId.tsx
-+++ b/src/routes/mentor-session/$offeringId.tsx
-@@ -1,5 +1,6 @@
--import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
--import { pageHead, noindexHead, SITE_URL } from "@/lib/seo";
-+import { createFileRoute, useNavigate, Link, notFound } from "@tanstack/react-router";
-+import { pageHead, noindexHead } from "@/lib/seo";
-+import { SESSIONS_HUB_PATH, buildSessionSeo } from "@/lib/session-seo";
- import { useEffect, useMemo, useState } from "react";
- import {
-   IconLoader2 as Loader2,
-@@ -22,49 +23,53 @@ import { SESSION_FREE_CANCEL_HOURS, formatDateLong, formatSlot, formatTimeRange
- import { describeSchedule, type MentorBioForOffering, type OpenSlot, type OtherOfferingSummary, type PublicMentorOffering } from "@/lib/session-types";
- 
- export const Route = createFileRoute("/mentor-session/$offeringId")({
-+  // Runs on the server for the first request. It hands the page its full
-+  // content (not just the <head>), so crawlers, link previews and slow
-+  // phones get the real session in the HTML instead of a loading spinner.
-   loader: async ({ params }) => {
-     try {
--      const { offering, mentorBio } = await getMentorSessionOfferingDetail({ data: { offeringId: params.offeringId } });
--      const kind = offering.capacity > 1 ? "group session" : "1:1 session";
--      const price = offering.isFree ? "Free" : `₹${offering.price}`;
--      return {
--        seo: {
--          title: `${offering.title} with ${mentorBio.name}`,
--          description:
--            offering.description?.trim() ||
--            `Book a ${offering.durationMinutes}-minute ${kind} with ${mentorBio.name} on Edurack. ${price}.`,
--          image: offering.posterUrl ?? offering.thumbnailUrl ?? mentorBio.photoUrl,
--          mentorName: mentorBio.name,
--          price: offering.isFree ? 0 : Number(offering.price) || 0,
--        },
--      };
--    } catch {
--      return { seo: null };
-+      const detail = await getMentorSessionOfferingDetail({ data: { offeringId: params.offeringId } });
-+      return { detail };
-+    } catch (err) {
-+      // A paused, deleted or made-up id is a genuine 404 — tell search
-+      // engines so they drop it, instead of serving a "noindex" page with a
-+      // 200. Anything else (a database blip) isn't the session's fault, so
-+      // fall back to the client-side load without claiming it's gone.
-+      const message = err instanceof Error ? err.message : "";
-+      if (/isn't available|no longer available|not found/i.test(message)) throw notFound();
-+      return { detail: null };
-     }
-   },
-   head: ({ loaderData, params }) => {
--    const s = loaderData?.seo;
--    if (!s) return noindexHead("Session unavailable");
-+    const detail = loaderData?.detail;
-+    if (!detail) return noindexHead("Session unavailable");
-     const path = `/mentor-session/${params.offeringId}`;
--    return pageHead({
--      title: s.title,
--      description: s.description,
--      path,
--      image: s.image,
--      jsonLd: {
--        "@context": "https://schema.org",
--        "@type": "Service",
--        name: s.title,
--        description: s.description,
--        provider: { "@type": "Person", name: s.mentorName },
--        url: `${SITE_URL}${path}`,
--        offers: { "@type": "Offer", price: s.price, priceCurrency: "INR" },
--      },
--    });
-+    const seo = buildSessionSeo(detail as DetailData, path);
-+    return pageHead({ title: seo.title, description: seo.description, path, image: seo.image, jsonLd: seo.jsonLd });
-   },
-+  notFoundComponent: SessionNotFound,
-   component: MentorSessionDetailPage,
- });
- 
-+function SessionNotFound() {
-+  return (
-+    <div className="min-h-screen bg-background">
-+      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-+        <Link to="/" className="font-display text-base font-extrabold tracking-tight text-foreground">
-+          Edurack
-+        </Link>
-+      </header>
-+      <main className="mx-auto max-w-xl px-4 py-20 text-center">
-+        <h1 className="font-display text-2xl font-extrabold">This session isn't available</h1>
-+        <p className="mt-2 text-sm text-muted-foreground">The mentor may have paused or removed it. There are plenty of other sessions you can book.</p>
-+        <Link to={SESSIONS_HUB_PATH} className="clay-btn mt-6 inline-flex min-h-11 items-center px-6 text-sm">
-+          Browse mentorship sessions
-+        </Link>
-+      </main>
-+    </div>
-+  );
-+}
-+
- type DetailData = {
-   offering: PublicMentorOffering;
-   mentorBio: MentorBioForOffering;
-@@ -82,13 +87,17 @@ function MentorSessionDetailPage() {
-   const { offeringId } = Route.useParams();
-   const { user, loading } = useAuth();
-   const navigate = useNavigate();
--  const [data, setData] = useState<DetailData | null>(null);
--  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
--  const [selected, setSelected] = useState<OpenSlot | null>(null);
-+  // Seeded from the server-rendered loader data, so the first paint (and the
-+  // HTML crawlers see) already has the whole page. The client then refreshes
-+  // quietly in the background to pick up live seats and "you're booked".
-+  const initial = (Route.useLoaderData().detail ?? null) as DetailData | null;
-+  const [data, setData] = useState<DetailData | null>(initial);
-+  const [status, setStatus] = useState<"loading" | "ready" | "error">(initial ? "ready" : "loading");
-+  const [selected, setSelected] = useState<OpenSlot | null>(initial?.slots[0] ?? null);
-   const [booking, setBooking] = useState<OpenSlot | null>(null);
- 
-   async function load() {
--    setStatus("loading");
-+    setStatus((s) => (s === "ready" ? s : "loading"));
-     try {
-       const token = user ? await user.getIdToken() : undefined;
-       const result = (await getMentorSessionOfferingDetail({ data: { token, offeringId } })) as DetailData;
-@@ -96,7 +105,7 @@ function MentorSessionDetailPage() {
-       setSelected((prev) => result.slots.find((s) => prev && s.date === prev.date && s.startTime === prev.startTime) ?? result.slots[0] ?? null);
-       setStatus("ready");
-     } catch {
--      setStatus("error");
-+      setStatus((s) => (s === "ready" ? s : "error")); // keep showing what we have if only the refresh failed
-     }
-   }
- 
-@@ -107,7 +116,7 @@ function MentorSessionDetailPage() {
-   }, [loading, user, offeringId]);
- 
-   function handleBook() {
--    if (!selected) return;
-+    if (!selected || loading) return;
-     if (!user) {
-       navigate({ to: "/auth", search: { redirect: `/mentor-session/${offeringId}` } as any });
-       return;
-@@ -115,7 +124,9 @@ function MentorSessionDetailPage() {
-     setBooking(selected);
-   }
- 
--  if (loading) {
-+  // Only block on auth when there's nothing to show yet. With server-rendered
-+  // data the page renders immediately; sign-in state fills in a moment later.
-+  if (loading && !data) {
-     return (
-       <div className="flex min-h-screen items-center justify-center">
-         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
-@@ -125,12 +136,30 @@ function MentorSessionDetailPage() {
- 
-   return (
-     <div className="min-h-screen bg-background">
--      {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} />}
-+      {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} authLoading={loading} />}
-       <main className="mx-auto max-w-5xl px-4 pb-32 pt-4 sm:px-6 lg:pb-16">
--        <Link to={user ? "/dashboard" : "/"} className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">
--          <ArrowLeft className="h-4 w-4" />
--          {user ? "Back to dashboard" : "Back to home"}
--        </Link>
-+        {user ? (
-+          <Link to="/dashboard" className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">
-+            <ArrowLeft className="h-4 w-4" />
-+            Back to dashboard
-+          </Link>
-+        ) : (
-+          <nav aria-label="Breadcrumb" className="mb-4 flex min-h-11 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-+            <Link to="/" className="hover:text-foreground hover:underline">
-+              Home
-+            </Link>
-+            <span>›</span>
-+            <Link to={SESSIONS_HUB_PATH} className="hover:text-foreground hover:underline">
-+              Mentorship sessions
-+            </Link>
-+            {data && (
-+              <>
-+                <span>›</span>
-+                <span className="max-w-[16rem] truncate font-semibold text-foreground">{data.offering.title}</span>
-+              </>
-+            )}
-+          </nav>
-+        )}
- 
-         {status === "loading" ? (
-           <div className="space-y-4">
-@@ -141,12 +170,12 @@ function MentorSessionDetailPage() {
-           <div className="rounded-3xl border border-dashed border-border p-12 text-center">
-             <p className="font-semibold">This session isn't available</p>
-             <p className="mt-1 text-sm text-muted-foreground">It may have been paused or removed by the mentor.</p>
--            <Link to={user ? "/dashboard" : "/"} className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
-+            <Link to={user ? "/dashboard" : SESSIONS_HUB_PATH} className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
-               Browse other sessions
-             </Link>
-           </div>
-         ) : (
--          <SessionDetail data={data} selected={selected} onSelect={setSelected} onBook={handleBook} isSignedIn={Boolean(user)} />
-+          <SessionDetail data={data} selected={selected} onSelect={setSelected} onBook={handleBook} isSignedIn={Boolean(user)} authLoading={loading} />
-         )}
-       </main>
- 
-@@ -168,7 +197,7 @@ function MentorSessionDetailPage() {
- }
- 
- // Minimal fallback header for logged-out visitors.
--function PublicHeader({ offeringId }: { offeringId: string }) {
-+function PublicHeader({ offeringId, authLoading = false }: { offeringId: string; authLoading?: boolean }) {
-   return (
-     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
-       <Link to="/" className="font-display text-base font-extrabold tracking-tight text-foreground">
-@@ -177,7 +206,7 @@ function PublicHeader({ offeringId }: { offeringId: string }) {
-       <Link
-         to="/auth"
-         search={{ redirect: `/mentor-session/${offeringId}` } as any}
--        className="clay-btn inline-flex min-h-10 items-center gap-1.5 px-5 text-sm"
-+        className={`clay-btn inline-flex min-h-10 items-center gap-1.5 px-5 text-sm ${authLoading ? "invisible" : ""}`}
-       >
-         <LogIn className="h-4 w-4" />
-         Sign in
-@@ -201,18 +230,20 @@ function SessionDetail({
-   onSelect,
-   onBook,
-   isSignedIn,
-+  authLoading,
- }: {
-   data: DetailData;
-   selected: OpenSlot | null;
-   onSelect: (s: OpenSlot) => void;
-   onBook: () => void;
-   isSignedIn: boolean;
-+  authLoading: boolean;
- }) {
-   const { offering, mentorBio, otherOfferings, slots, myBooking } = data;
-   const first = mentorBio.name.split(" ")[0];
-   const seats = selected ? seatsNote(offering, selected) : null;
-   const nextLabel = useMemo(() => (slots[0] ? formatSlot(slots[0].date, slots[0].startTime) : "None open"), [slots]);
--  const ctaLabel = !isSignedIn ? "Sign in to book" : offering.isFree ? "Book free session" : `Book for ${priceLabel(offering)}`;
-+  const ctaLabel = authLoading ? "Book this session" : !isSignedIn ? "Sign in to book" : offering.isFree ? "Book free session" : `Book for ${priceLabel(offering)}`;
- 
-   const bookingPanel = (
-     <div className="rounded-3xl border border-border bg-card p-5">
-@@ -280,7 +311,7 @@ function SessionDetail({
-           {/* Hero */}
-           <section className="overflow-hidden rounded-3xl border border-border bg-card">
-             <div className="relative">
--              <SessionCover offering={offering} className="aspect-[16/9] w-full sm:aspect-[16/8]" />
-+              <SessionCover offering={offering} alt={`${offering.title} — mentorship session with ${mentorBio.name}`} priority className="aspect-[16/9] w-full sm:aspect-[16/8]" />
-               <div className="absolute left-4 top-4 flex gap-2">
-                 {offering.subject && <span className="rounded-full bg-background/95 px-3 py-1.5 text-xs font-bold text-primary">{offering.subject}</span>}
-               </div>
-@@ -291,7 +322,9 @@ function SessionDetail({
-               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                 <span className="flex items-center gap-2">
-                   <MentorAvatar name={mentorBio.name} photoUrl={mentorBio.photoUrl} size={32} />
--                  <span className="text-sm font-bold">{mentorBio.name}</span>
-+                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: offering.mentorId }} className="text-sm font-bold hover:underline">
-+                    {mentorBio.name}
-+                  </Link>
-                 </span>
-                 {mentorBio.yearOfStudy && <span className="text-sm text-muted-foreground">{mentorBio.yearOfStudy}</span>}
-                 {mentorBio.aiimsIitRank && <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-bold">{mentorBio.aiimsIitRank}</span>}
-@@ -336,6 +369,10 @@ function SessionDetail({
-                 <Chip label={mentorBio.scoreType === "rank" ? "Rank" : mentorBio.scoreType === "percentile" ? "Percentile" : "Score"} value={mentorBio.scoreValue} />
-               )}
-             </div>
-+            <Link to="/mentor-profile/$mentorId" params={{ mentorId: offering.mentorId }} className="mt-4 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
-+              View {first}'s full profile
-+              <ArrowRight className="h-3.5 w-3.5" />
-+            </Link>
-             {mentorBio.expertAt.length > 0 && (
-               <div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-4">
-                 <Trophy className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-@@ -371,6 +408,28 @@ function SessionDetail({
-               </ul>
-             </section>
-           )}
-+
-+          {/* FAQ — plain <details>, so the answers are in the HTML for search engines and work without JS */}
-+          <section className="rounded-3xl border border-border bg-card p-5 sm:p-7">
-+            <h2 className="font-display text-lg font-bold">Common questions</h2>
-+            <div className="mt-3 divide-y divide-border">
-+              {faqFor(offering).map((f) => (
-+                <details key={f.q} className="group py-3">
-+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-bold">
-+                    {f.q}
-+                    <span className="text-muted-foreground transition-transform group-open:rotate-45" aria-hidden>
-+                      +
-+                    </span>
-+                  </summary>
-+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
-+                </details>
-+              ))}
-+            </div>
-+            <Link to={SESSIONS_HUB_PATH} className="mt-4 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
-+              Browse all mentorship sessions
-+              <ArrowRight className="h-3.5 w-3.5" />
-+            </Link>
-+          </section>
-         </div>
- 
-         {/* Desktop sticky booking card */}
-@@ -389,7 +448,7 @@ function SessionDetail({
-               <p className="truncate text-xs text-muted-foreground">{formatSlot(selected.date, selected.startTime)}</p>
-             </div>
-             <button type="button" onClick={onBook} className="clay-btn inline-flex min-h-11 shrink-0 items-center gap-2 px-6 text-sm font-bold">
--              {isSignedIn ? (offering.isFree ? "Book free" : "Book now") : "Sign in to book"}
-+              {isSignedIn || authLoading ? (offering.isFree ? "Book free" : "Book now") : "Sign in to book"}
-               <ArrowRight className="h-4 w-4" />
-             </button>
-           </div>
-@@ -399,6 +458,20 @@ function SessionDetail({
-   );
- }
- 
-+function faqFor(o: PublicMentorOffering): { q: string; a: string }[] {
-+  const kind = o.capacity <= 1 ? "a 1:1 session, just you and the mentor" : o.capacity >= 200 ? "an open session" : `a group session with up to ${o.capacity} students per slot`;
-+  return [
-+    { q: "How does this session work?", a: "Pick an open time, book it, and the mentor shares the meeting link before the session starts. You also get a reminder email. Sign-in is only needed at the booking step." },
-+    { q: "How long is it, and what format?", a: `It lasts ${o.durationMinutes} minutes and is ${kind}.` },
-+    { q: "When is the mentor available?", a: `${describeSchedule(o)}. All times are in Indian Standard Time (IST), and only the times shown above can be booked.` },
-+    { q: "What does it cost?", a: o.isFree ? "This session is free." : `This session costs ${priceLabel(o)} per student.` },
-+    {
-+      q: "Can I cancel?",
-+      a: o.isFree ? "Yes. You can cancel any time before it starts." : `Yes. You get a full refund if you cancel ${SESSION_FREE_CANCEL_HOURS} or more hours before it starts. If the mentor cancels, you are refunded.`,
-+    },
-+  ];
-+}
-+
- function Chip({ label, value }: { label: string; value: string }) {
-   return (
-     <span className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold">
-diff --git a/src/routes/mentorship-sessions.tsx b/src/routes/mentorship-sessions.tsx
+diff --git a/src/routes/pro.tsx b/src/routes/pro.tsx
 new file mode 100644
-index 0000000..b7ed8a2
+index 0000000..6294dcd
 --- /dev/null
-+++ b/src/routes/mentorship-sessions.tsx
-@@ -0,0 +1,184 @@
++++ b/src/routes/pro.tsx
+@@ -0,0 +1,148 @@
 +import { createFileRoute, Link } from "@tanstack/react-router";
-+import { useMemo, useState } from "react";
-+import { IconCalendarEvent as CalendarEvent, IconChevronDown as ChevronDown } from "@tabler/icons-react";
-+import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
-+import { SESSIONS_HUB_PATH } from "@/lib/session-seo";
-+import { listPublicMentorSessions } from "@/server-functions/public-sessions";
-+import { SessionCard } from "@/components/sessions/session-card";
++import { IconChevronDown as ChevronDown } from "@tabler/icons-react";
++import { Sparkles } from "lucide-react";
++import { SITE_URL, breadcrumbJsonLd, noindexHead, pageHead } from "@/lib/seo";
++import { CUSTOM_DRILL_COUNTS, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
++import { getPublicProOffer } from "@/server-functions/pro-public";
++import { ProPlanCards, rupees } from "@/components/pro/pro-plan-cards";
 +import { SiteHeader, SiteFooter, WRAP } from "@/components/landing/site-chrome";
 +
-+const FAQS: { q: string; a: string }[] = [
-+  {
-+    q: "How does a mentorship session work?",
-+    a: "Open any session, pick a time that suits you and book it (sign-in is only needed at that last step). The mentor shares the meeting link before the session starts, and you get a reminder email.",
-+  },
-+  {
-+    q: "Who are the mentors?",
-+    a: "Students who have already cleared the exam you are preparing for. Each mentor's rank and college are shown on their profile, and Edurack verifies the credentials they claim.",
-+  },
-+  {
-+    q: "What is the difference between 1:1 and group sessions?",
-+    a: "A 1:1 session is just you and the mentor. A group session has a limited number of seats per time slot, so you can see how many seats are left before you book. Some sessions are open to everyone.",
-+  },
-+  {
-+    q: "Are the sessions free?",
-+    a: "It depends on the mentor. Some sessions are free and others are paid. The price is shown on every card and on the session page before you book.",
-+  },
-+  {
-+    q: "Can I cancel a booking?",
-+    a: "Yes. Free sessions can be cancelled any time before they start. For paid sessions you get a full refund when you cancel at least 24 hours ahead. If a mentor cancels, you are refunded.",
-+  },
-+  {
-+    q: "Which time zone are the slots in?",
-+    a: "All times are in Indian Standard Time (IST).",
-+  },
-+];
-+
-+export const Route = createFileRoute("/mentorship-sessions")({
-+  // Runs on the server so crawlers receive the actual list of sessions as
-+  // links in the HTML, not an empty shell that fills in after JavaScript.
++export const Route = createFileRoute("/pro")({
++  // Server-side, so the plans and prices are in the HTML for search engines and for people on slow phones.
 +  loader: async () => {
 +    try {
-+      const { sessions } = await listPublicMentorSessions({ data: {} });
-+      return { sessions };
++      return { offer: await getPublicProOffer() };
 +    } catch {
-+      return { sessions: [] };
++      return { offer: null };
 +    }
 +  },
-+  head: ({ loaderData }) =>
-+    pageHead({
-+      title: "Mentorship Sessions with NEET & JEE Rankers",
-+      path: SESSIONS_HUB_PATH,
-+      description:
-+        "Book live 1:1 and group mentorship sessions with students who cracked NEET, JEE, CUET and IPMAT. Pick a time, see the price up front, and get the exact strategy that worked for them.",
++  head: ({ loaderData }) => {
++    const offer = loaderData?.offer;
++    // No published plan = nothing is for sale, so there's nothing for search engines to index.
++    if (!offer || offer.plans.length === 0) return noindexHead("Edurack Pro");
++    const prices = offer.plans.map((p) => p.price);
++    return pageHead({
++      title: "Edurack Pro: Custom NEET Mock Drills",
++      path: "/pro",
++      description: `Build your own timed NEET drill by chapter, topic, difficulty and paper year, with unlimited drills. Edurack Pro plans start at ${rupees(Math.min(...prices))}. Everything else on Edurack stays free.`,
 +      jsonLd: [
 +        {
 +          "@context": "https://schema.org",
-+          "@type": "CollectionPage",
-+          name: "Mentorship sessions on Edurack",
-+          url: `${SITE_URL}${SESSIONS_HUB_PATH}`,
-+          mainEntity: {
-+            "@type": "ItemList",
-+            itemListElement: (loaderData?.sessions ?? []).slice(0, 30).map((s, i) => ({
-+              "@type": "ListItem",
-+              position: i + 1,
-+              url: `${SITE_URL}/mentor-session/${s.id}`,
-+              name: `${s.title} with ${s.mentorName}`,
-+            })),
++          "@type": "Product",
++          name: "Edurack Pro",
++          description: "Unlimited timed PYQ drills and a custom drill builder for exam preparation.",
++          url: `${SITE_URL}/pro`,
++          brand: { "@type": "Brand", name: "Edurack" },
++          offers: {
++            "@type": "AggregateOffer",
++            priceCurrency: "INR",
++            lowPrice: Math.min(...prices),
++            highPrice: Math.max(...prices),
++            offerCount: offer.plans.length,
++            offers: offer.plans.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "INR", url: `${SITE_URL}/pro`, availability: "https://schema.org/InStock" })),
 +          },
 +        },
 +        breadcrumbJsonLd([
 +          { name: "Home", path: "/" },
-+          { name: "Mentorship sessions", path: SESSIONS_HUB_PATH },
++          { name: "Edurack Pro", path: "/pro" },
 +        ]),
 +      ],
-+    }),
-+  component: MentorshipSessionsPage,
++    });
++  },
++  component: ProPage,
 +});
 +
-+function MentorshipSessionsPage() {
-+  const { sessions } = Route.useLoaderData();
-+  const [subject, setSubject] = useState<string | null>(null);
++function ProPage() {
++  const { offer } = Route.useLoaderData();
++  const plans = offer?.plans ?? [];
++  const proOnly = offer?.proOnly;
++  const proFeatures = proOnly ? PRO_FEATURE_KEYS.filter((k) => proOnly[k]) : [];
++  const freeLimit = offer?.freeLimit ?? 0;
 +
-+  const subjects = useMemo(() => Array.from(new Set(sessions.map((s) => (s.subject ?? "").trim()).filter(Boolean))).sort(), [sessions]);
-+  const shown = subject ? sessions.filter((s) => (s.subject ?? "").trim() === subject) : sessions;
++  const faqs: { q: string; a: string }[] = [
++    { q: "What is free, and what is Pro?", a: `Everything you use free today stays free: practice, answers, solutions, the notebook and the standard timed drill${freeLimit > 0 ? ` (${freeLimit} a day)` : ""}. Pro adds ${proFeatures.map((k) => PRO_FEATURES[k].label.toLowerCase()).join(" and ") || "extra drill features"}.` },
++    { q: "What can I choose in a custom drill?", a: `A chapter or topic, the difficulty, the paper years to draw questions from, and the length: ${CUSTOM_DRILL_COUNTS.join(", ")} questions.` },
++    { q: "How long does a plan last, and what if I buy again?", a: "Each plan runs for a fixed number of days. If you buy while Pro is still active, the new period starts when the current one ends, so you never lose days." },
++    { q: "What happens when Pro ends?", a: "You go back to the free plan. Nothing you practised or saved is deleted." },
++    { q: "How do I pay?", a: "Checkout is handled by Razorpay. You choose a plan, pay in the Razorpay window, and Pro switches on as soon as the payment is confirmed." },
++  ];
 +
 +  return (
 +    <div className="min-h-screen bg-background">
@@ -929,70 +521,57 @@ index 0000000..b7ed8a2
 +                Home
 +              </Link>
 +              <span className="mx-1.5">›</span>
-+              <span className="font-semibold text-foreground">Mentorship sessions</span>
++              <span className="font-semibold text-foreground">Edurack Pro</span>
 +            </nav>
 +
 +            <div className="mt-5 max-w-3xl">
 +              <div className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-semibold text-primary sm:text-sm">
-+                <CalendarEvent className="h-4 w-4" />
-+                Live sessions
++                <Sparkles className="h-4 w-4" aria-hidden />
++                Edurack Pro
 +              </div>
 +              <h1 className="mt-5 font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
-+                <span className="block font-light">Mentorship sessions with</span>
-+                <span className="block font-extrabold">people who cracked the exam.</span>
++                <span className="block font-light">Build your own mock drill.</span>
++                <span className="block font-extrabold">Practise exactly what you need.</span>
 +              </h1>
 +              <p className="mt-4 text-muted-foreground">
-+                Book a live 1:1 or group session with a mentor who has already cleared NEET, JEE, CUET or IPMAT. Ask about your study plan, your weak subjects or how to handle the last
-+                90 days, and get advice from someone who has just been through it. Every mentor's rank and college is verified and shown on their profile.
++                Pick the chapter or topic, the difficulty, the paper years and how many questions, then solve it in real timed CBT mode. Pro also removes the daily cap on timed drills.
++                Everything else on Edurack stays free.
 +              </p>
 +            </div>
 +
-+            {subjects.length > 1 && (
-+              <div className="mt-8 flex flex-wrap gap-2" role="group" aria-label="Filter by subject">
-+                <button
-+                  type="button"
-+                  onClick={() => setSubject(null)}
-+                  aria-pressed={subject === null}
-+                  className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors ${subject === null ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40"}`}
-+                >
-+                  All
-+                </button>
-+                {subjects.map((s) => (
-+                  <button
-+                    key={s}
-+                    type="button"
-+                    onClick={() => setSubject(subject === s ? null : s)}
-+                    aria-pressed={subject === s}
-+                    className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors ${subject === s ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/40"}`}
-+                  >
-+                    {s}
-+                  </button>
-+                ))}
-+              </div>
-+            )}
-+
-+            {shown.length === 0 ? (
-+              <div className="mt-8 rounded-3xl border border-dashed border-border p-10 text-center">
-+                <p className="font-semibold">No open sessions right now</p>
-+                <p className="mt-1 text-sm text-muted-foreground">Mentors publish new times all the time. Check back soon, or take a free CBT mock test while you wait.</p>
-+                <Link to="/simulator/live" className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
-+                  Try a free mock test
-+                </Link>
-+              </div>
-+            ) : (
-+              <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-+                {shown.map((s) => (
-+                  <li key={s.id}>
-+                    <SessionCard s={s} />
++            {proFeatures.length > 0 && (
++              <ul className="mt-8 grid max-w-3xl gap-3 sm:grid-cols-2">
++                {proFeatures.map((k) => (
++                  <li key={k} className="rounded-2xl border border-border bg-card p-4">
++                    <p className="font-display font-bold">{PRO_FEATURES[k].label}</p>
++                    <p className="mt-1 text-sm text-muted-foreground">
++                      {PRO_FEATURES[k].description}
++                      {k === "unlimitedDrills" ? (freeLimit === 0 ? " Not part of the free plan." : ` Free plan: ${freeLimit} a day.`) : ""}
++                    </p>
 +                  </li>
 +                ))}
 +              </ul>
 +            )}
 +
++            <h2 className="mt-12 font-display text-2xl font-extrabold tracking-tight">Choose a plan</h2>
++            <div className="mt-5">
++              {plans.length > 0 && proOnly ? (
++                <ProPlanCards plans={plans} proOnly={proOnly} />
++              ) : (
++                <div className="rounded-3xl border border-dashed border-border p-8 text-center">
++                  <p className="font-semibold">Pro plans aren't on sale right now</p>
++                  <p className="mt-1 text-sm text-muted-foreground">Every drill feature is open to everyone for now. Jump in and practise.</p>
++                  <Link to="/pyq" className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
++                    Start free PYQ practice
++                  </Link>
++                </div>
++              )}
++            </div>
++
 +            <div className="mt-16 max-w-3xl">
-+              <h2 className="font-display text-2xl font-extrabold tracking-tight">Questions about mentorship sessions</h2>
++              <h2 className="font-display text-2xl font-extrabold tracking-tight">Questions about Edurack Pro</h2>
 +              <div className="mt-5 space-y-3">
-+                {FAQS.map((f) => (
++                {faqs.map((f) => (
 +                  <details key={f.q} className="group clay overflow-hidden">
 +                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-display font-bold text-foreground sm:px-6">
 +                      {f.q}
@@ -1002,13 +581,6 @@ index 0000000..b7ed8a2
 +                  </details>
 +                ))}
 +              </div>
-+              <p className="mt-8 text-sm text-muted-foreground">
-+                Cleared the exam yourself?{" "}
-+                <Link to="/join-mentor" className="font-semibold text-foreground hover:underline">
-+                  Become a mentor
-+                </Link>{" "}
-+                and host your own sessions.
-+              </p>
 +            </div>
 +          </div>
 +        </section>
@@ -1017,120 +589,40 @@ index 0000000..b7ed8a2
 +    </div>
 +  );
 +}
-diff --git a/src/routes/sitemap-mentors[.]xml.ts b/src/routes/sitemap-mentors[.]xml.ts
-index e1aaf93..48c6071 100644
---- a/src/routes/sitemap-mentors[.]xml.ts
-+++ b/src/routes/sitemap-mentors[.]xml.ts
-@@ -1,7 +1,8 @@
--// src/routes/sitemap-mentors[.]xml.ts — GET /sitemap-mentors.xml (mentor profiles + mentorship course pages)
-+// src/routes/sitemap-mentors[.]xml.ts — GET /sitemap-mentors.xml (mentor profiles + mentorship course pages + mentor session pages)
- import { createFileRoute } from "@tanstack/react-router";
- import { getDb } from "@/lib/mongo";
- import { SITE_URL } from "@/lib/seo";
-+import { supabase } from "@/lib/supabase";
- import { sitemapUnavailable, toIsoDate, urlEntry, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
- 
- export const Route = createFileRoute("/sitemap-mentors.xml")({
-@@ -20,9 +21,22 @@ export const Route = createFileRoute("/sitemap-mentors.xml")({
-           // Mentorship course pages at /course/mentorship/$id
-           const batches = await db.collection("mentorshipBatches").find({}, { projection: { updatedAt: 1, createdAt: 1 } }).toArray();
- 
-+          // Bookable mentor sessions at /mentor-session/$id. Paused or deleted ones are left
-+          // out (their page answers 404). If this lookup fails, the rest of the sitemap
-+          // is still served — a session missing from the sitemap for an hour does no harm.
-+          let sessionEntries: string[] = [];
-+          try {
-+            const { data: sessionRows, error } = await supabase.from("mentor_session_offerings").select("id, created_at, updated_at").eq("active", true);
-+            if (error) throw new Error(error.message);
-+            sessionEntries = (sessionRows ?? []).map((r) => urlEntry(`${SITE_URL}/mentor-session/${r.id}`, toIsoDate(r.updated_at ?? r.created_at), 0.7, "weekly"));
-+          } catch (err) {
-+            console.error("[sitemap] mentor sessions skipped:", err);
-+          }
-+
-           const entries = [
-             ...mentors.map((m) => urlEntry(`${SITE_URL}/mentor-profile/${String(m._id)}`, toIsoDate(m.updatedAt ?? m.createdAt), 0.6, "weekly")),
-             ...batches.map((b) => urlEntry(`${SITE_URL}/course/mentorship/${String(b._id)}`, toIsoDate(b.updatedAt ?? b.createdAt), 0.7, "weekly")),
-+            ...sessionEntries,
-           ];
-           return xmlResponse(urlsetXml(entries));
-         } catch (err) {
-diff --git a/src/server-functions/public-sessions.ts b/src/server-functions/public-sessions.ts
+diff --git a/src/server-functions/pro-public.ts b/src/server-functions/pro-public.ts
 new file mode 100644
-index 0000000..595441d
+index 0000000..797e9d8
 --- /dev/null
-+++ b/src/server-functions/public-sessions.ts
-@@ -0,0 +1,74 @@
-+// Public (no login) listing of bookable mentor sessions. Powers the
-+// /mentorship-sessions hub and the "sessions" block on a mentor's public
-+// profile, so both can be rendered on the server for crawlers.
-+//
-+// Only offerings that currently have at least one open slot are returned —
-+// a card nobody can book would just be a dead end. (Every ACTIVE offering is
-+// still in the sitemap, so a full session's own page stays indexed.)
++++ b/src/server-functions/pro-public.ts
+@@ -0,0 +1,31 @@
++// The Edurack Pro offer, readable WITHOUT signing in — the same plans and free-plan rules the mock drill page
++// shows a logged-in student, so the homepage and /pro can show them to anyone. Nothing personal is in here.
 +import { createServerFn } from "@tanstack/react-start";
-+import { lookupMentorPublicInfo } from "@/lib/dashboard-core";
++import { getDb } from "@/lib/mongo";
 +import { createTtlCache } from "@/lib/simple-cache";
-+import { rowToOffering } from "@/lib/session-rows";
-+import { expandOfferingToSlots } from "@/lib/session-slots";
-+import type { OpenSlot, PublicMentorOffering } from "@/lib/session-types";
-+import { supabase } from "@/lib/supabase";
++import type { ProFeatureKey, ProPlanPublic } from "@/lib/pro";
 +
-+export type PublicSessionCard = PublicMentorOffering & { nextSlot: OpenSlot };
++export type PublicProOffer = {
++  /** False until the team publishes a plan; while false nothing is limited and there is nothing to sell. */
++  gatingOn: boolean;
++  /** Free timed drills per day. */
++  freeLimit: number;
++  /** Which features are Pro-only right now (admin setting). */
++  proOnly: Record<ProFeatureKey, boolean>;
++  plans: ProPlanPublic[];
++};
 +
-+// Identical for every visitor and fine to be a minute old; crawlers and a
-+// traffic spike shouldn't each trigger a full offerings + bookings scan.
-+const cache = createTtlCache<PublicSessionCard[]>(60_000);
++// Same for every visitor and changes only when an admin edits a plan, so a minute's delay is fine —
++// and the homepage must not hit the database once per visitor.
++const cache = createTtlCache<PublicProOffer>(60_000);
 +
-+async function loadAllPublicSessions(): Promise<PublicSessionCard[]> {
-+  const hit = cache.get("all");
++export const getPublicProOffer = createServerFn({ method: "GET" }).handler(async (): Promise<PublicProOffer> => {
++  const hit = cache.get("offer");
 +  if (hit) return hit;
-+
-+  const { data: offeringRows, error } = await supabase.from("mentor_session_offerings").select("*").eq("active", true);
-+  if (error) throw new Error(error.message);
-+  const offerings = (offeringRows ?? []).map(rowToOffering);
-+  if (offerings.length === 0) {
-+    cache.set("all", []);
-+    return [];
-+  }
-+
-+  const { data: bookingRows, error: bErr } = await supabase
-+    .from("mentor_session_bookings")
-+    .select("offering_id, session_date, start_time")
-+    .in(
-+      "offering_id",
-+      offerings.map((o) => o.id),
-+    )
-+    .neq("status", "cancelled");
-+  if (bErr) throw new Error(bErr.message);
-+
-+  const seatCounts = new Map<string, number>();
-+  for (const b of bookingRows ?? []) {
-+    const key = `${b.offering_id}:${b.session_date}:${b.start_time}`;
-+    seatCounts.set(key, (seatCounts.get(key) ?? 0) + 1);
-+  }
-+
-+  const mentorInfo = await lookupMentorPublicInfo(Array.from(new Set(offerings.map((o) => o.mentorId))));
-+
-+  const cards: PublicSessionCard[] = [];
-+  for (const o of offerings) {
-+    const slots = expandOfferingToSlots(o, seatCounts, 21);
-+    if (slots.length === 0) continue;
-+    cards.push({
-+      ...o,
-+      mentorName: mentorInfo[o.mentorId]?.name ?? "Mentor",
-+      mentorPhotoUrl: mentorInfo[o.mentorId]?.photoUrl ?? null,
-+      nextSlot: slots[0],
-+    });
-+  }
-+  cards.sort((a, b) => (a.nextSlot.date + a.nextSlot.startTime).localeCompare(b.nextSlot.date + b.nextSlot.startTime));
-+  cache.set("all", cards);
-+  return cards;
-+}
-+
-+export const listPublicMentorSessions = createServerFn({ method: "GET" })
-+  .validator((d: { mentorId?: string; limit?: number }) => d)
-+  .handler(async ({ data }) => {
-+    let sessions = await loadAllPublicSessions();
-+    if (data.mentorId) sessions = sessions.filter((s) => s.mentorId === data.mentorId);
-+    return { sessions: sessions.slice(0, Math.min(Math.max(data.limit ?? 60, 1), 100)) };
-+  });
++  const { listActivePlans, getProSettings } = await import("@/lib/pro-server");
++  const db = await getDb();
++  const [plans, settings] = await Promise.all([listActivePlans(db), getProSettings(db)]);
++  const offer: PublicProOffer = { gatingOn: plans.length > 0, freeLimit: settings.freeDrillsPerDay, proOnly: settings.proOnly, plans };
++  cache.set("offer", offer);
++  return offer;
++});

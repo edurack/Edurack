@@ -191,6 +191,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "CBT Simulator", to: "/simulator/live" },
       { label: "Dashboard", to: "/dashboard" },
       { label: "Mentorship sessions", to: "/mentorship-sessions" },
+      { label: "Edurack Pro", to: "/pro" },
       { label: "Become a mentor", to: "/join-mentor" },
       { label: "Internships", to: "/join-intern" },
       { label: "Blog", to: "/blog" },

@@ -379,7 +379,7 @@ function renderTable(headerLine: string, sepLine: string, bodyLines: string[]): 
   // role="region" + tabindex + aria-label make a horizontally-scrollable
   // table keyboard-reachable and announced correctly by screen readers,
   // instead of silently clipping on narrow viewports.
-  return `<div class="blog-table-wrap my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
+  return `<div class="blog-table-wrap relative my-6 overflow-x-auto rounded-xl border border-foreground/10" role="region" tabindex="0" aria-label="Table: ${escapeHtml(stripInlineMarkdown(headers[0] ?? "data"))} and related columns"><table class="blog-table w-full min-w-max border-collapse text-sm">${thead}${tbody}</table></div>`;
 }
 
 export type BlogHeading = { id: string; level: 2 | 3; text: string };

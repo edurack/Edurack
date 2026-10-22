@@ -19,6 +19,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FreeResourcesRouteImport } from './routes/free-resources'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
+import { Route as ProRouteImport } from './routes/pro'
 import { Route as JoinInternRouteImport } from './routes/join-intern'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
@@ -149,6 +150,11 @@ const HelpRoute = HelpRouteImport.update({
 const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
   id: '/mentorship-sessions',
   path: '/mentorship-sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProRoute = ProRouteImport.update({
+  id: '/pro',
+  path: '/pro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinInternRoute = JoinInternRouteImport.update({
@@ -583,6 +589,7 @@ export interface FileRoutesByFullPath {
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
   '/mentorship-sessions': typeof MentorshipSessionsRoute
+  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -676,6 +683,7 @@ export interface FileRoutesByTo {
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
   '/mentorship-sessions': typeof MentorshipSessionsRoute
+  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -770,6 +778,7 @@ export interface FileRoutesById {
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
   '/mentorship-sessions': typeof MentorshipSessionsRoute
+  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -865,6 +874,7 @@ export interface FileRouteTypes {
     | '/free-resources'
     | '/help'
     | '/mentorship-sessions'
+    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -958,6 +968,7 @@ export interface FileRouteTypes {
     | '/free-resources'
     | '/help'
     | '/mentorship-sessions'
+    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -1051,6 +1062,7 @@ export interface FileRouteTypes {
     | '/free-resources'
     | '/help'
     | '/mentorship-sessions'
+    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -1145,6 +1157,7 @@ export interface RootRouteChildren {
   FreeResourcesRoute: typeof FreeResourcesRoute
   HelpRoute: typeof HelpRoute
   MentorshipSessionsRoute: typeof MentorshipSessionsRoute
+  ProRoute: typeof ProRoute
   JoinInternRoute: typeof JoinInternRoute
   JoinMentorRoute: typeof JoinMentorRoute
   LeaderboardRoute: typeof LeaderboardRoute
@@ -1297,6 +1310,13 @@ declare module '@tanstack/react-router' {
       path: '/mentorship-sessions'
       fullPath: '/mentorship-sessions'
       preLoaderRoute: typeof MentorshipSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pro': {
+      id: '/pro'
+      path: '/pro'
+      fullPath: '/pro'
+      preLoaderRoute: typeof ProRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-intern': {
@@ -1891,6 +1911,7 @@ const rootRouteChildren: RootRouteChildren = {
   FreeResourcesRoute: FreeResourcesRoute,
   HelpRoute: HelpRoute,
   MentorshipSessionsRoute: MentorshipSessionsRoute,
+  ProRoute: ProRoute,
   JoinInternRoute: JoinInternRoute,
   JoinMentorRoute: JoinMentorRoute,
   LeaderboardRoute: LeaderboardRoute,

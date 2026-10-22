@@ -59,13 +59,15 @@ export function SlotPicker({
               role="tab"
               aria-selected={active}
               onClick={() => setDay(d)}
-              className={`flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
+              className={`relative flex min-h-[4.25rem] w-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl border text-center transition-colors ${
                 active ? "border-foreground bg-foreground text-background" : "border-border bg-card text-foreground hover:border-foreground/40"
               }`}
             >
               <span className={`text-[11px] font-semibold ${active ? "text-background/70" : "text-muted-foreground"}`}>{relativeDay(d) === "Today" ? "Today" : relativeDay(d) === "Tomorrow" ? "Tmrw" : p.weekday}</span>
               <span className="font-display text-xl font-extrabold leading-tight tabular-nums">{p.day}</span>
               <span className={`text-[10px] ${active ? "text-background/60" : "text-muted-foreground"}`}>{p.month}</span>
+              {/* The button is `relative` so this hidden label is positioned (and clipped) inside the scrolling strip.
+                  Without that, 21 of them sit far off-screen to the right, the page becomes ~1400px wide and phones zoom out. */}
               <span className="sr-only">{list.length} times</span>
             </button>
           );
