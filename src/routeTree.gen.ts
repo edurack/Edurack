@@ -18,15 +18,15 @@ import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FreeResourcesRouteImport } from './routes/free-resources'
 import { Route as HelpRouteImport } from './routes/help'
-import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
-import { Route as ProRouteImport } from './routes/pro'
 import { Route as JoinInternRouteImport } from './routes/join-intern'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
 import { Route as MySessionsRouteImport } from './routes/my-sessions'
 import { Route as NotebookRouteImport } from './routes/notebook'
+import { Route as ProRouteImport } from './routes/pro'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PurchasesRouteImport } from './routes/purchases'
 import { Route as PyqRouteImport } from './routes/pyq'
@@ -147,16 +147,6 @@ const HelpRoute = HelpRouteImport.update({
   path: '/help',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
-  id: '/mentorship-sessions',
-  path: '/mentorship-sessions',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProRoute = ProRouteImport.update({
-  id: '/pro',
-  path: '/pro',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const JoinInternRoute = JoinInternRouteImport.update({
   id: '/join-intern',
   path: '/join-intern',
@@ -182,6 +172,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
+  id: '/mentorship-sessions',
+  path: '/mentorship-sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MySessionsRoute = MySessionsRouteImport.update({
   id: '/my-sessions',
   path: '/my-sessions',
@@ -190,6 +185,11 @@ const MySessionsRoute = MySessionsRouteImport.update({
 const NotebookRoute = NotebookRouteImport.update({
   id: '/notebook',
   path: '/notebook',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProRoute = ProRouteImport.update({
+  id: '/pro',
+  path: '/pro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileRoute = ProfileRouteImport.update({
@@ -588,15 +588,15 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
-  '/mentorship-sessions': typeof MentorshipSessionsRoute
-  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/my-sessions': typeof MySessionsRoute
   '/notebook': typeof NotebookRoute
+  '/pro': typeof ProRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
@@ -682,15 +682,15 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
-  '/mentorship-sessions': typeof MentorshipSessionsRoute
-  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/my-sessions': typeof MySessionsRoute
   '/notebook': typeof NotebookRoute
+  '/pro': typeof ProRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
@@ -777,15 +777,15 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
-  '/mentorship-sessions': typeof MentorshipSessionsRoute
-  '/pro': typeof ProRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/my-sessions': typeof MySessionsRoute
   '/notebook': typeof NotebookRoute
+  '/pro': typeof ProRoute
   '/profile': typeof ProfileRoute
   '/purchases': typeof PurchasesRoute
   '/pyq': typeof PyqRoute
@@ -873,15 +873,15 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
-    | '/mentorship-sessions'
-    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
     | '/llms.txt'
     | '/login'
+    | '/mentorship-sessions'
     | '/my-sessions'
     | '/notebook'
+    | '/pro'
     | '/profile'
     | '/purchases'
     | '/pyq'
@@ -967,15 +967,15 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
-    | '/mentorship-sessions'
-    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
     | '/llms.txt'
     | '/login'
+    | '/mentorship-sessions'
     | '/my-sessions'
     | '/notebook'
+    | '/pro'
     | '/profile'
     | '/purchases'
     | '/pyq'
@@ -1061,15 +1061,15 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
-    | '/mentorship-sessions'
-    | '/pro'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
     | '/llms.txt'
     | '/login'
+    | '/mentorship-sessions'
     | '/my-sessions'
     | '/notebook'
+    | '/pro'
     | '/profile'
     | '/purchases'
     | '/pyq'
@@ -1156,15 +1156,15 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   FreeResourcesRoute: typeof FreeResourcesRoute
   HelpRoute: typeof HelpRoute
-  MentorshipSessionsRoute: typeof MentorshipSessionsRoute
-  ProRoute: typeof ProRoute
   JoinInternRoute: typeof JoinInternRoute
   JoinMentorRoute: typeof JoinMentorRoute
   LeaderboardRoute: typeof LeaderboardRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
+  MentorshipSessionsRoute: typeof MentorshipSessionsRoute
   MySessionsRoute: typeof MySessionsRoute
   NotebookRoute: typeof NotebookRoute
+  ProRoute: typeof ProRoute
   ProfileRoute: typeof ProfileRoute
   PurchasesRoute: typeof PurchasesRoute
   PyqRoute: typeof PyqRoute
@@ -1305,20 +1305,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HelpRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mentorship-sessions': {
-      id: '/mentorship-sessions'
-      path: '/mentorship-sessions'
-      fullPath: '/mentorship-sessions'
-      preLoaderRoute: typeof MentorshipSessionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pro': {
-      id: '/pro'
-      path: '/pro'
-      fullPath: '/pro'
-      preLoaderRoute: typeof ProRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/join-intern': {
       id: '/join-intern'
       path: '/join-intern'
@@ -1354,6 +1340,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mentorship-sessions': {
+      id: '/mentorship-sessions'
+      path: '/mentorship-sessions'
+      fullPath: '/mentorship-sessions'
+      preLoaderRoute: typeof MentorshipSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/my-sessions': {
       id: '/my-sessions'
       path: '/my-sessions'
@@ -1366,6 +1359,13 @@ declare module '@tanstack/react-router' {
       path: '/notebook'
       fullPath: '/notebook'
       preLoaderRoute: typeof NotebookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pro': {
+      id: '/pro'
+      path: '/pro'
+      fullPath: '/pro'
+      preLoaderRoute: typeof ProRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile': {
@@ -1910,15 +1910,15 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   FreeResourcesRoute: FreeResourcesRoute,
   HelpRoute: HelpRoute,
-  MentorshipSessionsRoute: MentorshipSessionsRoute,
-  ProRoute: ProRoute,
   JoinInternRoute: JoinInternRoute,
   JoinMentorRoute: JoinMentorRoute,
   LeaderboardRoute: LeaderboardRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
+  MentorshipSessionsRoute: MentorshipSessionsRoute,
   MySessionsRoute: MySessionsRoute,
   NotebookRoute: NotebookRoute,
+  ProRoute: ProRoute,
   ProfileRoute: ProfileRoute,
   PurchasesRoute: PurchasesRoute,
   PyqRoute: PyqRoute,
