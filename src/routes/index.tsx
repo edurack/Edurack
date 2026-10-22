@@ -391,10 +391,10 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
   );
 }
 
-const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
+const shownNav = navLinks.filter((l) => ["Mentors", "Features", "Join as Mentor", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
 
 function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
-  const cls = "inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground";
+  const cls = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground lg:px-3 xl:px-4";
   return link.type === "route" ? (
     <Link to={link.to} onClick={onClick} className={cls}>{link.label}</Link>
   ) : (
