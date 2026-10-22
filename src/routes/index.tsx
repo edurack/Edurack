@@ -209,6 +209,7 @@ const navLinks: NavLink[] = [
   { label: "Join as Mentor", type: "anchor", href: "#marketplace" },
   { label: "NEET Weightage", type: "route", to: "/neet/chapter-wise-weightage" },
   { label: "JEE Weightage", type: "route", to: "/jee/chapter-wise-weightage" },
+  { label: "Mentor Sessions", type: "route", to: "/mentorship-sessions" },
   { label: "Blog", type: "route", to: "/blog" },
   { label: "Contact", type: "route", to: "/contact" },
 ];
@@ -390,7 +391,7 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
   );
 }
 
-const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Blog", "Contact"].includes(l.label));
+const shownNav = navLinks.filter((l) => ["CBT Simulator", "Mentors", "Features", "Join as Mentor", "NEET Weightage", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
 
 function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
   const cls = "inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground";
@@ -769,7 +770,7 @@ function FinalCta() {
 // ── Footer ─────────────────────────────────────────────────────────────────
 type FooterLink = { label: string; to: string };
 const footerColumns: { title: string; links: FooterLink[] }[] = [
-  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
+  { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },

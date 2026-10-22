@@ -30,6 +30,10 @@ export function LandingFreeSessionsSection() {
         <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
           Live sessions with mentors who cracked the exam you're preparing for. Pick a time that works, no payment needed.
         </p>
+        <Link to="/mentorship-sessions" className="mt-2 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
+          Browse all mentorship sessions
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
 
       {sessions === null ? (

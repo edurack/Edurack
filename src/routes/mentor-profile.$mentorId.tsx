@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link, notFound, isNotFound } from "@tanstack/react-router";
 import { pageHead, noindexHead, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
 import { useEffect, useState } from "react";
 import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { VideoPlayer } from "@/components/clay-video-player";
 import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
+import { listPublicMentorSessions } from "@/server-functions/public-sessions";
+import { SessionCard } from "@/components/sessions/session-card";
 import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
 
 export const Route = createFileRoute("/mentor-profile/$mentorId")({
@@ -15,18 +17,29 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
   // generic site title. The page component still does its own fetch.
   loader: async ({ params }) => {
     try {
-      const { mentor } = await getPublicMentorFullProfile({ data: { token: "", mentorId: params.mentorId } });
-      if (!mentor) return { seo: null };
+      const { mentor, batches } = await getPublicMentorFullProfile({ data: { token: "", mentorId: params.mentorId } });
+      // A mentor who doesn't exist is a real 404 for search engines.
+      if (!mentor) throw notFound();
+      // Their bookable sessions, so the profile links to them in the HTML.
+      const sessions = await listPublicMentorSessions({ data: { mentorId: params.mentorId, limit: 12 } })
+        .then((r) => r.sessions)
+        .catch(() => []);
       return {
         seo: {
           name: mentor.name as string,
           about: (mentor.aboutText as string) ?? "",
           photo: (mentor.profilePictureUrl as string | null) ?? null,
           expertAt: (mentor.expertAt as string) ?? "",
+          college: ((mentor.enrolledCollege as string) ?? "").trim(),
+          rank: ((mentor.aiimsIitRank as string) ?? "").trim(),
         },
+        // The page renders from this on the server and refreshes in the browser.
+        initial: { mentor, batches },
+        sessions,
       };
-    } catch {
-      return { seo: null };
+    } catch (err) {
+      if (isNotFound(err)) throw err;
+      return { seo: null, initial: null, sessions: [] };
     }
   },
   head: ({ loaderData, params }) => {
@@ -38,7 +51,7 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
       title: `${m.name} — ${role}`,
       description:
         m.about ||
-        `${m.name} is a mentor on Edurack. See their background, mentorship batches and test series, and book a session.`,
+        `${m.name}${[m.rank, m.college].filter(Boolean).length ? ` (${[m.rank, m.college].filter(Boolean).join(", ")})` : ""} is a mentor on Edurack. See their background, mentorship batches and test series, and book a session.`,
       path,
       image: m.photo,
       type: "profile",
@@ -50,6 +63,8 @@ export const Route = createFileRoute("/mentor-profile/$mentorId")({
           image: m.photo ?? undefined,
           description: m.about || undefined,
           jobTitle: role,
+          ...(m.college ? { alumniOf: { "@type": "CollegeOrUniversity", name: m.college } } : {}),
+          ...(m.expertAt ? { knowsAbout: m.expertAt.split(/[,/]/).map((x: string) => x.trim()).filter(Boolean) } : {}),
           url: `${SITE_URL}${path}`,
           worksFor: { "@type": "Organization", name: "Edurack", url: SITE_URL },
         },
@@ -140,8 +155,9 @@ function MentorProfilePage() {
   const { mentorId } = Route.useParams();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [mentor, setMentor] = useState<Mentor | null>(null);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const { initial, sessions } = Route.useLoaderData();
+  const [mentor, setMentor] = useState<Mentor | null>((initial?.mentor as Mentor | undefined) ?? null);
+  const [batches, setBatches] = useState<Batch[]>((initial?.batches as Batch[] | undefined) ?? []);
   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [notFound, setNotFound] = useState(false);
 
@@ -342,6 +358,21 @@ function MentorProfilePage() {
                 )}
               </div>
             </div>
+
+            {sessions.length > 0 && (
+              <div className="clay p-5 sm:p-6">
+                <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.15em] text-foreground/60">
+                  Book a session with {mentor.name.split(" ")[0]}
+                </h2>
+                <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {sessions.map((s) => (
+                    <li key={s.id}>
+                      <SessionCard s={s} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="clay p-5 sm:p-6">
               <div className="mb-4 flex items-center justify-between">

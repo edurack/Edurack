@@ -422,7 +422,7 @@ export function MentorOfferingDialog({
                   </div>
                 </Section>
 
-                <Section label="What will students get out of it?" hint="Optional, but sessions with a description get booked more.">
+                <Section label="What will students get out of it?" hint="Optional, but sessions with a description get booked more, and show up better in Google. Aim for 2–3 sentences: who it's for, what you'll cover, and your own result (rank, college).">
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
@@ -432,7 +432,12 @@ export function MentorOfferingDialog({
                     aria-label="Description"
                     className={textareaClass}
                   />
-                  <p className="mt-1 text-right text-[11px] text-foreground/40">{description.length}/600</p>
+                  <p className="mt-1 flex justify-between gap-3 text-[11px] text-foreground/40">
+                    <span className={description.trim().length > 0 && description.trim().length < 90 ? "text-amber-700" : ""}>
+                      {description.trim().length > 0 && description.trim().length < 90 ? "A bit short — add a little more so it shows up well in search." : ""}
+                    </span>
+                    <span>{description.length}/600</span>
+                  </p>
                 </Section>
 
                 <Section label="Cover image" hint="We use your profile photo until you add your own.">

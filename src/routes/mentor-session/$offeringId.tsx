@@ -1,5 +1,6 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { pageHead, noindexHead, SITE_URL } from "@/lib/seo";
+import { createFileRoute, useNavigate, Link, notFound } from "@tanstack/react-router";
+import { pageHead, noindexHead } from "@/lib/seo";
+import { SESSIONS_HUB_PATH, buildSessionSeo } from "@/lib/session-seo";
 import { useEffect, useMemo, useState } from "react";
 import {
   IconLoader2 as Loader2,
@@ -22,48 +23,52 @@ import { SESSION_FREE_CANCEL_HOURS, formatDateLong, formatSlot, formatTimeRange 
 import { describeSchedule, type MentorBioForOffering, type OpenSlot, type OtherOfferingSummary, type PublicMentorOffering } from "@/lib/session-types";
 
 export const Route = createFileRoute("/mentor-session/$offeringId")({
+  // Runs on the server for the first request. It hands the page its full
+  // content (not just the <head>), so crawlers, link previews and slow
+  // phones get the real session in the HTML instead of a loading spinner.
   loader: async ({ params }) => {
     try {
-      const { offering, mentorBio } = await getMentorSessionOfferingDetail({ data: { offeringId: params.offeringId } });
-      const kind = offering.capacity > 1 ? "group session" : "1:1 session";
-      const price = offering.isFree ? "Free" : `₹${offering.price}`;
-      return {
-        seo: {
-          title: `${offering.title} with ${mentorBio.name}`,
-          description:
-            offering.description?.trim() ||
-            `Book a ${offering.durationMinutes}-minute ${kind} with ${mentorBio.name} on Edurack. ${price}.`,
-          image: offering.posterUrl ?? offering.thumbnailUrl ?? mentorBio.photoUrl,
-          mentorName: mentorBio.name,
-          price: offering.isFree ? 0 : Number(offering.price) || 0,
-        },
-      };
-    } catch {
-      return { seo: null };
+      const detail = await getMentorSessionOfferingDetail({ data: { offeringId: params.offeringId } });
+      return { detail };
+    } catch (err) {
+      // A paused, deleted or made-up id is a genuine 404 — tell search
+      // engines so they drop it, instead of serving a "noindex" page with a
+      // 200. Anything else (a database blip) isn't the session's fault, so
+      // fall back to the client-side load without claiming it's gone.
+      const message = err instanceof Error ? err.message : "";
+      if (/isn't available|no longer available|not found/i.test(message)) throw notFound();
+      return { detail: null };
     }
   },
   head: ({ loaderData, params }) => {
-    const s = loaderData?.seo;
-    if (!s) return noindexHead("Session unavailable");
+    const detail = loaderData?.detail;
+    if (!detail) return noindexHead("Session unavailable");
     const path = `/mentor-session/${params.offeringId}`;
-    return pageHead({
-      title: s.title,
-      description: s.description,
-      path,
-      image: s.image,
-      jsonLd: {
-        "@context": "https://schema.org",
-        "@type": "Service",
-        name: s.title,
-        description: s.description,
-        provider: { "@type": "Person", name: s.mentorName },
-        url: `${SITE_URL}${path}`,
-        offers: { "@type": "Offer", price: s.price, priceCurrency: "INR" },
-      },
-    });
+    const seo = buildSessionSeo(detail as DetailData, path);
+    return pageHead({ title: seo.title, description: seo.description, path, image: seo.image, jsonLd: seo.jsonLd });
   },
+  notFoundComponent: SessionNotFound,
   component: MentorSessionDetailPage,
 });
+
+function SessionNotFound() {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
+        <Link to="/" className="font-display text-base font-extrabold tracking-tight text-foreground">
+          Edurack
+        </Link>
+      </header>
+      <main className="mx-auto max-w-xl px-4 py-20 text-center">
+        <h1 className="font-display text-2xl font-extrabold">This session isn't available</h1>
+        <p className="mt-2 text-sm text-muted-foreground">The mentor may have paused or removed it. There are plenty of other sessions you can book.</p>
+        <Link to={SESSIONS_HUB_PATH} className="clay-btn mt-6 inline-flex min-h-11 items-center px-6 text-sm">
+          Browse mentorship sessions
+        </Link>
+      </main>
+    </div>
+  );
+}
 
 type DetailData = {
   offering: PublicMentorOffering;
@@ -82,13 +87,17 @@ function MentorSessionDetailPage() {
   const { offeringId } = Route.useParams();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState<DetailData | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [selected, setSelected] = useState<OpenSlot | null>(null);
+  // Seeded from the server-rendered loader data, so the first paint (and the
+  // HTML crawlers see) already has the whole page. The client then refreshes
+  // quietly in the background to pick up live seats and "you're booked".
+  const initial = (Route.useLoaderData().detail ?? null) as DetailData | null;
+  const [data, setData] = useState<DetailData | null>(initial);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(initial ? "ready" : "loading");
+  const [selected, setSelected] = useState<OpenSlot | null>(initial?.slots[0] ?? null);
   const [booking, setBooking] = useState<OpenSlot | null>(null);
 
   async function load() {
-    setStatus("loading");
+    setStatus((s) => (s === "ready" ? s : "loading"));
     try {
       const token = user ? await user.getIdToken() : undefined;
       const result = (await getMentorSessionOfferingDetail({ data: { token, offeringId } })) as DetailData;
@@ -96,7 +105,7 @@ function MentorSessionDetailPage() {
       setSelected((prev) => result.slots.find((s) => prev && s.date === prev.date && s.startTime === prev.startTime) ?? result.slots[0] ?? null);
       setStatus("ready");
     } catch {
-      setStatus("error");
+      setStatus((s) => (s === "ready" ? s : "error")); // keep showing what we have if only the refresh failed
     }
   }
 
@@ -107,7 +116,7 @@ function MentorSessionDetailPage() {
   }, [loading, user, offeringId]);
 
   function handleBook() {
-    if (!selected) return;
+    if (!selected || loading) return;
     if (!user) {
       navigate({ to: "/auth", search: { redirect: `/mentor-session/${offeringId}` } as any });
       return;
@@ -115,7 +124,9 @@ function MentorSessionDetailPage() {
     setBooking(selected);
   }
 
-  if (loading) {
+  // Only block on auth when there's nothing to show yet. With server-rendered
+  // data the page renders immediately; sign-in state fills in a moment later.
+  if (loading && !data) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
@@ -125,12 +136,30 @@ function MentorSessionDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} />}
+      {user ? <AppHeader user={user} /> : <PublicHeader offeringId={offeringId} authLoading={loading} />}
       <main className="mx-auto max-w-5xl px-4 pb-32 pt-4 sm:px-6 lg:pb-16">
-        <Link to={user ? "/dashboard" : "/"} className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-          {user ? "Back to dashboard" : "Back to home"}
-        </Link>
+        {user ? (
+          <Link to="/dashboard" className="mb-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" />
+            Back to dashboard
+          </Link>
+        ) : (
+          <nav aria-label="Breadcrumb" className="mb-4 flex min-h-11 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            <Link to="/" className="hover:text-foreground hover:underline">
+              Home
+            </Link>
+            <span>›</span>
+            <Link to={SESSIONS_HUB_PATH} className="hover:text-foreground hover:underline">
+              Mentorship sessions
+            </Link>
+            {data && (
+              <>
+                <span>›</span>
+                <span className="max-w-[16rem] truncate font-semibold text-foreground">{data.offering.title}</span>
+              </>
+            )}
+          </nav>
+        )}
 
         {status === "loading" ? (
           <div className="space-y-4">
@@ -141,12 +170,12 @@ function MentorSessionDetailPage() {
           <div className="rounded-3xl border border-dashed border-border p-12 text-center">
             <p className="font-semibold">This session isn't available</p>
             <p className="mt-1 text-sm text-muted-foreground">It may have been paused or removed by the mentor.</p>
-            <Link to={user ? "/dashboard" : "/"} className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
+            <Link to={user ? "/dashboard" : SESSIONS_HUB_PATH} className="clay-btn mt-5 inline-flex min-h-11 items-center px-6 text-sm">
               Browse other sessions
             </Link>
           </div>
         ) : (
-          <SessionDetail data={data} selected={selected} onSelect={setSelected} onBook={handleBook} isSignedIn={Boolean(user)} />
+          <SessionDetail data={data} selected={selected} onSelect={setSelected} onBook={handleBook} isSignedIn={Boolean(user)} authLoading={loading} />
         )}
       </main>
 
@@ -168,7 +197,7 @@ function MentorSessionDetailPage() {
 }
 
 // Minimal fallback header for logged-out visitors.
-function PublicHeader({ offeringId }: { offeringId: string }) {
+function PublicHeader({ offeringId, authLoading = false }: { offeringId: string; authLoading?: boolean }) {
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
       <Link to="/" className="font-display text-base font-extrabold tracking-tight text-foreground">
@@ -177,7 +206,7 @@ function PublicHeader({ offeringId }: { offeringId: string }) {
       <Link
         to="/auth"
         search={{ redirect: `/mentor-session/${offeringId}` } as any}
-        className="clay-btn inline-flex min-h-10 items-center gap-1.5 px-5 text-sm"
+        className={`clay-btn inline-flex min-h-10 items-center gap-1.5 px-5 text-sm ${authLoading ? "invisible" : ""}`}
       >
         <LogIn className="h-4 w-4" />
         Sign in
@@ -201,18 +230,20 @@ function SessionDetail({
   onSelect,
   onBook,
   isSignedIn,
+  authLoading,
 }: {
   data: DetailData;
   selected: OpenSlot | null;
   onSelect: (s: OpenSlot) => void;
   onBook: () => void;
   isSignedIn: boolean;
+  authLoading: boolean;
 }) {
   const { offering, mentorBio, otherOfferings, slots, myBooking } = data;
   const first = mentorBio.name.split(" ")[0];
   const seats = selected ? seatsNote(offering, selected) : null;
   const nextLabel = useMemo(() => (slots[0] ? formatSlot(slots[0].date, slots[0].startTime) : "None open"), [slots]);
-  const ctaLabel = !isSignedIn ? "Sign in to book" : offering.isFree ? "Book free session" : `Book for ${priceLabel(offering)}`;
+  const ctaLabel = authLoading ? "Book this session" : !isSignedIn ? "Sign in to book" : offering.isFree ? "Book free session" : `Book for ${priceLabel(offering)}`;
 
   const bookingPanel = (
     <div className="rounded-3xl border border-border bg-card p-5">
@@ -280,7 +311,7 @@ function SessionDetail({
           {/* Hero */}
           <section className="overflow-hidden rounded-3xl border border-border bg-card">
             <div className="relative">
-              <SessionCover offering={offering} className="aspect-[16/9] w-full sm:aspect-[16/8]" />
+              <SessionCover offering={offering} alt={`${offering.title} — mentorship session with ${mentorBio.name}`} priority className="aspect-[16/9] w-full sm:aspect-[16/8]" />
               <div className="absolute left-4 top-4 flex gap-2">
                 {offering.subject && <span className="rounded-full bg-background/95 px-3 py-1.5 text-xs font-bold text-primary">{offering.subject}</span>}
               </div>
@@ -291,7 +322,9 @@ function SessionDetail({
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <span className="flex items-center gap-2">
                   <MentorAvatar name={mentorBio.name} photoUrl={mentorBio.photoUrl} size={32} />
-                  <span className="text-sm font-bold">{mentorBio.name}</span>
+                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: offering.mentorId }} className="text-sm font-bold hover:underline">
+                    {mentorBio.name}
+                  </Link>
                 </span>
                 {mentorBio.yearOfStudy && <span className="text-sm text-muted-foreground">{mentorBio.yearOfStudy}</span>}
                 {mentorBio.aiimsIitRank && <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-bold">{mentorBio.aiimsIitRank}</span>}
@@ -336,6 +369,10 @@ function SessionDetail({
                 <Chip label={mentorBio.scoreType === "rank" ? "Rank" : mentorBio.scoreType === "percentile" ? "Percentile" : "Score"} value={mentorBio.scoreValue} />
               )}
             </div>
+            <Link to="/mentor-profile/$mentorId" params={{ mentorId: offering.mentorId }} className="mt-4 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
+              View {first}'s full profile
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
             {mentorBio.expertAt.length > 0 && (
               <div className="mt-4 flex items-start gap-3 rounded-2xl bg-secondary p-4">
                 <Trophy className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -371,6 +408,28 @@ function SessionDetail({
               </ul>
             </section>
           )}
+
+          {/* FAQ — plain <details>, so the answers are in the HTML for search engines and work without JS */}
+          <section className="rounded-3xl border border-border bg-card p-5 sm:p-7">
+            <h2 className="font-display text-lg font-bold">Common questions</h2>
+            <div className="mt-3 divide-y divide-border">
+              {faqFor(offering).map((f) => (
+                <details key={f.q} className="group py-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-bold">
+                    {f.q}
+                    <span className="text-muted-foreground transition-transform group-open:rotate-45" aria-hidden>
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                </details>
+              ))}
+            </div>
+            <Link to={SESSIONS_HUB_PATH} className="mt-4 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-primary hover:underline">
+              Browse all mentorship sessions
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </section>
         </div>
 
         {/* Desktop sticky booking card */}
@@ -389,7 +448,7 @@ function SessionDetail({
               <p className="truncate text-xs text-muted-foreground">{formatSlot(selected.date, selected.startTime)}</p>
             </div>
             <button type="button" onClick={onBook} className="clay-btn inline-flex min-h-11 shrink-0 items-center gap-2 px-6 text-sm font-bold">
-              {isSignedIn ? (offering.isFree ? "Book free" : "Book now") : "Sign in to book"}
+              {isSignedIn || authLoading ? (offering.isFree ? "Book free" : "Book now") : "Sign in to book"}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -397,6 +456,20 @@ function SessionDetail({
       )}
     </>
   );
+}
+
+function faqFor(o: PublicMentorOffering): { q: string; a: string }[] {
+  const kind = o.capacity <= 1 ? "a 1:1 session, just you and the mentor" : o.capacity >= 200 ? "an open session" : `a group session with up to ${o.capacity} students per slot`;
+  return [
+    { q: "How does this session work?", a: "Pick an open time, book it, and the mentor shares the meeting link before the session starts. You also get a reminder email. Sign-in is only needed at the booking step." },
+    { q: "How long is it, and what format?", a: `It lasts ${o.durationMinutes} minutes and is ${kind}.` },
+    { q: "When is the mentor available?", a: `${describeSchedule(o)}. All times are in Indian Standard Time (IST), and only the times shown above can be booked.` },
+    { q: "What does it cost?", a: o.isFree ? "This session is free." : `This session costs ${priceLabel(o)} per student.` },
+    {
+      q: "Can I cancel?",
+      a: o.isFree ? "Yes. You can cancel any time before it starts." : `Yes. You get a full refund if you cancel ${SESSION_FREE_CANCEL_HOURS} or more hours before it starts. If the mentor cancels, you are refunded.`,
+    },
+  ];
 }
 
 function Chip({ label, value }: { label: string; value: string }) {

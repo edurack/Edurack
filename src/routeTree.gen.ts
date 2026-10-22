@@ -18,6 +18,7 @@ import { Route as FaqRouteImport } from './routes/faq'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FreeResourcesRouteImport } from './routes/free-resources'
 import { Route as HelpRouteImport } from './routes/help'
+import { Route as MentorshipSessionsRouteImport } from './routes/mentorship-sessions'
 import { Route as JoinInternRouteImport } from './routes/join-intern'
 import { Route as JoinMentorRouteImport } from './routes/join-mentor'
 import { Route as LeaderboardRouteImport } from './routes/leaderboard'
@@ -143,6 +144,11 @@ const FreeResourcesRoute = FreeResourcesRouteImport.update({
 const HelpRoute = HelpRouteImport.update({
   id: '/help',
   path: '/help',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MentorshipSessionsRoute = MentorshipSessionsRouteImport.update({
+  id: '/mentorship-sessions',
+  path: '/mentorship-sessions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JoinInternRoute = JoinInternRouteImport.update({
@@ -576,6 +582,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -668,6 +675,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -761,6 +769,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/free-resources': typeof FreeResourcesRoute
   '/help': typeof HelpRoute
+  '/mentorship-sessions': typeof MentorshipSessionsRoute
   '/join-intern': typeof JoinInternRoute
   '/join-mentor': typeof JoinMentorRoute
   '/leaderboard': typeof LeaderboardRoute
@@ -855,6 +864,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
+    | '/mentorship-sessions'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -947,6 +957,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
+    | '/mentorship-sessions'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -1039,6 +1050,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/free-resources'
     | '/help'
+    | '/mentorship-sessions'
     | '/join-intern'
     | '/join-mentor'
     | '/leaderboard'
@@ -1132,6 +1144,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   FreeResourcesRoute: typeof FreeResourcesRoute
   HelpRoute: typeof HelpRoute
+  MentorshipSessionsRoute: typeof MentorshipSessionsRoute
   JoinInternRoute: typeof JoinInternRoute
   JoinMentorRoute: typeof JoinMentorRoute
   LeaderboardRoute: typeof LeaderboardRoute
@@ -1277,6 +1290,13 @@ declare module '@tanstack/react-router' {
       path: '/help'
       fullPath: '/help'
       preLoaderRoute: typeof HelpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentorship-sessions': {
+      id: '/mentorship-sessions'
+      path: '/mentorship-sessions'
+      fullPath: '/mentorship-sessions'
+      preLoaderRoute: typeof MentorshipSessionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/join-intern': {
@@ -1870,6 +1890,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   FreeResourcesRoute: FreeResourcesRoute,
   HelpRoute: HelpRoute,
+  MentorshipSessionsRoute: MentorshipSessionsRoute,
   JoinInternRoute: JoinInternRoute,
   JoinMentorRoute: JoinMentorRoute,
   LeaderboardRoute: LeaderboardRoute,

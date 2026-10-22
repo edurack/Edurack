@@ -29,18 +29,19 @@ export function seatsNote(o: { capacity: number; isFree: boolean }, slot: Pick<O
 // (which my first pass did) cuts off the text printed on the poster. So a
 // poster is shown whole, contained, over a blurred copy of itself; a plain
 // thumbnail or profile photo still fills the frame.
-export function SessionCover({ offering, className = "" }: { offering: PublicMentorOffering; className?: string }) {
+export function SessionCover({ offering, className = "", alt = "", priority = false }: { offering: PublicMentorOffering; className?: string; alt?: string; priority?: boolean }) {
   const poster = offering.posterUrl ?? null;
+  const loadingAttr = priority ? undefined : "lazy"; // the page's main image shouldn't be lazy-loaded (hurts LCP)
   const fallback = offering.thumbnailUrl ?? offering.mentorPhotoUrl ?? null;
   return (
     <div className={`relative overflow-hidden bg-primary/10 ${className}`}>
       {poster ? (
         <>
           <img src={poster} alt="" aria-hidden loading="lazy" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-70 blur-xl" />
-          <img src={poster} alt="" loading="lazy" className="relative h-full w-full object-contain" />
+          <img src={poster} alt={alt} loading={loadingAttr} fetchPriority={priority ? "high" : undefined} className="relative h-full w-full object-contain" />
         </>
       ) : fallback ? (
-        <img src={fallback} alt="" loading="lazy" className="h-full w-full object-cover object-top" />
+        <img src={fallback} alt={alt} loading={loadingAttr} fetchPriority={priority ? "high" : undefined} className="h-full w-full object-cover object-top" />
       ) : (
         <div className="grid h-full w-full place-items-center text-primary/50">
           <Video className="h-9 w-9" strokeWidth={1.5} />

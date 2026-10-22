@@ -21,7 +21,7 @@ A plain-English overview of everything ${SITE_NAME} offers (CBT mock tests, test
 ## What this site offers
 - A free, no-signup CBT mock test that replicates the real NTA exam interface: ${SITE_URL}/simulator/live
 - Paid test-series bundles and mentor-led mentorship batches, covering NEET, JEE, CUET and IPMAT
-- Live 1:1 and group mentor sessions, plus recorded lectures
+- Live 1:1 and group mentor sessions (some free, some paid), plus recorded lectures. Browse every bookable session: ${SITE_URL}/mentorship-sessions
 - Subject- and topic-wise performance analytics on every test attempt
 - Free downloadable notes, previous year papers, formula sheets and planners for NEET, JEE, CUET and IPMAT (no login needed): ${SITE_URL}/free-resources
 - A blog with exam-specific syllabus and chapter breakdowns: ${SITE_URL}/blog
@@ -38,6 +38,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
 - Free demo test: ${SITE_URL}/simulator/live
 - What Edurack offers (overview): ${SITE_URL}/blog/what-edurack-offers
 - Free resources (notes, PYQ PDFs, formula sheets): ${SITE_URL}/free-resources
+- Mentorship sessions (live 1:1 and group sessions with verified mentors; each session has its own page at ${SITE_URL}/mentor-session/<id>): ${SITE_URL}/mentorship-sessions
 - Blog (exam prep articles, syllabus, chapter guides): ${SITE_URL}/blog
 - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
 - JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage

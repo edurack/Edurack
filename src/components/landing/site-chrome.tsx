@@ -82,6 +82,7 @@ const HEADER_LINKS: { label: string; to: string }[] = [
   { label: "NEET weightage", to: "/neet/chapter-wise-weightage" },
   { label: "JEE weightage", to: "/jee/chapter-wise-weightage" },
   { label: "PYQ practice", to: "/pyq" },
+  { label: "Mentor sessions", to: "/mentorship-sessions" },
   { label: "Blog", to: "/blog" },
 ];
 
@@ -189,6 +190,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "About us", to: "/about" },
       { label: "CBT Simulator", to: "/simulator/live" },
       { label: "Dashboard", to: "/dashboard" },
+      { label: "Mentorship sessions", to: "/mentorship-sessions" },
       { label: "Become a mentor", to: "/join-mentor" },
       { label: "Internships", to: "/join-intern" },
       { label: "Blog", to: "/blog" },
