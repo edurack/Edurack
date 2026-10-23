@@ -309,6 +309,12 @@ function TestEnginePage() {
 
   function startTest() {
     startTimeRef.current = Date.now();
+    track("test_started", {
+      test_id: testId,
+      total_questions: test?.totalQuestions ?? 0,
+      time_limit_minutes: test?.timeLimitMinutes ?? 0,
+      attempt_number: attemptNumber,
+    });
     requestFullscreenSafe()
       .catch(() => {
         // Fullscreen isn't supported/allowed on this device/browser — still

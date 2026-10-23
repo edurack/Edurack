@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { pageHead } from "@/lib/seo";
 import { requestStudentCallback } from "@/server-functions/callback-requests";
+import { track } from "@/lib/analytics";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { IconUser as User, IconPhone as Phone, IconLoader2 as Loader2, IconCircleCheck as CheckCircle2 } from "@tabler/icons-react";
@@ -79,7 +80,7 @@ function ContactPage() {
     return Object.keys(nextErrors).length === 0;
   }
 
-    async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!validate()) return;
 
@@ -95,6 +96,10 @@ function ContactPage() {
           discussionTopic: form.discussionTopic as DiscussionTopic,
         },
       });
+      track("callback_requested", {
+        exam_track: form.examTrack,
+        discussion_topic: form.discussionTopic,
+      });
       setSubmitted(true);
     } catch (err) {
       console.error("Failed to submit callback request", err);
@@ -103,7 +108,7 @@ function ContactPage() {
       setSubmitting(false);
     }
   }
-  
+
   if (submitted) {
     return <SuccessState onReset={() => { setForm(initialFormState); setSubmitted(false); }} />;
   }

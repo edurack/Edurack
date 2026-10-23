@@ -7,6 +7,7 @@ import { ClipboardCheck, Sparkles, Smartphone, MonitorOff, Package, Boxes, ListC
 import { useAdminClaim } from "@/lib/use-admin-claim";
 import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { ProModule } from "@/components/admin/pro-module";
+import { ProductAnalyticsModule } from "@/components/admin/product-analytics-module";
 import { ResourcesModule } from "@/components/admin/resources-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
 import { OutreachModule } from "@/components/admin/outreach-module";
@@ -14,7 +15,7 @@ import { TeamModule } from "@/components/admin/team-module";
 import { getTeamOverview } from "@/server-functions/team";
 import { GrowthHubModule } from "@/components/admin/growth-hub-module";
 import { LeaderboardModule } from "@/components/admin/leaderboard-module";
-import { IconTrendingUp as TrendingUpIcon, IconTrophy as TrophyIcon, IconUsersGroup as TeamIcon } from "@tabler/icons-react";
+import { IconTrendingUp as TrendingUpIcon, IconTrophy as TrophyIcon, IconUsersGroup as TeamIcon, IconChartBar as ChartBarIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
 import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";
@@ -76,6 +77,7 @@ type ModuleKey =
   | "students"
   | "outreach"
   | "growth"
+  | "analytics"
   | "leaderboard"
   | "team"
   | "applications"
@@ -96,7 +98,7 @@ type ModuleDef = { key: ModuleKey; label: string; icon: typeof LayoutDashboard }
 // posted somewhere the student dashboard doesn't read yet. Keeping either
 // around just meant admins could enter data with no visible effect.
 const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
-  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }, { key: "growth", label: "Growth Hub", icon: TrendingUpIcon as any }, { key: "leaderboard", label: "Student of the week", icon: TrophyIcon as any }] },
+  { label: "Overview", items: [{ key: "overview", label: "Overview", icon: LayoutDashboard }, { key: "growth", label: "Growth Hub", icon: TrendingUpIcon as any }, { key: "analytics", label: "Analytics", icon: ChartBarIcon as any }, { key: "leaderboard", label: "Student of the week", icon: TrophyIcon as any }] },
   {
     label: "Content",
     items: [
@@ -400,6 +402,8 @@ function ModuleRouter({
       return <OutreachModule adminUser={adminUser} />;
     case "growth":
       return <GrowthHubModule adminUser={adminUser} onNavigate={onNavigate} />;
+    case "analytics":
+      return <ProductAnalyticsModule adminUser={adminUser} />;
     case "leaderboard":
       return <LeaderboardModule adminUser={adminUser} />;
     case "team":
