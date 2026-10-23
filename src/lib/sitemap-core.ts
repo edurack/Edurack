@@ -12,6 +12,9 @@ import { allPaperSubjectPages, paperSubjectPath } from "@/lib/neet-paper-subject
 import { TOPICS_PATH } from "@/lib/neet-topics";
 import { loadTreeRows } from "@/lib/pyq-server";
 import { istDayKey } from "@/lib/practice-schedule";
+import { getJeeSubjects } from "@/lib/jee-blueprint";
+import { librarySummary } from "@/lib/jee-resource-core";
+import { JEE_LIB_BASE, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -146,6 +149,25 @@ const JEE_PRIORITY = {
 } as const;
 export function jeeEntries(): string[] {
   return allJeeSitePaths().map((p) => urlEntry(`${SITE_URL}${p.path}`, JEE_LASTMOD, JEE_PRIORITY[p.kind], "monthly"));
+}
+
+// JEE Main 2027 resource library: ONLY pages that have at least one published resource are listed
+// (an empty hub, subject or chapter page is noindex, so it must not be in the sitemap either).
+// lastmod is the newest edit among the resources shown on that page set. Throws on a DB failure so the
+// caller can answer 503 instead of caching a short list.
+export async function jeeResourceEntries(): Promise<string[]> {
+  const sum = await librarySummary();
+  if (sum.total === 0) return [];
+  const lastmod = toIsoDate(sum.lastUpdated ?? undefined);
+  const out = [urlEntry(`${SITE_URL}${JEE_LIB_BASE}`, lastmod, 0.8, "weekly")];
+  for (const s of getJeeSubjects()) {
+    if (!sum.bySubject[s.key]) continue;
+    out.push(urlEntry(`${SITE_URL}${jeeLibSubjectPath(s.key)}`, lastmod, 0.7, "weekly"));
+    for (const c of s.chapters) {
+      if (!c.retired && sum.byChapter[`${s.key}/${c.slug}`]) out.push(urlEntry(`${SITE_URL}${jeeLibChapterPath(s.key, c.slug)}`, lastmod, 0.7, "weekly"));
+    }
+  }
+  return out;
 }
 
 // Free tools and the data-driven NEET pages. Static content, so these are always listed.

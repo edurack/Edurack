@@ -5,11 +5,12 @@ import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
 import { JEE_BASE, JEE_RANGE, conceptsForChapter, getJeeChapter, getJeeSubject, jeeChapterPath, jeeSubjectPath } from "@/lib/jee-blueprint";
 import { faqPageJsonLd, itemListJsonLd, jeeChapterDescription, jeeChapterFaq, jeeChapterTitle } from "@/lib/jee-blueprint-copy";
 import { JeeChapterView, JeeNotFound } from "@/components/jee/jee-views";
+import { getJeeLibrarySummary } from "@/server-functions/jee-resources";
 
 export const Route = createFileRoute("/jee/chapter-wise-weightage/$subject/$chapter/")({
-  loader: ({ params }) => {
+  loader: async ({ params }) => {
     if (!getJeeChapter(params.subject, params.chapter)) throw notFound();
-    return { subjectKey: params.subject, slug: params.chapter };
+    return { subjectKey: params.subject, slug: params.chapter, resources: await getJeeLibrarySummary() };
   },
   head: ({ loaderData }) => {
     const s = loaderData ? getJeeSubject(loaderData.subjectKey) : undefined;
@@ -38,6 +39,6 @@ export const Route = createFileRoute("/jee/chapter-wise-weightage/$subject/$chap
 });
 
 function ChapterPage() {
-  const { subjectKey, slug } = Route.useLoaderData();
-  return <JeeChapterView subjectKey={subjectKey} chapterSlug={slug} />;
+  const { subjectKey, slug, resources } = Route.useLoaderData();
+  return <JeeChapterView subjectKey={subjectKey} chapterSlug={slug} resources={resources} />;
 }

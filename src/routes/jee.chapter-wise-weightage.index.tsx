@@ -4,8 +4,10 @@ import { SITE_URL, breadcrumbJsonLd, pageHead } from "@/lib/seo";
 import { JEE_BASE, getJeeSubjects } from "@/lib/jee-blueprint";
 import { JEE_HUB_TITLE, faqPageJsonLd, itemListJsonLd, jeeHubDescription, jeeHubFaq } from "@/lib/jee-blueprint-copy";
 import { JeeHubView } from "@/components/jee/jee-views";
+import { getJeeLibrarySummary } from "@/server-functions/jee-resources";
 
 export const Route = createFileRoute("/jee/chapter-wise-weightage/")({
+  loader: () => getJeeLibrarySummary(),
   head: () =>
     pageHead({
       title: JEE_HUB_TITLE,
@@ -23,5 +25,9 @@ export const Route = createFileRoute("/jee/chapter-wise-weightage/")({
         faqPageJsonLd(jeeHubFaq()),
       ],
     }),
-  component: JeeHubView,
+  component: HubPage,
 });
+
+function HubPage() {
+  return <JeeHubView resources={Route.useLoaderData()} />;
+}

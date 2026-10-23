@@ -28,6 +28,8 @@ import {
 import { JEE_DATA_NOTE, jeeChapterFaq, jeeChapterSummary, jeeHubFaq, jeeHubIntro, jeeSubjectFaq, jeeSubjectIntro, jeeConceptsFaq, type Faq } from "@/lib/jee-blueprint-copy";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { RelatedGuides } from "@/components/jee/jee-related";
+import { JeeResourcesCallout } from "@/components/jee/jee-resource-callout";
+import type { JeeLibrarySummary } from "@/lib/jee-resource-types";
 
 const fmt = (n: number) => n.toLocaleString("en-IN");
 
@@ -218,7 +220,7 @@ function ConceptTable({ concepts, showSubject = false }: { concepts: JeeConcept[
 }
 
 // ── /jee/chapter-wise-weightage ─────────────────────────────────────────────
-export function JeeHubView() {
+export function JeeHubView({ resources }: { resources?: JeeLibrarySummary | null } = {}) {
   const subjects = getJeeSubjects();
   const top = topJeeChaptersOverall(15);
   const dropped = droppedChapters();
@@ -240,6 +242,8 @@ export function JeeHubView() {
         <Stat label="Dropped chapters" value={dropped.length} hint="not in the 2026 syllabus" />
         <Stat label="Years" value="5" hint={JEE_RANGE} />
       </div>
+
+      <JeeResourcesCallout summary={resources} />
 
       <SectionTitle>Pick a subject</SectionTitle>
       <div className="grid gap-4 sm:grid-cols-3">
@@ -311,7 +315,7 @@ export function JeeHubView() {
 }
 
 // ── /jee/chapter-wise-weightage/<subject> ───────────────────────────────────
-export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
+export function JeeSubjectView({ subjectKey, resources }: { subjectKey: string; resources?: JeeLibrarySummary | null }) {
   const s = getJeeSubject(subjectKey) as JeeSubject;
   const active = s.chapters.filter((c) => !c.retired);
   const dropped = s.chapters.filter((c) => c.retired);
@@ -332,6 +336,8 @@ export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
         <Stat label="Chapters in syllabus" value={s.activeCount} />
         <Stat label="Highest chapter" value={active[0].name} hint={`${active[0].recentShare}% in ${RECENT_LABEL}`} />
       </div>
+
+      <JeeResourcesCallout summary={resources} subjectKey={s.key} />
 
       <SectionTitle>{s.name} questions per year</SectionTitle>
       <div className="clay rounded-3xl p-5">
@@ -374,7 +380,7 @@ export function JeeSubjectView({ subjectKey }: { subjectKey: string }) {
 }
 
 // ── /jee/chapter-wise-weightage/<subject>/<chapter> ─────────────────────────
-export function JeeChapterView({ subjectKey, chapterSlug }: { subjectKey: string; chapterSlug: string }) {
+export function JeeChapterView({ subjectKey, chapterSlug, resources }: { subjectKey: string; chapterSlug: string; resources?: JeeLibrarySummary | null }) {
   const s = getJeeSubject(subjectKey) as JeeSubject;
   const c = getJeeChapter(subjectKey, chapterSlug) as JeeChapter;
   const ks = conceptsForChapter(c);
@@ -404,6 +410,8 @@ export function JeeChapterView({ subjectKey, chapterSlug }: { subjectKey: string
         <Stat label="Rank in subject" value={c.retired ? "–" : `#${c.rank}`} hint={c.retired ? "not in syllabus" : `of ${s.activeCount} chapters`} />
         <Stat label="Years asked" value={`${c.yearsAsked} of 5`} />
       </div>
+
+      <JeeResourcesCallout summary={resources} subjectKey={s.key} chapterSlug={c.slug} />
 
       <SectionTitle>Questions per year</SectionTitle>
       <div className="clay rounded-3xl p-5">

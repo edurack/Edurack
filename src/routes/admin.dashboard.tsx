@@ -9,6 +9,7 @@ import { BlogHubModule } from "@/components/admin/blog-hub-module";
 import { ProModule } from "@/components/admin/pro-module";
 import { ProductAnalyticsModule } from "@/components/admin/product-analytics-module";
 import { ResourcesModule } from "@/components/admin/resources-module";
+import { JeeResourcesModule } from "@/components/admin/jee-resources-module";
 import { QuestionReportsModule } from "@/components/admin/question-reports-module";
 import { OutreachModule } from "@/components/admin/outreach-module";
 import { TeamModule } from "@/components/admin/team-module";
@@ -85,6 +86,7 @@ type ModuleKey =
   | "promoters"
   | "blogs" 
   | "resources"
+  | "jeeResources"
   | "interns"
   | "reports"
   | "internTrials"
@@ -111,6 +113,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "inspector", label: "Inspector", icon: Search },
       { key: "blogs", label: "Blog", icon: FileText },
       { key: "resources", label: "Free Resources", icon: FileText },
+      { key: "jeeResources", label: "JEE Resources", icon: FileText },
 
 
 
@@ -418,6 +421,8 @@ function ModuleRouter({
       return <BlogHubModule adminUser={adminUser} />;
     case "resources":
       return <ResourcesModule adminUser={adminUser} />;
+    case "jeeResources":
+      return <JeeResourcesModule adminUser={adminUser} />;
     case "reports":
       return <QuestionReportsModule adminUser={adminUser} />;
     case "interns":
