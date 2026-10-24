@@ -1,967 +1,1659 @@
-diff --git a/src/components/blog/blog-sidebar.tsx b/src/components/blog/blog-sidebar.tsx
-index ec40353..35bc1ac 100644
---- a/src/components/blog/blog-sidebar.tsx
-+++ b/src/components/blog/blog-sidebar.tsx
-@@ -7,7 +7,7 @@
+diff --git a/src/components/dashboard/pyq-hero.tsx b/src/components/dashboard/pyq-hero.tsx
+index da2ddf0..04a5234 100644
+--- a/src/components/dashboard/pyq-hero.tsx
++++ b/src/components/dashboard/pyq-hero.tsx
+@@ -10,7 +10,7 @@ import { getTodaySummary } from "@/server-functions/practice-extras";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
+ import { headlineFor } from "@/components/today-card";
+-import { examLabel, pickFirstChapter, type PracticeStats } from "@/lib/practice-stats";
++import { examLabel, pickFirstChapter, practiceProgress, type PracticeStats } from "@/lib/practice-stats";
+ import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
+ import { cn } from "@/lib/utils";
+ 
+@@ -95,9 +95,12 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+   // back to the browse tree's own counts so the hero still works.
+   const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
+   const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
+-  const attempted = Math.min(total || Infinity, examStats ? examStats.solved : treeAttempted);
+-  const accuracy = examStats ? examStats.accuracy : attempted > 0 ? Math.round(((tree?.totalCorrect ?? 0) / attempted) * 100) : null;
+-  const percent = total > 0 ? Math.min(100, Math.round((attempted / total) * 100)) : 0;
++  // Available / unique attempted / remaining / accuracy: ONE rule (practiceProgress), the same one the chapter lists use.
++  // `attempted` counts distinct questions, so redoing a question in revision never moves it.
++  const prog = practiceProgress(total, examStats ? examStats.solved : treeAttempted, examStats ? examStats.correct : tree?.totalCorrect ?? 0);
++  const attempted = prog.attempted;
++  const accuracy = prog.accuracy;
++  const percent = prog.percentDone;
+ 
+   // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
+   // student who had practised JEE while their profile said NEET was told to "solve your first question".)
+@@ -119,10 +122,13 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+   const startTo = first ? { subject: first.subject, chapter: first.chapter, practice: true, first5: true, exam: exam ?? undefined } : { exam: exam ?? undefined };
+   // Returning student: back to the chapter they were last in. (A chapter-less question opens that subject's chapter list.)
+   const last = stats?.lastAttempt ?? null;
+-  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) : null;
++  const lastChapterNode = last?.chapter ? tree?.subjects.find((x) => x.subject === last.subject)?.chapters.find((c) => c.chapter.toLowerCase() === last.chapter.toLowerCase()) : undefined;
++  const lastProgress = lastChapterNode ? practiceProgress(lastChapterNode.count, lastChapterNode.attempted, lastChapterNode.correct) : null;
++  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) + (lastProgress ? ` · ${lastProgress.attempted} of ${lastProgress.available} done` : "") : null;
++  // `fresh`: pick up at the first question not attempted yet instead of re-serving finished ones.
+   const continueSearch = last
+     ? last.chapter
+-      ? { subject: last.subject, chapter: last.chapter, practice: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
++      ? { subject: last.subject, chapter: last.chapter, practice: true, fresh: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
+       : { subject: last.subject, exam: exam ?? undefined }
+     : { exam: exam ?? undefined };
+ 
+@@ -234,8 +240,8 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+             <div className="flex items-center gap-4">
+               <Ring percent={percent} />
+               <div className="min-w-0">
+-                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
+-                <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
++                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs attempted</span></p>
++                <p className="mt-0.5 text-xs text-white/60">{prog.remaining.toLocaleString("en-IN")} left{accuracy !== null ? ` · ${accuracy}% accuracy` : " · accuracy shows after your first answer"}</p>
+                 {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
+               </div>
+             </div>
+diff --git a/src/components/dashboard/streak-popup.tsx b/src/components/dashboard/streak-popup.tsx
+index d09e88c..6f87686 100644
+--- a/src/components/dashboard/streak-popup.tsx
++++ b/src/components/dashboard/streak-popup.tsx
+@@ -1,7 +1,7 @@
+ // Shown once per login session when the student hasn't practised today (no streak progress yet).
+ // It carries today's daily PYQ so they can answer right there, which counts toward the streak
+ // through the same submitPyqAnswer call the PYQ page uses.
+-import { useEffect, useState } from "react";
++import { useEffect, useRef, useState } from "react";
  import { Link } from "@tanstack/react-router";
- import { IconArrowRight as ArrowRight, IconFlame as Flame, IconClock as Clock, IconCompass as Compass, IconTargetArrow as Target } from "@tabler/icons-react";
- import { TableOfContentsSidebar } from "@/components/blog/table-of-contents";
--import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
-+import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
- import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary, SidebarChapter, SidebarTopic } from "@/lib/blog-types";
- import type { BlogHeading } from "@/lib/blog-content";
+ import { Flame, Check, X as XIcon, ArrowRight } from "lucide-react";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+@@ -14,6 +14,7 @@ import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib
+ import { cn } from "@/lib/utils";
+ import { track, trackOnce } from "@/lib/analytics";
+ import { answeredProps, practiceProps } from "@/lib/practice-events";
++import { examLabel } from "@/lib/practice-stats";
  
-@@ -152,6 +152,16 @@ export function BlogSidebar({ post, headings, data }: { post: PublicBlogPost; he
-         </Card>
-       )}
+ const OPTS: OptionKey[] = ["A", "B", "C", "D"];
+ /** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
+@@ -23,6 +24,11 @@ const dayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ko
+ function seenKey(uid: string) {
+   return `edurack-streak-popup:${uid}:${dayKey()}`;
+ }
++// What the student had picked/typed, kept for the day so closing the popup (or a refresh) doesn't lose it.
++const draftKey = (uid: string, qid: string) => `edurack-daily-draft:${uid}:${dayKey()}:${qid}`;
++// Set the moment today's answer is saved: the popup never comes back for a question already answered today.
++const doneKey = (uid: string) => `edurack-daily-done:${uid}:${dayKey()}`;
++const isDoneToday = (uid: string) => { try { return localStorage.getItem(doneKey(uid)) === "1"; } catch { return false; } };
+ function markSeen(uid: string) {
+   try { sessionStorage.setItem(seenKey(uid), "1"); } catch { /* storage unavailable: popup may show again, harmless */ }
+ }
+@@ -42,7 +48,7 @@ export function StreakPopup() {
+   const [result, setResult] = useState<PyqCheckResult | null>(null);
  
-+      {resolveBlogPromoAudience(post) === "jee" && (
-+        <section aria-labelledby="sb-jee-hub" className="clay p-4">
-+          <h2 id="sb-jee-hub" className="font-display text-sm font-extrabold tracking-tight text-foreground">JEE Main 2027 hub</h2>
-+          <p className="mt-1 text-xs leading-relaxed text-foreground/60">Updates, chapter notes, practice sheets and JEE PYQs in one place.</p>
-+          <Link to="/jee-main-2027" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
-+            Open the JEE Main 2027 hub <ArrowRight className="h-3 w-3" aria-hidden="true" />
-+          </Link>
-+        </section>
-+      )}
-+
-       {data.popular.length > 0 && (
-         <Card id="sb-popular" title="Most read" icon={<Flame className="h-4 w-4 text-orange-500" aria-hidden="true" />}>
-           <ol className="space-y-1">
-diff --git a/src/components/jee/jee-landing-view.tsx b/src/components/jee/jee-landing-view.tsx
-new file mode 100644
-index 0000000..a942c26
---- /dev/null
-+++ b/src/components/jee/jee-landing-view.tsx
-@@ -0,0 +1,293 @@
-+// src/components/jee/jee-landing-view.tsx
-+//
-+// JEE Main 2027 landing page (/jee-main-2027). A discovery layer over systems that already exist: the blog,
-+// the PDF resource library and the PYQ practice flow. It owns no content, uploads nothing and starts no
-+// practice. Every dynamic block comes from the route loader (server-rendered, so crawlers see it) and is
-+// hidden when it has nothing real to show — no placeholders, no invented counts.
-+import { Link } from "@tanstack/react-router";
-+import { useEffect } from "react";
-+import { IconArrowRight as ArrowRight, IconClock as Clock, IconDownload as Download, IconFileText as FileText, IconTargetArrow as Target } from "@tabler/icons-react";
-+import { Crumbs, Page } from "@/components/jee/jee-views";
-+import { track, trackOnce } from "@/lib/analytics";
-+import { getJeeSubjects, jeePracticeSearch } from "@/lib/jee-blueprint";
-+import { JEE_LANDING_FAQS } from "@/lib/jee-landing-copy";
-+import type { JeeLandingData } from "@/lib/jee-landing-types";
-+import { JEE_LIBRARY_YEAR, JEE_LIB_BASE, JEE_RESOURCE_TYPE_LABELS, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
-+import { BLOG_CATEGORY_LABELS, type PublicBlogPostSummary } from "@/lib/blog-types";
-+
-+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-+// Fixed time zone so the server-rendered date and the browser's agree (no hydration mismatch).
-+const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
-+
-+const H2 = ({ id, children }: { id: string; children: React.ReactNode }) => (
-+  <h2 id={id} className="mb-3 font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">{children}</h2>
-+);
-+const Section = ({ id, className = "mt-12", children }: { id: string; className?: string; children: React.ReactNode }) => (
-+  <section aria-labelledby={id} className={className}>{children}</section>
-+);
-+const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-extrabold transition";
-+
-+// ── Articles ─────────────────────────────────────────────────────────────────
-+function articleDate(p: PublicBlogPostSummary) {
-+  // The "Updated" date is shown only when the editor marked the edit as substantive — same rule as the blog itself.
-+  if (p.substantiveUpdate && p.updatedAt) return { label: "Updated", iso: p.updatedAt };
-+  const iso = p.publishedAt ?? p.updatedAt;
-+  return iso ? { label: "Published", iso } : null;
-+}
-+
-+function ArticleCard({ post, source, position, cover }: { post: PublicBlogPostSummary; source: "updates" | "guides"; position: number; cover?: boolean }) {
-+  const when = articleDate(post);
-+  return (
-+    <li className="min-w-0">
-+      <Link
-+        to="/blog/$slug"
-+        params={{ slug: post.slug }}
-+        onClick={() => track("jee_2027_blog_clicked", { source, slug: post.slug, post_id: post.id, category: post.category, position })}
-+        className="clay group flex h-full flex-col overflow-hidden rounded-3xl transition hover:-translate-y-0.5"
-+      >
-+        {cover && post.coverImageUrl && (
-+          <img src={post.coverImageUrl} alt={post.coverImageAlt || ""} width={640} height={360} loading="lazy" decoding="async" className="aspect-video w-full object-cover" />
-+        )}
-+        <span className="flex flex-1 flex-col p-5">
-+          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--sky-deep)]">{BLOG_CATEGORY_LABELS[post.category]}</span>
-+          <span className="mt-1.5 break-words font-display text-base font-bold leading-snug text-foreground group-hover:underline">{post.title}</span>
-+          {post.excerpt && <span className="mt-2 line-clamp-3 text-sm leading-relaxed text-foreground/65">{post.excerpt}</span>}
-+          <span className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-4 text-xs text-foreground/50">
-+            {when && <time dateTime={when.iso}>{when.label} {dateLabel(when.iso)}</time>}
-+            {cover && (
-+              <span className="inline-flex items-center gap-1">
-+                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-+                {post.readingTimeMinutes} min read
-+              </span>
-+            )}
-+          </span>
-+          <span className="mt-3 text-sm font-bold text-[var(--sky-deep)]">Read article →</span>
-+        </span>
-+      </Link>
-+    </li>
-+  );
-+}
-+
-+// ── Page ─────────────────────────────────────────────────────────────────────
-+export function JeeLandingView({ data }: { data: JeeLandingData }) {
-+  const { summary, featured, blog, pyqTotal } = data;
-+  const subjects = getJeeSubjects();
-+
-+  // One landing-view event per page load: the key makes re-renders and React's dev double-mount harmless.
-+  // A view is NOT a practice start — practice events come only from the CTA clicks below.
+   useEffect(() => {
+-    if (!user || wasSeen(user.uid)) return;
++    if (!user || wasSeen(user.uid) || isDoneToday(user.uid)) return;
+     let cancelled = false;
+     (async () => {
+       try {
+@@ -54,6 +60,14 @@ export function StreakPopup() {
+         if (cancelled || !first) return;
+         setToday(t);
+         setQ(first);
++        try {
++          const raw = localStorage.getItem(draftKey(user.uid, first.id));
++          if (raw) {
++            const d = JSON.parse(raw) as { pick?: OptionKey; num?: string };
++            if (d.pick && OPTS.includes(d.pick)) setPick(d.pick);
++            if (typeof d.num === "string") setNum(d.num.slice(0, 20));
++          }
++        } catch { /* a missing or corrupt draft just means starting empty */ }
+         setOpen(true);
+         markSeen(user.uid); // once per login session: refreshing or navigating back won't nag again
+       } catch {
+@@ -63,8 +77,19 @@ export function StreakPopup() {
+     return () => { cancelled = true; };
+   }, [user]);
+ 
++  // Save the draft as the student picks, so dismissing the popup doesn't lose their choice.
 +  useEffect(() => {
-+    trackOnce("jee2027-landing-view", "jee_2027_landing_viewed", {
-+      resources_published: summary.total,
-+      articles_published: blog.total,
-+      pyq_available: pyqTotal > 0,
-+    });
-+  }, [summary.total, blog.total, pyqTotal]);
++    if (!user || !q || result) return;
++    try {
++      if (pick || num) localStorage.setItem(draftKey(user.uid, q.id), JSON.stringify({ pick, num }));
++    } catch { /* storage unavailable: nothing to restore later, harmless */ }
++  }, [user, q, pick, num, result]);
 +
-+  const resourceClick = (source: string, extra: Record<string, string | number> = {}) => () => track("jee_2027_resource_cta_clicked", { source, ...extra });
-+  const practiceClick = (source: string, extra: Record<string, string | number> = {}) => () => track("jee_2027_practice_cta_clicked", { source, ...extra });
-+  const hasArticles = blog.total > 0;
++  // Two quick taps must send ONE answer: state updates are async, so a ref closes the gap `busy` leaves.
++  const inflight = useRef(false);
+   async function submit() {
+-    if (!user || !q) return;
++    if (!user || !q || result || inflight.current) return;
++    inflight.current = true;
+     setBusy(true);
+     setErr(null);
+     try {
+@@ -72,6 +97,10 @@ export function StreakPopup() {
+       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
+       const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
+       setResult(out);
++      try {
++        localStorage.setItem(doneKey(user.uid), "1");
++        localStorage.removeItem(draftKey(user.uid, q.id));
++      } catch { /* the server also knows it's answered, so the popup still won't repeat */ }
+       // This answer bypasses the PYQ practice screen, so it is tracked here: it's an answered question AND today's daily question.
+       const ctx = { mode: "daily" as const, exam: today?.exam, subject: q.subject, chapter: q.chapter, source: "daily_popup" };
+       track("question_answered", answeredProps(ctx, { questionId: q.id, questionType: q.type, isCorrect: out.isCorrect }));
+@@ -81,6 +110,7 @@ export function StreakPopup() {
+     } catch (e) {
+       setErr(e instanceof Error ? e.message : "Couldn't check that. Try again.");
+     } finally {
++      inflight.current = false;
+       setBusy(false);
+     }
+   }
+@@ -116,9 +146,9 @@ export function StreakPopup() {
+                 <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-200">{atRisk ? `Keep your ${today!.streak.current}-day streak` : "Start your streak"}</p>
+               </div>
+               <DialogTitle className="font-display mt-3 text-2xl font-extrabold leading-tight text-white">
+-                {atRisk ? "One question keeps it alive" : "Solve one question to begin"}
++                Today's {examLabel(today?.exam)} Challenge
+               </DialogTitle>
+-              <DialogDescription className="mt-1 text-sm text-white/65">Today's PYQ. Takes about two minutes, and you'll see the full solution.</DialogDescription>
++              <DialogDescription className="mt-1 text-sm text-white/65">One question today. One step closer to your goal.</DialogDescription>
+             </>
+           )}
+         </div>
+@@ -171,8 +201,8 @@ export function StreakPopup() {
+                 </div>
+               )}
+               <div className="flex flex-col gap-2 sm:flex-row">
+-                <Link to="/pyq" search={{ subject: q.subject, chapter: q.chapter, practice: true, exam: today?.exam ?? undefined }} onClick={() => setOpen(false)} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
+-                  More from {q.chapter || q.subject} <ArrowRight className="h-4 w-4" />
++                <Link to="/pyq" search={{ subject: q.subject, chapter: q.chapter, practice: true, first5: true, exam: today?.exam ?? undefined }} onClick={() => { track("daily_more_practice_clicked", { source: "daily_modal" }); setOpen(false); }} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
++                  Practise 5 More Questions <ArrowRight className="h-4 w-4" />
+                 </Link>
+                 <button type="button" onClick={() => setOpen(false)} className="min-h-11 rounded-full px-5 text-sm font-bold text-muted-foreground hover:bg-secondary">Done for now</button>
+               </div>
+diff --git a/src/components/landing/quick-mock-section.tsx b/src/components/landing/quick-mock-section.tsx
+new file mode 100644
+index 0000000..bcd9a3d
+--- /dev/null
++++ b/src/components/landing/quick-mock-section.tsx
+@@ -0,0 +1,65 @@
++// Homepage: "Got 30 Minutes? Test Your NEET Preparation." Promotes the existing NEET Quick Mock (the timed 20-PYQ drill).
++// Signed-in students go straight to it; visitors sign up first and land on it right after (the auth page's redirect).
++import { useEffect, useRef, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { IconArrowRight as ArrowRight, IconClock as Clock, IconClipboardList as ListNumbers, IconTarget as PlusMinus } from "@tabler/icons-react";
++import { useAuth } from "@/lib/auth-context";
++import { getPublicProOffer } from "@/server-functions/pro-public";
++import { freeQuickMockOffered, quickMockSearch } from "@/lib/quick-mock";
++import { trackQuickMockClick, useQuickMockViewed } from "@/lib/quick-mock-analytics";
++import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
++import { PREMIUM_BTN } from "@/components/landing/HeroMotion";
++
++export function QuickMockSection() {
++  const { user, loading } = useAuth();
++  const ref = useRef<HTMLElement>(null);
++  const [free, setFree] = useState(true);
++
++  // Only say "free" when the free plan really includes a Quick Mock (it can be set to none while Pro is on sale).
++  useEffect(() => {
++    let alive = true;
++    getPublicProOffer().then((o) => alive && setFree(freeQuickMockOffered(o))).catch(() => {});
++    return () => {
++      alive = false;
++    };
++  }, []);
++
++  useQuickMockViewed(ref, "homepage", { signed_in: Boolean(user), free_offered: free }, !loading);
++  const onClick = () => trackQuickMockClick("homepage", { signed_in: Boolean(user), free_offered: free });
++  const label = free ? "Start Free Quick Mock" : "Try the Quick Mock";
++
++  const facts = [
++    { icon: ListNumbers, text: `${DRILL_QUESTIONS} Questions` },
++    { icon: Clock, text: `${DRILL_MINUTES} Minutes` },
++    { icon: PlusMinus, text: `+${DRILL_MARKS.correct}/${DRILL_MARKS.wrongMcq} Marking` },
++  ];
 +
 +  return (
-+    <Page>
-+      <Crumbs items={[{ label: `JEE Main ${JEE_LIBRARY_YEAR}` }]} />
++    <section ref={ref} id="quick-mock" aria-labelledby="quick-mock-heading" className="border-y border-border bg-secondary/50 py-14 sm:py-20">
++      <div className="mx-auto max-w-6xl px-4 sm:px-6">
++        <div className="mx-auto max-w-2xl text-center">
++          <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary">NEET Quick Mock</p>
++          <h2 id="quick-mock-heading" className="font-display mt-3 text-balance text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Got 30 Minutes? Test Your NEET Preparation.</h2>
++          <p className="mt-3 text-balance text-base text-muted-foreground sm:text-lg">Take a free 20-question NEET Quick Mock with timed practice, instant scoring and detailed solutions.</p>
 +
-+      {/* ── Hero: compact, no decorative art, primary CTA above the fold on a phone ── */}
-+      <header>
-+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/55">Edurack / JEE Main {JEE_LIBRARY_YEAR}</p>
-+        <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl">Your JEE Main 2027 Preparation Starts Here.</h1>
-+        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-foreground/80 sm:text-base">
-+          Prepare with exam updates, chapter-wise revision notes, downloadable practice sheets and previous-year questions—all in one place.
-+        </p>
-+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-+          <Link to={JEE_LIB_BASE as never} onClick={resourceClick("hero")} className={`${BTN} bg-foreground text-background hover:opacity-90`}>
-+            Explore Free Study Resources
-+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-+          </Link>
-+          <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("hero")} className={`${BTN} clay`}>
-+            Practise JEE PYQs
-+          </Link>
-+        </div>
-+        <ul className="mt-5 flex flex-wrap gap-2" aria-label="What you get">
-+          {[
-+            { icon: FileText, label: "Chapter Notes" },
-+            { icon: Download, label: "Practice Sheets" },
-+            { icon: Target, label: "PYQ Practice" },
-+          ].map(({ icon: Icon, label }) => (
-+            <li key={label} className="clay-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/75">
-+              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-+              {label}
-+            </li>
-+          ))}
-+        </ul>
-+      </header>
-+
-+      {/* ── Latest updates (Exam News category) ── */}
-+      {hasArticles && (
-+        <Section id="jee-updates">
-+          <H2 id="jee-updates">Latest JEE Main {JEE_LIBRARY_YEAR} Updates</H2>
-+          {blog.updates.length > 0 ? (
-+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-+              {blog.updates.map((p, i) => (
-+                <ArticleCard key={p.id} post={p} source="updates" position={i + 1} />
-+              ))}
-+            </ul>
-+          ) : (
-+            <p className="clay rounded-2xl p-4 text-sm text-foreground/70">No exam-update articles have been published yet. The preparation guides below are available now.</p>
-+          )}
-+          <p className="mt-3 text-xs leading-relaxed text-foreground/55">
-+            These articles summarise public information. Always confirm exam dates, eligibility and syllabus against the official NTA notices.
-+          </p>
-+          <Link to="/blog" search={{ examKey: "jee" } as never} className="mt-2 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
-+            View all JEE articles →
-+          </Link>
-+        </Section>
-+      )}
-+
-+      {/* ── Subjects ── */}
-+      <Section id="jee-subjects">
-+        <H2 id="jee-subjects">Choose Your Subject</H2>
-+        <div className="grid gap-4 sm:grid-cols-3">
-+          {subjects.map((s) => {
-+            const n = summary.bySubject[s.key] ?? 0;
-+            const chapters = s.chapters.filter((c) => !c.retired && summary.byChapter[`${s.key}/${c.slug}`]).length;
-+            return (
-+              <div key={s.key} className="clay flex flex-col rounded-3xl p-5">
-+                <span className="font-display text-xl font-bold text-foreground">{s.name}</span>
-+                <span className="mt-1 text-sm text-foreground/60">{n ? `${plural(n, "resource")} · ${plural(chapters, "chapter")}` : "Resources coming soon"}</span>
-+                {n > 0 && (
-+                  <Link
-+                    to={jeeLibSubjectPath(s.key) as never}
-+                    onClick={() => track("jee_2027_subject_clicked", { source: "subjects", subject: s.key, resources: n })}
-+                    className="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-[var(--sky-deep)] hover:underline"
-+                  >
-+                    Browse {s.name} →
-+                  </Link>
-+                )}
-+                <span className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-3 text-xs font-semibold text-foreground/60">
-+                  <Link to={`/jee/chapter-wise-weightage/${s.key}` as never} className="py-1 hover:underline">Weightage</Link>
-+                  <Link to={`/jee/syllabus/${s.key}` as never} className="py-1 hover:underline">Syllabus</Link>
-+                </span>
-+              </div>
-+            );
-+          })}
-+        </div>
-+      </Section>
-+
-+      {/* ── Featured chapters: only chapters with genuinely published resources ── */}
-+      {featured.length > 0 && (
-+        <Section id="jee-featured">
-+          <H2 id="jee-featured">Featured Chapter Resources</H2>
-+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-+            {featured.map((c) => (
-+              <li key={`${c.subjectKey}/${c.chapterSlug}`} className="min-w-0">
-+                <Link
-+                  to={jeeLibChapterPath(c.subjectKey, c.chapterSlug) as never}
-+                  onClick={() => track("jee_2027_chapter_clicked", { source: "featured", subject: c.subjectKey, chapter: c.chapterSlug, resource_types: c.types.join(",") })}
-+                  className="clay flex h-full flex-col rounded-3xl p-5 transition hover:-translate-y-0.5"
-+                >
-+                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/50">{c.subjectName}</span>
-+                  <span className="mt-1 break-words font-display text-base font-bold leading-snug text-foreground">{c.chapterName}</span>
-+                  <span className="mt-3 flex flex-wrap gap-1.5">
-+                    {c.types.map((t) => (
-+                      <span key={t} className="clay-chip rounded-full px-2.5 py-1 text-[11px] font-semibold text-foreground/70">{JEE_RESOURCE_TYPE_LABELS[t]}</span>
-+                    ))}
-+                  </span>
-+                  <span className="mt-auto pt-4 text-sm font-bold text-[var(--sky-deep)]">Open Chapter →</span>
-+                </Link>
++          <ul className="mt-6 flex flex-wrap items-center justify-center gap-2.5" aria-label="Quick Mock format">
++            {facts.map((f) => (
++              <li key={f.text} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-bold">
++                <f.icon className="h-4 w-4 text-primary" aria-hidden />{f.text}
 +              </li>
 +            ))}
 +          </ul>
-+          <Link to={JEE_LIB_BASE as never} onClick={resourceClick("featured")} className="mt-3 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
-+            Browse the full resource library →
-+          </Link>
-+        </Section>
-+      )}
 +
-+      {/* ── PYQ conversion ── */}
-+      <section aria-labelledby="jee-pyq" className="ink-section mt-12 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-+        <div>
-+          <h2 id="jee-pyq" className="font-display text-xl font-extrabold sm:text-2xl">Finished Revising? Test What You Remember.</h2>
-+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/70">
-+            Practise available JEE previous-year questions, review solutions and track your preparation with Edurack.
-+            {pyqTotal > 0 && ` ${pyqTotal.toLocaleString("en-IN")} JEE questions are available right now; coverage varies by subject and chapter.`}
-+          </p>
++          <div className="mt-7">
++            {user ? (
++              <Link to="/pyq-drill" search={quickMockSearch({ src: "homepage" })} onClick={onClick} data-testid="homepage-quick-mock-cta" className={PREMIUM_BTN}>{label} <ArrowRight className="h-4 w-4" /></Link>
++            ) : (
++              <Link to="/auth" search={{ tab: "signup", redirect: "/pyq-drill?src=homepage" }} onClick={onClick} data-testid="homepage-quick-mock-cta" className={PREMIUM_BTN}>{label} <ArrowRight className="h-4 w-4" /></Link>
++            )}
++            {!user && !loading && <p className="mt-3 text-xs text-muted-foreground">Free account, no card. <Link to="/auth" search={{ tab: "signin", redirect: "/pyq-drill?src=homepage" }} className="font-bold text-primary hover:underline">Already have one? Log in</Link></p>}
++          </div>
 +        </div>
-+        <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("pyq-section")} className={`${BTN} shrink-0 bg-[#ffffff] text-[#141b2b]`}>
-+          Start JEE PYQ Practice
-+        </Link>
-+      </section>
-+
-+      {/* ── Preparation guides (never repeats the updates above) ── */}
-+      {blog.guides.length > 0 && (
-+        <Section id="jee-guides">
-+          <H2 id="jee-guides">JEE Main {JEE_LIBRARY_YEAR} Preparation Guides</H2>
-+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-+            {blog.guides.map((p, i) => (
-+              <ArticleCard key={p.id} post={p} source="guides" position={i + 1} cover />
-+            ))}
-+          </ul>
-+          <Link to="/blog" search={{ examKey: "jee" } as never} className="mt-3 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
-+            View All Guides →
-+          </Link>
-+        </Section>
-+      )}
-+
-+      {/* ── How to prepare ── */}
-+      <Section id="jee-how">
-+        <H2 id="jee-how">How to Prepare with Edurack</H2>
-+        <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-+          {[
-+            { n: 1, t: "READ", d: "Open your chapter notes.", to: JEE_LIB_BASE, kind: "resource" },
-+            { n: 2, t: "REVISE", d: "Download quick revision PDFs.", to: JEE_LIB_BASE, kind: "resource" },
-+            { n: 3, t: "PRACTISE", d: "Complete available chapter worksheets.", to: JEE_LIB_BASE, kind: "resource" },
-+            { n: 4, t: "IMPROVE", d: "Check solutions and attempt available PYQs.", to: "/pyq", kind: "practice" },
-+          ].map((s) => (
-+            <li key={s.n} className="clay rounded-2xl p-4">
-+              <span className="flex items-center gap-2">
-+                <span className="grid h-7 w-7 place-items-center rounded-full bg-foreground text-xs font-extrabold text-background" aria-hidden="true">{s.n}</span>
-+                <span className="font-display text-sm font-extrabold tracking-wide text-foreground">{s.t}</span>
-+              </span>
-+              <span className="mt-2 block text-sm text-foreground/70">{s.d}</span>
-+              {s.kind === "practice" ? (
-+                <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("how-to-prepare")} className="mt-2 inline-flex min-h-11 items-center text-xs font-bold text-[var(--sky-deep)] hover:underline">Open JEE PYQs →</Link>
-+              ) : (
-+                <Link to={s.to as never} onClick={resourceClick("how-to-prepare", { step: s.t.toLowerCase() })} className="mt-2 inline-flex min-h-11 items-center text-xs font-bold text-[var(--sky-deep)] hover:underline">Open the library →</Link>
-+              )}
-+            </li>
-+          ))}
-+        </ol>
-+      </Section>
-+
-+      {/* ── Planning guides (existing pages) ── */}
-+      <Section id="jee-plan">
-+        <H2 id="jee-plan">Know What to Study First</H2>
-+        <ul className="flex flex-wrap gap-2">
-+          {[
-+            { label: "JEE Main syllabus", to: "/jee/syllabus" },
-+            { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
-+            { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" },
-+            { label: "Paper analysis", to: "/jee/paper-analysis" },
-+            { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" },
-+          ].map((l) => (
-+            <li key={l.to}>
-+              <Link to={l.to as never} className="clay-chip inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/80 hover:underline">{l.label}</Link>
-+            </li>
-+          ))}
-+        </ul>
-+      </Section>
-+
-+      {/* ── FAQ: plain <details>, so every answer is in the server-rendered HTML ── */}
-+      <Section id="jee-faq">
-+        <H2 id="jee-faq">JEE Main {JEE_LIBRARY_YEAR} FAQs</H2>
-+        <div className="space-y-2">
-+          {JEE_LANDING_FAQS.map((f) => (
-+            <details key={f.q} className="clay group rounded-2xl p-4">
-+              <summary className="cursor-pointer list-none font-display text-[15px] font-bold text-foreground marker:content-none">{f.q}</summary>
-+              <p className="mt-2 text-sm leading-relaxed text-foreground/70">{f.a}</p>
-+            </details>
-+          ))}
-+        </div>
-+      </Section>
-+    </Page>
++      </div>
++    </section>
 +  );
 +}
-diff --git a/src/components/jee/jee-resource-views.tsx b/src/components/jee/jee-resource-views.tsx
-index 0688a48..20efa61 100644
---- a/src/components/jee/jee-resource-views.tsx
-+++ b/src/components/jee/jee-resource-views.tsx
-@@ -14,6 +14,7 @@ import { Crumbs, H1, Page, PracticeCta, SectionTitle } from "@/components/jee/je
- import { PdfPreviewModal } from "@/components/pdf-preview-modal";
- import { getJeeChapter, getJeeSubject, getJeeSubjects, jeeChapterPath, jeePracticeSearch } from "@/lib/jee-blueprint";
- import { track } from "@/lib/analytics";
-+import { JEE_LANDING_PATH } from "@/lib/jee-landing-types";
- import { getDeviceId } from "@/lib/device";
- import { useAuth } from "@/lib/auth-context";
- import { accessJeeResource } from "@/server-functions/jee-resources";
-@@ -45,6 +46,9 @@ export function JeeLibraryHubView({ summary }: { summary: JeeLibrarySummary }) {
-       <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-foreground/80">
-         Chapter-wise PDF notes, quick revision sheets, practice sheets, answer keys and detailed solutions prepared by the Edurack team. Pick a subject to see the chapters that have resources.
-       </p>
-+      <p className="mt-3 text-sm">
-+        <Link to={JEE_LANDING_PATH as never} className="font-bold text-[var(--sky-deep)] hover:underline">JEE Main {JEE_LIBRARY_YEAR} hub: updates, practice and guides →</Link>
-+      </p>
- 
-       {summary.total === 0 ? (
-         <div className="clay mt-8 rounded-3xl p-6 text-sm text-foreground/70">
-diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
-index 8661cb3..36183d4 100644
---- a/src/components/landing/site-chrome.tsx
-+++ b/src/components/landing/site-chrome.tsx
-@@ -216,6 +216,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
-   {
-     title: "JEE guides",
-     links: [
-+      { label: "JEE Main 2027 hub", to: "/jee-main-2027" },
-       { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
-       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
-       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
-diff --git a/src/lib/edge-cache.ts b/src/lib/edge-cache.ts
-index dcb0f2e..9b1facd 100644
---- a/src/lib/edge-cache.ts
-+++ b/src/lib/edge-cache.ts
-@@ -15,12 +15,16 @@ const swr = (sMaxAge: number, stale: number) =>
- const HOUR = swr(3600, 86400);
- const SHORT = swr(300, 86400); // content that an admin edits (blog)
- const DAILY = swr(300, 600); // changes at midnight (question of the day)
-+// The JEE Main 2027 hub shows published articles and resources, so a pulled item must disappear quickly:
-+// a minute at the CDN, and at most a minute of stale-while-revalidate.
-+const LIVE = swr(60, 60);
- 
- /** Cache-Control for a public page path, or null when the path must not be edge-cached. */
- export function edgeCachePolicy(pathname: string): string | null {
-   const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
- 
-   if (p === "/neet/question-of-the-day") return DAILY;
-+  if (p === "/jee-main-2027") return LIVE;
-   if (p === "/blog" || p.startsWith("/blog/")) return SHORT;
-   if (p === "/free-resources") return swr(600, 86400);
-   if (p.startsWith("/question/")) return HOUR;
-diff --git a/src/lib/jee-landing-copy.ts b/src/lib/jee-landing-copy.ts
-new file mode 100644
-index 0000000..abd171b
---- /dev/null
-+++ b/src/lib/jee-landing-copy.ts
-@@ -0,0 +1,39 @@
-+// src/lib/jee-landing-copy.ts
-+//
-+// Fixed wording for the JEE Main 2027 landing page: SEO title/description and the FAQ.
-+// Every FAQ answer describes what Edurack actually does today (checked against the code that serves it) and
-+// makes no claim about official exam dates, eligibility or the syllabus — those belong to NTA's notices.
-+import { JEE_LIB_BASE } from "@/lib/jee-resource-types";
-+
-+export const JEE_LANDING_TITLE = "JEE Main 2027: Exam Updates, Notes, Practice Sheets & PYQs | Edurack";
-+export const JEE_LANDING_DESCRIPTION =
-+  "Prepare for JEE Main 2027 with exam updates, Physics, Chemistry and Mathematics revision notes, downloadable practice sheets and available PYQs on Edurack.";
-+
-+export type LandingFaq = { q: string; a: string };
-+
-+export const JEE_LANDING_FAQS: LandingFaq[] = [
-+  {
-+    q: "Where can I find JEE Main 2027 chapter-wise notes?",
-+    a: `In the Edurack JEE Main 2027 resource library (${JEE_LIB_BASE}). Choose Physics, Chemistry or Mathematics, then open a chapter to see the notes published for it. Chapters are added over time, so not every chapter has every type of resource yet.`,
-+  },
-+  {
-+    q: "Can I download practice sheets?",
-+    a: "Yes. Where a practice sheet has been published for a chapter, you can preview it in your browser or download it as a PDF from that chapter's page. You don't need an account to preview or download library PDFs.",
-+  },
-+  {
-+    q: "Are Edurack's JEE resources free?",
-+    a: "The notes, revision sheets and practice sheets in the resource library are free to preview and download, with no payment or Pro plan needed. Edurack Pro is a separate, optional plan for extra practice features and does not affect access to library PDFs.",
-+  },
-+  {
-+    q: "Can I practise JEE Main PYQs?",
-+    a: "Yes. Edurack has JEE previous-year questions you can practise subject-wise and chapter-wise, with solutions. You can try a few questions without logging in; sign in to practise more and track your progress. The question bank does not cover every paper or chapter yet, so availability varies.",
-+  },
-+  {
-+    q: "How do I find resources for a specific subject?",
-+    a: `Use the Physics, Chemistry and Mathematics cards on this page, or open the resource library (${JEE_LIB_BASE}) and pick a subject. Each subject page lists the chapters that currently have published resources.`,
-+  },
-+  {
-+    q: "Where can I read the latest JEE Main 2027 updates?",
-+    a: "The Latest JEE Main 2027 Updates section on this page shows the newest published exam-news articles from the Edurack blog, and the blog's JEE filter lists every published JEE article. Articles summarise public information, so always confirm dates, eligibility and syllabus against the official NTA notices.",
-+  },
-+];
-diff --git a/src/lib/jee-landing-core.ts b/src/lib/jee-landing-core.ts
-new file mode 100644
-index 0000000..fb6b349
---- /dev/null
-+++ b/src/lib/jee-landing-core.ts
-@@ -0,0 +1,40 @@
-+// src/lib/jee-landing-core.ts
-+//
-+// SERVER-ONLY. Cheap "how much real content is there" counts for the JEE Main 2027 landing page. Used by the
-+// sitemap (to list the page only when it is indexable) so it applies the exact same rule as the page's own
-+// <head>. Every number comes from an existing source of truth and an existing published-only filter.
-+import { getDb } from "@/lib/mongo";
-+import { librarySummary } from "@/lib/jee-resource-core";
-+import { loadTreeRows } from "@/lib/pyq-server";
-+import { JEE_POST_CLASSIFIER } from "@/lib/jee-landing-types";
-+
-+/** Total JEE questions in the PYQ bank. Reuses the PYQ page's own (10-minute cached) tree, so no extra query. */
-+export async function jeePyqTotal(): Promise<number> {
-+  const db = await getDb();
-+  const rows = await loadTreeRows(db, "jee");
-+  return rows.reduce((n, r) => n + r.count, 0);
-+}
-+
-+/**
-+ * Published JEE posts: how many, and when the newest was published or edited. Same published rule as
-+ * blog-public.ts (status "published", not soft-deleted) plus the shared JEE classifier.
-+ */
-+export async function jeePostStats(): Promise<{ total: number; latestAt: string | null }> {
-+  const db = await getDb();
-+  const filter = { status: "published", deletedAt: null, ...JEE_POST_CLASSIFIER };
-+  const col = db.collection("blogPosts");
-+  const [total, latest] = await Promise.all([
-+    col.countDocuments(filter),
-+    col.find(filter).project({ publishedAt: 1, updatedAt: 1 }).sort({ publishedAt: -1 }).limit(1).toArray(),
-+  ]);
-+  const t = (v: unknown) => (v instanceof Date ? v.getTime() : typeof v === "string" ? Date.parse(v) || 0 : 0);
-+  const newest = latest[0] ? Math.max(t(latest[0].publishedAt), t(latest[0].updatedAt)) : 0;
-+  return { total, latestAt: newest ? new Date(newest).toISOString() : null };
-+}
-+
-+/** Everything the sitemap needs to decide whether, and with what lastmod, to list /jee-main-2027. Throws on a DB failure. */
-+export async function jeeLandingMeta(): Promise<{ resources: number; posts: number; pyq: number; lastmod: string | null }> {
-+  const [sum, posts, pyq] = await Promise.all([librarySummary(), jeePostStats(), jeePyqTotal()]);
-+  const times = [sum.lastUpdated, posts.latestAt].filter((x): x is string => !!x).map((x) => Date.parse(x));
-+  return { resources: sum.total, posts: posts.total, pyq, lastmod: times.length ? new Date(Math.max(...times)).toISOString() : null };
-+}
-diff --git a/src/lib/jee-landing-types.ts b/src/lib/jee-landing-types.ts
-new file mode 100644
-index 0000000..4d56587
---- /dev/null
-+++ b/src/lib/jee-landing-types.ts
-@@ -0,0 +1,83 @@
-+// src/lib/jee-landing-types.ts
-+//
-+// Shared (client + server), pure types and helpers for the JEE Main 2027 landing page (/jee-main-2027).
-+// No server or browser imports, so it is safe in route heads, components and server code alike.
-+//
-+// The landing page owns no content of its own. Everything dynamic on it is read from systems that already
-+// exist and already enforce "published only":
-+//   • blog posts       → server-functions/blog-public.ts   (status "published", not soft-deleted)
-+//   • resource library → lib/jee-resource-core.ts          (published, not deleted, JEE Main 2027)
-+//   • PYQ question bank → lib/pyq-server.ts                (the same tree the /pyq page uses)
-+import type { PublicBlogPostSummary } from "@/lib/blog-types";
-+import type { JeeLibrarySummary, JeeResourceSubject, JeeResourceType } from "@/lib/jee-resource-types";
-+
-+export const JEE_LANDING_PATH = "/jee-main-2027";
-+
-+/**
-+ * What makes a blog post a "JEE post". One definition, shared by the landing-page query and the sitemap check,
-+ * so the two can never disagree. Matches how the blog already decides the JEE audience
-+ * (resolveBlogPromoAudience in blog-types.ts): exam tag "jee" OR the JEE Strategy category.
-+ */
-+// (Plain mutable array type on purpose: the MongoDB driver's Filter type does not accept a readonly $or.)
-+export const JEE_POST_CLASSIFIER: { $or: Record<string, string>[] } = { $or: [{ examKey: "jee" }, { category: "jeeStrategy" }] };
-+
-+/** Blog category used for the "Latest updates" block. Everything else JEE-related goes under "Preparation guides". */
-+export const JEE_UPDATES_CATEGORY = "examNews" as const;
-+
-+/** A chapter that really has published resources. Metadata only — never a file path, link or storage detail. */
-+export type JeeFeaturedChapter = {
-+  subjectKey: JeeResourceSubject;
-+  subjectName: string;
-+  chapterSlug: string;
-+  chapterName: string;
-+  /** Resource types that exist and are published for this chapter, in the library's display order. */
-+  types: JeeResourceType[];
-+  count: number;
-+};
-+
-+export type JeeLandingBlog = {
-+  /** Published JEE posts in the Exam News category, newest first. */
-+  updates: PublicBlogPostSummary[];
-+  /** Other published JEE posts, newest first, never repeating anything in `updates`. */
-+  guides: PublicBlogPostSummary[];
-+  /** Number of published JEE posts in total (for the "view all" link and indexability). */
-+  total: number;
-+};
-+
-+export type JeeLandingData = {
-+  summary: JeeLibrarySummary;
-+  featured: JeeFeaturedChapter[];
-+  blog: JeeLandingBlog;
-+  /** JEE questions currently in the PYQ bank (0 when none or when the count couldn't be read). */
-+  pyqTotal: number;
-+};
-+
-+export const EMPTY_JEE_LANDING_BLOG: JeeLandingBlog = { updates: [], guides: [], total: 0 };
-+
-+/**
-+ * The page is indexable when there is real content behind it. The static parts (syllabus, weightage and PYQ
-+ * links) are useful on their own, so one published resource, one published article or any JEE question is enough.
-+ * Only a completely empty state is kept out of search (and out of the sitemap).
-+ */
-+export const jeeLandingIndexable = (counts: { resources: number; posts: number; pyq: number }) => counts.resources > 0 || counts.posts > 0 || counts.pyq > 0;
-+
-+/**
-+ * Picks up to `limit` rows, taking one from each subject in turn so Physics, Chemistry and Mathematics are
-+ * balanced where possible. `rows` must already be ordered best-first (newest first); that order is kept
-+ * within each subject. A subject with nothing simply drops out of the rotation.
-+ */
-+export function pickBalanced<T extends { subjectKey: string }>(rows: T[], subjectOrder: readonly string[], limit: number): T[] {
-+  const queues = subjectOrder.map((s) => rows.filter((r) => r.subjectKey === s));
-+  const out: T[] = [];
-+  for (let i = 0; out.length < limit; i++) {
-+    let took = false;
-+    for (const q of queues) {
-+      if (q[i] && out.length < limit) {
-+        out.push(q[i]);
-+        took = true;
-+      }
-+    }
-+    if (!took) break;
-+  }
-+  return out;
-+}
-diff --git a/src/lib/jee-resource-core.ts b/src/lib/jee-resource-core.ts
-index 8fe6cee..79a65d2 100644
---- a/src/lib/jee-resource-core.ts
-+++ b/src/lib/jee-resource-core.ts
-@@ -10,11 +10,14 @@ import { createClient } from "@supabase/supabase-js";
- import { getDb } from "@/lib/mongo";
- import { getJeeChapter } from "@/lib/jee-blueprint";
- import { createTtlCache } from "@/lib/simple-cache";
-+import { pickBalanced, type JeeFeaturedChapter } from "@/lib/jee-landing-types";
+diff --git a/src/components/neet/blueprint-views.tsx b/src/components/neet/blueprint-views.tsx
+index 163e9f2..12026d3 100644
+--- a/src/components/neet/blueprint-views.tsx
++++ b/src/components/neet/blueprint-views.tsx
+@@ -5,6 +5,7 @@
+ // are in the HTML Google reads. No client state, nothing hidden from crawlers.
+ import { Link } from "@tanstack/react-router";
+ import type { ReactNode } from "react";
++import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
  import {
-   ADMIN_PAGE_SIZE,
-   DEFAULT_JEE_EXAM,
-   JEE_LIBRARY_YEAR,
-   JEE_RESOURCES_BUCKET,
-+  JEE_RESOURCE_SUBJECTS,
-+  JEE_RESOURCE_SUBJECT_LABELS,
-   JEE_RESOURCE_TYPES,
-   MAX_JEE_RESOURCE_BYTES,
-   hasPdfMagic,
-@@ -404,7 +407,12 @@ const libraryFilter = { published: true, deletedAt: null, exam: DEFAULT_JEE_EXAM
- // Entry points on the (otherwise static) JEE pages read this on every load, so keep it cheap: identical for
- // every visitor, fine to be 30 s old, and reset on any admin write handled by this server instance.
- let summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
--const invalidateSummary = () => { summaryCache = createTtlCache<JeeLibrarySummary>(30_000); };
-+// The landing page's "Featured chapters" block reads the same published data, so it is reset by the same writes.
-+let featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
-+const invalidateSummary = () => {
-+  summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
-+  featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
-+};
+   PAPER_LABELS,
+   PAPER_SHORT,
+@@ -483,6 +484,8 @@ export function HubView() {
+         chapters across Physics, Chemistry, Botany and Zoology. Pick a subject to see every chapter ranked, then open a chapter for its topic-wise question counts in each paper.
+       </p>
  
- /** Counts of PUBLISHED resources — drives entry points, empty states and sitemap inclusion. */
- export async function librarySummary(): Promise<JeeLibrarySummary> {
-@@ -445,3 +453,46 @@ export async function chapterResources(subjectKey: string, chapterSlug: string):
-     .sort((a, b) => rank(a.type) - rank(b.type) || (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || +new Date(a.createdAt) - +new Date(b.createdAt))
-     .map(toPublic);
++      <QuickMockStrip source="pyq_landing" exam="neet" lead="free to try" className="mt-5" />
++
+       <div className="mt-6 grid gap-4 sm:grid-cols-2">
+         {subjects.map((s) => (
+           <Link key={s.key} to="/neet/chapter-wise-weightage/$subject" params={{ subject: s.key }} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
+diff --git a/src/components/neet/qotd-view.tsx b/src/components/neet/qotd-view.tsx
+index 6f262a5..3fca3d5 100644
+--- a/src/components/neet/qotd-view.tsx
++++ b/src/components/neet/qotd-view.tsx
+@@ -7,6 +7,7 @@ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
+ import { ShareButton } from "@/components/tools/tool-shell";
+ import { SmartContent } from "@/lib/smart-content";
++import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
+ import { checkPublicPyqAnswer } from "@/server-functions/pyq-public";
+ import type { QotdPayload } from "@/lib/pyq-seo-server";
+ import type { PublicCheckResult } from "@/lib/pyq-public";
+@@ -114,6 +115,7 @@ function Body({ data }: { data: QotdPayload }) {
+               <ShareButton text={`Try today's NEET question on Edurack (${prettyDay(day)}).`} className="justify-center" />
+             </div>
+             <p className="text-xs text-foreground/55">Log in to see the step-by-step solution and to keep a daily streak going.</p>
++            <QuickMockStrip source="pyq_landing" exam="neet" lead="30 minutes, 20 PYQs" />
+           </div>
+         ) : (
+           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+diff --git a/src/components/pyq/drill-launcher.tsx b/src/components/pyq/drill-launcher.tsx
+index e25b48d..0aee4b9 100644
+--- a/src/components/pyq/drill-launcher.tsx
++++ b/src/components/pyq/drill-launcher.tsx
+@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from "react";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+ import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
+ import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
+-import { track } from "@/lib/analytics";
++import { track, trackOnce } from "@/lib/analytics";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
+ import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+ import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
++import { quickMockCopy, quickMockName, quickMockStatus, type QuickMockSource } from "@/lib/quick-mock";
+ import type { Difficulty, PyqTree } from "@/lib/pyq-types";
+ 
+ type LauncherUser = { getIdToken: () => Promise<string>; email?: string | null };
+@@ -55,6 +56,7 @@ function UpgradePanel({
+   proOnly,
+   owned,
+   canBuy = true,
++  source,
+ }: {
+   user: LauncherUser;
+   plans: ProPlanPublic[];
+@@ -68,6 +70,8 @@ function UpgradePanel({
+   /** Features this student's Pro already includes (shown ticked). */
+   owned: ProFeatureKey[];
+   canBuy?: boolean;
++  /** Which entry point brought the student to the Quick Mock page (analytics label). */
++  source?: string;
+ }) {
+   const [busy, setBusy] = useState<string | null>(null);
+   const [err, setErr] = useState<string | null>(null);
+@@ -78,6 +82,7 @@ function UpgradePanel({
+     setBusy(plan.id);
+     try {
+       const token = await user.getIdToken();
++      track("quick_mock_upgrade_clicked", { action: "buy", plan_id: plan.id, source: source ?? "direct" });
+       track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
+       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
+       await loadRazorpayScript();
+@@ -283,9 +288,11 @@ function CustomDrillBuilder({ user, exam, starting, onStart }: { user: LauncherU
+   );
  }
+ 
+-export function DrillLauncher({ user, exam, starting, error, onStart }: { user: LauncherUser; exam?: string; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
++export function DrillLauncher({ user, exam, source, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
+   const [access, setAccess] = useState<DrillAccess | null>(null);
+   const [showBuilder, setShowBuilder] = useState(false);
++  // The Pro plans are one tap away, not the first thing on the page: the free Quick Mock is the point of this screen.
++  const [showPro, setShowPro] = useState(false);
+ 
+   const refresh = useCallback(async () => {
+     try {
+@@ -311,6 +318,13 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+   // Something Pro-only is still out of reach for this student (free plan, or a plan that doesn't include everything).
+   const missing = access ? access.gatingOn && PRO_FEATURE_KEYS.some((k) => access.proOnly[k] && !access.features.includes(k)) : false;
+ 
++  const mockStatus = quickMockStatus(
++    access ? { gatingOn: access.gatingOn, isPro: access.isPro, unlimited: hasFeature(access, "unlimitedDrills"), usedToday: access.usedToday, freeLimit: access.freeLimit, running: access.running } : null,
++  );
++  const mockCopy = quickMockCopy(mockStatus);
++  const proOnlyMock = mockStatus.kind === "pro_only";
++  const proOpen = showPro || proOnlyMock; // when the free plan has no Quick Mock at all, the plans are the only way forward
++
+   const limitedFree = access ? access.gatingOn && !hasFeature(access, "unlimitedDrills") : false;
+   const builderIsPro = access ? access.gatingOn && access.proOnly.customDrillBuilder : false;
+ 
+@@ -322,8 +336,8 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+             <Timer className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
+           </span>
+           <div className="min-w-0 flex-1">
+-            <h1 className="font-display text-xl font-bold text-foreground">Timed PYQ drill</h1>
+-            <p className="text-sm text-foreground/60">Practise under exam pressure, not at your own pace.</p>
++            <h1 className="font-display text-xl font-bold text-foreground">{quickMockName(exam)}</h1>
++            <p className="text-sm text-foreground/60">{DRILL_QUESTIONS} previous year questions, {DRILL_MINUTES} minutes. Practise under exam pressure, not at your own pace.</p>
+           </div>
+           {access?.isPro && (
+             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-800">
+@@ -332,6 +346,13 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+           )}
+         </div>
+ 
++        {access && (
++          <p data-testid="quick-mock-status" className={`mt-4 rounded-xl px-3.5 py-3 text-sm font-bold ${mockStatus.kind === "exhausted" || proOnlyMock ? "bg-[var(--sky-soft)] text-foreground/80" : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"}`}>
++            {mockCopy.headline}
++            {mockCopy.detail && <span className="ml-1.5 text-xs font-semibold opacity-75">{mockCopy.detail}</span>}
++          </p>
++        )}
++
+         <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+           <Fact value={DRILL_QUESTIONS} label="previous year questions" />
+           <Fact value={`${DRILL_MINUTES} min`} label="on a server-side clock" />
+@@ -343,7 +364,7 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+         {access && limitedFree && (
+           <div className="mt-4">
+             <div className="flex items-center justify-between text-xs font-semibold text-foreground/70">
+-              <span>{access.freeLimit === 0 ? "Timed drills are part of Edurack Pro" : blocked ? "No free drills left today" : `${left} of ${access.freeLimit} free drills left today`}</span>
++              <span>{access.freeLimit === 0 ? "Quick Mock is part of Edurack Pro" : blocked ? "No free Quick Mocks left today" : `${left} of ${access.freeLimit} free Quick Mock${access.freeLimit === 1 ? "" : "s"} left today`}</span>
+               {access.freeLimit > 0 && <span className="text-foreground/40">resets at midnight</span>}
+             </div>
+             {access.freeLimit > 0 && (
+@@ -355,16 +376,36 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+         )}
+ 
+         {error && !limitMessage && <p className="mt-4 text-xs font-semibold text-destructive">{error}</p>}
+-        {limitMessage && <p className="mt-4 rounded-xl bg-[var(--sky-soft)] px-3 py-2 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
++        {/* The server refused (limit reached): say it in the same words as the banner above, once. */}
++        {limitMessage && mockStatus.kind !== "exhausted" && <p className="mt-4 rounded-xl bg-[var(--sky-soft)] px-3 py-2 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
+ 
+-        <button type="button" onClick={() => onStart({})} disabled={starting || blocked} className="clay-btn mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50">
++        {/* An unfinished Quick Mock can always be resumed (the server resumes it without using another free one), so "blocked" doesn't apply then. */}
++        <button type="button" onClick={() => onStart({})} disabled={starting || (blocked && mockStatus.kind !== "resume") || proOnlyMock} data-testid="quick-mock-start" className="clay-btn mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50">
+           {starting && <Loader2 className="h-4 w-4 animate-spin" />}
+-          {blocked ? "No free drills left today" : "Start drill"}
++          {mockStatus.kind === "resume" ? "Resume Quick Mock" : blocked ? "Come back tomorrow for your next one" : proOnlyMock ? "Part of Edurack Pro" : "Start Quick Mock"}
+         </button>
+       </div>
+ 
+-      {access && (
++      {access && !proOpen && (
++        <div className="text-center">
++          <button
++            type="button"
++            aria-expanded={false}
++            data-testid="explore-pro"
++            onClick={() => {
++              setShowPro(true);
++              trackOnce(`qm-upgrade-explore:${source ?? "direct"}`, "quick_mock_upgrade_clicked", { action: "explore", source: source ?? "direct", state: mockStatus.kind });
++            }}
++            className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-foreground/60 transition-colors hover:bg-foreground/5 hover:text-foreground"
++          >
++            <Sparkles className="h-3.5 w-3.5" aria-hidden /> {access.isPro ? "Your Edurack Pro" : "Explore Edurack Pro"} <ChevronDown className="h-3.5 w-3.5" aria-hidden />
++          </button>
++        </div>
++      )}
++
++      {access && proOpen && (
+         <UpgradePanel
++          source={source}
+           user={user}
+           plans={access.plans}
+           onPurchased={refresh}
+@@ -405,7 +446,7 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user:
+               </span>
+               <span className="min-w-0 flex-1">
+                 <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill <ProTag /></span>
+-                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: see the plans above.</span>
++                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: tap "Explore Edurack Pro" above.</span>
+               </span>
+             </div>
+           )}
+diff --git a/src/components/pyq/pyq-browser.tsx b/src/components/pyq/pyq-browser.tsx
+index 16d8946..b71b33d 100644
+--- a/src/components/pyq/pyq-browser.tsx
++++ b/src/components/pyq/pyq-browser.tsx
+@@ -2,8 +2,17 @@ import { ChevronRight, Play } from "lucide-react";
+ import { cn } from "@/lib/utils";
+ import { UNTAGGED_CHAPTER, type PyqTree } from "@/lib/pyq-types";
+ import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
++import { practiceProgress } from "@/lib/practice-stats";
++import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
+ 
+-export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean };
++/** `fresh` opens practice on the questions the student hasn't attempted yet (falls back to everything when none are left). */
++export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean; fresh?: boolean };
++
++/** "120 PYQs · 40 attempted · 80 left · 75% accuracy": the same numbers (unique questions) as the dashboard. */
++function progressLine(n: { count: number; attempted: number; correct: number }): string {
++  const p = practiceProgress(n.count, n.attempted, n.correct);
++  return `${p.available} PYQ${p.available === 1 ? "" : "s"} · ${p.attempted} attempted · ${p.remaining} left${p.accuracy !== null ? ` · ${p.accuracy}% accuracy` : ""}`;
++}
+ 
+ type Props = {
+   tree: PyqTree;
+@@ -58,7 +67,7 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
+ 
+       {subjectNode && !chapterNode && (
+         <>
+-          <Title title={subjectNode.subject} sub={`${subjectNode.count} questions across ${subjectNode.chapters.length} chapters`} />
++          <Title title={subjectNode.subject} sub={`${progressLine(subjectNode)} · ${subjectNode.chapters.length} chapters`} />
+           <div className="mt-4 space-y-2.5">
+             {subjectNode.chapters.map((c) => (
+               <Row
+@@ -73,19 +82,39 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
+               />
+             ))}
+           </div>
++          <QuickMockStrip source="subject_practice" exam={tree.exam} lead="a timed test across subjects" className="mt-5" />
+         </>
+       )}
+ 
+       {subjectNode && chapterNode && (
+         <>
+-          <Title title={chapterNode.chapter} sub={`${subjectNode.subject} · ${chapterNode.count} questions`} />
+-          <button
+-            onClick={() => onNavigate({ subject, chapter, practice: true })}
+-            className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
+-          >
+-            <Play className="h-4 w-4" aria-hidden />
+-            Practice all {chapterNode.count} questions
+-          </button>
++          <Title title={chapterNode.chapter} sub={`${subjectNode.subject} · ${progressLine(chapterNode)}`} />
++          {/* Started this chapter but not finished: the main button picks up at the first question not attempted yet. */}
++          {chapterNode.attempted > 0 && chapterNode.attempted < chapterNode.count ? (
++            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
++              <button
++                onClick={() => onNavigate({ subject, chapter, practice: true, fresh: true })}
++                className="clay-btn inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
++              >
++                <Play className="h-4 w-4" aria-hidden />
++                Continue · {chapterNode.count - chapterNode.attempted} left
++              </button>
++              <button
++                onClick={() => onNavigate({ subject, chapter, practice: true })}
++                className="clay-chip inline-flex w-full items-center justify-center rounded-full px-5 py-3.5 text-sm font-bold text-foreground/80 sm:w-auto"
++              >
++                Practice all {chapterNode.count}
++              </button>
++            </div>
++          ) : (
++            <button
++              onClick={() => onNavigate({ subject, chapter, practice: true })}
++              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
++            >
++              <Play className="h-4 w-4" aria-hidden />
++              Practice all {chapterNode.count} questions
++            </button>
++          )}
+ 
+           <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-foreground/50">Or pick a topic</p>
+           <div className="space-y-2.5">
+diff --git a/src/components/pyq/pyq-drill.tsx b/src/components/pyq/pyq-drill.tsx
+index 3452470..63283e7 100644
+--- a/src/components/pyq/pyq-drill.tsx
++++ b/src/components/pyq/pyq-drill.tsx
+@@ -239,8 +239,8 @@ export function DrillRunner({
+ 
+       {(confirming || submitting) && (
+         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={() => !submitting && setConfirming(false)}>
+-          <div role="dialog" aria-modal="true" aria-label="Submit drill" onClick={(e) => e.stopPropagation()} className="clay w-full max-w-sm rounded-b-none p-6 text-center sm:rounded-b-3xl">
+-            <p className="font-display text-lg font-bold text-foreground">{submitting ? "Submitting…" : "Submit your drill?"}</p>
++          <div role="dialog" aria-modal="true" aria-label="Submit Quick Mock" onClick={(e) => e.stopPropagation()} className="clay w-full max-w-sm rounded-b-none p-6 text-center sm:rounded-b-3xl">
++            <p className="font-display text-lg font-bold text-foreground">{submitting ? "Submitting…" : "Submit your Quick Mock?"}</p>
+             {!submitting && (
+               <p className="mt-2 text-sm text-foreground/60">
+                 You've answered <span className="font-bold text-foreground">{answeredCount}</span> of {set.questions.length}.
+@@ -278,7 +278,7 @@ export function DrillResultView({ result, onBack }: { result: DrillResult; onBac
+   return (
+     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
+       <div className="clay p-6 text-center sm:p-8">
+-        <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Timed drill result</p>
++        <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Quick Mock result</p>
+         <p className="font-display mt-2 text-5xl font-bold text-foreground">
+           {result.score}
+           <span className="text-xl font-semibold text-foreground/40"> / {result.maxScore}</span>
+diff --git a/src/components/pyq/pyq-practice.tsx b/src/components/pyq/pyq-practice.tsx
+index bed6ffc..e7ac0c2 100644
+--- a/src/components/pyq/pyq-practice.tsx
++++ b/src/components/pyq/pyq-practice.tsx
+@@ -31,12 +31,14 @@ type Props = {
+   guest?: boolean;
+   /** Cap the list (e.g. 5 for the new-student "first 5 PYQs" start). Finishing the capped list ends the session normally. */
+   limit?: number;
++  /** Open on the questions not attempted yet (falls back to everything once none are left), so "continue" never re-serves finished questions. */
++  startFresh?: boolean;
+   /** Where the session was launched from, for analytics only (e.g. "first_five"). */
+   source?: string;
+   onExit: () => void;
+ };
+ 
+-type StatusFilter = "all" | "unsolved" | "wrong";
++type StatusFilter = "all" | "unsolved" | "wrong" | "new";
+ type Local = PyqCheckResult & { chosenOption?: OptionKey; chosenValue?: number };
+ 
+ const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
+@@ -48,7 +50,7 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
+ };
+ const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+ 
+-export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, source, onExit }: Props) {
++export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, startFresh = false, source, onExit }: Props) {
+   const { user: authUser } = useAuth();
+   // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
+   const user = guest ? null : authUser;
+@@ -56,7 +58,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
+   const [year, setYear] = useState("All");
+   // A weak-topics session starts on questions the student hasn't solved yet.
+-  const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : "all";
++  // A fresh start (Continue / "5 more") shows only questions never attempted; mistake revision is the one place repeats are the point.
++  const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : startFresh && !session ? "new" : "all";
+   const [statusF, setStatusF] = useState<StatusFilter>(defaultStatus);
+   const [showFilters, setShowFilters] = useState(false);
+ 
+@@ -73,6 +76,10 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+   const [finished, setFinished] = useState(false);
+   const [streakNow, setStreakNow] = useState<number | null>(null);
+   const [actionError, setActionError] = useState<string | null>(null);
++  // Set the instant a check/reveal starts (state updates are asynchronous, so two quick taps could both get past `busy`).
++  const inflight = useRef(false);
++  // In mistake revision the point is to TRY again, so the solution stays hidden until an answer is submitted.
++  const revising = session === "due" || session === "wrong";
+ 
+   // Analytics. One `practice_started` per practice session and one `practice_completed` per finished session: the refs
+   // make a refetch (difficulty chip), a StrictMode re-run or a re-render unable to send either twice.
+@@ -134,6 +141,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+     };
+   }, [user, guest, subject, chapter, topic, weakAttemptId, session, exam, difficulty]);
+ 
++  // "Not attempted yet" with nothing left to attempt: show the whole list instead of an empty screen.
++  useEffect(() => {
++    if (list && statusF === "new" && defaultStatus === "new" && !list.questions.some((x) => x.status === "new" || x.status === "revealed")) setStatusF("all");
++  }, [list, statusF, defaultStatus]);
++
+   // Year/status chips just re-filter the list already in memory — no fetch.
+   useEffect(() => {
+     setIdx(0);
+@@ -144,6 +156,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
+     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
+     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
++    else if (statusF === "new") qs = qs.filter((x) => x.status === "new" || x.status === "revealed"); // a peeked-at solution isn't an attempt
+     return limit ? qs.slice(0, limit) : qs;
+   }, [list, year, statusF, limit]);
+   const q: PyqQuestion | undefined = questions[idx];
+@@ -158,7 +171,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+   }, [q, result, picked, typed]);
+ 
+   async function send(answer: { option?: OptionKey; value?: number } | null) {
+-    if ((!user && !guest) || !q || busy) return;
++    if ((!user && !guest) || !q || busy || inflight.current) return;
++    inflight.current = true;
+     setBusy(true);
+     setActionError(null);
+     try {
+@@ -173,7 +187,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
+       // Only a real answer is an answer; peeking at the solution (answer === null) isn't sent. Never the chosen option/number.
+       if (answer !== null) {
+-        track("question_answered", answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }));
++        track("question_answered", { ...answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }), corrected: res.corrected === true });
+         // Once per India day per student, however many times the daily question screen is opened.
+         if (mode === "daily" && user) trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctxFor(q)), is_correct: res.isCorrect }, "day");
+       }
+@@ -185,6 +199,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+     } catch (e) {
+       setActionError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+     } finally {
++      inflight.current = false;
+       setBusy(false);
+     }
+   }
+@@ -268,7 +283,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+       wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
+       peeked: all.filter((r) => r.revealed).length,
+     };
+-    return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} onDone={onExit} />;
++    return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} showQuickMock={!revising && !guest} onDone={onExit} />;
+   }
+ 
+   return (
+@@ -319,7 +334,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+             </FilterGroup>
+           )}
+           <FilterGroup label="Show">
+-            {([["all", "Everything"], ["unsolved", "Not solved yet"], ["wrong", "Got wrong"]] as const).map(([id, label]) => (
++            {([["all", "Everything"], ["new", "Not attempted yet"], ["unsolved", "Not solved yet"], ["wrong", "Got wrong"]] as const).map(([id, label]) => (
+               <Chip key={id} active={statusF === id} onClick={() => setStatusF(id)}>
+                 {label}
+               </Chip>
+@@ -538,6 +553,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+                     {result.isCorrect ? "Correct! Nice work." : "Not quite — read the solution below."}
+                   </p>
+                 )}
++                {result.corrected && (
++                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-200" role="status">
++                    Mistake corrected. That one is fixed.
++                  </p>
++                )}
+                 {result.streak?.increased && (
+                   <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-foreground">
+                     <Flame className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden />
+@@ -548,7 +568,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+               </div>
+             )}
+ 
+-            {!result && (
++            {!result && !revising && (
+               <button
+                 onClick={() => void send(null)}
+                 disabled={busy}
+diff --git a/src/components/pyq/session-summary.tsx b/src/components/pyq/session-summary.tsx
+index c8e3524..00881f0 100644
+--- a/src/components/pyq/session-summary.tsx
++++ b/src/components/pyq/session-summary.tsx
+@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
+ import { MentorRecommendations } from "@/components/subject-performance";
+ import { getWeakUpsell } from "@/server-functions/practice-extras";
+ import type { WeakUpsell } from "@/lib/pyq-types";
++import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
+ 
+ export type SessionStats = { answered: number; correct: number; wrong: number; peeked: number };
+ 
+@@ -18,12 +19,15 @@ export function SessionSummary({
+   stats,
+   streak,
+   weakAttemptId,
++  showQuickMock = true,
+   onDone,
+ }: {
+   title: string;
+   stats: SessionStats;
+   streak: number | null;
+   weakAttemptId?: string;
++  /** False for revision sessions, where the next step is the notebook rather than a mock. */
++  showQuickMock?: boolean;
+   onDone: () => void;
+ }) {
+   const { user } = useAuth();
+@@ -83,6 +87,9 @@ export function SessionSummary({
+         <button onClick={onDone} className="clay-btn mt-6 rounded-full px-8 py-3 text-sm font-bold text-white">
+           Done
+         </button>
++
++        {/* Finished a set of questions: a timed test is the natural next step (compact, one line, not a banner). */}
++        {showQuickMock && stats.answered > 0 && <QuickMockStrip source="practice_results" lead="test yourself under time" className="mt-5 text-left" />}
+       </div>
+ 
+       {weakAttemptId && upsell && upsell.bundles.length > 0 && (
+diff --git a/src/components/quick-mock/quick-mock-card.tsx b/src/components/quick-mock/quick-mock-card.tsx
+new file mode 100644
+index 0000000..8125ddb
+--- /dev/null
++++ b/src/components/quick-mock/quick-mock-card.tsx
+@@ -0,0 +1,44 @@
++// The dashboard's "NEET Quick Mock" card, next to chapter-wise PYQ practice. It reflects the student's real allowance
++// (free one ready / used up / Pro-only / unfinished mock to resume) and leads to the same /pyq-drill engine.
++import { useRef } from "react";
++import { Link } from "@tanstack/react-router";
++import { ArrowRight, Timer } from "lucide-react";
++import { cn } from "@/lib/utils";
++import { DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
++import { quickMockCopy, quickMockName, quickMockSearch, type QuickMockSource, type QuickMockStatus } from "@/lib/quick-mock";
++import { trackQuickMockClick, useQuickMockViewed } from "@/lib/quick-mock-analytics";
++
++export function QuickMockCard({ status, loaded, exam, source = "dashboard", className }: { status: QuickMockStatus; loaded: boolean; exam?: string | null; source?: QuickMockSource; className?: string }) {
++  const ref = useRef<HTMLElement>(null);
++  const copy = quickMockCopy(status);
++  useQuickMockViewed(ref, source, { state: status.kind }, loaded);
++
++  const search = quickMockSearch({ src: source, drillId: status.kind === "resume" ? status.drillId : undefined });
++  const waiting = status.kind === "exhausted";
++
++  return (
++    <section ref={ref} aria-label={quickMockName(exam)} data-testid="quick-mock-card" className={cn("min-w-0 rounded-3xl border border-border bg-card p-4 sm:p-5", className)}>
++      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
++        <div className="flex min-w-0 items-start gap-3.5">
++          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-300 text-amber-950"><Timer className="h-6 w-6" aria-hidden /></span>
++          <div className="min-w-0">
++            <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary">{quickMockName(exam)}</p>
++            <p className="text-xs font-semibold text-muted-foreground">{DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} Minutes</p>
++            <p className={cn("font-display mt-1 font-extrabold leading-snug tracking-tight text-foreground", waiting ? "text-sm sm:text-base" : "text-lg sm:text-xl")}>{loaded || status.kind !== "unknown" ? copy.headline : "Checking your Quick Mock…"}</p>
++            {copy.detail && !waiting && <p className="mt-0.5 text-xs text-muted-foreground">{copy.detail}</p>}
++          </div>
++        </div>
++
++        {waiting ? (
++          <Link to="/pyq-drill" search={quickMockSearch({ src: source })} onClick={() => trackQuickMockClick(source, { state: "exhausted" })} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-border px-5 text-sm font-bold text-foreground transition-colors hover:border-foreground/40">
++            Unlimited with Pro <ArrowRight className="h-4 w-4" aria-hidden />
++          </Link>
++        ) : (
++          <Link to="/pyq-drill" search={search} onClick={() => trackQuickMockClick(source, { state: status.kind })} data-testid="quick-mock-cta" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5 motion-reduce:transition-none">
++            {copy.cta} <ArrowRight className="h-4 w-4" aria-hidden />
++          </Link>
++        )}
++      </div>
++    </section>
++  );
++}
+diff --git a/src/components/quick-mock/quick-mock-strip.tsx b/src/components/quick-mock/quick-mock-strip.tsx
+new file mode 100644
+index 0000000..e8d97dc
+--- /dev/null
++++ b/src/components/quick-mock/quick-mock-strip.tsx
+@@ -0,0 +1,37 @@
++// A one-line Quick Mock nudge for places where a big banner would be too much: the chapter list, the end-of-practice
++// screen and the PYQ landing pages. It links to the same /pyq-drill engine as every other entry point.
++import { useRef } from "react";
++import { Link } from "@tanstack/react-router";
++import { ArrowRight, Timer } from "lucide-react";
++import { cn } from "@/lib/utils";
++import { DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
++import { quickMockName, quickMockSearch, type QuickMockSource } from "@/lib/quick-mock";
++import { trackQuickMockClick, useQuickMockViewed } from "@/lib/quick-mock-analytics";
++import { useAuth } from "@/lib/auth-context";
++
++export function QuickMockStrip({ source, exam, lead, className }: { source: QuickMockSource; exam?: string | null; /** Short line before the button, e.g. "Done with this chapter?" */ lead?: string; className?: string }) {
++  const { user } = useAuth();
++  const ref = useRef<HTMLDivElement>(null);
++  useQuickMockViewed(ref, source, {}, true);
++  const name = quickMockName(exam);
++  const onClick = () => trackQuickMockClick(source, { signed_in: Boolean(user) });
++  // A visitor who isn't signed in goes to sign-up first and comes straight back to the Quick Mock afterwards.
++  const link = user ? (
++    <Link to="/pyq-drill" search={quickMockSearch({ src: source })} onClick={onClick} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 text-sm font-bold text-primary hover:underline">
++      Take a Quick Mock <ArrowRight className="h-4 w-4" aria-hidden />
++    </Link>
++  ) : (
++    <Link to="/auth" search={{ tab: "signup", redirect: `/pyq-drill?src=${source}` }} onClick={onClick} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 text-sm font-bold text-primary hover:underline">
++      Take a Quick Mock <ArrowRight className="h-4 w-4" aria-hidden />
++    </Link>
++  );
++  return (
++    <div ref={ref} data-testid="quick-mock-strip" className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-2xl border border-border bg-card px-4 py-2.5", className)}>
++      <p className="flex min-w-0 items-center gap-2.5 text-sm text-foreground/80">
++        <Timer className="h-4 w-4 shrink-0 text-primary" aria-hidden />
++        <span className="min-w-0"><b className="text-foreground">{name}</b> · {DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} min{lead ? ` · ${lead}` : ""}</span>
++      </p>
++      {link}
++    </div>
++  );
++}
+diff --git a/src/components/quick-mock/use-quick-mock-status.ts b/src/components/quick-mock/use-quick-mock-status.ts
+new file mode 100644
+index 0000000..244d4b7
+--- /dev/null
++++ b/src/components/quick-mock/use-quick-mock-status.ts
+@@ -0,0 +1,40 @@
++// What the Quick Mock button should say for THIS student right now: free one ready, used up, Pro-only, in progress.
++// Reads the same getDrillAccess the Quick Mock page and the server use, so it can't promise a free mock the server will refuse.
++import { useEffect, useMemo, useState } from "react";
++import { useAuth } from "@/lib/auth-context";
++import { getDrillAccess } from "@/server-functions/pro";
++import { hasFeature, type DrillAccess } from "@/lib/pro";
++import { quickMockStatus, type QuickMockStatus } from "@/lib/quick-mock";
++
++export function useQuickMockStatus(): { access: DrillAccess | null; status: QuickMockStatus; loaded: boolean } {
++  const { user } = useAuth();
++  const [access, setAccess] = useState<DrillAccess | null>(null);
++  const [loaded, setLoaded] = useState(false);
++
++  useEffect(() => {
++    if (!user) return;
++    let cancelled = false;
++    (async () => {
++      try {
++        const a = await getDrillAccess({ data: { token: await user.getIdToken() } });
++        if (!cancelled) setAccess(a);
++      } catch {
++        // unknown status: the card falls back to a plain "Start Quick Mock"; the server still enforces the limits
++      } finally {
++        if (!cancelled) setLoaded(true);
++      }
++    })();
++    return () => {
++      cancelled = true;
++    };
++  }, [user]);
++
++  const status = useMemo(
++    () =>
++      access
++        ? quickMockStatus({ gatingOn: access.gatingOn, isPro: access.isPro, unlimited: hasFeature(access, "unlimitedDrills"), usedToday: access.usedToday, freeLimit: access.freeLimit, running: access.running })
++        : quickMockStatus(null),
++    [access],
++  );
++  return { access, status, loaded };
++}
+diff --git a/src/lib/posthog-admin-core.ts b/src/lib/posthog-admin-core.ts
+index c719c15..77134dc 100644
+--- a/src/lib/posthog-admin-core.ts
++++ b/src/lib/posthog-admin-core.ts
+@@ -23,6 +23,12 @@ export const TRACKED_EVENTS = [
+   "mistake_revision_started",
+   "mistake_revision_completed",
+   "mentor_profile_viewed",
++  // NEET Quick Mock funnel. `source` = homepage | dashboard | sidebar | subject_practice | practice_results | pyq_landing | pyq_browse | direct
++  "quick_mock_cta_viewed",
++  "quick_mock_cta_clicked",
++  "quick_mock_started",
++  "quick_mock_completed",
++  "quick_mock_upgrade_clicked",
+   "drill_started",
+   "drill_submitted",
+   "test_submitted",
+@@ -326,6 +332,7 @@ export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | nul
+ export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
+   { title: "PYQ practice", steps: [{ event: "practice_started", label: "Started practising" }, { event: "question_answered", label: "Answered a question" }, { event: "practice_completed", label: "Finished a session" }] },
+   { title: "Mistake revision", steps: [{ event: "mistake_revision_started", label: "Started revising" }, { event: "mistake_revision_completed", label: "Finished revising" }] },
++  { title: "Quick Mock", steps: [{ event: "quick_mock_cta_viewed", label: "Saw the Quick Mock button" }, { event: "quick_mock_cta_clicked", label: "Tapped it" }, { event: "quick_mock_started", label: "Started a mock" }, { event: "quick_mock_completed", label: "Finished a mock" }] },
+   { title: "Timed drills", steps: [{ event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
+   { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
+   { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
+diff --git a/src/lib/practice-progress.ts b/src/lib/practice-progress.ts
+index e2710b4..0b3468f 100644
+--- a/src/lib/practice-progress.ts
++++ b/src/lib/practice-progress.ts
+@@ -5,6 +5,7 @@ import type { Db } from "@/lib/pyq-server";
+ import {
+   advanceStreak,
+   EMPTY_STREAK,
++  isCorrection,
+   istDayKey,
+   nextReviewState,
+   type Outcome,
+@@ -25,14 +26,19 @@ export async function recordPracticeOutcomes(
+   uid: string,
+   entries: PracticeEntry[],
+   now: Date = new Date(),
+-): Promise<{ streak: Streak; streakIncreased: boolean } | null> {
++): Promise<{ streak: Streak; streakIncreased: boolean; correctedIds: string[] } | null> {
+   if (entries.length === 0) return null;
+   const col = db.collection("practiceProgress");
+   const existing = await col.find({ uid, questionId: { $in: entries.map((e) => e.questionId) } }).toArray();
+   const prevMap = new Map(existing.map((d) => [d.questionId as string, d]));
+ 
++  // Past mistakes this batch fixes (wrong last time, right now). Counted per question: `correctedAt` is set the first time
++  // only, `timesCorrected` counts later fix-ups after a relapse, and the event log keeps every attempt.
++  const correctedIds: string[] = [];
+   const ops = entries.map((e) => {
+     const prev = prevMap.get(e.questionId);
++    const fixed = isCorrection(prev as { attempts?: number; correct?: boolean } | undefined, e.outcome);
++    if (fixed) correctedIds.push(e.questionId);
+     const review = nextReviewState(
+       prev
+         ? { reviewStage: (prev.reviewStage as number | null | undefined) ?? null, nextReviewAt: (prev.nextReviewAt as Date | null | undefined) ?? null, mastered: Boolean(prev.mastered) }
+@@ -53,10 +59,17 @@ export async function recordPracticeOutcomes(
+     }
+     set.correct = e.outcome === "correct";
+     set.lastAnswer = e.lastAnswer ?? null;
++    if (fixed) set.lastCorrectedAt = now;
+     return {
+       updateOne: {
+         filter: { uid, questionId: e.questionId },
+-        update: { $set: set, $inc: { attempts: 1 }, $setOnInsert: { createdAt: now } },
++        update: {
++          $set: set,
++          $inc: { attempts: 1, ...(fixed ? { timesCorrected: 1 } : {}) },
++          // `correctedAt` keeps the FIRST time a mistake was fixed, so "mistakes corrected" counts questions, not attempts.
++          ...(fixed && !prev?.correctedAt ? { $min: { correctedAt: now } } : {}),
++          $setOnInsert: { createdAt: now },
++        },
+         upsert: true,
+       },
+     };
+@@ -67,12 +80,12 @@ export async function recordPracticeOutcomes(
+   // so without this the admin can't see what was solved when, or the streak
+   // reminder recap. Best-effort — never blocks or fails a student's answer.
+   db.collection("practiceEvents")
+-    .insertMany(entries.map((e) => ({ uid, questionId: e.questionId, outcome: e.outcome, answer: e.lastAnswer ?? null, ...e.keys, at: now })))
++    .insertMany(entries.map((e) => ({ uid, questionId: e.questionId, outcome: e.outcome, answer: e.lastAnswer ?? null, ...e.keys, ...(correctedIds.includes(e.questionId) ? { corrected: true } : {}), at: now })))
+     .catch((err) => console.error("[practiceEvents] insert failed:", err));
+ 
+   // Peeking at a solution isn't practice; only real answers keep a streak alive.
+   if (!entries.some((e) => e.outcome !== "revealed")) return null;
+-  return bumpStreak(db, uid, now);
++  return { ...(await bumpStreak(db, uid, now)), correctedIds };
+ }
+ 
+ export async function bumpStreak(db: Db, uid: string, now: Date = new Date()): Promise<{ streak: Streak; streakIncreased: boolean }> {
+diff --git a/src/lib/practice-schedule.ts b/src/lib/practice-schedule.ts
+index cf23024..9f38dff 100644
+--- a/src/lib/practice-schedule.ts
++++ b/src/lib/practice-schedule.ts
+@@ -132,3 +132,20 @@ export function balancedPick<T extends { subject: string }>(items: T[], total: n
+ export function remainingSeconds(startedAt: Date, durationSec: number, now: Date): number {
+   return Math.max(0, Math.min(durationSec, Math.round(durationSec - (now.getTime() - startedAt.getTime()) / 1000)));
+ }
++
++// ─── Mistakes that were fixed ──────────────────────────────────────────────
++/**
++ * True when this answer turns a past mistake into a correct answer: the question had been answered before, the last
++ * answer was wrong, and this one is right. Used to count corrected mistakes ONCE per question (a later correct answer
++ * on an already-corrected question is not a new correction).
++ */
++export function isCorrection(prev: { attempts?: number | null; correct?: boolean | null } | null | undefined, outcome: Outcome): boolean {
++  return outcome === "correct" && Boolean(prev) && Number(prev!.attempts) > 0 && prev!.correct === false;
++}
++
++/** A second tap / retry of the SAME answer on the same question within this window is the same submission, not a new attempt. */
++export const DUPLICATE_SUBMIT_MS = 4000;
++export function isDuplicateSubmit(prev: { attempts?: number | null; lastAnswer?: unknown; updatedAt?: Date | null } | null | undefined, answer: string | number, now: Date): boolean {
++  if (!prev || !(Number(prev.attempts) > 0) || !(prev.updatedAt instanceof Date)) return false;
++  return String(prev.lastAnswer) === String(answer) && now.getTime() - prev.updatedAt.getTime() >= 0 && now.getTime() - prev.updatedAt.getTime() < DUPLICATE_SUBMIT_MS;
++}
+diff --git a/src/lib/practice-stats.ts b/src/lib/practice-stats.ts
+index 6e77b97..ecfc2a1 100644
+--- a/src/lib/practice-stats.ts
++++ b/src/lib/practice-stats.ts
+@@ -145,3 +145,16 @@ export function examLabel(exam: string | null | undefined): string {
+   const k = norm(exam);
+   return k ? { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" }[k] : "NEET";
+ }
++
++// ─── Progress metrics (one rule, used everywhere) ──────────────────────────
++export type PracticeProgress = { available: number; attempted: number; remaining: number; accuracy: number | null; percentDone: number };
 +
 +/**
-+ * Chapters that have at least one PUBLISHED resource, for the JEE Main 2027 landing page — newest-updated first,
-+ * balanced across Physics, Chemistry and Mathematics where possible. Metadata only (no path, bucket or link):
-+ * a file's real location is still released only by accessResource() when a student previews or downloads it.
-+ * Chapters no longer in the syllabus are skipped. Same filter, and same 30 s cache + reset-on-write, as librarySummary().
++ * Available PYQs, UNIQUE questions attempted, what is left, and accuracy. `attempted` counts distinct questions, so
++ * answering the same question again (revision, retry) never moves it; it can never exceed what is available.
 + */
-+export async function featuredChapters(limit = 6): Promise<JeeFeaturedChapter[]> {
-+  const max = Math.min(Math.max(Math.trunc(limit) || 6, 1), 12);
-+  const key = String(max);
-+  const hit = featuredCache.get(key);
-+  if (hit) return hit;
-+  await ensureIndexes();
-+  const db = await getDb();
-+  const rows = await db
-+    .collection(COLLECTION)
-+    .aggregate([
-+      { $match: libraryFilter },
-+      { $group: { _id: { s: "$subjectKey", c: "$chapterSlug" }, types: { $addToSet: "$type" }, n: { $sum: 1 }, updated: { $max: "$updatedAt" } } },
-+      { $sort: { updated: -1 } },
-+    ])
-+    .toArray();
-+  const rank = (t: string) => JEE_RESOURCE_TYPES.indexOf(t as JeeResourceType);
-+  const candidates: JeeFeaturedChapter[] = [];
-+  for (const r of rows) {
-+    if (!isJeeSubject(r._id.s)) continue;
-+    const chapter = getJeeChapter(r._id.s, r._id.c);
-+    if (!chapter || chapter.retired) continue;
-+    const types = (r.types as string[]).filter(isJeeType).sort((a, b) => rank(a) - rank(b));
-+    if (!types.length) continue;
-+    candidates.push({
-+      subjectKey: r._id.s,
-+      subjectName: JEE_RESOURCE_SUBJECT_LABELS[r._id.s as JeeResourceSubject],
-+      chapterSlug: chapter.slug,
-+      chapterName: chapter.name,
-+      types,
-+      count: r.n as number,
-+    });
-+  }
-+  const picked = pickBalanced(candidates, JEE_RESOURCE_SUBJECTS, max);
-+  featuredCache.set(key, picked);
-+  return picked;
++export function practiceProgress(available: number, uniqueAttempted: number, correct: number): PracticeProgress {
++  const total = Math.max(0, Math.floor(Number.isFinite(available) ? available : 0));
++  const attempted = Math.min(total, Math.max(0, Math.floor(Number.isFinite(uniqueAttempted) ? uniqueAttempted : 0)));
++  return { available: total, attempted, remaining: total - attempted, accuracy: accuracyPercent(correct, attempted), percentDone: total > 0 ? clampPercent((attempted / total) * 100) : 0 };
 +}
-diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
-index 511a79b..0be4ac8 100644
---- a/src/lib/sitemap-core.ts
-+++ b/src/lib/sitemap-core.ts
-@@ -15,6 +15,8 @@ import { istDayKey } from "@/lib/practice-schedule";
- import { getJeeSubjects } from "@/lib/jee-blueprint";
- import { librarySummary } from "@/lib/jee-resource-core";
- import { JEE_LIB_BASE, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
-+import { jeeLandingMeta } from "@/lib/jee-landing-core";
-+import { JEE_LANDING_PATH, jeeLandingIndexable } from "@/lib/jee-landing-types";
- 
- type Db = Awaited<ReturnType<typeof getDb>>;
- 
-@@ -170,6 +172,15 @@ export async function jeeResourceEntries(): Promise<string[]> {
-   return out;
+diff --git a/src/lib/pro-server.ts b/src/lib/pro-server.ts
+index 92a3f58..bee8bc2 100644
+--- a/src/lib/pro-server.ts
++++ b/src/lib/pro-server.ts
+@@ -67,9 +67,18 @@ export async function countDrillsToday(db: Db, uid: string, now = new Date()): P
+   return db.collection("pyqDrills").countDocuments({ uid, startedAt: { $gte: start, $lt: end } });
  }
  
-+// The JEE Main 2027 landing page (/jee-main-2027). Listed only when the page itself is indexable (same rule as its
-+// <head>: something published, or JEE questions available), with lastmod = newest published article or resource edit.
-+// Throws on a DB failure so the caller can answer 503 instead of caching a short list.
-+export async function jeeLandingEntries(): Promise<string[]> {
-+  const meta = await jeeLandingMeta();
-+  if (!jeeLandingIndexable(meta)) return [];
-+  return [urlEntry(`${SITE_URL}${JEE_LANDING_PATH}`, meta.lastmod ? toIsoDate(meta.lastmod) : JEE_LASTMOD, 0.9, "daily")];
++/** The student's unfinished Quick Mock whose clock hasn't run out, if any (same rule startPyqDrill uses to resume). */
++async function runningDrill(db: Db, uid: string, now: Date): Promise<DrillAccess["running"]> {
++  const d = await db.collection("pyqDrills").find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
++  if (!d) return null;
++  const remainingSec = Math.max(0, Math.round(((d.startedAt as Date).getTime() + (d.durationSec as number) * 1000 - now.getTime()) / 1000));
++  return remainingSec > 0 ? { drillId: String(d._id), remainingSec } : null;
 +}
 +
- // Free tools and the data-driven NEET pages. Static content, so these are always listed.
- const SEO_LASTMOD = "2026-10-15";
- export function seoEntries(): string[] {
-diff --git a/src/routeTree.gen.ts b/src/routeTree.gen.ts
-index 09915b5..0acb9d0 100644
---- a/src/routeTree.gen.ts
-+++ b/src/routeTree.gen.ts
-@@ -87,6 +87,7 @@ import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certif
- import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
- import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
- import { Route as JeeMain2027ResourcesIndexRouteImport } from './routes/jee-main-2027.resources.index'
-+import { Route as JeeMain2027IndexRouteImport } from './routes/jee-main-2027.index'
- import { Route as JeeChapterWiseWeightageIndexRouteImport } from './routes/jee.chapter-wise-weightage.index'
- import { Route as JeePaperAnalysisIndexRouteImport } from './routes/jee.paper-analysis.index'
- import { Route as JeeSyllabusIndexRouteImport } from './routes/jee.syllabus.index'
-@@ -494,6 +495,11 @@ const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
-   path: '/intern/trial/$code',
-   getParentRoute: () => rootRouteImport,
- } as any)
-+const JeeMain2027IndexRoute = JeeMain2027IndexRouteImport.update({
-+  id: '/jee-main-2027/',
-+  path: '/jee-main-2027/',
-+  getParentRoute: () => rootRouteImport,
-+} as any)
- const JeeMain2027ResourcesIndexRoute =
-   JeeMain2027ResourcesIndexRouteImport.update({
-     id: '/jee-main-2027/resources/',
-@@ -679,6 +685,7 @@ export interface FileRoutesByFullPath {
-   '/intern/trial/$code': typeof InternTrialCodeRoute
-   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
-   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
-+  '/jee-main-2027/': typeof JeeMain2027IndexRoute
-   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
-   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
-   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
-@@ -776,6 +783,7 @@ export interface FileRoutesByTo {
-   '/intern/trial/$code': typeof InternTrialCodeRoute
-   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
-   '/jee-main-2027/resources': typeof JeeMain2027ResourcesIndexRoute
-+  '/jee-main-2027': typeof JeeMain2027IndexRoute
-   '/jee/chapter-wise-weightage': typeof JeeChapterWiseWeightageIndexRoute
-   '/jee/paper-analysis': typeof JeePaperAnalysisIndexRoute
-   '/jee/syllabus': typeof JeeSyllabusIndexRoute
-@@ -874,6 +882,7 @@ export interface FileRoutesById {
-   '/intern/trial/$code': typeof InternTrialCodeRoute
-   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
-   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
-+  '/jee-main-2027/': typeof JeeMain2027IndexRoute
-   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
-   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
-   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
-@@ -973,6 +982,7 @@ export interface FileRouteTypes {
-     | '/intern/trial/$code'
-     | '/jee/syllabus/$subject'
-     | '/jee-main-2027/resources/'
-+    | '/jee-main-2027/'
-     | '/jee/chapter-wise-weightage/'
-     | '/jee/paper-analysis/'
-     | '/jee/syllabus/'
-@@ -1070,6 +1080,7 @@ export interface FileRouteTypes {
-     | '/intern/trial/$code'
-     | '/jee/syllabus/$subject'
-     | '/jee-main-2027/resources'
-+    | '/jee-main-2027'
-     | '/jee/chapter-wise-weightage'
-     | '/jee/paper-analysis'
-     | '/jee/syllabus'
-@@ -1167,6 +1178,7 @@ export interface FileRouteTypes {
-     | '/intern/trial/$code'
-     | '/jee/syllabus/$subject'
-     | '/jee-main-2027/resources/'
-+    | '/jee-main-2027/'
-     | '/jee/chapter-wise-weightage/'
-     | '/jee/paper-analysis/'
-     | '/jee/syllabus/'
-@@ -1264,6 +1276,7 @@ export interface RootRouteChildren {
-   InternTrialCodeRoute: typeof InternTrialCodeRoute
-   JeeSyllabusSubjectRoute: typeof JeeSyllabusSubjectRoute
-   JeeMain2027ResourcesIndexRoute: typeof JeeMain2027ResourcesIndexRoute
-+  JeeMain2027IndexRoute: typeof JeeMain2027IndexRoute
-   JeeChapterWiseWeightageIndexRoute: typeof JeeChapterWiseWeightageIndexRoute
-   JeePaperAnalysisIndexRoute: typeof JeePaperAnalysisIndexRoute
-   JeeSyllabusIndexRoute: typeof JeeSyllabusIndexRoute
-@@ -1823,6 +1836,13 @@ declare module '@tanstack/react-router' {
-       preLoaderRoute: typeof InternTrialCodeRouteImport
-       parentRoute: typeof rootRouteImport
-     }
-+    '/jee-main-2027/': {
-+      id: '/jee-main-2027/'
-+      path: '/jee-main-2027'
-+      fullPath: '/jee-main-2027/'
-+      preLoaderRoute: typeof JeeMain2027IndexRouteImport
-+      parentRoute: typeof rootRouteImport
-+    }
-     '/jee-main-2027/resources/': {
-       id: '/jee-main-2027/resources/'
-       path: '/jee-main-2027/resources'
-@@ -2042,6 +2062,7 @@ const rootRouteChildren: RootRouteChildren = {
-   InternTrialCodeRoute: InternTrialCodeRoute,
-   JeeSyllabusSubjectRoute: JeeSyllabusSubjectRoute,
-   JeeMain2027ResourcesIndexRoute: JeeMain2027ResourcesIndexRoute,
-+  JeeMain2027IndexRoute: JeeMain2027IndexRoute,
-   JeeChapterWiseWeightageIndexRoute: JeeChapterWiseWeightageIndexRoute,
-   JeePaperAnalysisIndexRoute: JeePaperAnalysisIndexRoute,
-   JeeSyllabusIndexRoute: JeeSyllabusIndexRoute,
+ export async function getDrillAccess(db: Db, uid: string, now = new Date()): Promise<DrillAccess> {
+-  const [plans, settings, ent] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now)]);
++  const [plans, settings, ent, running] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now), runningDrill(db, uid, now).catch(() => null)]);
+   return {
++    running,
+     gatingOn: plans.length > 0,
+     isPro: ent.until !== null,
+     proUntil: ent.until ? ent.until.toISOString() : null,
+diff --git a/src/lib/pro.ts b/src/lib/pro.ts
+index 241b8b1..2511397 100644
+--- a/src/lib/pro.ts
++++ b/src/lib/pro.ts
+@@ -21,7 +21,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
+ 
+ /** Every feature Pro can switch on. The admin screen and the student upgrade card are generated from this list. */
+ export const PRO_FEATURES = {
+-  unlimitedDrills: { label: "Unlimited timed drills", description: "No daily cap on timed PYQ drills." },
++  unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on NEET Quick Mocks (timed PYQ drills)." },
+   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
+ } as const;
+ export type ProFeatureKey = keyof typeof PRO_FEATURES;
+@@ -68,6 +68,8 @@ export type DrillAccess = {
+   features: ProFeatureKey[];
+   /** Which features need Pro right now (admin setting). */
+   proOnly: Record<ProFeatureKey, boolean>;
++  /** A Quick Mock this student started and hasn't submitted yet. The server resumes it instead of using up another one. */
++  running?: { drillId: string; remainingSec: number } | null;
+ };
+ 
+ export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number };
+diff --git a/src/lib/pyq-types.ts b/src/lib/pyq-types.ts
+index 6b2a16f..93b049a 100644
+--- a/src/lib/pyq-types.ts
++++ b/src/lib/pyq-types.ts
+@@ -62,6 +62,8 @@ export type PyqCheckResult = {
+   status: PyqStatus;
+   /** Set when this answer counted toward the daily streak. */
+   streak?: { current: number; increased: boolean };
++  /** True when this right answer fixed a question that was previously wrong (counted once per question). */
++  corrected?: boolean;
+ };
+ 
+ // ─── Daily PYQ, notebook, Today card ───────────────────────────────────────
+@@ -91,12 +93,21 @@ export type NotebookSummary = {
+   wrong: number;
+   bookmarked: number;
+   mastered: number;
++  /** Distinct past mistakes the student has since answered correctly. Re-answering never inflates it. */
++  corrected: number;
+   /** ISO time of the next revision that isn't due yet, if any. */
+   nextDueAt: string | null;
+ };
+ 
+ // ─── Timed drills ──────────────────────────────────────────────────────────
+-export type DrillSet = { drillId: string; durationSec: number; remainingSec: number; questions: PyqQuestion[] };
++export type DrillSet = {
++  drillId: string;
++  durationSec: number;
++  remainingSec: number;
++  questions: PyqQuestion[];
++  /** True when this call picked up an unfinished Quick Mock instead of starting a new one (so analytics must not count a new start). */
++  resumed?: boolean;
++};
+ export type DrillResult = {
+   drillId: string;
+   score: number;
+diff --git a/src/lib/quick-mock-analytics.ts b/src/lib/quick-mock-analytics.ts
+new file mode 100644
+index 0000000..4b562c6
+--- /dev/null
++++ b/src/lib/quick-mock-analytics.ts
+@@ -0,0 +1,43 @@
++// PostHog events for the Quick Mock funnel. Thin wrappers over lib/analytics so every entry point reports the same
++// way, and so nothing is sent twice:
++//   quick_mock_cta_viewed    the button was actually on screen (>= half visible), once per placement per page load
++//   quick_mock_cta_clicked   the student tapped it (a double tap within 1.5 s is one click)
++//   quick_mock_started       a NEW Quick Mock was created (resuming an unfinished one is not a start; see routes/pyq-drill)
++//   quick_mock_completed     the Quick Mock was submitted, once per drill
++//   quick_mock_upgrade_clicked  the student opened the Pro details or tapped a plan from the Quick Mock page
++// Every event carries `source` (homepage | dashboard | sidebar | subject_practice | practice_results | pyq_landing |
++// pyq_browse | direct). No personal data: ids and counts only.
++import { useEffect, type RefObject } from "react";
++import { track, trackOnce } from "@/lib/analytics";
++import type { QuickMockSource } from "@/lib/quick-mock";
++
++type Where = QuickMockSource | "direct";
++const lastClick = new Map<string, number>();
++
++export function trackQuickMockClick(source: Where, props: Record<string, string | number | boolean | null | undefined> = {}): void {
++  const now = Date.now();
++  if (now - (lastClick.get(source) ?? 0) < 1500) return;
++  lastClick.set(source, now);
++  track("quick_mock_cta_clicked", { source, ...props });
++}
++
++/** Fires quick_mock_cta_viewed once the element is at least half on screen. A placement that is never scrolled to is never "viewed". */
++export function useQuickMockViewed(ref: RefObject<Element | null>, source: QuickMockSource, props: Record<string, string | number | boolean | null | undefined> = {}, enabled = true): void {
++  const state = props.state;
++  useEffect(() => {
++    const el = ref.current;
++    if (!enabled || !el || typeof IntersectionObserver === "undefined") return;
++    const io = new IntersectionObserver(
++      (entries) => {
++        if (entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.5)) {
++          trackOnce(`qm-view:${source}`, "quick_mock_cta_viewed", { source, ...props });
++          io.disconnect();
++        }
++      },
++      { threshold: [0.5] },
++    );
++    io.observe(el);
++    return () => io.disconnect();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [ref, source, enabled, state]);
++}
+diff --git a/src/lib/quick-mock.ts b/src/lib/quick-mock.ts
+new file mode 100644
+index 0000000..70c1b71
+--- /dev/null
++++ b/src/lib/quick-mock.ts
+@@ -0,0 +1,80 @@
++// "NEET Quick Mock" = the existing 20-question timed PYQ drill (route /pyq-drill, startPyqDrill, scoreDrill).
++// This file is only the student-facing name, the wording for each state, and the analytics source names, so every
++// entry point (homepage, dashboard, sidebar, subject practice, results, landing pages) says the same thing.
++// Pure: no imports, so it is unit-tested with plain Node.
++
++export const QUICK_MOCK_PATH = "/pyq-drill" as const;
++
++/** Where a student found the Quick Mock. Sent with quick_mock_cta_* and quick_mock_started. */
++export const QUICK_MOCK_SOURCES = ["homepage", "dashboard", "sidebar", "subject_practice", "practice_results", "pyq_landing", "pyq_browse"] as const;
++export type QuickMockSource = (typeof QUICK_MOCK_SOURCES)[number];
++
++/** Whatever was in the URL, reduced to a known source (anything else is undefined, reported as "direct"). */
++export function cleanQuickMockSource(v: unknown): QuickMockSource | undefined {
++  return (QUICK_MOCK_SOURCES as readonly string[]).includes(v as string) ? (v as QuickMockSource) : undefined;
++}
++
++/** "NEET Quick Mock" (or "JEE Quick Mock" for a JEE student, because the drill serves the student's own exam). */
++export function quickMockName(exam?: string | null): string {
++  return String(exam ?? "").toLowerCase().includes("jee") ? "JEE Quick Mock" : "NEET Quick Mock";
++}
++
++export type QuickMockInput = {
++  /** False until the team publishes a Pro plan; while false nothing is limited. */
++  gatingOn: boolean;
++  isPro: boolean;
++  /** hasFeature(access, "unlimitedDrills") */
++  unlimited: boolean;
++  usedToday: number;
++  freeLimit: number;
++  /** A drill this student already started and hasn't submitted (the server resumes it instead of using up another). */
++  running?: { drillId: string; remainingSec: number } | null;
++};
++
++export type QuickMockStatus =
++  | { kind: "unknown" }
++  | { kind: "resume"; drillId: string; remainingSec: number }
++  | { kind: "ready"; unlimited: boolean; isPro: boolean; left: number | null; freeLimit: number }
++  | { kind: "exhausted"; freeLimit: number }
++  | { kind: "pro_only" };
++
++export function quickMockStatus(a: QuickMockInput | null | undefined): QuickMockStatus {
++  if (!a) return { kind: "unknown" };
++  if (a.running && a.running.remainingSec > 0) return { kind: "resume", drillId: a.running.drillId, remainingSec: Math.floor(a.running.remainingSec) };
++  if (a.unlimited) return { kind: "ready", unlimited: true, isPro: a.isPro, left: null, freeLimit: a.freeLimit };
++  if (a.gatingOn && a.freeLimit <= 0) return { kind: "pro_only" };
++  const left = Math.max(0, a.freeLimit - a.usedToday);
++  return left > 0 ? { kind: "ready", unlimited: false, isPro: a.isPro, left, freeLimit: a.freeLimit } : { kind: "exhausted", freeLimit: a.freeLimit };
++}
++
++export const EXHAUSTED_MESSAGE = "You've completed today's free Quick Mock. Come back tomorrow for another, or unlock unlimited practice with Edurack Pro.";
++
++export type QuickMockCopy = { headline: string; detail: string | null; cta: string; /** The CTA starts something (true) or only explains (false). */ canStart: boolean };
++
++export function quickMockCopy(s: QuickMockStatus): QuickMockCopy {
++  switch (s.kind) {
++    case "resume":
++      return { headline: "Your Quick Mock is in progress", detail: `${Math.max(1, Math.ceil(s.remainingSec / 60))} min left on the clock`, cta: "Resume Quick Mock", canStart: true };
++    case "ready":
++      return s.unlimited && s.isPro
++        ? { headline: "Your Quick Mock is ready!", detail: "Unlimited with Edurack Pro", cta: "Start Quick Mock", canStart: true }
++        : { headline: "Your free Quick Mock is ready!", detail: !s.unlimited && s.left !== null && s.freeLimit > 1 ? `${s.left} of ${s.freeLimit} free today` : null, cta: "Start Quick Mock", canStart: true };
++    case "exhausted":
++      return { headline: EXHAUSTED_MESSAGE, detail: null, cta: "See you tomorrow", canStart: false };
++    case "pro_only":
++      return { headline: "Quick Mock is part of Edurack Pro", detail: "Unlock timed mocks with a Pro plan", cta: "Explore Edurack Pro", canStart: false };
++    default:
++      return { headline: "Practise under exam pressure", detail: null, cta: "Start Quick Mock", canStart: true };
++  }
++}
++
++/**
++ * Homepage promise: can an anonymous visitor really start a FREE Quick Mock? Yes unless the free plan has no drills
++ * while Pro is on sale. (They still need an account to take it; the CTA says where that goes.)
++ */
++export const freeQuickMockOffered = (offer: { gatingOn: boolean; freeLimit: number } | null | undefined): boolean => !offer || !offer.gatingOn || offer.freeLimit > 0;
++
++/** Path + search for a Quick Mock link, so every entry point builds the URL the same way. */
++export function quickMockSearch(opts: { exam?: string | null; src?: QuickMockSource; drillId?: string }): { exam?: string; src?: QuickMockSource; drillId?: string } {
++  return { ...(opts.exam ? { exam: opts.exam } : {}), ...(opts.src ? { src: opts.src } : {}), ...(opts.drillId ? { drillId: opts.drillId } : {}) };
++}
+diff --git a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
+index 09075c7..ad8b36a 100644
+--- a/src/routes/dashboard.tsx
++++ b/src/routes/dashboard.tsx
+@@ -2,6 +2,10 @@ import { MentorshipCompactCard, type UpNextInfo } from "@/components/today-card"
+ import { PracticePerformanceCard } from "@/components/dashboard/practice-performance-card";
+ import { PrepSetupCard } from "@/components/dashboard/prep-setup-card";
+ import { usePracticeStats } from "@/components/dashboard/use-practice-stats";
++import { QuickMockCard } from "@/components/quick-mock/quick-mock-card";
++import { useQuickMockStatus } from "@/components/quick-mock/use-quick-mock-status";
++import { quickMockName, quickMockSearch, type QuickMockStatus } from "@/lib/quick-mock";
++import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
+ import type { PracticeStats } from "@/lib/practice-stats";
+ import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
+ import { PyqHero } from "@/components/dashboard/pyq-hero";
+@@ -237,6 +241,8 @@ function DashboardPage() {
+   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
+   // The practice numbers, fetched once and shared by the hero and the performance card so they always agree.
+   const { stats: practiceStats, failed: statsFailed, reload: reloadStats } = usePracticeStats();
++  // Today's Quick Mock allowance (free one ready / used up / Pro-only / unfinished), for the card and the sidebar entry.
++  const { status: qmStatus, loaded: qmLoaded } = useQuickMockStatus();
+ 
+   // One request for the whole dashboard (profile, catalog, purchases, sessions,
+   // bookings, performance) — see server-functions/dashboard.ts. If that request
+@@ -467,6 +473,12 @@ function DashboardPage() {
+               <ClipboardList className="h-[18px] w-[18px]" />PYQ Practice
+               <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Free</span>
+             </Link>
++            {/* Quick Mock sits right under PYQ Practice: same practice family, one tap, same engine. */}
++            <Link to="/pyq-drill" search={quickMockSearch({ src: "sidebar", drillId: qmStatus.kind === "resume" ? qmStatus.drillId : undefined })} onClick={() => trackQuickMockClick("sidebar", { state: qmStatus.kind })} data-testid="sidebar-quick-mock" className="mb-3 flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary">
++              <Clock className="h-[18px] w-[18px]" />{quickMockName(profile?.targetExam)}
++              {qmStatus.kind === "ready" && <span className="ml-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-emerald-700 dark:text-emerald-300">{qmStatus.unlimited ? "Pro" : "Free"}</span>}
++              {qmStatus.kind === "resume" && <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Resume</span>}
++            </Link>
+             {nav.map((n) => (
+               <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${view === n.key ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-secondary"}`}>
+                 <n.icon className="h-[18px] w-[18px]" />{n.label}
+@@ -501,7 +513,7 @@ function DashboardPage() {
+             ) : view === "home" ? (
+               <Overview
+                 upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf}
+-                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats}
++                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats} qmStatus={qmStatus} qmLoaded={qmLoaded}
+                 profile={profile} onProfileSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } as StudentProfile : prev))}
+                 ownedListings={ownedListings} ownedTests={ownedTests} freeSlots={featuredFreeSlots}
+                 recommended={(track ? recommended : (allListings ?? []).filter((l) => l.kind === "Test Series")).slice(0, 3)}
+@@ -589,9 +601,9 @@ function Panel({ title, action, children, className = "" }: { title: string; act
+ 
+ const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
+ 
+-function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
++function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, qmStatus, qmLoaded, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
+   upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
+-  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void;
++  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void; qmStatus: QuickMockStatus; qmLoaded: boolean;
+   profile: StudentProfile | null; onProfileSaved: (next: Partial<StudentProfile>) => void;
+   ownedListings: Listing[]; ownedTests: SoldTestEntry[]; freeSlots: { offering: PublicMentorOffering; slot: OpenSlot }[]; recommended: Listing[];
+   go: (v: View) => void; getToken: () => Promise<string>; onBooked: () => void;
+@@ -633,6 +645,9 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
+       {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
+       <PyqHero stats={stats} statsFailed={statsFailed} />
+ 
++      {/* 1b. Quick Mock, right under chapter-wise practice and well above the mentorship card, reflecting today's real allowance. */}
++      <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />
++
+       {/* 2. Exam, class and target year: only what's missing, one tap each, never blocks practice. A new student is asked for the year after their first question. */}
+       <PrepSetupCard
+         profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
 diff --git a/src/routes/index.tsx b/src/routes/index.tsx
-index 15a9ee4..1a6ed87 100644
+index 15a9ee4..1360636 100644
 --- a/src/routes/index.tsx
 +++ b/src/routes/index.tsx
-@@ -774,7 +774,7 @@ type FooterLink = { label: string; to: string };
- const footerColumns: { title: string; links: FooterLink[] }[] = [
-   { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Edurack Pro", to: "/pro" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
-   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
--  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
-+  { title: "JEE guides", links: [{ label: "JEE Main 2027 hub", to: "/jee-main-2027" }, { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
-   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
-   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
- ];
-diff --git a/src/routes/jee-main-2027.index.tsx b/src/routes/jee-main-2027.index.tsx
-new file mode 100644
-index 0000000..91704d4
---- /dev/null
-+++ b/src/routes/jee-main-2027.index.tsx
-@@ -0,0 +1,51 @@
-+// src/routes/jee-main-2027.index.tsx  →  /jee-main-2027
-+//
-+// The JEE Main 2027 preparation hub. Server-rendered from existing published data (see server-functions/jee-landing.ts):
-+// the loader runs on the server for a first visit, so the articles, subject counts and featured chapters are in the
-+// HTML crawlers receive. Nothing is hardcoded; unpublishing content removes it on the next uncached load.
-+import { createFileRoute } from "@tanstack/react-router";
-+import { SITE_URL, breadcrumbJsonLd, noindexHead, pageHead } from "@/lib/seo";
-+import { faqPageJsonLd } from "@/lib/neet-blueprint-copy";
-+import { JEE_LANDING_DESCRIPTION, JEE_LANDING_FAQS, JEE_LANDING_TITLE } from "@/lib/jee-landing-copy";
-+import { JEE_LANDING_PATH, jeeLandingIndexable } from "@/lib/jee-landing-types";
-+import { JEE_LIBRARY_YEAR } from "@/lib/jee-resource-types";
-+import { getJeeLandingData } from "@/server-functions/jee-landing";
-+import { JeeLandingView } from "@/components/jee/jee-landing-view";
+@@ -42,6 +42,7 @@ import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMot
+ import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
+ import { LandingProSection } from "@/components/landing-pro-section";
+ import { FreeResourcesSection } from "@/components/landing/free-resources-section";
++import { QuickMockSection } from "@/components/landing/quick-mock-section";
+ 
+ // FIX: CbtSimulator is a heavy, below-the-fold interactive component
+ // (exam-navigation UI, question palette, timers, etc). It was being bundled
+@@ -347,6 +348,7 @@ function Index() {
+         <Header />
+         <main>
+           <HeroMotion ctaRef={ctaRef} />
++          <QuickMockSection />
+           <LandingFreeSessionsSection />
+           <LoopSection />
+           <SimulatorSection />
+diff --git a/src/routes/notebook.tsx b/src/routes/notebook.tsx
+index 7c96b17..b608f6b 100644
+--- a/src/routes/notebook.tsx
++++ b/src/routes/notebook.tsx
+@@ -56,7 +56,7 @@ function NotebookPage() {
+       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+         <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">My notebook</h1>
+         <p className="mt-1 text-sm text-foreground/60">
+-          Questions you got wrong come back after {REVIEW_INTERVAL_DAYS.join(", ")} days, so they actually stick.
++          Questions you got wrong come back after {REVIEW_INTERVAL_DAYS.join(", ")} days, so they actually stick. Retry them first; the solution opens after you answer.
+         </p>
+ 
+         {error ? (
+@@ -98,6 +98,14 @@ function NotebookPage() {
+               </p>
+             </div>
+ 
++            <div className="clay-inset mt-3 flex items-center gap-3 rounded-2xl px-4 py-3.5" data-testid="notebook-corrected">
++              <RotateCcw className="h-5 w-5 shrink-0 text-[var(--sky-deep)]" aria-hidden />
++              <p className="text-sm text-foreground/70">
++                <span className="font-bold text-foreground">{data.corrected}</span> mistake{data.corrected === 1 ? "" : "s"} corrected
++                {data.corrected === 0 ? ". Retry a mistake and get it right to see it here." : ". Each one counts once, however many times you revise it."}
++              </p>
++            </div>
 +
-+export const Route = createFileRoute("/jee-main-2027/")({
-+  loader: () => getJeeLandingData(),
-+  head: ({ loaderData }) => {
-+    // Completely empty (nothing published, no JEE questions) is a placeholder, not content: keep it out of search.
-+    if (loaderData && !jeeLandingIndexable({ resources: loaderData.summary.total, posts: loaderData.blog.total, pyq: loaderData.pyqTotal })) {
-+      return noindexHead(`JEE Main ${JEE_LIBRARY_YEAR}`, JEE_LANDING_DESCRIPTION);
+             <Link to="/pyq" className="mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-[var(--sky-deep)]">
+               <BookMarked className="h-4 w-4" aria-hidden />
+               Browse all PYQs
+diff --git a/src/routes/pyq-drill.tsx b/src/routes/pyq-drill.tsx
+index 478ac52..9c6927f 100644
+--- a/src/routes/pyq-drill.tsx
++++ b/src/routes/pyq-drill.tsx
+@@ -12,22 +12,25 @@ import type { DrillState } from "@/lib/pyq-types";
+ import type { DrillAnswer } from "@/lib/practice-schedule";
+ import { track, trackOnce } from "@/lib/analytics";
+ import { practiceProps } from "@/lib/practice-events";
++import { cleanQuickMockSource, type QuickMockSource } from "@/lib/quick-mock";
+ 
+ // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
+ // the server's clock, and a finished drill reopens its result.
+-type DrillSearch = { exam?: string; drillId?: string };
++// ?src= says which entry point sent the student here (homepage, dashboard, sidebar, ...) so Quick Mock analytics can
++// tell the placements apart. It is only ever used as an analytics label.
++type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource };
+ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
+ 
+ export const Route = createFileRoute("/pyq-drill")({
+-  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId) }),
+-  head: () => noindexHead("Timed PYQ drill"),
++  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src) }),
++  head: () => noindexHead("NEET Quick Mock"),
+   component: DrillPage,
+ });
+ 
+ function DrillPage() {
+   const { user, loading } = useAuth();
+   const navigate = useNavigate({ from: Route.fullPath });
+-  const { exam, drillId } = Route.useSearch();
++  const { exam, drillId, src } = Route.useSearch();
+ 
+   const [state, setState] = useState<DrillState | null>(null);
+   const [error, setError] = useState<string | null>(null);
+@@ -36,8 +39,9 @@ function DrillPage() {
+   const [startError, setStartError] = useState<string | null>(null);
+ 
+   useEffect(() => {
+-    if (!loading && !user) navigate({ to: "/auth" });
+-  }, [loading, user, navigate]);
++    // Not signed in: sign in (or up), then come straight back here with the same ?src= and ?exam=.
++    if (!loading && !user) navigate({ to: "/auth", search: { tab: "signin", redirect: `/pyq-drill${src || exam ? `?${new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}) }).toString()}` : ""}` } });
++  }, [loading, user, navigate, src, exam]);
+ 
+   // Load (or resume) the drill named in the URL.
+   useEffect(() => {
+@@ -68,11 +72,16 @@ function DrillPage() {
+       const token = await user.getIdToken();
+       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
+       setState({ status: "running", set });
++      // startPyqDrill hands back an unfinished mock when there is one, so a refresh or a second tap never starts (or counts)
++      // another. Only a NEWLY created mock is a start.
++      if (!set.resumed) {
+       // Same event names as ordinary PYQ practice, told apart by practice_type = "timed_drill". The older drill_started /
+       // drill_submitted events are kept so existing PostHog insights keep working.
+       track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
+       trackOnce(`drill-start:${set.drillId}`, "practice_started", { ...practiceProps({ mode: "timed_drill", exam, subject: opts.subject }), custom: Boolean(opts.custom), question_count: set.questions.length });
+-      navigate({ search: { exam, drillId: set.drillId }, replace: true });
++      trackOnce(`qm-start:${set.drillId}`, "quick_mock_started", { source: src ?? "direct", custom: Boolean(opts.custom), question_count: set.questions.length, duration_min: Math.round(set.durationSec / 60) });
++      }
++      navigate({ search: { exam, drillId: set.drillId, src }, replace: true });
+     } catch (e) {
+       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
+     } finally {
+@@ -97,6 +106,16 @@ function DrillPage() {
+           accuracy: result.correct + result.wrong > 0 ? Math.round((result.correct / (result.correct + result.wrong)) * 100) : null,
+           time_taken_sec: result.timeTakenSec,
+         });
++        track("quick_mock_completed", {
++          source: src ?? "direct",
++          score: result.score,
++          max_score: result.maxScore,
++          correct: result.correct,
++          wrong: result.wrong,
++          skipped: result.skipped,
++          time_taken_sec: result.timeTakenSec,
++          question_count: result.items.length,
++        });
+       }
+       try {
+         sessionStorage.removeItem(`edurack:drill:${drillId}`);
+@@ -105,7 +124,7 @@ function DrillPage() {
+       }
+       window.scrollTo({ top: 0 });
+     },
+-    [user, drillId, exam],
++    [user, drillId, exam, src],
+   );
+ 
+   if (loading || !user) {
+@@ -142,7 +161,7 @@ function DrillPage() {
+               <ChevronLeft className="h-4 w-4" aria-hidden />
+               PYQs
+             </button>
+-            <DrillLauncher user={user} exam={exam} starting={starting} error={startError} onStart={start} />
++            <DrillLauncher user={user} exam={exam} source={src} starting={starting} error={startError} onStart={start} />
+           </div>
+         )}
+       </main>
+diff --git a/src/routes/pyq.tsx b/src/routes/pyq.tsx
+index 6555cb7..a09931f 100644
+--- a/src/routes/pyq.tsx
++++ b/src/routes/pyq.tsx
+@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils";
+ import { Link } from "@tanstack/react-router";
+ import { BookMarked, Sparkles, Timer } from "lucide-react";
+ import { getDrillAccess } from "@/server-functions/pro";
++import { quickMockName } from "@/lib/quick-mock";
++import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
++import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
+ import { PRO_FEATURES, PRO_FEATURE_KEYS, type DrillAccess } from "@/lib/pro";
+ import type { SessionKind } from "@/lib/pyq-types";
+ 
+@@ -23,7 +26,7 @@ import type { SessionKind } from "@/lib/pyq-types";
+ // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
+ // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
+ // `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
+-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean };
++type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean; fresh?: boolean };
+ 
+ const FIRST_N = 5;
+ 
+@@ -40,6 +43,7 @@ export const Route = createFileRoute("/pyq")({
+     weakAttempt: str(search.weakAttempt),
+     session: SESSIONS.find((k) => k === search.session),
+     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
++    fresh: search.fresh === true || search.fresh === "true" || search.fresh === 1 || search.fresh === "1" ? true : undefined,
+     first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
+   }),
+   // Public now: logged-out visitors can browse and try a few questions.
+@@ -111,7 +115,7 @@ function PyqPage() {
+   }, [user, loading, search.practice, search.exam]);
+ 
+   function go(next: PyqNav) {
+-    navigate({ search: { exam: search.exam, subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice } });
++    navigate({ search: { exam: search.exam, subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice, fresh: next.fresh } });
+     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+   }
+ 
+@@ -161,7 +165,7 @@ function PyqPage() {
+         ) : practising ? (
+           <PyqPractice
+             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
+-            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}`}
++            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}|${search.fresh ? "fr" : ""}`}
+             subject={search.subject}
+             chapter={search.chapter}
+             topic={search.topic}
+@@ -170,6 +174,7 @@ function PyqPage() {
+             exam={tree?.exam ?? search.exam}
+             guest={guest}
+             limit={search.first5 && !guest ? FIRST_N : undefined}
++            startFresh={Boolean(search.fresh || (search.first5 && !guest))}
+             source={search.first5 ? "first_five" : undefined}
+             // A weak-topics session started from a result page returns to that result page.
+             // Sessions go back to where they started: the daily question to the dashboard,
+@@ -212,11 +217,11 @@ function PyqPage() {
+             )}
+             {!guest && !search.subject && (
+               <div className="mb-4 grid grid-cols-2 gap-2.5">
+-                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined }} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
++                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+                   <Timer className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                   <span className="min-w-0">
+-                    <span className="block text-sm font-bold text-foreground">Timed drill</span>
+-                    <span className="block truncate text-[11px] text-foreground/50">20 questions · 30 min</span>
++                    <span className="block text-sm font-bold text-foreground">{quickMockName(tree.exam)}</span>
++                    <span className="block truncate text-[11px] text-foreground/50">20 PYQs · 30 min</span>
+                   </span>
+                 </Link>
+                 <Link to="/notebook" className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+@@ -237,11 +242,11 @@ function PyqPage() {
+                 ? `Active until ${new Date(proAccess.proUntil ?? Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`
+                 : proAccess.gatingOn
+                   ? `Unlock ${unlocks || "more practice tools"}.`
+-                  : "Pick chapter or topic, difficulty, paper years and length for a timed drill.";
++                  : "Pick chapter or topic, difficulty, paper years and length for your own mock.";
+               return (
+                 <Link
+                   to="/pyq-drill"
+-                  search={{ exam: tree.exam ?? undefined }}
++                  search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }}
+                   className={cn("mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
+                 >
+                   <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", dark ? "bg-white/10" : "bg-[var(--sky-soft)]")}>
+diff --git a/src/server-functions/practice-extras.ts b/src/server-functions/practice-extras.ts
+index 2cc870f..4ab3ecc 100644
+--- a/src/server-functions/practice-extras.ts
++++ b/src/server-functions/practice-extras.ts
+@@ -152,11 +152,12 @@ export const getNotebookSummary = createServerFn({ method: "POST" })
+     const uid = decoded.uid;
+     const now = new Date();
+     const col = db.collection("practiceProgress");
+-    const [due, wrong, bookmarked, mastered, upcoming] = await Promise.all([
++    const [due, wrong, bookmarked, mastered, corrected, upcoming] = await Promise.all([
+       col.countDocuments({ uid, nextReviewAt: { $lte: now }, mastered: { $ne: true } }),
+       col.countDocuments({ uid, attempts: { $gt: 0 }, correct: false }),
+       col.countDocuments({ uid, bookmarked: true }),
+       col.countDocuments({ uid, mastered: true }),
++      col.countDocuments({ uid, correctedAt: { $type: "date" } }),
+       col.find({ uid, nextReviewAt: { $gt: now } }).sort({ nextReviewAt: 1 }).limit(1).next(),
+     ]);
+     return {
+@@ -165,6 +166,7 @@ export const getNotebookSummary = createServerFn({ method: "POST" })
+       wrong,
+       bookmarked,
+       mastered,
++      corrected,
+       nextDueAt: upcoming?.nextReviewAt instanceof Date ? upcoming.nextReviewAt.toISOString() : null,
+     };
+   });
+@@ -277,7 +279,7 @@ export const startPyqDrill = createServerFn({ method: "POST" })
+ 
+     // Refreshing or re-tapping "Start" resumes the running drill instead of burning a new one.
+     const running = await col.find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
+-    if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return drillSetFor(db, uid, running, now);
++    if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return { ...(await drillSetFor(db, uid, running, now)), resumed: true };
+ 
+     // Edurack Pro: a free student gets the admin-set number of standard drills a day; the features the admin
+     // marked Pro-only (unlimited drills, the custom builder, ...) need a plan that includes them. Nothing is
+diff --git a/src/server-functions/pyq-practice.ts b/src/server-functions/pyq-practice.ts
+index 12497ca..baa4860 100644
+--- a/src/server-functions/pyq-practice.ts
++++ b/src/server-functions/pyq-practice.ts
+@@ -34,6 +34,7 @@ import {
+ } from "@/lib/pyq-server";
+ import { loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
+ import { recordPracticeOutcomes } from "@/lib/practice-progress";
++import { isDuplicateSubmit } from "@/lib/practice-schedule";
+ import { pickWeakQuestions, weakKey } from "@/lib/pyq-weak";
+ import {
+   GENERAL_TOPIC,
+@@ -181,6 +182,14 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
+       lastAnswer = v;
+     }
+ 
++    // The same answer arriving again within a few seconds (a double tap, or a phone retrying a slow request) is the same
++    // submission: answer it again from what is stored, but don't count another attempt, climb another revision rung or
++    // add another history row. A genuine retry later, or a different answer, is recorded as usual.
++    const before = await col.findOne(where);
++    if (isDuplicateSubmit(before as { attempts?: number; lastAnswer?: unknown; updatedAt?: Date } | null, lastAnswer, new Date())) {
++      return { isCorrect, revealed: false, ...reveal, status: statusOf(before) };
 +    }
-+    const articles = [...(loaderData?.blog.updates ?? []), ...(loaderData?.blog.guides ?? [])];
-+    return pageHead({
-+      title: JEE_LANDING_TITLE,
-+      rawTitle: true, // the suggested title already carries the brand; the default suffix would double it
-+      description: JEE_LANDING_DESCRIPTION,
-+      path: JEE_LANDING_PATH,
-+      jsonLd: [
-+        breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: `JEE Main ${JEE_LIBRARY_YEAR}`, path: JEE_LANDING_PATH }]),
-+        {
-+          "@context": "https://schema.org",
-+          "@type": "CollectionPage",
-+          name: `JEE Main ${JEE_LIBRARY_YEAR} preparation hub`,
-+          description: JEE_LANDING_DESCRIPTION,
-+          url: `${SITE_URL}${JEE_LANDING_PATH}`,
-+          isPartOf: { "@type": "WebSite", name: "Edurack", url: SITE_URL },
-+          ...(articles.length
-+            ? { mainEntity: { "@type": "ItemList", itemListElement: articles.map((a, i) => ({ "@type": "ListItem", position: i + 1, name: a.title, url: `${SITE_URL}/blog/${a.slug}` })) } }
-+            : {}),
-+        },
-+        // Same FAQPage markup the site's other FAQ pages use; the answers are visible on the page.
-+        faqPageJsonLd(JEE_LANDING_FAQS),
-+      ],
-+    });
-+  },
-+  component: JeeLandingPage,
-+});
 +
-+function JeeLandingPage() {
-+  return <JeeLandingView data={Route.useLoaderData()} />;
-+}
-diff --git a/src/routes/sitemap-jee[.]xml.ts b/src/routes/sitemap-jee[.]xml.ts
-index d0f5deb..1685d6f 100644
---- a/src/routes/sitemap-jee[.]xml.ts
-+++ b/src/routes/sitemap-jee[.]xml.ts
-@@ -1,15 +1,15 @@
- // src/routes/sitemap-jee[.]xml.ts — GET /sitemap-jee.xml
--// JEE Main chapter-wise weightage pages (hub, subjects, chapters), most-repeated concepts and the published
-+// JEE Main chapter-wise weightage pages (hub, subjects, chapters), most-repeated concepts, the JEE Main 2027 landing page and the published
- // JEE Main 2027 resource pages. The weightage pages are static data; the resource pages come from the database.
- import { createFileRoute } from "@tanstack/react-router";
--import { jeeEntries, jeeResourceEntries, sitemapUnavailable, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
-+import { jeeEntries, jeeLandingEntries, jeeResourceEntries, sitemapUnavailable, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
- 
- export const Route = createFileRoute("/sitemap-jee.xml")({
-   server: {
-     handlers: {
-       GET: async () => {
-         try {
--          return xmlResponse(urlsetXml([...jeeEntries(), ...(await jeeResourceEntries())]));
-+          return xmlResponse(urlsetXml([...jeeEntries(), ...(await jeeLandingEntries()), ...(await jeeResourceEntries())]));
-         } catch (err) {
-           return sitemapUnavailable("jee", err);
-         }
-diff --git a/src/server-functions/blog-public.ts b/src/server-functions/blog-public.ts
-index 116e127..3d17194 100644
---- a/src/server-functions/blog-public.ts
-+++ b/src/server-functions/blog-public.ts
-@@ -12,6 +12,7 @@ import { getCurrentRequest } from "@/lib/get-request";
- import type { BlogCategory, BlogDocument, BlogPromoAudience, BlogPromoConfig, PublicBlogDocument, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
- import { DEFAULT_BLOG_PROMO_SETTINGS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
- import type { ExamKey } from "@/lib/admin-types";
-+import { EMPTY_JEE_LANDING_BLOG, JEE_POST_CLASSIFIER, JEE_UPDATES_CATEGORY, type JeeLandingBlog } from "@/lib/jee-landing-types";
- 
- // Same header-based lookup used for session/device tracking elsewhere
- // (see server-functions/sessions.ts) — the IP is read server-side from
-@@ -134,6 +135,43 @@ export const getPublishedPostBySlug = createServerFn({ method: "GET" })
-     return { post: mapToFull(row) };
+     const rec = await recordPracticeOutcomes(db, decoded.uid, [
+       { questionId: data.questionId, outcome: isCorrect ? "correct" : "wrong", lastAnswer, keys },
+     ]);
+@@ -190,6 +199,7 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
+       ...reveal,
+       status: statusOf(await col.findOne(where)),
+       streak: rec ? { current: rec.streak.current, increased: rec.streakIncreased } : undefined,
++      corrected: rec?.correctedIds.includes(data.questionId) || undefined,
+     };
    });
  
-+// ─── JEE Main 2027 landing page ───────────────────────────────────────────
-+// The two article blocks on /jee-main-2027: "Latest updates" (JEE posts in the Exam News category) and
-+// "Preparation guides" (every other JEE post, never repeating one already shown above). Same PUBLISHED_FILTER as
-+// every read in this file, so a draft, scheduled, archived or soft-deleted post can never appear here — and a post
-+// drops out the moment it is unpublished (the next uncached read no longer matches it). bodyMarkdown is never loaded.
-+// A failure returns an empty result: the landing page must still render without its article blocks.
-+const JEE_POST_FILTER = { ...PUBLISHED_FILTER, ...JEE_POST_CLASSIFIER };
-+const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
-+  const n = Math.trunc(Number(v));
-+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
-+};
+diff --git a/tests/practice-stats.test.ts b/tests/practice-stats.test.ts
+index f50b760..46f777a 100644
+--- a/tests/practice-stats.test.ts
++++ b/tests/practice-stats.test.ts
+@@ -112,3 +112,69 @@ test("target years start next year once this year's exam season has passed", ()
+   assert.deepEqual(targetYearOptions(new Date(2026, 9, 24)), [2027, 2028, 2029, 2030]); // 24 Oct 2026
+   assert.deepEqual(targetYearOptions(new Date(2026, 2, 1)), [2026, 2027, 2028, 2029]); // 1 Mar 2026
+ });
 +
-+export async function loadJeeBlogSections(opts: { updatesLimit?: number; guidesLimit?: number } = {}): Promise<JeeLandingBlog> {
-+  try {
-+    const db = await getDb();
-+    const col = db.collection("blogPosts");
-+    const updatesLimit = clampInt(opts.updatesLimit, 1, 6, 3);
-+    const guidesLimit = clampInt(opts.guidesLimit, 1, 6, 3);
++import { quickMockStatus, quickMockCopy, cleanQuickMockSource, quickMockName, freeQuickMockOffered, EXHAUSTED_MESSAGE } from "../src/lib/quick-mock.ts";
++import { isCorrection, isDuplicateSubmit } from "../src/lib/practice-schedule.ts";
++import { practiceProgress } from "../src/lib/practice-stats.ts";
 +
-+    const [updateRows, total] = await Promise.all([
-+      col.find({ ...JEE_POST_FILTER, category: JEE_UPDATES_CATEGORY }).project({ bodyMarkdown: 0 }).sort({ publishedAt: -1 }).limit(updatesLimit).toArray(),
-+      col.countDocuments(JEE_POST_FILTER),
-+    ]);
-+    const guideRows = await col
-+      .find({ ...JEE_POST_FILTER, _id: { $nin: updateRows.map((r: any) => r._id) } })
-+      .project({ bodyMarkdown: 0 })
-+      .sort({ publishedAt: -1 })
-+      .limit(guidesLimit)
-+      .toArray();
++const base = { gatingOn: true, isPro: false, unlimited: false, usedToday: 0, freeLimit: 1 };
 +
-+    return { updates: updateRows.map(mapToSummary), guides: guideRows.map(mapToSummary), total };
-+  } catch (e) {
-+    console.error("[blog-public] JEE landing posts failed:", e);
-+    return EMPTY_JEE_LANDING_BLOG;
-+  }
-+}
++test("quick mock status follows the REAL free allowance, not a hard-coded one", () => {
++  assert.equal(quickMockStatus(null).kind, "unknown");
++  assert.deepEqual(quickMockStatus(base), { kind: "ready", unlimited: false, isPro: false, left: 1, freeLimit: 1 });
++  assert.equal(quickMockStatus({ ...base, usedToday: 1 }).kind, "exhausted");
++  assert.equal(quickMockStatus({ ...base, freeLimit: 2, usedToday: 1 }).kind, "ready");
++  assert.equal(quickMockStatus({ ...base, freeLimit: 0 }).kind, "pro_only");
++  assert.equal(quickMockStatus({ ...base, freeLimit: 0, gatingOn: false, unlimited: true }).kind, "ready"); // Pro not on sale: nothing is limited
++  assert.equal(quickMockStatus({ ...base, usedToday: 9, unlimited: true, isPro: true }).kind, "ready");
++  // an unfinished drill can always be resumed, even with no free drills left
++  assert.equal(quickMockStatus({ ...base, usedToday: 1, running: { drillId: "d1", remainingSec: 600 } }).kind, "resume");
++  assert.equal(quickMockStatus({ ...base, usedToday: 1, running: { drillId: "d1", remainingSec: 0 } }).kind, "exhausted");
++});
 +
- // Shared by listRelatedPosts and getBlogSidebarData.
- async function queryRelated(db: any, ObjectId: any, data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) {
-   // Same category first; top up with same-exam posts if the category
-diff --git a/src/server-functions/jee-landing.ts b/src/server-functions/jee-landing.ts
-new file mode 100644
-index 0000000..789540d
---- /dev/null
-+++ b/src/server-functions/jee-landing.ts
-@@ -0,0 +1,37 @@
-+// JEE Main 2027 landing page (/jee-main-2027) — PUBLIC server function. No login needed.
-+//
-+// One read for the whole page, assembled ONLY from existing public reads, each of which already filters to
-+// published content:
-+//   • summary   → librarySummary()        (published JEE Main 2027 resources: counts per subject and chapter)
-+//   • featured  → featuredChapters()      (chapters with published resources, and which types exist; metadata only)
-+//   • blog      → loadJeeBlogSections()   (published JEE posts; never drafts, scheduled, archived or deleted)
-+//   • pyqTotal  → the PYQ page's own question tree for JEE
-+// Nothing here carries a storage path, bucket or file link. Each part fails on its own: if one source is down the
-+// page still renders with that block empty (and hidden), exactly like getJeeLibrarySummary.
-+import { createServerFn } from "@tanstack/react-start";
-+import { loadJeeBlogSections } from "@/server-functions/blog-public";
-+import { featuredChapters, librarySummary } from "@/lib/jee-resource-core";
-+import { jeePyqTotal } from "@/lib/jee-landing-core";
-+import { EMPTY_JEE_LANDING_BLOG, type JeeLandingData } from "@/lib/jee-landing-types";
-+import type { JeeLibrarySummary } from "@/lib/jee-resource-types";
++test("quick mock copy uses the required wording", () => {
++  assert.equal(quickMockCopy(quickMockStatus(base)).headline, "Your free Quick Mock is ready!");
++  assert.equal(quickMockCopy(quickMockStatus({ ...base, usedToday: 1 })).headline, EXHAUSTED_MESSAGE);
++  assert.ok(EXHAUSTED_MESSAGE.startsWith("You've completed today's free Quick Mock. Come back tomorrow for another"));
++  assert.equal(quickMockCopy(quickMockStatus({ ...base, freeLimit: 3 })).detail, "3 of 3 free today");
++  assert.equal(quickMockCopy(quickMockStatus({ ...base, freeLimit: 1 })).detail, null);
++  assert.equal(quickMockCopy(quickMockStatus({ ...base, unlimited: true, isPro: true })).headline, "Your Quick Mock is ready!");
++  assert.equal(quickMockCopy(quickMockStatus({ ...base, usedToday: 1 })).canStart, false);
++});
 +
-+const EMPTY_SUMMARY: JeeLibrarySummary = { total: 0, bySubject: {}, byChapter: {}, lastUpdated: null };
++test("sources, names and the homepage 'free' promise", () => {
++  assert.equal(cleanQuickMockSource("homepage"), "homepage");
++  assert.equal(cleanQuickMockSource("evil<script>"), undefined);
++  assert.equal(quickMockName("neet"), "NEET Quick Mock");
++  assert.equal(quickMockName("jee"), "JEE Quick Mock");
++  assert.equal(quickMockName(null), "NEET Quick Mock");
++  assert.equal(freeQuickMockOffered({ gatingOn: true, freeLimit: 0 }), false);
++  assert.equal(freeQuickMockOffered({ gatingOn: true, freeLimit: 1 }), true);
++  assert.equal(freeQuickMockOffered({ gatingOn: false, freeLimit: 0 }), true);
++  assert.equal(freeQuickMockOffered(null), true);
++});
 +
-+async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
-+  try {
-+    return await fn();
-+  } catch (e) {
-+    console.error(`[jee-landing] ${label} failed:`, e);
-+    return fallback;
-+  }
-+}
++test("a correction is counted only when a past mistake becomes correct", () => {
++  assert.equal(isCorrection({ attempts: 1, correct: false }, "correct"), true);
++  assert.equal(isCorrection({ attempts: 2, correct: true }, "correct"), false); // already right
++  assert.equal(isCorrection({ attempts: 1, correct: false }, "wrong"), false);
++  assert.equal(isCorrection(null, "correct"), false); // first ever answer
++  assert.equal(isCorrection({ attempts: 0, correct: false }, "correct"), false); // only peeked, never answered
++});
 +
-+export const getJeeLandingData = createServerFn({ method: "GET" }).handler(async (): Promise<JeeLandingData> => {
-+  const [summary, featured, blog, pyqTotal] = await Promise.all([
-+    safe("summary", () => librarySummary(), EMPTY_SUMMARY),
-+    safe("featured", () => featuredChapters(6), []),
-+    loadJeeBlogSections({ updatesLimit: 3, guidesLimit: 3 }), // handles its own failures
-+    safe("pyq count", () => jeePyqTotal(), 0),
-+  ]);
-+  return { summary, featured, blog: blog ?? EMPTY_JEE_LANDING_BLOG, pyqTotal };
++test("double taps are one submission; a real retry later is not", () => {
++  const t0 = new Date("2026-10-24T10:00:00Z");
++  const prev = { attempts: 1, lastAnswer: "B", updatedAt: t0 };
++  assert.equal(isDuplicateSubmit(prev, "B", new Date(t0.getTime() + 1200)), true);
++  assert.equal(isDuplicateSubmit(prev, "C", new Date(t0.getTime() + 1200)), false); // changed answer
++  assert.equal(isDuplicateSubmit(prev, "B", new Date(t0.getTime() + 9000)), false); // a genuine retry
++  assert.equal(isDuplicateSubmit(null, "B", t0), false);
++  assert.equal(isDuplicateSubmit({ attempts: 0, lastAnswer: "B", updatedAt: t0 }, "B", t0), false);
++  assert.equal(isDuplicateSubmit({ attempts: 1, lastAnswer: 12, updatedAt: t0 }, 12, t0), true); // numerical answers
++});
++
++test("progress metrics: unique attempts only, never above what exists", () => {
++  assert.deepEqual(practiceProgress(100, 25, 20), { available: 100, attempted: 25, remaining: 75, accuracy: 80, percentDone: 25 });
++  assert.deepEqual(practiceProgress(10, 14, 14), { available: 10, attempted: 10, remaining: 0, accuracy: 100, percentDone: 100 });
++  assert.deepEqual(practiceProgress(0, 0, 0), { available: 0, attempted: 0, remaining: 0, accuracy: null, percentDone: 0 });
 +});

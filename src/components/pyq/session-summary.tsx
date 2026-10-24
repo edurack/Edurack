@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { MentorRecommendations } from "@/components/subject-performance";
 import { getWeakUpsell } from "@/server-functions/practice-extras";
 import type { WeakUpsell } from "@/lib/pyq-types";
+import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
 
 export type SessionStats = { answered: number; correct: number; wrong: number; peeked: number };
 
@@ -18,12 +19,15 @@ export function SessionSummary({
   stats,
   streak,
   weakAttemptId,
+  showQuickMock = true,
   onDone,
 }: {
   title: string;
   stats: SessionStats;
   streak: number | null;
   weakAttemptId?: string;
+  /** False for revision sessions, where the next step is the notebook rather than a mock. */
+  showQuickMock?: boolean;
   onDone: () => void;
 }) {
   const { user } = useAuth();
@@ -83,6 +87,9 @@ export function SessionSummary({
         <button onClick={onDone} className="clay-btn mt-6 rounded-full px-8 py-3 text-sm font-bold text-white">
           Done
         </button>
+
+        {/* Finished a set of questions: a timed test is the natural next step (compact, one line, not a banner). */}
+        {showQuickMock && stats.answered > 0 && <QuickMockStrip source="practice_results" lead="test yourself under time" className="mt-5 text-left" />}
       </div>
 
       {weakAttemptId && upsell && upsell.bundles.length > 0 && (

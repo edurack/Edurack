@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
-import { track } from "@/lib/analytics";
+import { track, trackOnce } from "@/lib/analytics";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
 import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
+import { quickMockCopy, quickMockName, quickMockStatus, type QuickMockSource } from "@/lib/quick-mock";
 import type { Difficulty, PyqTree } from "@/lib/pyq-types";
 
 type LauncherUser = { getIdToken: () => Promise<string>; email?: string | null };
@@ -55,6 +56,7 @@ function UpgradePanel({
   proOnly,
   owned,
   canBuy = true,
+  source,
 }: {
   user: LauncherUser;
   plans: ProPlanPublic[];
@@ -68,6 +70,8 @@ function UpgradePanel({
   /** Features this student's Pro already includes (shown ticked). */
   owned: ProFeatureKey[];
   canBuy?: boolean;
+  /** Which entry point brought the student to the Quick Mock page (analytics label). */
+  source?: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -78,6 +82,7 @@ function UpgradePanel({
     setBusy(plan.id);
     try {
       const token = await user.getIdToken();
+      track("quick_mock_upgrade_clicked", { action: "buy", plan_id: plan.id, source: source ?? "direct" });
       track("pro_checkout_started", { plan_id: plan.id, price: plan.price, from: "drill_launcher" });
       const order = await createRazorpayOrder({ data: { token, itemType: "proPlan", itemId: plan.id } });
       await loadRazorpayScript();
@@ -283,9 +288,11 @@ function CustomDrillBuilder({ user, exam, starting, onStart }: { user: LauncherU
   );
 }
 
-export function DrillLauncher({ user, exam, starting, error, onStart }: { user: LauncherUser; exam?: string; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
+export function DrillLauncher({ user, exam, source, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
   const [access, setAccess] = useState<DrillAccess | null>(null);
   const [showBuilder, setShowBuilder] = useState(false);
+  // The Pro plans are one tap away, not the first thing on the page: the free Quick Mock is the point of this screen.
+  const [showPro, setShowPro] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -311,6 +318,13 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
   // Something Pro-only is still out of reach for this student (free plan, or a plan that doesn't include everything).
   const missing = access ? access.gatingOn && PRO_FEATURE_KEYS.some((k) => access.proOnly[k] && !access.features.includes(k)) : false;
 
+  const mockStatus = quickMockStatus(
+    access ? { gatingOn: access.gatingOn, isPro: access.isPro, unlimited: hasFeature(access, "unlimitedDrills"), usedToday: access.usedToday, freeLimit: access.freeLimit, running: access.running } : null,
+  );
+  const mockCopy = quickMockCopy(mockStatus);
+  const proOnlyMock = mockStatus.kind === "pro_only";
+  const proOpen = showPro || proOnlyMock; // when the free plan has no Quick Mock at all, the plans are the only way forward
+
   const limitedFree = access ? access.gatingOn && !hasFeature(access, "unlimitedDrills") : false;
   const builderIsPro = access ? access.gatingOn && access.proOnly.customDrillBuilder : false;
 
@@ -322,8 +336,8 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
             <Timer className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="font-display text-xl font-bold text-foreground">Timed PYQ drill</h1>
-            <p className="text-sm text-foreground/60">Practise under exam pressure, not at your own pace.</p>
+            <h1 className="font-display text-xl font-bold text-foreground">{quickMockName(exam)}</h1>
+            <p className="text-sm text-foreground/60">{DRILL_QUESTIONS} previous year questions, {DRILL_MINUTES} minutes. Practise under exam pressure, not at your own pace.</p>
           </div>
           {access?.isPro && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-800">
@@ -331,6 +345,13 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
             </span>
           )}
         </div>
+
+        {access && (
+          <p data-testid="quick-mock-status" className={`mt-4 rounded-xl px-3.5 py-3 text-sm font-bold ${mockStatus.kind === "exhausted" || proOnlyMock ? "bg-[var(--sky-soft)] text-foreground/80" : "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"}`}>
+            {mockCopy.headline}
+            {mockCopy.detail && <span className="ml-1.5 text-xs font-semibold opacity-75">{mockCopy.detail}</span>}
+          </p>
+        )}
 
         <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
           <Fact value={DRILL_QUESTIONS} label="previous year questions" />
@@ -343,7 +364,7 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
         {access && limitedFree && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-xs font-semibold text-foreground/70">
-              <span>{access.freeLimit === 0 ? "Timed drills are part of Edurack Pro" : blocked ? "No free drills left today" : `${left} of ${access.freeLimit} free drills left today`}</span>
+              <span>{access.freeLimit === 0 ? "Quick Mock is part of Edurack Pro" : blocked ? "No free Quick Mocks left today" : `${left} of ${access.freeLimit} free Quick Mock${access.freeLimit === 1 ? "" : "s"} left today`}</span>
               {access.freeLimit > 0 && <span className="text-foreground/40">resets at midnight</span>}
             </div>
             {access.freeLimit > 0 && (
@@ -355,16 +376,36 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
         )}
 
         {error && !limitMessage && <p className="mt-4 text-xs font-semibold text-destructive">{error}</p>}
-        {limitMessage && <p className="mt-4 rounded-xl bg-[var(--sky-soft)] px-3 py-2 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
+        {/* The server refused (limit reached): say it in the same words as the banner above, once. */}
+        {limitMessage && mockStatus.kind !== "exhausted" && <p className="mt-4 rounded-xl bg-[var(--sky-soft)] px-3 py-2 text-sm font-semibold text-foreground/80">{limitMessage}</p>}
 
-        <button type="button" onClick={() => onStart({})} disabled={starting || blocked} className="clay-btn mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50">
+        {/* An unfinished Quick Mock can always be resumed (the server resumes it without using another free one), so "blocked" doesn't apply then. */}
+        <button type="button" onClick={() => onStart({})} disabled={starting || (blocked && mockStatus.kind !== "resume") || proOnlyMock} data-testid="quick-mock-start" className="clay-btn mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50">
           {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-          {blocked ? "No free drills left today" : "Start drill"}
+          {mockStatus.kind === "resume" ? "Resume Quick Mock" : blocked ? "Come back tomorrow for your next one" : proOnlyMock ? "Part of Edurack Pro" : "Start Quick Mock"}
         </button>
       </div>
 
-      {access && (
+      {access && !proOpen && (
+        <div className="text-center">
+          <button
+            type="button"
+            aria-expanded={false}
+            data-testid="explore-pro"
+            onClick={() => {
+              setShowPro(true);
+              trackOnce(`qm-upgrade-explore:${source ?? "direct"}`, "quick_mock_upgrade_clicked", { action: "explore", source: source ?? "direct", state: mockStatus.kind });
+            }}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-foreground/60 transition-colors hover:bg-foreground/5 hover:text-foreground"
+          >
+            <Sparkles className="h-3.5 w-3.5" aria-hidden /> {access.isPro ? "Your Edurack Pro" : "Explore Edurack Pro"} <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      )}
+
+      {access && proOpen && (
         <UpgradePanel
+          source={source}
           user={user}
           plans={access.plans}
           onPurchased={refresh}
@@ -405,7 +446,7 @@ export function DrillLauncher({ user, exam, starting, error, onStart }: { user: 
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill <ProTag /></span>
-                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: see the plans above.</span>
+                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: tap "Explore Edurack Pro" above.</span>
               </span>
             </div>
           )}

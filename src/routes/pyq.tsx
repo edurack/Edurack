@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { BookMarked, Sparkles, Timer } from "lucide-react";
 import { getDrillAccess } from "@/server-functions/pro";
+import { quickMockName } from "@/lib/quick-mock";
+import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
+import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
 import { PRO_FEATURES, PRO_FEATURE_KEYS, type DrillAccess } from "@/lib/pro";
 import type { SessionKind } from "@/lib/pyq-types";
 
@@ -23,7 +26,7 @@ import type { SessionKind } from "@/lib/pyq-types";
 // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
 // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
 // `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean };
+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean; fresh?: boolean };
 
 const FIRST_N = 5;
 
@@ -40,6 +43,7 @@ export const Route = createFileRoute("/pyq")({
     weakAttempt: str(search.weakAttempt),
     session: SESSIONS.find((k) => k === search.session),
     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
+    fresh: search.fresh === true || search.fresh === "true" || search.fresh === 1 || search.fresh === "1" ? true : undefined,
     first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
   }),
   // Public now: logged-out visitors can browse and try a few questions.
@@ -111,7 +115,7 @@ function PyqPage() {
   }, [user, loading, search.practice, search.exam]);
 
   function go(next: PyqNav) {
-    navigate({ search: { exam: search.exam, subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice } });
+    navigate({ search: { exam: search.exam, subject: next.subject, chapter: next.chapter, topic: next.topic, practice: next.practice, fresh: next.fresh } });
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -161,7 +165,7 @@ function PyqPage() {
         ) : practising ? (
           <PyqPractice
             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
-            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}`}
+            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}|${search.fresh ? "fr" : ""}`}
             subject={search.subject}
             chapter={search.chapter}
             topic={search.topic}
@@ -170,6 +174,7 @@ function PyqPage() {
             exam={tree?.exam ?? search.exam}
             guest={guest}
             limit={search.first5 && !guest ? FIRST_N : undefined}
+            startFresh={Boolean(search.fresh || (search.first5 && !guest))}
             source={search.first5 ? "first_five" : undefined}
             // A weak-topics session started from a result page returns to that result page.
             // Sessions go back to where they started: the daily question to the dashboard,
@@ -212,11 +217,11 @@ function PyqPage() {
             )}
             {!guest && !search.subject && (
               <div className="mb-4 grid grid-cols-2 gap-2.5">
-                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined }} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
                   <Timer className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
                   <span className="min-w-0">
-                    <span className="block text-sm font-bold text-foreground">Timed drill</span>
-                    <span className="block truncate text-[11px] text-foreground/50">20 questions · 30 min</span>
+                    <span className="block text-sm font-bold text-foreground">{quickMockName(tree.exam)}</span>
+                    <span className="block truncate text-[11px] text-foreground/50">20 PYQs · 30 min</span>
                   </span>
                 </Link>
                 <Link to="/notebook" className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
@@ -237,11 +242,11 @@ function PyqPage() {
                 ? `Active until ${new Date(proAccess.proUntil ?? Date.now()).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.`
                 : proAccess.gatingOn
                   ? `Unlock ${unlocks || "more practice tools"}.`
-                  : "Pick chapter or topic, difficulty, paper years and length for a timed drill.";
+                  : "Pick chapter or topic, difficulty, paper years and length for your own mock.";
               return (
                 <Link
                   to="/pyq-drill"
-                  search={{ exam: tree.exam ?? undefined }}
+                  search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }}
                   className={cn("mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
                 >
                   <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", dark ? "bg-white/10" : "bg-[var(--sky-soft)]")}>

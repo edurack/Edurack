@@ -10,7 +10,7 @@ import { getTodaySummary } from "@/server-functions/practice-extras";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
 import { headlineFor } from "@/components/today-card";
-import { examLabel, pickFirstChapter, type PracticeStats } from "@/lib/practice-stats";
+import { examLabel, pickFirstChapter, practiceProgress, type PracticeStats } from "@/lib/practice-stats";
 import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
 import { cn } from "@/lib/utils";
 
@@ -95,9 +95,12 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
   // back to the browse tree's own counts so the hero still works.
   const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
   const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
-  const attempted = Math.min(total || Infinity, examStats ? examStats.solved : treeAttempted);
-  const accuracy = examStats ? examStats.accuracy : attempted > 0 ? Math.round(((tree?.totalCorrect ?? 0) / attempted) * 100) : null;
-  const percent = total > 0 ? Math.min(100, Math.round((attempted / total) * 100)) : 0;
+  // Available / unique attempted / remaining / accuracy: ONE rule (practiceProgress), the same one the chapter lists use.
+  // `attempted` counts distinct questions, so redoing a question in revision never moves it.
+  const prog = practiceProgress(total, examStats ? examStats.solved : treeAttempted, examStats ? examStats.correct : tree?.totalCorrect ?? 0);
+  const attempted = prog.attempted;
+  const accuracy = prog.accuracy;
+  const percent = prog.percentDone;
 
   // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
   // student who had practised JEE while their profile said NEET was told to "solve your first question".)
@@ -119,10 +122,13 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
   const startTo = first ? { subject: first.subject, chapter: first.chapter, practice: true, first5: true, exam: exam ?? undefined } : { exam: exam ?? undefined };
   // Returning student: back to the chapter they were last in. (A chapter-less question opens that subject's chapter list.)
   const last = stats?.lastAttempt ?? null;
-  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) : null;
+  const lastChapterNode = last?.chapter ? tree?.subjects.find((x) => x.subject === last.subject)?.chapters.find((c) => c.chapter.toLowerCase() === last.chapter.toLowerCase()) : undefined;
+  const lastProgress = lastChapterNode ? practiceProgress(lastChapterNode.count, lastChapterNode.attempted, lastChapterNode.correct) : null;
+  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) + (lastProgress ? ` · ${lastProgress.attempted} of ${lastProgress.available} done` : "") : null;
+  // `fresh`: pick up at the first question not attempted yet instead of re-serving finished ones.
   const continueSearch = last
     ? last.chapter
-      ? { subject: last.subject, chapter: last.chapter, practice: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
+      ? { subject: last.subject, chapter: last.chapter, practice: true, fresh: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
       : { subject: last.subject, exam: exam ?? undefined }
     : { exam: exam ?? undefined };
 
@@ -234,8 +240,8 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
             <div className="flex items-center gap-4">
               <Ring percent={percent} />
               <div className="min-w-0">
-                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
-                <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
+                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs attempted</span></p>
+                <p className="mt-0.5 text-xs text-white/60">{prog.remaining.toLocaleString("en-IN")} left{accuracy !== null ? ` · ${accuracy}% accuracy` : " · accuracy shows after your first answer"}</p>
                 {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
               </div>
             </div>

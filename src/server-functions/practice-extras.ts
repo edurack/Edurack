@@ -152,11 +152,12 @@ export const getNotebookSummary = createServerFn({ method: "POST" })
     const uid = decoded.uid;
     const now = new Date();
     const col = db.collection("practiceProgress");
-    const [due, wrong, bookmarked, mastered, upcoming] = await Promise.all([
+    const [due, wrong, bookmarked, mastered, corrected, upcoming] = await Promise.all([
       col.countDocuments({ uid, nextReviewAt: { $lte: now }, mastered: { $ne: true } }),
       col.countDocuments({ uid, attempts: { $gt: 0 }, correct: false }),
       col.countDocuments({ uid, bookmarked: true }),
       col.countDocuments({ uid, mastered: true }),
+      col.countDocuments({ uid, correctedAt: { $type: "date" } }),
       col.find({ uid, nextReviewAt: { $gt: now } }).sort({ nextReviewAt: 1 }).limit(1).next(),
     ]);
     return {
@@ -165,6 +166,7 @@ export const getNotebookSummary = createServerFn({ method: "POST" })
       wrong,
       bookmarked,
       mastered,
+      corrected,
       nextDueAt: upcoming?.nextReviewAt instanceof Date ? upcoming.nextReviewAt.toISOString() : null,
     };
   });
@@ -277,7 +279,7 @@ export const startPyqDrill = createServerFn({ method: "POST" })
 
     // Refreshing or re-tapping "Start" resumes the running drill instead of burning a new one.
     const running = await col.find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
-    if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return drillSetFor(db, uid, running, now);
+    if (running && remainingSeconds(running.startedAt as Date, running.durationSec as number, now) > 0) return { ...(await drillSetFor(db, uid, running, now)), resumed: true };
 
     // Edurack Pro: a free student gets the admin-set number of standard drills a day; the features the admin
     // marked Pro-only (unlimited drills, the custom builder, ...) need a plan that includes them. Nothing is

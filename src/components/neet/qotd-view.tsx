@@ -7,6 +7,7 @@ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { ShareButton } from "@/components/tools/tool-shell";
 import { SmartContent } from "@/lib/smart-content";
+import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
 import { checkPublicPyqAnswer } from "@/server-functions/pyq-public";
 import type { QotdPayload } from "@/lib/pyq-seo-server";
 import type { PublicCheckResult } from "@/lib/pyq-public";
@@ -114,6 +115,7 @@ function Body({ data }: { data: QotdPayload }) {
               <ShareButton text={`Try today's NEET question on Edurack (${prettyDay(day)}).`} className="justify-center" />
             </div>
             <p className="text-xs text-foreground/55">Log in to see the step-by-step solution and to keep a daily streak going.</p>
+            <QuickMockStrip source="pyq_landing" exam="neet" lead="30 minutes, 20 PYQs" />
           </div>
         ) : (
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">

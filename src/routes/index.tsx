@@ -42,6 +42,7 @@ import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMot
 import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
 import { LandingProSection } from "@/components/landing-pro-section";
 import { FreeResourcesSection } from "@/components/landing/free-resources-section";
+import { QuickMockSection } from "@/components/landing/quick-mock-section";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
 // (exam-navigation UI, question palette, timers, etc). It was being bundled
@@ -347,6 +348,7 @@ function Index() {
         <Header />
         <main>
           <HeroMotion ctaRef={ctaRef} />
+          <QuickMockSection />
           <LandingFreeSessionsSection />
           <LoopSection />
           <SimulatorSection />

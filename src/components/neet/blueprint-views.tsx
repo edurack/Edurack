@@ -5,6 +5,7 @@
 // are in the HTML Google reads. No client state, nothing hidden from crawlers.
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
 import {
   PAPER_LABELS,
   PAPER_SHORT,
@@ -482,6 +483,8 @@ export function HubView() {
         Which chapters does NEET actually ask from? Edurack mapped {totalQuestions()} previous-year questions from NEET {RANGE_LABEL} and Re-NEET 2026 to {totalChapters()} NCERT
         chapters across Physics, Chemistry, Botany and Zoology. Pick a subject to see every chapter ranked, then open a chapter for its topic-wise question counts in each paper.
       </p>
+
+      <QuickMockStrip source="pyq_landing" exam="neet" lead="free to try" className="mt-5" />
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         {subjects.map((s) => (

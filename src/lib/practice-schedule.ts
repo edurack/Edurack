@@ -132,3 +132,20 @@ export function balancedPick<T extends { subject: string }>(items: T[], total: n
 export function remainingSeconds(startedAt: Date, durationSec: number, now: Date): number {
   return Math.max(0, Math.min(durationSec, Math.round(durationSec - (now.getTime() - startedAt.getTime()) / 1000)));
 }
+
+// ─── Mistakes that were fixed ──────────────────────────────────────────────
+/**
+ * True when this answer turns a past mistake into a correct answer: the question had been answered before, the last
+ * answer was wrong, and this one is right. Used to count corrected mistakes ONCE per question (a later correct answer
+ * on an already-corrected question is not a new correction).
+ */
+export function isCorrection(prev: { attempts?: number | null; correct?: boolean | null } | null | undefined, outcome: Outcome): boolean {
+  return outcome === "correct" && Boolean(prev) && Number(prev!.attempts) > 0 && prev!.correct === false;
+}
+
+/** A second tap / retry of the SAME answer on the same question within this window is the same submission, not a new attempt. */
+export const DUPLICATE_SUBMIT_MS = 4000;
+export function isDuplicateSubmit(prev: { attempts?: number | null; lastAnswer?: unknown; updatedAt?: Date | null } | null | undefined, answer: string | number, now: Date): boolean {
+  if (!prev || !(Number(prev.attempts) > 0) || !(prev.updatedAt instanceof Date)) return false;
+  return String(prev.lastAnswer) === String(answer) && now.getTime() - prev.updatedAt.getTime() >= 0 && now.getTime() - prev.updatedAt.getTime() < DUPLICATE_SUBMIT_MS;
+}

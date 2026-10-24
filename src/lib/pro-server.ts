@@ -67,9 +67,18 @@ export async function countDrillsToday(db: Db, uid: string, now = new Date()): P
   return db.collection("pyqDrills").countDocuments({ uid, startedAt: { $gte: start, $lt: end } });
 }
 
+/** The student's unfinished Quick Mock whose clock hasn't run out, if any (same rule startPyqDrill uses to resume). */
+async function runningDrill(db: Db, uid: string, now: Date): Promise<DrillAccess["running"]> {
+  const d = await db.collection("pyqDrills").find({ uid, submittedAt: null }).sort({ startedAt: -1 }).limit(1).next();
+  if (!d) return null;
+  const remainingSec = Math.max(0, Math.round(((d.startedAt as Date).getTime() + (d.durationSec as number) * 1000 - now.getTime()) / 1000));
+  return remainingSec > 0 ? { drillId: String(d._id), remainingSec } : null;
+}
+
 export async function getDrillAccess(db: Db, uid: string, now = new Date()): Promise<DrillAccess> {
-  const [plans, settings, ent] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now)]);
+  const [plans, settings, ent, running] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now), runningDrill(db, uid, now).catch(() => null)]);
   return {
+    running,
     gatingOn: plans.length > 0,
     isPro: ent.until !== null,
     proUntil: ent.until ? ent.until.toISOString() : null,

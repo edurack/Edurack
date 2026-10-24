@@ -12,22 +12,25 @@ import type { DrillState } from "@/lib/pyq-types";
 import type { DrillAnswer } from "@/lib/practice-schedule";
 import { track, trackOnce } from "@/lib/analytics";
 import { practiceProps } from "@/lib/practice-events";
+import { cleanQuickMockSource, type QuickMockSource } from "@/lib/quick-mock";
 
 // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
 // the server's clock, and a finished drill reopens its result.
-type DrillSearch = { exam?: string; drillId?: string };
+// ?src= says which entry point sent the student here (homepage, dashboard, sidebar, ...) so Quick Mock analytics can
+// tell the placements apart. It is only ever used as an analytics label.
+type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource };
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
 
 export const Route = createFileRoute("/pyq-drill")({
-  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId) }),
-  head: () => noindexHead("Timed PYQ drill"),
+  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src) }),
+  head: () => noindexHead("NEET Quick Mock"),
   component: DrillPage,
 });
 
 function DrillPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { exam, drillId } = Route.useSearch();
+  const { exam, drillId, src } = Route.useSearch();
 
   const [state, setState] = useState<DrillState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +39,9 @@ function DrillPage() {
   const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
-  }, [loading, user, navigate]);
+    // Not signed in: sign in (or up), then come straight back here with the same ?src= and ?exam=.
+    if (!loading && !user) navigate({ to: "/auth", search: { tab: "signin", redirect: `/pyq-drill${src || exam ? `?${new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}) }).toString()}` : ""}` } });
+  }, [loading, user, navigate, src, exam]);
 
   // Load (or resume) the drill named in the URL.
   useEffect(() => {
@@ -68,11 +72,16 @@ function DrillPage() {
       const token = await user.getIdToken();
       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
       setState({ status: "running", set });
+      // startPyqDrill hands back an unfinished mock when there is one, so a refresh or a second tap never starts (or counts)
+      // another. Only a NEWLY created mock is a start.
+      if (!set.resumed) {
       // Same event names as ordinary PYQ practice, told apart by practice_type = "timed_drill". The older drill_started /
       // drill_submitted events are kept so existing PostHog insights keep working.
       track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
       trackOnce(`drill-start:${set.drillId}`, "practice_started", { ...practiceProps({ mode: "timed_drill", exam, subject: opts.subject }), custom: Boolean(opts.custom), question_count: set.questions.length });
-      navigate({ search: { exam, drillId: set.drillId }, replace: true });
+      trackOnce(`qm-start:${set.drillId}`, "quick_mock_started", { source: src ?? "direct", custom: Boolean(opts.custom), question_count: set.questions.length, duration_min: Math.round(set.durationSec / 60) });
+      }
+      navigate({ search: { exam, drillId: set.drillId, src }, replace: true });
     } catch (e) {
       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
     } finally {
@@ -97,6 +106,16 @@ function DrillPage() {
           accuracy: result.correct + result.wrong > 0 ? Math.round((result.correct / (result.correct + result.wrong)) * 100) : null,
           time_taken_sec: result.timeTakenSec,
         });
+        track("quick_mock_completed", {
+          source: src ?? "direct",
+          score: result.score,
+          max_score: result.maxScore,
+          correct: result.correct,
+          wrong: result.wrong,
+          skipped: result.skipped,
+          time_taken_sec: result.timeTakenSec,
+          question_count: result.items.length,
+        });
       }
       try {
         sessionStorage.removeItem(`edurack:drill:${drillId}`);
@@ -105,7 +124,7 @@ function DrillPage() {
       }
       window.scrollTo({ top: 0 });
     },
-    [user, drillId, exam],
+    [user, drillId, exam, src],
   );
 
   if (loading || !user) {
@@ -142,7 +161,7 @@ function DrillPage() {
               <ChevronLeft className="h-4 w-4" aria-hidden />
               PYQs
             </button>
-            <DrillLauncher user={user} exam={exam} starting={starting} error={startError} onStart={start} />
+            <DrillLauncher user={user} exam={exam} source={src} starting={starting} error={startError} onStart={start} />
           </div>
         )}
       </main>

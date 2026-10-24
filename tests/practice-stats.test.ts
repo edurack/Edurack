@@ -112,3 +112,69 @@ test("target years start next year once this year's exam season has passed", () 
   assert.deepEqual(targetYearOptions(new Date(2026, 9, 24)), [2027, 2028, 2029, 2030]); // 24 Oct 2026
   assert.deepEqual(targetYearOptions(new Date(2026, 2, 1)), [2026, 2027, 2028, 2029]); // 1 Mar 2026
 });
+
+import { quickMockStatus, quickMockCopy, cleanQuickMockSource, quickMockName, freeQuickMockOffered, EXHAUSTED_MESSAGE } from "../src/lib/quick-mock.ts";
+import { isCorrection, isDuplicateSubmit } from "../src/lib/practice-schedule.ts";
+import { practiceProgress } from "../src/lib/practice-stats.ts";
+
+const base = { gatingOn: true, isPro: false, unlimited: false, usedToday: 0, freeLimit: 1 };
+
+test("quick mock status follows the REAL free allowance, not a hard-coded one", () => {
+  assert.equal(quickMockStatus(null).kind, "unknown");
+  assert.deepEqual(quickMockStatus(base), { kind: "ready", unlimited: false, isPro: false, left: 1, freeLimit: 1 });
+  assert.equal(quickMockStatus({ ...base, usedToday: 1 }).kind, "exhausted");
+  assert.equal(quickMockStatus({ ...base, freeLimit: 2, usedToday: 1 }).kind, "ready");
+  assert.equal(quickMockStatus({ ...base, freeLimit: 0 }).kind, "pro_only");
+  assert.equal(quickMockStatus({ ...base, freeLimit: 0, gatingOn: false, unlimited: true }).kind, "ready"); // Pro not on sale: nothing is limited
+  assert.equal(quickMockStatus({ ...base, usedToday: 9, unlimited: true, isPro: true }).kind, "ready");
+  // an unfinished drill can always be resumed, even with no free drills left
+  assert.equal(quickMockStatus({ ...base, usedToday: 1, running: { drillId: "d1", remainingSec: 600 } }).kind, "resume");
+  assert.equal(quickMockStatus({ ...base, usedToday: 1, running: { drillId: "d1", remainingSec: 0 } }).kind, "exhausted");
+});
+
+test("quick mock copy uses the required wording", () => {
+  assert.equal(quickMockCopy(quickMockStatus(base)).headline, "Your free Quick Mock is ready!");
+  assert.equal(quickMockCopy(quickMockStatus({ ...base, usedToday: 1 })).headline, EXHAUSTED_MESSAGE);
+  assert.ok(EXHAUSTED_MESSAGE.startsWith("You've completed today's free Quick Mock. Come back tomorrow for another"));
+  assert.equal(quickMockCopy(quickMockStatus({ ...base, freeLimit: 3 })).detail, "3 of 3 free today");
+  assert.equal(quickMockCopy(quickMockStatus({ ...base, freeLimit: 1 })).detail, null);
+  assert.equal(quickMockCopy(quickMockStatus({ ...base, unlimited: true, isPro: true })).headline, "Your Quick Mock is ready!");
+  assert.equal(quickMockCopy(quickMockStatus({ ...base, usedToday: 1 })).canStart, false);
+});
+
+test("sources, names and the homepage 'free' promise", () => {
+  assert.equal(cleanQuickMockSource("homepage"), "homepage");
+  assert.equal(cleanQuickMockSource("evil<script>"), undefined);
+  assert.equal(quickMockName("neet"), "NEET Quick Mock");
+  assert.equal(quickMockName("jee"), "JEE Quick Mock");
+  assert.equal(quickMockName(null), "NEET Quick Mock");
+  assert.equal(freeQuickMockOffered({ gatingOn: true, freeLimit: 0 }), false);
+  assert.equal(freeQuickMockOffered({ gatingOn: true, freeLimit: 1 }), true);
+  assert.equal(freeQuickMockOffered({ gatingOn: false, freeLimit: 0 }), true);
+  assert.equal(freeQuickMockOffered(null), true);
+});
+
+test("a correction is counted only when a past mistake becomes correct", () => {
+  assert.equal(isCorrection({ attempts: 1, correct: false }, "correct"), true);
+  assert.equal(isCorrection({ attempts: 2, correct: true }, "correct"), false); // already right
+  assert.equal(isCorrection({ attempts: 1, correct: false }, "wrong"), false);
+  assert.equal(isCorrection(null, "correct"), false); // first ever answer
+  assert.equal(isCorrection({ attempts: 0, correct: false }, "correct"), false); // only peeked, never answered
+});
+
+test("double taps are one submission; a real retry later is not", () => {
+  const t0 = new Date("2026-10-24T10:00:00Z");
+  const prev = { attempts: 1, lastAnswer: "B", updatedAt: t0 };
+  assert.equal(isDuplicateSubmit(prev, "B", new Date(t0.getTime() + 1200)), true);
+  assert.equal(isDuplicateSubmit(prev, "C", new Date(t0.getTime() + 1200)), false); // changed answer
+  assert.equal(isDuplicateSubmit(prev, "B", new Date(t0.getTime() + 9000)), false); // a genuine retry
+  assert.equal(isDuplicateSubmit(null, "B", t0), false);
+  assert.equal(isDuplicateSubmit({ attempts: 0, lastAnswer: "B", updatedAt: t0 }, "B", t0), false);
+  assert.equal(isDuplicateSubmit({ attempts: 1, lastAnswer: 12, updatedAt: t0 }, 12, t0), true); // numerical answers
+});
+
+test("progress metrics: unique attempts only, never above what exists", () => {
+  assert.deepEqual(practiceProgress(100, 25, 20), { available: 100, attempted: 25, remaining: 75, accuracy: 80, percentDone: 25 });
+  assert.deepEqual(practiceProgress(10, 14, 14), { available: 10, attempted: 10, remaining: 0, accuracy: 100, percentDone: 100 });
+  assert.deepEqual(practiceProgress(0, 0, 0), { available: 0, attempted: 0, remaining: 0, accuracy: null, percentDone: 0 });
+});

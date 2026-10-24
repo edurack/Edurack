@@ -5,6 +5,7 @@ import type { Db } from "@/lib/pyq-server";
 import {
   advanceStreak,
   EMPTY_STREAK,
+  isCorrection,
   istDayKey,
   nextReviewState,
   type Outcome,
@@ -25,14 +26,19 @@ export async function recordPracticeOutcomes(
   uid: string,
   entries: PracticeEntry[],
   now: Date = new Date(),
-): Promise<{ streak: Streak; streakIncreased: boolean } | null> {
+): Promise<{ streak: Streak; streakIncreased: boolean; correctedIds: string[] } | null> {
   if (entries.length === 0) return null;
   const col = db.collection("practiceProgress");
   const existing = await col.find({ uid, questionId: { $in: entries.map((e) => e.questionId) } }).toArray();
   const prevMap = new Map(existing.map((d) => [d.questionId as string, d]));
 
+  // Past mistakes this batch fixes (wrong last time, right now). Counted per question: `correctedAt` is set the first time
+  // only, `timesCorrected` counts later fix-ups after a relapse, and the event log keeps every attempt.
+  const correctedIds: string[] = [];
   const ops = entries.map((e) => {
     const prev = prevMap.get(e.questionId);
+    const fixed = isCorrection(prev as { attempts?: number; correct?: boolean } | undefined, e.outcome);
+    if (fixed) correctedIds.push(e.questionId);
     const review = nextReviewState(
       prev
         ? { reviewStage: (prev.reviewStage as number | null | undefined) ?? null, nextReviewAt: (prev.nextReviewAt as Date | null | undefined) ?? null, mastered: Boolean(prev.mastered) }
@@ -53,10 +59,17 @@ export async function recordPracticeOutcomes(
     }
     set.correct = e.outcome === "correct";
     set.lastAnswer = e.lastAnswer ?? null;
+    if (fixed) set.lastCorrectedAt = now;
     return {
       updateOne: {
         filter: { uid, questionId: e.questionId },
-        update: { $set: set, $inc: { attempts: 1 }, $setOnInsert: { createdAt: now } },
+        update: {
+          $set: set,
+          $inc: { attempts: 1, ...(fixed ? { timesCorrected: 1 } : {}) },
+          // `correctedAt` keeps the FIRST time a mistake was fixed, so "mistakes corrected" counts questions, not attempts.
+          ...(fixed && !prev?.correctedAt ? { $min: { correctedAt: now } } : {}),
+          $setOnInsert: { createdAt: now },
+        },
         upsert: true,
       },
     };
@@ -67,12 +80,12 @@ export async function recordPracticeOutcomes(
   // so without this the admin can't see what was solved when, or the streak
   // reminder recap. Best-effort — never blocks or fails a student's answer.
   db.collection("practiceEvents")
-    .insertMany(entries.map((e) => ({ uid, questionId: e.questionId, outcome: e.outcome, answer: e.lastAnswer ?? null, ...e.keys, at: now })))
+    .insertMany(entries.map((e) => ({ uid, questionId: e.questionId, outcome: e.outcome, answer: e.lastAnswer ?? null, ...e.keys, ...(correctedIds.includes(e.questionId) ? { corrected: true } : {}), at: now })))
     .catch((err) => console.error("[practiceEvents] insert failed:", err));
 
   // Peeking at a solution isn't practice; only real answers keep a streak alive.
   if (!entries.some((e) => e.outcome !== "revealed")) return null;
-  return bumpStreak(db, uid, now);
+  return { ...(await bumpStreak(db, uid, now)), correctedIds };
 }
 
 export async function bumpStreak(db: Db, uid: string, now: Date = new Date()): Promise<{ streak: Streak; streakIncreased: boolean }> {

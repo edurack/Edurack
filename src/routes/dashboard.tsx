@@ -2,6 +2,10 @@ import { MentorshipCompactCard, type UpNextInfo } from "@/components/today-card"
 import { PracticePerformanceCard } from "@/components/dashboard/practice-performance-card";
 import { PrepSetupCard } from "@/components/dashboard/prep-setup-card";
 import { usePracticeStats } from "@/components/dashboard/use-practice-stats";
+import { QuickMockCard } from "@/components/quick-mock/quick-mock-card";
+import { useQuickMockStatus } from "@/components/quick-mock/use-quick-mock-status";
+import { quickMockName, quickMockSearch, type QuickMockStatus } from "@/lib/quick-mock";
+import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
 import type { PracticeStats } from "@/lib/practice-stats";
 import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
 import { PyqHero } from "@/components/dashboard/pyq-hero";
@@ -237,6 +241,8 @@ function DashboardPage() {
   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
   // The practice numbers, fetched once and shared by the hero and the performance card so they always agree.
   const { stats: practiceStats, failed: statsFailed, reload: reloadStats } = usePracticeStats();
+  // Today's Quick Mock allowance (free one ready / used up / Pro-only / unfinished), for the card and the sidebar entry.
+  const { status: qmStatus, loaded: qmLoaded } = useQuickMockStatus();
 
   // One request for the whole dashboard (profile, catalog, purchases, sessions,
   // bookings, performance) — see server-functions/dashboard.ts. If that request
@@ -467,6 +473,12 @@ function DashboardPage() {
               <ClipboardList className="h-[18px] w-[18px]" />PYQ Practice
               <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Free</span>
             </Link>
+            {/* Quick Mock sits right under PYQ Practice: same practice family, one tap, same engine. */}
+            <Link to="/pyq-drill" search={quickMockSearch({ src: "sidebar", drillId: qmStatus.kind === "resume" ? qmStatus.drillId : undefined })} onClick={() => trackQuickMockClick("sidebar", { state: qmStatus.kind })} data-testid="sidebar-quick-mock" className="mb-3 flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary">
+              <Clock className="h-[18px] w-[18px]" />{quickMockName(profile?.targetExam)}
+              {qmStatus.kind === "ready" && <span className="ml-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-emerald-700 dark:text-emerald-300">{qmStatus.unlimited ? "Pro" : "Free"}</span>}
+              {qmStatus.kind === "resume" && <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Resume</span>}
+            </Link>
             {nav.map((n) => (
               <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${view === n.key ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-secondary"}`}>
                 <n.icon className="h-[18px] w-[18px]" />{n.label}
@@ -501,7 +513,7 @@ function DashboardPage() {
             ) : view === "home" ? (
               <Overview
                 upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf}
-                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats}
+                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats} qmStatus={qmStatus} qmLoaded={qmLoaded}
                 profile={profile} onProfileSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } as StudentProfile : prev))}
                 ownedListings={ownedListings} ownedTests={ownedTests} freeSlots={featuredFreeSlots}
                 recommended={(track ? recommended : (allListings ?? []).filter((l) => l.kind === "Test Series")).slice(0, 3)}
@@ -589,9 +601,9 @@ function Panel({ title, action, children, className = "" }: { title: string; act
 
 const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
 
-function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
+function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, qmStatus, qmLoaded, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
   upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
-  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void;
+  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void; qmStatus: QuickMockStatus; qmLoaded: boolean;
   profile: StudentProfile | null; onProfileSaved: (next: Partial<StudentProfile>) => void;
   ownedListings: Listing[]; ownedTests: SoldTestEntry[]; freeSlots: { offering: PublicMentorOffering; slot: OpenSlot }[]; recommended: Listing[];
   go: (v: View) => void; getToken: () => Promise<string>; onBooked: () => void;
@@ -632,6 +644,9 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
     <div className="space-y-4">
       {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
       <PyqHero stats={stats} statsFailed={statsFailed} />
+
+      {/* 1b. Quick Mock, right under chapter-wise practice and well above the mentorship card, reflecting today's real allowance. */}
+      <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />
 
       {/* 2. Exam, class and target year: only what's missing, one tap each, never blocks practice. A new student is asked for the year after their first question. */}
       <PrepSetupCard

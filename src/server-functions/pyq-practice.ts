@@ -34,6 +34,7 @@ import {
 } from "@/lib/pyq-server";
 import { loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
 import { recordPracticeOutcomes } from "@/lib/practice-progress";
+import { isDuplicateSubmit } from "@/lib/practice-schedule";
 import { pickWeakQuestions, weakKey } from "@/lib/pyq-weak";
 import {
   GENERAL_TOPIC,
@@ -181,6 +182,14 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
       lastAnswer = v;
     }
 
+    // The same answer arriving again within a few seconds (a double tap, or a phone retrying a slow request) is the same
+    // submission: answer it again from what is stored, but don't count another attempt, climb another revision rung or
+    // add another history row. A genuine retry later, or a different answer, is recorded as usual.
+    const before = await col.findOne(where);
+    if (isDuplicateSubmit(before as { attempts?: number; lastAnswer?: unknown; updatedAt?: Date } | null, lastAnswer, new Date())) {
+      return { isCorrect, revealed: false, ...reveal, status: statusOf(before) };
+    }
+
     const rec = await recordPracticeOutcomes(db, decoded.uid, [
       { questionId: data.questionId, outcome: isCorrect ? "correct" : "wrong", lastAnswer, keys },
     ]);
@@ -190,6 +199,7 @@ export const submitPyqAnswer = createServerFn({ method: "POST" })
       ...reveal,
       status: statusOf(await col.findOne(where)),
       streak: rec ? { current: rec.streak.current, increased: rec.streakIncreased } : undefined,
+      corrected: rec?.correctedIds.includes(data.questionId) || undefined,
     };
   });
 

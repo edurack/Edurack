@@ -1,7 +1,7 @@
 // Shown once per login session when the student hasn't practised today (no streak progress yet).
 // It carries today's daily PYQ so they can answer right there, which counts toward the streak
 // through the same submitPyqAnswer call the PYQ page uses.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Flame, Check, X as XIcon, ArrowRight } from "lucide-react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
@@ -14,6 +14,7 @@ import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib
 import { cn } from "@/lib/utils";
 import { track, trackOnce } from "@/lib/analytics";
 import { answeredProps, practiceProps } from "@/lib/practice-events";
+import { examLabel } from "@/lib/practice-stats";
 
 const OPTS: OptionKey[] = ["A", "B", "C", "D"];
 /** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
@@ -23,6 +24,11 @@ const dayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ko
 function seenKey(uid: string) {
   return `edurack-streak-popup:${uid}:${dayKey()}`;
 }
+// What the student had picked/typed, kept for the day so closing the popup (or a refresh) doesn't lose it.
+const draftKey = (uid: string, qid: string) => `edurack-daily-draft:${uid}:${dayKey()}:${qid}`;
+// Set the moment today's answer is saved: the popup never comes back for a question already answered today.
+const doneKey = (uid: string) => `edurack-daily-done:${uid}:${dayKey()}`;
+const isDoneToday = (uid: string) => { try { return localStorage.getItem(doneKey(uid)) === "1"; } catch { return false; } };
 function markSeen(uid: string) {
   try { sessionStorage.setItem(seenKey(uid), "1"); } catch { /* storage unavailable: popup may show again, harmless */ }
 }
@@ -42,7 +48,7 @@ export function StreakPopup() {
   const [result, setResult] = useState<PyqCheckResult | null>(null);
 
   useEffect(() => {
-    if (!user || wasSeen(user.uid)) return;
+    if (!user || wasSeen(user.uid) || isDoneToday(user.uid)) return;
     let cancelled = false;
     (async () => {
       try {
@@ -54,6 +60,14 @@ export function StreakPopup() {
         if (cancelled || !first) return;
         setToday(t);
         setQ(first);
+        try {
+          const raw = localStorage.getItem(draftKey(user.uid, first.id));
+          if (raw) {
+            const d = JSON.parse(raw) as { pick?: OptionKey; num?: string };
+            if (d.pick && OPTS.includes(d.pick)) setPick(d.pick);
+            if (typeof d.num === "string") setNum(d.num.slice(0, 20));
+          }
+        } catch { /* a missing or corrupt draft just means starting empty */ }
         setOpen(true);
         markSeen(user.uid); // once per login session: refreshing or navigating back won't nag again
       } catch {
@@ -63,8 +77,19 @@ export function StreakPopup() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // Save the draft as the student picks, so dismissing the popup doesn't lose their choice.
+  useEffect(() => {
+    if (!user || !q || result) return;
+    try {
+      if (pick || num) localStorage.setItem(draftKey(user.uid, q.id), JSON.stringify({ pick, num }));
+    } catch { /* storage unavailable: nothing to restore later, harmless */ }
+  }, [user, q, pick, num, result]);
+
+  // Two quick taps must send ONE answer: state updates are async, so a ref closes the gap `busy` leaves.
+  const inflight = useRef(false);
   async function submit() {
-    if (!user || !q) return;
+    if (!user || !q || result || inflight.current) return;
+    inflight.current = true;
     setBusy(true);
     setErr(null);
     try {
@@ -72,6 +97,10 @@ export function StreakPopup() {
       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
       const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
       setResult(out);
+      try {
+        localStorage.setItem(doneKey(user.uid), "1");
+        localStorage.removeItem(draftKey(user.uid, q.id));
+      } catch { /* the server also knows it's answered, so the popup still won't repeat */ }
       // This answer bypasses the PYQ practice screen, so it is tracked here: it's an answered question AND today's daily question.
       const ctx = { mode: "daily" as const, exam: today?.exam, subject: q.subject, chapter: q.chapter, source: "daily_popup" };
       track("question_answered", answeredProps(ctx, { questionId: q.id, questionType: q.type, isCorrect: out.isCorrect }));
@@ -81,6 +110,7 @@ export function StreakPopup() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't check that. Try again.");
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   }
@@ -116,9 +146,9 @@ export function StreakPopup() {
                 <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-200">{atRisk ? `Keep your ${today!.streak.current}-day streak` : "Start your streak"}</p>
               </div>
               <DialogTitle className="font-display mt-3 text-2xl font-extrabold leading-tight text-white">
-                {atRisk ? "One question keeps it alive" : "Solve one question to begin"}
+                Today's {examLabel(today?.exam)} Challenge
               </DialogTitle>
-              <DialogDescription className="mt-1 text-sm text-white/65">Today's PYQ. Takes about two minutes, and you'll see the full solution.</DialogDescription>
+              <DialogDescription className="mt-1 text-sm text-white/65">One question today. One step closer to your goal.</DialogDescription>
             </>
           )}
         </div>
@@ -171,8 +201,8 @@ export function StreakPopup() {
                 </div>
               )}
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Link to="/pyq" search={{ subject: q.subject, chapter: q.chapter, practice: true, exam: today?.exam ?? undefined }} onClick={() => setOpen(false)} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
-                  More from {q.chapter || q.subject} <ArrowRight className="h-4 w-4" />
+                <Link to="/pyq" search={{ subject: q.subject, chapter: q.chapter, practice: true, first5: true, exam: today?.exam ?? undefined }} onClick={() => { track("daily_more_practice_clicked", { source: "daily_modal" }); setOpen(false); }} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 px-5 text-sm">
+                  Practise 5 More Questions <ArrowRight className="h-4 w-4" />
                 </Link>
                 <button type="button" onClick={() => setOpen(false)} className="min-h-11 rounded-full px-5 text-sm font-bold text-muted-foreground hover:bg-secondary">Done for now</button>
               </div>

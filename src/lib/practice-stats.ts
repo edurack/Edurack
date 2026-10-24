@@ -145,3 +145,16 @@ export function examLabel(exam: string | null | undefined): string {
   const k = norm(exam);
   return k ? { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" }[k] : "NEET";
 }
+
+// ─── Progress metrics (one rule, used everywhere) ──────────────────────────
+export type PracticeProgress = { available: number; attempted: number; remaining: number; accuracy: number | null; percentDone: number };
+
+/**
+ * Available PYQs, UNIQUE questions attempted, what is left, and accuracy. `attempted` counts distinct questions, so
+ * answering the same question again (revision, retry) never moves it; it can never exceed what is available.
+ */
+export function practiceProgress(available: number, uniqueAttempted: number, correct: number): PracticeProgress {
+  const total = Math.max(0, Math.floor(Number.isFinite(available) ? available : 0));
+  const attempted = Math.min(total, Math.max(0, Math.floor(Number.isFinite(uniqueAttempted) ? uniqueAttempted : 0)));
+  return { available: total, attempted, remaining: total - attempted, accuracy: accuracyPercent(correct, attempted), percentDone: total > 0 ? clampPercent((attempted / total) * 100) : 0 };
+}

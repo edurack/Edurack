@@ -23,6 +23,12 @@ export const TRACKED_EVENTS = [
   "mistake_revision_started",
   "mistake_revision_completed",
   "mentor_profile_viewed",
+  // NEET Quick Mock funnel. `source` = homepage | dashboard | sidebar | subject_practice | practice_results | pyq_landing | pyq_browse | direct
+  "quick_mock_cta_viewed",
+  "quick_mock_cta_clicked",
+  "quick_mock_started",
+  "quick_mock_completed",
+  "quick_mock_upgrade_clicked",
   "drill_started",
   "drill_submitted",
   "test_submitted",
@@ -326,6 +332,7 @@ export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | nul
 export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
   { title: "PYQ practice", steps: [{ event: "practice_started", label: "Started practising" }, { event: "question_answered", label: "Answered a question" }, { event: "practice_completed", label: "Finished a session" }] },
   { title: "Mistake revision", steps: [{ event: "mistake_revision_started", label: "Started revising" }, { event: "mistake_revision_completed", label: "Finished revising" }] },
+  { title: "Quick Mock", steps: [{ event: "quick_mock_cta_viewed", label: "Saw the Quick Mock button" }, { event: "quick_mock_cta_clicked", label: "Tapped it" }, { event: "quick_mock_started", label: "Started a mock" }, { event: "quick_mock_completed", label: "Finished a mock" }] },
   { title: "Timed drills", steps: [{ event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
   { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
   { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },

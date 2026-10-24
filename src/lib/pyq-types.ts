@@ -62,6 +62,8 @@ export type PyqCheckResult = {
   status: PyqStatus;
   /** Set when this answer counted toward the daily streak. */
   streak?: { current: number; increased: boolean };
+  /** True when this right answer fixed a question that was previously wrong (counted once per question). */
+  corrected?: boolean;
 };
 
 // ─── Daily PYQ, notebook, Today card ───────────────────────────────────────
@@ -91,12 +93,21 @@ export type NotebookSummary = {
   wrong: number;
   bookmarked: number;
   mastered: number;
+  /** Distinct past mistakes the student has since answered correctly. Re-answering never inflates it. */
+  corrected: number;
   /** ISO time of the next revision that isn't due yet, if any. */
   nextDueAt: string | null;
 };
 
 // ─── Timed drills ──────────────────────────────────────────────────────────
-export type DrillSet = { drillId: string; durationSec: number; remainingSec: number; questions: PyqQuestion[] };
+export type DrillSet = {
+  drillId: string;
+  durationSec: number;
+  remainingSec: number;
+  questions: PyqQuestion[];
+  /** True when this call picked up an unfinished Quick Mock instead of starting a new one (so analytics must not count a new start). */
+  resumed?: boolean;
+};
 export type DrillResult = {
   drillId: string;
   score: number;

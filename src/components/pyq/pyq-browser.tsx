@@ -2,8 +2,17 @@ import { ChevronRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UNTAGGED_CHAPTER, type PyqTree } from "@/lib/pyq-types";
 import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
+import { practiceProgress } from "@/lib/practice-stats";
+import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
 
-export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean };
+/** `fresh` opens practice on the questions the student hasn't attempted yet (falls back to everything when none are left). */
+export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean; fresh?: boolean };
+
+/** "120 PYQs · 40 attempted · 80 left · 75% accuracy": the same numbers (unique questions) as the dashboard. */
+function progressLine(n: { count: number; attempted: number; correct: number }): string {
+  const p = practiceProgress(n.count, n.attempted, n.correct);
+  return `${p.available} PYQ${p.available === 1 ? "" : "s"} · ${p.attempted} attempted · ${p.remaining} left${p.accuracy !== null ? ` · ${p.accuracy}% accuracy` : ""}`;
+}
 
 type Props = {
   tree: PyqTree;
@@ -58,7 +67,7 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
 
       {subjectNode && !chapterNode && (
         <>
-          <Title title={subjectNode.subject} sub={`${subjectNode.count} questions across ${subjectNode.chapters.length} chapters`} />
+          <Title title={subjectNode.subject} sub={`${progressLine(subjectNode)} · ${subjectNode.chapters.length} chapters`} />
           <div className="mt-4 space-y-2.5">
             {subjectNode.chapters.map((c) => (
               <Row
@@ -73,19 +82,39 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
               />
             ))}
           </div>
+          <QuickMockStrip source="subject_practice" exam={tree.exam} lead="a timed test across subjects" className="mt-5" />
         </>
       )}
 
       {subjectNode && chapterNode && (
         <>
-          <Title title={chapterNode.chapter} sub={`${subjectNode.subject} · ${chapterNode.count} questions`} />
-          <button
-            onClick={() => onNavigate({ subject, chapter, practice: true })}
-            className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
-          >
-            <Play className="h-4 w-4" aria-hidden />
-            Practice all {chapterNode.count} questions
-          </button>
+          <Title title={chapterNode.chapter} sub={`${subjectNode.subject} · ${progressLine(chapterNode)}`} />
+          {/* Started this chapter but not finished: the main button picks up at the first question not attempted yet. */}
+          {chapterNode.attempted > 0 && chapterNode.attempted < chapterNode.count ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={() => onNavigate({ subject, chapter, practice: true, fresh: true })}
+                className="clay-btn inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
+              >
+                <Play className="h-4 w-4" aria-hidden />
+                Continue · {chapterNode.count - chapterNode.attempted} left
+              </button>
+              <button
+                onClick={() => onNavigate({ subject, chapter, practice: true })}
+                className="clay-chip inline-flex w-full items-center justify-center rounded-full px-5 py-3.5 text-sm font-bold text-foreground/80 sm:w-auto"
+              >
+                Practice all {chapterNode.count}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => onNavigate({ subject, chapter, practice: true })}
+              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
+            >
+              <Play className="h-4 w-4" aria-hidden />
+              Practice all {chapterNode.count} questions
+            </button>
+          )}
 
           <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-foreground/50">Or pick a topic</p>
           <div className="space-y-2.5">

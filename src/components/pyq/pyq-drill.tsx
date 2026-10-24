@@ -239,8 +239,8 @@ export function DrillRunner({
 
       {(confirming || submitting) && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={() => !submitting && setConfirming(false)}>
-          <div role="dialog" aria-modal="true" aria-label="Submit drill" onClick={(e) => e.stopPropagation()} className="clay w-full max-w-sm rounded-b-none p-6 text-center sm:rounded-b-3xl">
-            <p className="font-display text-lg font-bold text-foreground">{submitting ? "Submitting…" : "Submit your drill?"}</p>
+          <div role="dialog" aria-modal="true" aria-label="Submit Quick Mock" onClick={(e) => e.stopPropagation()} className="clay w-full max-w-sm rounded-b-none p-6 text-center sm:rounded-b-3xl">
+            <p className="font-display text-lg font-bold text-foreground">{submitting ? "Submitting…" : "Submit your Quick Mock?"}</p>
             {!submitting && (
               <p className="mt-2 text-sm text-foreground/60">
                 You've answered <span className="font-bold text-foreground">{answeredCount}</span> of {set.questions.length}.
@@ -278,7 +278,7 @@ export function DrillResultView({ result, onBack }: { result: DrillResult; onBac
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none">
       <div className="clay p-6 text-center sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Timed drill result</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">Quick Mock result</p>
         <p className="font-display mt-2 text-5xl font-bold text-foreground">
           {result.score}
           <span className="text-xl font-semibold text-foreground/40"> / {result.maxScore}</span>

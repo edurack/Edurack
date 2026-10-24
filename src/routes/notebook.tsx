@@ -56,7 +56,7 @@ function NotebookPage() {
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">My notebook</h1>
         <p className="mt-1 text-sm text-foreground/60">
-          Questions you got wrong come back after {REVIEW_INTERVAL_DAYS.join(", ")} days, so they actually stick.
+          Questions you got wrong come back after {REVIEW_INTERVAL_DAYS.join(", ")} days, so they actually stick. Retry them first; the solution opens after you answer.
         </p>
 
         {error ? (
@@ -95,6 +95,14 @@ function NotebookPage() {
               <p className="text-sm text-foreground/70">
                 <span className="font-bold text-foreground">{data.mastered}</span> question{data.mastered === 1 ? "" : "s"} mastered — you got{" "}
                 {data.mastered === 1 ? "it" : "them"} right on every revision.
+              </p>
+            </div>
+
+            <div className="clay-inset mt-3 flex items-center gap-3 rounded-2xl px-4 py-3.5" data-testid="notebook-corrected">
+              <RotateCcw className="h-5 w-5 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+              <p className="text-sm text-foreground/70">
+                <span className="font-bold text-foreground">{data.corrected}</span> mistake{data.corrected === 1 ? "" : "s"} corrected
+                {data.corrected === 0 ? ". Retry a mistake and get it right to see it here." : ". Each one counts once, however many times you revise it."}
               </p>
             </div>
 

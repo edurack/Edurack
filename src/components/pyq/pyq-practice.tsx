@@ -31,12 +31,14 @@ type Props = {
   guest?: boolean;
   /** Cap the list (e.g. 5 for the new-student "first 5 PYQs" start). Finishing the capped list ends the session normally. */
   limit?: number;
+  /** Open on the questions not attempted yet (falls back to everything once none are left), so "continue" never re-serves finished questions. */
+  startFresh?: boolean;
   /** Where the session was launched from, for analytics only (e.g. "first_five"). */
   source?: string;
   onExit: () => void;
 };
 
-type StatusFilter = "all" | "unsolved" | "wrong";
+type StatusFilter = "all" | "unsolved" | "wrong" | "new";
 type Local = PyqCheckResult & { chosenOption?: OptionKey; chosenValue?: number };
 
 const OPTIONS: OptionKey[] = ["A", "B", "C", "D"];
@@ -48,7 +50,7 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
 };
 const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, source, onExit }: Props) {
+export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, startFresh = false, source, onExit }: Props) {
   const { user: authUser } = useAuth();
   // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
   const user = guest ? null : authUser;
@@ -56,7 +58,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   const [difficulty, setDifficulty] = useState<Difficulty | "All">("All");
   const [year, setYear] = useState("All");
   // A weak-topics session starts on questions the student hasn't solved yet.
-  const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : "all";
+  // A fresh start (Continue / "5 more") shows only questions never attempted; mistake revision is the one place repeats are the point.
+  const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : startFresh && !session ? "new" : "all";
   const [statusF, setStatusF] = useState<StatusFilter>(defaultStatus);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -73,6 +76,10 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   const [finished, setFinished] = useState(false);
   const [streakNow, setStreakNow] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Set the instant a check/reveal starts (state updates are asynchronous, so two quick taps could both get past `busy`).
+  const inflight = useRef(false);
+  // In mistake revision the point is to TRY again, so the solution stays hidden until an answer is submitted.
+  const revising = session === "due" || session === "wrong";
 
   // Analytics. One `practice_started` per practice session and one `practice_completed` per finished session: the refs
   // make a refetch (difficulty chip), a StrictMode re-run or a re-render unable to send either twice.
@@ -134,6 +141,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     };
   }, [user, guest, subject, chapter, topic, weakAttemptId, session, exam, difficulty]);
 
+  // "Not attempted yet" with nothing left to attempt: show the whole list instead of an empty screen.
+  useEffect(() => {
+    if (list && statusF === "new" && defaultStatus === "new" && !list.questions.some((x) => x.status === "new" || x.status === "revealed")) setStatusF("all");
+  }, [list, statusF, defaultStatus]);
+
   // Year/status chips just re-filter the list already in memory — no fetch.
   useEffect(() => {
     setIdx(0);
@@ -144,6 +156,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
+    else if (statusF === "new") qs = qs.filter((x) => x.status === "new" || x.status === "revealed"); // a peeked-at solution isn't an attempt
     return limit ? qs.slice(0, limit) : qs;
   }, [list, year, statusF, limit]);
   const q: PyqQuestion | undefined = questions[idx];
@@ -158,7 +171,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   }, [q, result, picked, typed]);
 
   async function send(answer: { option?: OptionKey; value?: number } | null) {
-    if ((!user && !guest) || !q || busy) return;
+    if ((!user && !guest) || !q || busy || inflight.current) return;
+    inflight.current = true;
     setBusy(true);
     setActionError(null);
     try {
@@ -173,7 +187,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
       // Only a real answer is an answer; peeking at the solution (answer === null) isn't sent. Never the chosen option/number.
       if (answer !== null) {
-        track("question_answered", answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }));
+        track("question_answered", { ...answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }), corrected: res.corrected === true });
         // Once per India day per student, however many times the daily question screen is opened.
         if (mode === "daily" && user) trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctxFor(q)), is_correct: res.isCorrect }, "day");
       }
@@ -185,6 +199,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Something went wrong. Try again.");
     } finally {
+      inflight.current = false;
       setBusy(false);
     }
   }
@@ -268,7 +283,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
       wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
       peeked: all.filter((r) => r.revealed).length,
     };
-    return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} onDone={onExit} />;
+    return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} showQuickMock={!revising && !guest} onDone={onExit} />;
   }
 
   return (
@@ -319,7 +334,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
             </FilterGroup>
           )}
           <FilterGroup label="Show">
-            {([["all", "Everything"], ["unsolved", "Not solved yet"], ["wrong", "Got wrong"]] as const).map(([id, label]) => (
+            {([["all", "Everything"], ["new", "Not attempted yet"], ["unsolved", "Not solved yet"], ["wrong", "Got wrong"]] as const).map(([id, label]) => (
               <Chip key={id} active={statusF === id} onClick={() => setStatusF(id)}>
                 {label}
               </Chip>
@@ -538,6 +553,11 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
                     {result.isCorrect ? "Correct! Nice work." : "Not quite — read the solution below."}
                   </p>
                 )}
+                {result.corrected && (
+                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-200" role="status">
+                    Mistake corrected. That one is fixed.
+                  </p>
+                )}
                 {result.streak?.increased && (
                   <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-foreground">
                     <Flame className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" aria-hidden />
@@ -548,7 +568,7 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
               </div>
             )}
 
-            {!result && (
+            {!result && !revising && (
               <button
                 onClick={() => void send(null)}
                 disabled={busy}

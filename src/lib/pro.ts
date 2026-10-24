@@ -21,7 +21,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
 
 /** Every feature Pro can switch on. The admin screen and the student upgrade card are generated from this list. */
 export const PRO_FEATURES = {
-  unlimitedDrills: { label: "Unlimited timed drills", description: "No daily cap on timed PYQ drills." },
+  unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on NEET Quick Mocks (timed PYQ drills)." },
   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
 } as const;
 export type ProFeatureKey = keyof typeof PRO_FEATURES;
@@ -68,6 +68,8 @@ export type DrillAccess = {
   features: ProFeatureKey[];
   /** Which features need Pro right now (admin setting). */
   proOnly: Record<ProFeatureKey, boolean>;
+  /** A Quick Mock this student started and hasn't submitted yet. The server resumes it instead of using up another one. */
+  running?: { drillId: string; remainingSec: number } | null;
 };
 
 export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number };
