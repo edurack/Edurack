@@ -1,1976 +1,967 @@
-diff --git a/src/components/dashboard/complete-profile-popup.tsx b/src/components/dashboard/complete-profile-popup.tsx
-index ac0c261..6aff67b 100644
---- a/src/components/dashboard/complete-profile-popup.tsx
-+++ b/src/components/dashboard/complete-profile-popup.tsx
-@@ -35,7 +35,7 @@ function snooze(uid: string) {
+diff --git a/src/components/blog/blog-sidebar.tsx b/src/components/blog/blog-sidebar.tsx
+index ec40353..35bc1ac 100644
+--- a/src/components/blog/blog-sidebar.tsx
++++ b/src/components/blog/blog-sidebar.tsx
+@@ -7,7 +7,7 @@
+ import { Link } from "@tanstack/react-router";
+ import { IconArrowRight as ArrowRight, IconFlame as Flame, IconClock as Clock, IconCompass as Compass, IconTargetArrow as Target } from "@tabler/icons-react";
+ import { TableOfContentsSidebar } from "@/components/blog/table-of-contents";
+-import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
++import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
+ import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary, SidebarChapter, SidebarTopic } from "@/lib/blog-types";
+ import type { BlogHeading } from "@/lib/blog-content";
  
- type Basic = { fullName: string; mobile: string; city: string };
+@@ -152,6 +152,16 @@ export function BlogSidebar({ post, headings, data }: { post: PublicBlogPost; he
+         </Card>
+       )}
  
--export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | null; onSaved: (next: Basic) => void }) {
-+export function CompleteProfilePopup({ profile, onSaved, hold = false }: { profile: Basic | null; onSaved: (next: Basic) => void; /** Don't show yet (e.g. the student hasn't answered a question): they get asked on a later visit. */ hold?: boolean }) {
-   const { user } = useAuth();
-   const [open, setOpen] = useState(false);
-   const [done, setDone] = useState(false);
-@@ -49,7 +49,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
- 
-   // Decide once, after the profile has loaded, whether to show.
-   useEffect(() => {
--    if (!user || !profile || !incomplete || done || isSnoozed(user.uid)) return;
-+    if (!user || !profile || !incomplete || done || hold || isSnoozed(user.uid)) return;
-     const t = window.setTimeout(() => {
-       // Don't pile onto another dialog (e.g. the streak popup) — try again on the next visit.
-       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-@@ -61,7 +61,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
-     }, SHOW_DELAY_MS);
-     return () => window.clearTimeout(t);
-     // eslint-disable-next-line react-hooks/exhaustive-deps
--  }, [user?.uid, !!profile, incomplete]);
-+  }, [user?.uid, !!profile, incomplete, hold]);
- 
-   function close() {
-     setOpen(false);
-diff --git a/src/components/dashboard/practice-performance-card.tsx b/src/components/dashboard/practice-performance-card.tsx
-new file mode 100644
-index 0000000..eea34b7
---- /dev/null
-+++ b/src/components/dashboard/practice-performance-card.tsx
-@@ -0,0 +1,126 @@
-+// "Your performance": practice numbers (NEET and JEE kept apart) plus mock-test scores, from ONE source
-+// (getPracticeStats + the test-series summary), with real empty states instead of zeros or negative scores.
-+import { useEffect, useState } from "react";
-+import { Link } from "@tanstack/react-router";
-+import { cn } from "@/lib/utils";
-+import { defaultExamTab, EMPTY_EXAM_STATS, summariseTests, type BatchPerf, type PracticeStats } from "@/lib/practice-stats";
-+
-+type Tab = "neet" | "jee";
-+const TABS: { key: Tab; label: string }[] = [
-+  { key: "neet", label: "NEET" },
-+  { key: "jee", label: "JEE" },
-+];
-+
-+function Cell({ label, value, hint, to, search, tone }: { label: string; value: string; hint?: string; to?: "/pyq"; search?: Record<string, unknown>; tone?: "attention" }) {
-+  const body = (
-+    <>
-+      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-muted-foreground/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
-+      <p className="mt-1.5 text-xs font-semibold text-muted-foreground">{label}</p>
-+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground/80">{hint}</p>}
-+    </>
-+  );
-+  const cls = "min-w-0 rounded-2xl bg-secondary/60 p-3.5";
-+  return to ? (
-+    <Link to={to} search={search} className={cn(cls, "transition-colors hover:bg-secondary")}>{body}</Link>
-+  ) : (
-+    <div className={cls}>{body}</div>
-+  );
-+}
-+
-+export function PracticePerformanceCard({
-+  stats,
-+  failed,
-+  onRetry,
-+  targetExam,
-+  tests,
-+  className,
-+}: {
-+  stats: PracticeStats | null;
-+  failed: boolean;
-+  onRetry: () => void;
-+  targetExam: string | null | undefined;
-+  /** Test-series performance (already floored at 0%); null while loading. */
-+  tests: BatchPerf[] | null;
-+  className?: string;
-+}) {
-+  const [tab, setTab] = useState<Tab | null>(null);
-+  // Open on the exam they actually practise most (or their target exam), once the numbers are in; never override a manual pick.
-+  useEffect(() => {
-+    if (stats && tab === null) setTab(defaultExamTab(stats, targetExam));
-+  }, [stats, targetExam, tab]);
-+
-+  const shell = cn("min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6", className);
-+
-+  if (!stats && !failed) {
-+    return (
-+      <section aria-label="Your performance" className={shell}>
-+        <div className="h-5 w-40 animate-pulse rounded bg-secondary" />
-+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-secondary" />)}</div>
-+      </section>
-+    );
-+  }
-+  if (!stats) {
-+    return (
-+      <section aria-label="Your performance" className={shell}>
-+        <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
-+        <p className="mt-2 text-sm text-muted-foreground">We couldn't load your numbers just now. <button type="button" onClick={onRetry} className="font-bold text-primary hover:underline">Try again</button></p>
-+      </section>
-+    );
-+  }
-+
-+  const exam: Tab = tab ?? "neet";
-+  const label = exam === "jee" ? "JEE" : "NEET";
-+  const s = stats.byExam[exam] ?? EMPTY_EXAM_STATS;
-+  const hasPractice = s.solved > 0;
-+  const mock = summariseTests(tests, exam);
-+  const dash = "—";
-+  const approx = stats.approximate && hasPractice;
-+
-+  return (
-+    <section aria-label="Your performance" className={shell}>
-+      <div className="flex flex-wrap items-center justify-between gap-3">
-+        <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
-+        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-border p-0.5">
-+          {TABS.map((t) => (
-+            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-9 rounded-full px-4 text-xs font-bold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
-+              {t.label}
-+            </button>
-+          ))}
-+        </div>
-+      </div>
-+
-+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-+        <Cell label="Questions solved" value={hasPractice ? s.solved.toLocaleString("en-IN") : dash} />
-+        <Cell label="Accuracy" value={s.accuracy === null ? dash : `${s.accuracy}%`} hint={hasPractice ? `${s.correct} of ${s.solved} right` : undefined} />
-+        <Cell label="This week" value={hasPractice ? s.weekAnswered.toLocaleString("en-IN") : dash} hint={approx ? "estimate" : "last 7 days"} />
-+        <Cell
-+          label="Mistakes to revise"
-+          value={hasPractice || s.due > 0 ? String(s.due) : dash}
-+          hint={s.due > 0 ? "due now · tap to revise" : hasPractice ? "all clear" : undefined}
-+          tone={s.due > 0 ? "attention" : undefined}
-+          to={s.due > 0 ? "/pyq" : undefined}
-+          search={s.due > 0 ? { practice: true, session: "due" } : undefined}
-+        />
-+        <div className="col-span-2 sm:col-span-1">
-+          <Cell label="Practice days" value={hasPractice ? String(s.distinctDays) : dash} hint={approx ? "estimate" : undefined} />
-+        </div>
-+      </div>
-+
-+      {!hasPractice && (
-+        <p className="mt-3 text-sm text-muted-foreground">
-+          {stats.questionsAnswered > 0 ? `No ${label} practice yet. Switch the tab above to see your other exam.` : `Solve your first ${label} question and your numbers show up here.`}
-+        </p>
++      {resolveBlogPromoAudience(post) === "jee" && (
++        <section aria-labelledby="sb-jee-hub" className="clay p-4">
++          <h2 id="sb-jee-hub" className="font-display text-sm font-extrabold tracking-tight text-foreground">JEE Main 2027 hub</h2>
++          <p className="mt-1 text-xs leading-relaxed text-foreground/60">Updates, chapter notes, practice sheets and JEE PYQs in one place.</p>
++          <Link to="/jee-main-2027" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
++            Open the JEE Main 2027 hub <ArrowRight className="h-3 w-3" aria-hidden="true" />
++          </Link>
++        </section>
 +      )}
 +
-+      <div className="mt-4 border-t border-border pt-3 text-sm">
-+        {mock ? (
-+          <p className="text-muted-foreground">
-+            <span className="font-bold text-foreground">{label} mock tests</span> · average <b className="text-foreground">{mock.average}%</b> · best <b className="text-foreground">{mock.best}%</b> · {mock.attempts} attempt{mock.attempts === 1 ? "" : "s"} across {mock.tests} test{mock.tests === 1 ? "" : "s"}
-+          </p>
-+        ) : (
-+          <p className="text-muted-foreground">{tests === null ? "Checking your mock tests…" : `No ${label} mock tests attempted yet.`}</p>
-+        )}
-+      </div>
-+    </section>
-+  );
-+}
-diff --git a/src/components/dashboard/prep-setup-card.tsx b/src/components/dashboard/prep-setup-card.tsx
+       {data.popular.length > 0 && (
+         <Card id="sb-popular" title="Most read" icon={<Flame className="h-4 w-4 text-orange-500" aria-hidden="true" />}>
+           <ol className="space-y-1">
+diff --git a/src/components/jee/jee-landing-view.tsx b/src/components/jee/jee-landing-view.tsx
 new file mode 100644
-index 0000000..b86f3df
+index 0000000..a942c26
 --- /dev/null
-+++ b/src/components/dashboard/prep-setup-card.tsx
-@@ -0,0 +1,91 @@
-+// A slim, never-blocking card that asks only for the prep details the student hasn't given yet (exam, class/track,
-+// target year). Onboarding already saved exam + track for most students, so usually this is one row of year chips.
-+// Each tap saves straight away; "Not now" hides it for a week. It is a card in the page, not a modal, so it can't stand
-+// between a student and practice.
-+import { useMemo, useState } from "react";
-+import { Check } from "lucide-react";
-+import { useAuth } from "@/lib/auth-context";
-+import { updatePrepInfo } from "@/server-functions/profile";
-+import { missingPrepFields, targetYearOptions, TRACKS, type PrepProfile } from "@/lib/prep-profile";
-+import { cn } from "@/lib/utils";
++++ b/src/components/jee/jee-landing-view.tsx
+@@ -0,0 +1,293 @@
++// src/components/jee/jee-landing-view.tsx
++//
++// JEE Main 2027 landing page (/jee-main-2027). A discovery layer over systems that already exist: the blog,
++// the PDF resource library and the PYQ practice flow. It owns no content, uploads nothing and starts no
++// practice. Every dynamic block comes from the route loader (server-rendered, so crawlers see it) and is
++// hidden when it has nothing real to show — no placeholders, no invented counts.
++import { Link } from "@tanstack/react-router";
++import { useEffect } from "react";
++import { IconArrowRight as ArrowRight, IconClock as Clock, IconDownload as Download, IconFileText as FileText, IconTargetArrow as Target } from "@tabler/icons-react";
++import { Crumbs, Page } from "@/components/jee/jee-views";
++import { track, trackOnce } from "@/lib/analytics";
++import { getJeeSubjects, jeePracticeSearch } from "@/lib/jee-blueprint";
++import { JEE_LANDING_FAQS } from "@/lib/jee-landing-copy";
++import type { JeeLandingData } from "@/lib/jee-landing-types";
++import { JEE_LIBRARY_YEAR, JEE_LIB_BASE, JEE_RESOURCE_TYPE_LABELS, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
++import { BLOG_CATEGORY_LABELS, type PublicBlogPostSummary } from "@/lib/blog-types";
 +
-+const SNOOZE_DAYS = 7;
-+const key = (uid: string) => `edurack-prep-setup-snooze:${uid}`;
-+const snoozed = (uid: string) => {
-+  try { return Number(localStorage.getItem(key(uid)) ?? 0) > Date.now(); } catch { return false; }
-+};
-+const snooze = (uid: string) => {
-+  try { localStorage.setItem(key(uid), String(Date.now() + SNOOZE_DAYS * 86_400_000)); } catch { /* storage unavailable: it may show again next visit */ }
-+};
++const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
++// Fixed time zone so the server-rendered date and the browser's agree (no hydration mismatch).
++const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 +
-+const CHIP = "inline-flex min-h-10 items-center justify-center gap-1 rounded-full border px-4 text-xs font-bold transition-colors";
++const H2 = ({ id, children }: { id: string; children: React.ReactNode }) => (
++  <h2 id={id} className="mb-3 font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">{children}</h2>
++);
++const Section = ({ id, className = "mt-12", children }: { id: string; className?: string; children: React.ReactNode }) => (
++  <section aria-labelledby={id} className={className}>{children}</section>
++);
++const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 text-sm font-extrabold transition";
 +
-+export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile: PrepProfile | null; /** New students: ask for exam/class now, the target year after their first question. */ deferYear?: boolean; onSaved: (next: Partial<PrepProfile>) => void }) {
-+  const { user } = useAuth();
-+  const [hidden, setHidden] = useState(false);
-+  const [busy, setBusy] = useState<string | null>(null);
-+  const [err, setErr] = useState<string | null>(null);
-+  const years = useMemo(() => targetYearOptions(), []);
-+
-+  if (!user || !profile || hidden || snoozed(user.uid)) return null;
-+  const missing = missingPrepFields(profile).filter((f) => !(deferYear && f === "year"));
-+  if (missing.length === 0) return null;
-+
-+  async function save(field: string, patch: { targetExam?: "neet" | "jee"; track?: "11th" | "12th" | "Dropper"; targetYear?: number }, local: Partial<PrepProfile>) {
-+    if (!user || busy) return;
-+    setBusy(field);
-+    setErr(null);
-+    try {
-+      await updatePrepInfo({ data: { token: await user.getIdToken(), ...patch } });
-+      onSaved(local);
-+    } catch {
-+      setErr("Couldn't save that. Try again.");
-+    } finally {
-+      setBusy(null);
-+    }
-+  }
-+
-+  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/80 hover:border-foreground/40");
-+
-+  return (
-+    <section aria-label="Finish your prep details" className="rounded-3xl border border-border bg-card p-4 sm:p-5">
-+      <div className="flex items-start justify-between gap-3">
-+        <div className="min-w-0">
-+          <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-muted-foreground">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
-+          <p className="mt-0.5 text-xs text-muted-foreground">So we recommend the right questions. You can change this later in Profile.</p>
-+        </div>
-+        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-muted-foreground hover:bg-secondary">Not now</button>
-+      </div>
-+
-+      <div className="mt-3 space-y-3">
-+        {missing.includes("exam") && (
-+          <div role="radiogroup" aria-label="Target exam" className="flex flex-wrap items-center gap-2">
-+            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Exam</span>
-+            {(["neet", "jee"] as const).map((e) => (
-+              <button key={e} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("exam", { targetExam: e }, { targetExam: e })} className={chip(false)}>{e === "neet" ? "NEET" : "JEE"}</button>
-+            ))}
-+          </div>
-+        )}
-+        {missing.includes("track") && (
-+          <div role="radiogroup" aria-label="Current class" className="flex flex-wrap items-center gap-2">
-+            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">I am in</span>
-+            {TRACKS.map((t) => (
-+              <button key={t} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("track", { track: t }, { track: t })} className={chip(false)}>{t}</button>
-+            ))}
-+          </div>
-+        )}
-+        {missing.includes("year") && (
-+          <div role="radiogroup" aria-label="Target year" className="flex flex-wrap items-center gap-2">
-+            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Target year</span>
-+            {years.map((y) => (
-+              <button key={y} type="button" role="radio" aria-checked={profile.targetYear === y} disabled={busy !== null} onClick={() => save("year", { targetYear: y }, { targetYear: y })} className={chip(profile.targetYear === y)}>
-+                {profile.targetYear === y && <Check className="h-3.5 w-3.5" aria-hidden />}{y}
-+              </button>
-+            ))}
-+          </div>
-+        )}
-+      </div>
-+      {err && <p role="alert" className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
-+    </section>
-+  );
++// ── Articles ─────────────────────────────────────────────────────────────────
++function articleDate(p: PublicBlogPostSummary) {
++  // The "Updated" date is shown only when the editor marked the edit as substantive — same rule as the blog itself.
++  if (p.substantiveUpdate && p.updatedAt) return { label: "Updated", iso: p.updatedAt };
++  const iso = p.publishedAt ?? p.updatedAt;
++  return iso ? { label: "Published", iso } : null;
 +}
-diff --git a/src/components/dashboard/pyq-hero.tsx b/src/components/dashboard/pyq-hero.tsx
-index d5e0029..da2ddf0 100644
---- a/src/components/dashboard/pyq-hero.tsx
-+++ b/src/components/dashboard/pyq-hero.tsx
-@@ -4,16 +4,16 @@
- import { useCallback, useEffect, useState } from "react";
- import { Link } from "@tanstack/react-router";
- import { motion } from "motion/react";
--import { ArrowRight, Check, Flame, Lock, Sparkles, Trophy } from "lucide-react";
-+import { ArrowRight, CalendarCheck, Check, Flame, Lock, RotateCcw, Sparkles, Trophy } from "lucide-react";
- import { useAuth } from "@/lib/auth-context";
- import { getTodaySummary } from "@/server-functions/practice-extras";
- import { getPyqTree } from "@/server-functions/pyq-practice";
- import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
--import { pickStartHere, headlineFor } from "@/components/today-card";
-+import { headlineFor } from "@/components/today-card";
-+import { examLabel, pickFirstChapter, type PracticeStats } from "@/lib/practice-stats";
- import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
- import { cn } from "@/lib/utils";
- 
--const EXAM_NAME: Record<string, string> = { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" };
- 
- // Fixed colours (like the Today card) so the hero looks the same in light and dark mode.
- const SUBJECT_STYLE: { match: RegExp; bar: string; chip: string }[] = [
-@@ -62,7 +62,7 @@ function Ring({ percent, size = 96 }: { percent: number; size?: number }) {
-   );
- }
- 
--export function PyqHero({ className }: { className?: string }) {
-+export function PyqHero({ className, stats = null, statsFailed = false }: { className?: string; /** The shared practice numbers (see use-practice-stats). null while loading. */ stats?: PracticeStats | null; statsFailed?: boolean }) {
-   const { user } = useAuth();
-   const [t, setT] = useState<TodaySummary | null>(null);
-   const [tree, setTree] = useState<PyqTree | null>(null);
-@@ -88,30 +88,53 @@ export function PyqHero({ className }: { className?: string }) {
-   }, [load]);
- 
-   const exam = t?.exam ?? tree?.exam ?? null;
--  const examName = exam ? EXAM_NAME[exam] ?? exam.toUpperCase() : "PYQ";
--  const attempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
-+  const examName = exam ? examLabel(exam) : "NEET";
-   const total = tree?.totalQuestions ?? 0;
--  const correct = tree?.totalCorrect ?? 0;
 +
-+  // The numbers come from the shared stats (the same ones the performance card shows). If they failed to load we fall
-+  // back to the browse tree's own counts so the hero still works.
-+  const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
-+  const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
-+  const attempted = Math.min(total || Infinity, examStats ? examStats.solved : treeAttempted);
-+  const accuracy = examStats ? examStats.accuracy : attempted > 0 ? Math.round(((tree?.totalCorrect ?? 0) / attempted) * 100) : null;
-   const percent = total > 0 ? Math.min(100, Math.round((attempted / total) * 100)) : 0;
--  const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : null;
--  const isNew = loaded && attempted === 0 && (t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0;
--  const quests = buildQuests(t, attempted);
-+
-+  // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
-+  // student who had practised JEE while their profile said NEET was told to "solve your first question".)
-+  const ready = loaded && (stats !== null || statsFailed);
-+  const questionsAnswered = stats ? stats.questionsAnswered : treeAttempted;
-+  const isNew = ready && questionsAnswered === 0 && (stats !== null || ((t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0));
-+
-+  const quests = buildQuests(t, questionsAnswered);
-   const nextQuest = quests.find((q) => !q.done);
--  const step = t ? pickStartHere(t) : null;
-   const head = t ? headlineFor(t) : null;
-   const s = t?.streak;
-   const lit = (s?.current ?? 0) > 0;
-+  const due = stats ? stats.overall.due : t?.due ?? 0;
-+  const dailyPending = Boolean(t?.daily.available && !t.daily.done);
-+
-+  // ── Where the main button goes ──
-+  // New student: straight into 5 questions of the biggest chapter of their exam (no browsing, no setup).
-+  const first = pickFirstChapter(tree);
-+  const startTo = first ? { subject: first.subject, chapter: first.chapter, practice: true, first5: true, exam: exam ?? undefined } : { exam: exam ?? undefined };
-+  // Returning student: back to the chapter they were last in. (A chapter-less question opens that subject's chapter list.)
-+  const last = stats?.lastAttempt ?? null;
-+  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) : null;
-+  const continueSearch = last
-+    ? last.chapter
-+      ? { subject: last.subject, chapter: last.chapter, practice: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
-+      : { subject: last.subject, exam: exam ?? undefined }
-+    : { exam: exam ?? undefined };
- 
--  const cta = isNew
--    ? { label: "Solve my first question", sub: "About 2 minutes. Answer + solution included." }
--    : step
--      ? { label: step.label, sub: step.sub }
--      : { label: "Start practising PYQs", sub: "Pick a chapter and go" };
--  const ctaTo = (step?.to ?? "/pyq") as "/pyq";
--  const ctaSearch = step?.search ?? { exam: exam ?? undefined };
-+  const CTA = "group inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none";
-+  const ARROW = "grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none";
- 
--  const title = isNew ? `Solve your first ${examName} question` : head?.title ?? `${examName} PYQ practice`;
--  const sub = isNew ? "One real previous-year question, a clear solution, and your streak starts. That's the whole first step." : head?.sub ?? "Chapter-wise questions with solutions, free.";
-+  const title = !ready ? "Your PYQ practice" : isNew ? "Welcome to Edurack" : head?.title ?? `${examName} PYQ practice`;
-+  const sub = !ready
-+    ? "Loading your progress…"
-+    : isNew
-+      ? `Start with 5 real previous-year ${examName} questions. Every one comes with the answer and a clear solution, and your streak starts with the first.`
-+      : head?.sub ?? "Chapter-wise questions with solutions, free.";
- 
-   return (
-     <section aria-label="PYQ practice" className={cn("ink-section relative isolate overflow-hidden rounded-3xl p-5 sm:p-7", className)}>
-@@ -124,86 +147,128 @@ export function PyqHero({ className }: { className?: string }) {
-             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-950">
-               <Sparkles className="h-3 w-3" aria-hidden /> {examName} PYQ practice · Free
-             </span>
--            <span
--              data-testid="hero-streak"
--              className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
--            >
--              <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
--              {lit ? `${s!.current} day streak` : "No streak yet"}
--            </span>
-+            {!isNew && (
-+              <span
-+                data-testid="hero-streak"
-+                className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
-+              >
-+                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
-+                {lit ? `${s!.current} day streak` : "No streak yet"}
++function ArticleCard({ post, source, position, cover }: { post: PublicBlogPostSummary; source: "updates" | "guides"; position: number; cover?: boolean }) {
++  const when = articleDate(post);
++  return (
++    <li className="min-w-0">
++      <Link
++        to="/blog/$slug"
++        params={{ slug: post.slug }}
++        onClick={() => track("jee_2027_blog_clicked", { source, slug: post.slug, post_id: post.id, category: post.category, position })}
++        className="clay group flex h-full flex-col overflow-hidden rounded-3xl transition hover:-translate-y-0.5"
++      >
++        {cover && post.coverImageUrl && (
++          <img src={post.coverImageUrl} alt={post.coverImageAlt || ""} width={640} height={360} loading="lazy" decoding="async" className="aspect-video w-full object-cover" />
++        )}
++        <span className="flex flex-1 flex-col p-5">
++          <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--sky-deep)]">{BLOG_CATEGORY_LABELS[post.category]}</span>
++          <span className="mt-1.5 break-words font-display text-base font-bold leading-snug text-foreground group-hover:underline">{post.title}</span>
++          {post.excerpt && <span className="mt-2 line-clamp-3 text-sm leading-relaxed text-foreground/65">{post.excerpt}</span>}
++          <span className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-4 text-xs text-foreground/50">
++            {when && <time dateTime={when.iso}>{when.label} {dateLabel(when.iso)}</time>}
++            {cover && (
++              <span className="inline-flex items-center gap-1">
++                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
++                {post.readingTimeMinutes} min read
 +              </span>
 +            )}
-           </div>
- 
--          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{loaded ? title : "Your PYQ practice"}</h2>
--          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{loaded ? sub : "Loading your progress…"}</p>
--
--          <Link
--            to={ctaTo}
--            search={ctaSearch}
--            className="group mt-5 inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none"
--          >
--            <span className="min-w-0">
--              <span className="block truncate">{cta.label}</span>
--              <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{cta.sub}</span>
--            </span>
--            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none">
--              <ArrowRight className="h-5 w-5" aria-hidden />
--            </span>
--          </Link>
--
--          {s && (
--            <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
--              <div className="grid grid-cols-7 gap-1.5">
--                {s.week.map((d) => (
--                  <div key={d.day} className="flex flex-col items-center gap-1">
--                    <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
--                    <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
--                      {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
--                    </span>
-+          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{title}</h2>
-+          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{sub}</p>
++          </span>
++          <span className="mt-3 text-sm font-bold text-[var(--sky-deep)]">Read article →</span>
++        </span>
++      </Link>
++    </li>
++  );
++}
 +
-+          {isNew ? (
-+            <>
-+              <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
-+                <span className="min-w-0">
-+                  <span className="block truncate">Start Your First 5 {examName} PYQs</span>
-+                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
-+                </span>
-+                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
-+              </Link>
-+              <Link to="/pyq" search={{ exam: exam ?? undefined }} className="mt-3 inline-flex min-h-9 items-center text-xs font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
-+                or pick a subject yourself
-+              </Link>
-+            </>
++// ── Page ─────────────────────────────────────────────────────────────────────
++export function JeeLandingView({ data }: { data: JeeLandingData }) {
++  const { summary, featured, blog, pyqTotal } = data;
++  const subjects = getJeeSubjects();
++
++  // One landing-view event per page load: the key makes re-renders and React's dev double-mount harmless.
++  // A view is NOT a practice start — practice events come only from the CTA clicks below.
++  useEffect(() => {
++    trackOnce("jee2027-landing-view", "jee_2027_landing_viewed", {
++      resources_published: summary.total,
++      articles_published: blog.total,
++      pyq_available: pyqTotal > 0,
++    });
++  }, [summary.total, blog.total, pyqTotal]);
++
++  const resourceClick = (source: string, extra: Record<string, string | number> = {}) => () => track("jee_2027_resource_cta_clicked", { source, ...extra });
++  const practiceClick = (source: string, extra: Record<string, string | number> = {}) => () => track("jee_2027_practice_cta_clicked", { source, ...extra });
++  const hasArticles = blog.total > 0;
++
++  return (
++    <Page>
++      <Crumbs items={[{ label: `JEE Main ${JEE_LIBRARY_YEAR}` }]} />
++
++      {/* ── Hero: compact, no decorative art, primary CTA above the fold on a phone ── */}
++      <header>
++        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-foreground/55">Edurack / JEE Main {JEE_LIBRARY_YEAR}</p>
++        <h1 className="mt-2 font-display text-3xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl">Your JEE Main 2027 Preparation Starts Here.</h1>
++        <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-foreground/80 sm:text-base">
++          Prepare with exam updates, chapter-wise revision notes, downloadable practice sheets and previous-year questions—all in one place.
++        </p>
++        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
++          <Link to={JEE_LIB_BASE as never} onClick={resourceClick("hero")} className={`${BTN} bg-foreground text-background hover:opacity-90`}>
++            Explore Free Study Resources
++            <ArrowRight className="h-4 w-4" aria-hidden="true" />
++          </Link>
++          <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("hero")} className={`${BTN} clay`}>
++            Practise JEE PYQs
++          </Link>
++        </div>
++        <ul className="mt-5 flex flex-wrap gap-2" aria-label="What you get">
++          {[
++            { icon: FileText, label: "Chapter Notes" },
++            { icon: Download, label: "Practice Sheets" },
++            { icon: Target, label: "PYQ Practice" },
++          ].map(({ icon: Icon, label }) => (
++            <li key={label} className="clay-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-foreground/75">
++              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
++              {label}
++            </li>
++          ))}
++        </ul>
++      </header>
++
++      {/* ── Latest updates (Exam News category) ── */}
++      {hasArticles && (
++        <Section id="jee-updates">
++          <H2 id="jee-updates">Latest JEE Main {JEE_LIBRARY_YEAR} Updates</H2>
++          {blog.updates.length > 0 ? (
++            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++              {blog.updates.map((p, i) => (
++                <ArticleCard key={p.id} post={p} source="updates" position={i + 1} />
++              ))}
++            </ul>
 +          ) : (
-+            <>
-+              {/* Returning students: today's question + streak come first. */}
-+              {ready && t && (
-+                <div className="mt-4 flex flex-wrap items-center gap-2">
-+                  {t.daily.available && (
-+                    dailyPending ? (
-+                      <Link to="/pyq" search={{ practice: true, session: "daily" }} data-testid="hero-daily" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/50 bg-amber-300/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-300/25">
-+                        <CalendarCheck className="h-4 w-4" aria-hidden />
-+                        Solve today's PYQ
-+                        <span className="text-xs font-semibold text-amber-200/80">{lit ? `keeps your ${s!.current}-day streak` : "starts your streak"}</span>
-+                      </Link>
-+                    ) : (
-+                      <span data-testid="hero-daily-done" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 text-sm font-bold text-emerald-100">
-+                        <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> Today's PYQ done
-+                      </span>
-+                    )
-+                  )}
-+                </div>
-+              )}
++            <p className="clay rounded-2xl p-4 text-sm text-foreground/70">No exam-update articles have been published yet. The preparation guides below are available now.</p>
++          )}
++          <p className="mt-3 text-xs leading-relaxed text-foreground/55">
++            These articles summarise public information. Always confirm exam dates, eligibility and syllabus against the official NTA notices.
++          </p>
++          <Link to="/blog" search={{ examKey: "jee" } as never} className="mt-2 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
++            View all JEE articles →
++          </Link>
++        </Section>
++      )}
 +
-+              <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, "mt-4")}>
-+                <span className="min-w-0">
-+                  <span className="block truncate">Continue Practising</span>
-+                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
-+                </span>
-+                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
-+              </Link>
-+
-+              {due > 0 && (
-+                <Link to="/pyq" search={{ practice: true, session: "due" }} data-testid="hero-revise" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 px-4 text-sm font-bold text-white transition-colors hover:border-white/60">
-+                  <RotateCcw className="h-4 w-4" aria-hidden />
-+                  Revise {due} mistake{due === 1 ? "" : "s"} due today
-+                </Link>
-+              )}
-+
-+              {s && (
-+                <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
-+                  <div className="grid grid-cols-7 gap-1.5">
-+                    {s.week.map((d) => (
-+                      <div key={d.day} className="flex flex-col items-center gap-1">
-+                        <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
-+                        <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
-+                          {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
-+                        </span>
-+                      </div>
-+                    ))}
-                   </div>
--                ))}
--              </div>
--            </div>
-+                </div>
-+              )}
-+            </>
-           )}
-         </div>
- 
--        {/* Progress panel */}
--        <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
--          <div className="flex items-center gap-4">
--            <Ring percent={percent} />
--            <div className="min-w-0">
--              <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
--              <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
--              {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
-+        {/* Progress panel: only once there is progress to show. */}
-+        {!isNew && (
-+          <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
-+            <div className="flex items-center gap-4">
-+              <Ring percent={percent} />
-+              <div className="min-w-0">
-+                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
-+                <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
-+                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
-+              </div>
-             </div>
-           </div>
--        </div>
-+        )}
-       </div>
- 
--      {/* Quest path */}
--      <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
--        {quests.map((q) => {
--          const isNext = nextQuest?.key === q.key;
--          return (
--            <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
--              <div className="flex items-center gap-2">
--                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
--                  {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
--                </span>
--                <p className="truncate text-xs font-extrabold">{q.label}</p>
--              </div>
--              <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
--              {!q.done && (
--                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
--                  <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
-+      {/* Milestones + subject tiles are for students who have started; a brand-new student gets one clear action instead. */}
-+      {!isNew && (
-+        <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
-+          {quests.map((q) => {
-+            const isNext = nextQuest?.key === q.key;
++      {/* ── Subjects ── */}
++      <Section id="jee-subjects">
++        <H2 id="jee-subjects">Choose Your Subject</H2>
++        <div className="grid gap-4 sm:grid-cols-3">
++          {subjects.map((s) => {
++            const n = summary.bySubject[s.key] ?? 0;
++            const chapters = s.chapters.filter((c) => !c.retired && summary.byChapter[`${s.key}/${c.slug}`]).length;
 +            return (
-+              <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
-+                <div className="flex items-center gap-2">
-+                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
-+                    {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
-+                  </span>
-+                  <p className="truncate text-xs font-extrabold">{q.label}</p>
-                 </div>
--              )}
--            </li>
--          );
--        })}
--      </ol>
-+                <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
-+                {!q.done && (
-+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-+                    <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
-+                  </div>
++              <div key={s.key} className="clay flex flex-col rounded-3xl p-5">
++                <span className="font-display text-xl font-bold text-foreground">{s.name}</span>
++                <span className="mt-1 text-sm text-foreground/60">{n ? `${plural(n, "resource")} · ${plural(chapters, "chapter")}` : "Resources coming soon"}</span>
++                {n > 0 && (
++                  <Link
++                    to={jeeLibSubjectPath(s.key) as never}
++                    onClick={() => track("jee_2027_subject_clicked", { source: "subjects", subject: s.key, resources: n })}
++                    className="mt-3 inline-flex min-h-11 items-center text-sm font-bold text-[var(--sky-deep)] hover:underline"
++                  >
++                    Browse {s.name} →
++                  </Link>
 +                )}
-+              </li>
++                <span className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-3 text-xs font-semibold text-foreground/60">
++                  <Link to={`/jee/chapter-wise-weightage/${s.key}` as never} className="py-1 hover:underline">Weightage</Link>
++                  <Link to={`/jee/syllabus/${s.key}` as never} className="py-1 hover:underline">Syllabus</Link>
++                </span>
++              </div>
 +            );
 +          })}
-+        </ol>
++        </div>
++      </Section>
++
++      {/* ── Featured chapters: only chapters with genuinely published resources ── */}
++      {featured.length > 0 && (
++        <Section id="jee-featured">
++          <H2 id="jee-featured">Featured Chapter Resources</H2>
++          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++            {featured.map((c) => (
++              <li key={`${c.subjectKey}/${c.chapterSlug}`} className="min-w-0">
++                <Link
++                  to={jeeLibChapterPath(c.subjectKey, c.chapterSlug) as never}
++                  onClick={() => track("jee_2027_chapter_clicked", { source: "featured", subject: c.subjectKey, chapter: c.chapterSlug, resource_types: c.types.join(",") })}
++                  className="clay flex h-full flex-col rounded-3xl p-5 transition hover:-translate-y-0.5"
++                >
++                  <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/50">{c.subjectName}</span>
++                  <span className="mt-1 break-words font-display text-base font-bold leading-snug text-foreground">{c.chapterName}</span>
++                  <span className="mt-3 flex flex-wrap gap-1.5">
++                    {c.types.map((t) => (
++                      <span key={t} className="clay-chip rounded-full px-2.5 py-1 text-[11px] font-semibold text-foreground/70">{JEE_RESOURCE_TYPE_LABELS[t]}</span>
++                    ))}
++                  </span>
++                  <span className="mt-auto pt-4 text-sm font-bold text-[var(--sky-deep)]">Open Chapter →</span>
++                </Link>
++              </li>
++            ))}
++          </ul>
++          <Link to={JEE_LIB_BASE as never} onClick={resourceClick("featured")} className="mt-3 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
++            Browse the full resource library →
++          </Link>
++        </Section>
 +      )}
- 
--      {/* Subject tiles */}
--      {tree && tree.subjects.length > 0 && (
-+      {!isNew && tree && tree.subjects.length > 0 && (
-         <div className="mt-5">
-           <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
-           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-diff --git a/src/components/dashboard/streak-popup.tsx b/src/components/dashboard/streak-popup.tsx
-index 6d8b844..d09e88c 100644
---- a/src/components/dashboard/streak-popup.tsx
-+++ b/src/components/dashboard/streak-popup.tsx
-@@ -12,6 +12,8 @@ import { getTodaySummary, listPyqSession } from "@/server-functions/practice-ext
- import { submitPyqAnswer } from "@/server-functions/pyq-practice";
- import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib/pyq-types";
- import { cn } from "@/lib/utils";
-+import { track, trackOnce } from "@/lib/analytics";
-+import { answeredProps, practiceProps } from "@/lib/practice-events";
- 
- const OPTS: OptionKey[] = ["A", "B", "C", "D"];
- /** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
-@@ -70,6 +72,10 @@ export function StreakPopup() {
-       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
-       const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
-       setResult(out);
-+      // This answer bypasses the PYQ practice screen, so it is tracked here: it's an answered question AND today's daily question.
-+      const ctx = { mode: "daily" as const, exam: today?.exam, subject: q.subject, chapter: q.chapter, source: "daily_popup" };
-+      track("question_answered", answeredProps(ctx, { questionId: q.id, questionType: q.type, isCorrect: out.isCorrect }));
-+      trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctx), is_correct: out.isCorrect }, "day");
-       // The dashboard hero (flame, week strip, progress ring) lives outside this dialog: tell it to refresh.
-       window.dispatchEvent(new Event(PRACTICE_ANSWERED_EVENT));
-     } catch (e) {
-diff --git a/src/components/dashboard/use-practice-stats.ts b/src/components/dashboard/use-practice-stats.ts
-new file mode 100644
-index 0000000..ca8dda1
---- /dev/null
-+++ b/src/components/dashboard/use-practice-stats.ts
-@@ -0,0 +1,42 @@
-+// One fetch of the student's practice numbers, shared by everything on the dashboard that shows them (the hero and
-+// the performance card), so they can never disagree. Refetches when an answer is saved from the daily-question popup.
-+import { useCallback, useEffect, useState } from "react";
-+import { useAuth } from "@/lib/auth-context";
-+import { getPracticeStats } from "@/server-functions/practice-stats";
-+import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
-+import type { PracticeStats } from "@/lib/practice-stats";
 +
-+export function usePracticeStats() {
-+  const { user } = useAuth();
-+  const [stats, setStats] = useState<PracticeStats | null>(null);
-+  const [failed, setFailed] = useState(false);
-+
-+  const load = useCallback(
-+    async (isCancelled: () => boolean = () => false) => {
-+      if (!user) return;
-+      try {
-+        const res = await getPracticeStats({ data: { token: await user.getIdToken() } });
-+        if (isCancelled()) return;
-+        setStats(res);
-+        setFailed(false);
-+      } catch (err) {
-+        console.error("[dashboard] practice stats failed:", err);
-+        if (!isCancelled()) setFailed(true);
-+      }
-+    },
-+    [user],
-+  );
-+
-+  useEffect(() => {
-+    let cancelled = false;
-+    void load(() => cancelled);
-+    const onAnswered = () => void load(() => cancelled);
-+    window.addEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
-+    return () => {
-+      cancelled = true;
-+      window.removeEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
-+    };
-+  }, [load]);
-+
-+  return { stats, failed, reload: () => void load() };
-+}
-diff --git a/src/components/pyq/pyq-practice.tsx b/src/components/pyq/pyq-practice.tsx
-index 6a30127..bed6ffc 100644
---- a/src/components/pyq/pyq-practice.tsx
-+++ b/src/components/pyq/pyq-practice.tsx
-@@ -1,4 +1,4 @@
--import { useEffect, useMemo, useState } from "react";
-+import { useEffect, useMemo, useRef, useState } from "react";
- import { IconLoader2 as Loader2 } from "@tabler/icons-react";
- import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Flag, Flame, Lightbulb, SlidersHorizontal } from "lucide-react";
- import { Link } from "@tanstack/react-router";
-@@ -12,6 +12,8 @@ import { ReportDialog } from "@/components/pyq/report-dialog";
- import { SessionSummary } from "@/components/pyq/session-summary";
- import { GUEST_PYQ_LIMIT, SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
- import { cn } from "@/lib/utils";
-+import { track, trackOnce } from "@/lib/analytics";
-+import { answeredProps, completedProps, isMistakeRevision, practiceModeFor, practiceProps, type PracticeContext } from "@/lib/practice-events";
- 
- type Props = {
-   /** Chapter practice (browse mode). Omit when `weakAttemptId` is set. */
-@@ -27,6 +29,10 @@ type Props = {
-   exam?: string;
-   /** Logged-out visitor: free preview via the guest endpoints, nothing saved, sign-up prompt after a few questions. */
-   guest?: boolean;
-+  /** Cap the list (e.g. 5 for the new-student "first 5 PYQs" start). Finishing the capped list ends the session normally. */
-+  limit?: number;
-+  /** Where the session was launched from, for analytics only (e.g. "first_five"). */
-+  source?: string;
-   onExit: () => void;
- };
- 
-@@ -42,7 +48,7 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
- };
- const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
- 
--export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, onExit }: Props) {
-+export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, source, onExit }: Props) {
-   const { user: authUser } = useAuth();
-   // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
-   const user = guest ? null : authUser;
-@@ -68,6 +74,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
-   const [streakNow, setStreakNow] = useState<number | null>(null);
-   const [actionError, setActionError] = useState<string | null>(null);
- 
-+  // Analytics. One `practice_started` per practice session and one `practice_completed` per finished session: the refs
-+  // make a refetch (difficulty chip), a StrictMode re-run or a re-render unable to send either twice.
-+  const mode = practiceModeFor({ session, weakAttemptId });
-+  const startedFor = useRef<string | null>(null);
-+  const completedSent = useRef(false);
-+  const ctxFor = (qq?: PyqQuestion): PracticeContext => ({ mode, exam, subject: qq?.subject ?? subject, chapter: qq?.chapter ?? chapter, guest, source });
-+
-   // Already used the free questions on an earlier visit? Go straight to the sign-up prompt.
-   useEffect(() => {
-     if (guest && getGuestPyqCount() >= GUEST_PYQ_LIMIT) setGated(true);
-@@ -101,6 +114,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
-         }
-         if (cancelled) return;
-         setList(res);
-+        const sessionKey = [mode, subject, chapter, topic, weakAttemptId, session, guest ? "g" : "u"].join("|");
-+        if (res.questions.length > 0 && startedFor.current !== sessionKey) {
-+          startedFor.current = sessionKey;
-+          const props = { ...practiceProps(ctxFor()), question_count: limit ? Math.min(limit, res.questions.length) : res.questions.length };
-+          track("practice_started", props);
-+          if (isMistakeRevision(mode)) track("mistake_revision_started", { ...props, source: session });
-+        }
-         // Union, not replace: other filters shrink the server's year list, and the
-         // filter panel shouldn't change shape while the student is using it.
-         setYears((prev) => [...new Set([...prev, ...res.years])].sort((a, b) => b.localeCompare(a)));
-@@ -124,8 +144,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
-     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
-     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
-     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
--    return qs;
--  }, [list, year, statusF]);
-+    return limit ? qs.slice(0, limit) : qs;
-+  }, [list, year, statusF, limit]);
-   const q: PyqQuestion | undefined = questions[idx];
-   const result = q ? results[q.id] : undefined;
-   const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
-@@ -151,6 +171,12 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
-         bumpGuestPyqCount();
-       }
-       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
-+      // Only a real answer is an answer; peeking at the solution (answer === null) isn't sent. Never the chosen option/number.
-+      if (answer !== null) {
-+        track("question_answered", answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }));
-+        // Once per India day per student, however many times the daily question screen is opened.
-+        if (mode === "daily" && user) trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctxFor(q)), is_correct: res.isCorrect }, "day");
-+      }
-       if (res.streak) setStreakNow(res.streak.current);
-       // Keep the status chip in sync without refetching the list.
-       setList((l) =>
-@@ -208,6 +234,21 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
-       : "From your last test"
-     : subject;
- 
-+  useEffect(() => {
-+    if (!finished || completedSent.current) return;
-+    completedSent.current = true;
-+    const all = Object.values(results);
-+    const counts = {
-+      answered: all.filter((r) => !r.revealed).length,
-+      correct: all.filter((r) => !r.revealed && r.isCorrect).length,
-+      wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
-+      peeked: all.filter((r) => r.revealed).length,
-+    };
-+    track("practice_completed", completedProps(ctxFor(), counts));
-+    if (isMistakeRevision(mode)) track("mistake_revision_completed", { ...completedProps(ctxFor(), counts), source: session });
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [finished]);
-+
-   if (gated) {
-     const all = Object.values(results);
-     return (
-diff --git a/src/components/today-card.tsx b/src/components/today-card.tsx
-index f8330e0..db4f2a6 100644
---- a/src/components/today-card.tsx
-+++ b/src/components/today-card.tsx
-@@ -1,6 +1,6 @@
- import { useEffect, useState } from "react";
- import { Link } from "@tanstack/react-router";
--import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target } from "lucide-react";
-+import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target, Users } from "lucide-react";
- import { useAuth } from "@/lib/auth-context";
- import { getTodaySummary } from "@/server-functions/practice-extras";
- import type { TodaySummary } from "@/lib/pyq-types";
-@@ -264,6 +264,55 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
-   );
- }
- 
-+/**
-+ * The mentorship "Up next" as a slim card for the dashboard, shown BELOW the practice content. It replaces the old
-+ * full-size "Nothing booked yet" panel: an empty calendar is one short line with one button, and a booked session is a
-+ * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
-+ */
-+export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
-+  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-border bg-card px-4 py-3", className);
-+  const icon = (
-+    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
-+  );
-+  const ghost = "inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-bold text-foreground transition-colors hover:border-foreground/40";
-+
-+  if (info.state === "loading") {
-+    return <div className={cn(shell, "h-[4.25rem] animate-pulse bg-secondary")} aria-hidden />;
-+  }
-+  if (info.state === "empty") {
-+    return (
-+      <section aria-label="Mentor sessions" className={shell}>
-+        <div className="flex min-w-0 items-center gap-3">
-+          {icon}
-+          <div className="min-w-0">
-+            <p className="text-sm font-bold leading-tight">No mentor session booked</p>
-+            <p className="truncate text-xs text-muted-foreground">{info.text}</p>
-+          </div>
++      {/* ── PYQ conversion ── */}
++      <section aria-labelledby="jee-pyq" className="ink-section mt-12 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
++        <div>
++          <h2 id="jee-pyq" className="font-display text-xl font-extrabold sm:text-2xl">Finished Revising? Test What You Remember.</h2>
++          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/70">
++            Practise available JEE previous-year questions, review solutions and track your preparation with Edurack.
++            {pyqTotal > 0 && ` ${pyqTotal.toLocaleString("en-IN")} JEE questions are available right now; coverage varies by subject and chapter.`}
++          </p>
 +        </div>
-+        <div className="flex shrink-0 items-center gap-2">
-+          <button type="button" onClick={onBrowse} className={ghost}>Browse sessions<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden /></button>
-+        </div>
++        <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("pyq-section")} className={`${BTN} shrink-0 bg-[#ffffff] text-[#141b2b]`}>
++          Start JEE PYQ Practice
++        </Link>
 +      </section>
-+    );
-+  }
-+  return (
-+    <section aria-label="Up next: mentor session" className={shell}>
-+      <div className="flex min-w-0 items-center gap-3">
-+        {icon}
-+        <div className="min-w-0">
-+          <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Up next</p>
-+          <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
-+          <p className="truncate text-xs text-muted-foreground">{info.title}</p>
++
++      {/* ── Preparation guides (never repeats the updates above) ── */}
++      {blog.guides.length > 0 && (
++        <Section id="jee-guides">
++          <H2 id="jee-guides">JEE Main {JEE_LIBRARY_YEAR} Preparation Guides</H2>
++          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++            {blog.guides.map((p, i) => (
++              <ArticleCard key={p.id} post={p} source="guides" position={i + 1} cover />
++            ))}
++          </ul>
++          <Link to="/blog" search={{ examKey: "jee" } as never} className="mt-3 inline-block text-sm font-bold text-[var(--sky-deep)] hover:underline">
++            View All Guides →
++          </Link>
++        </Section>
++      )}
++
++      {/* ── How to prepare ── */}
++      <Section id="jee-how">
++        <H2 id="jee-how">How to Prepare with Edurack</H2>
++        <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
++          {[
++            { n: 1, t: "READ", d: "Open your chapter notes.", to: JEE_LIB_BASE, kind: "resource" },
++            { n: 2, t: "REVISE", d: "Download quick revision PDFs.", to: JEE_LIB_BASE, kind: "resource" },
++            { n: 3, t: "PRACTISE", d: "Complete available chapter worksheets.", to: JEE_LIB_BASE, kind: "resource" },
++            { n: 4, t: "IMPROVE", d: "Check solutions and attempt available PYQs.", to: "/pyq", kind: "practice" },
++          ].map((s) => (
++            <li key={s.n} className="clay rounded-2xl p-4">
++              <span className="flex items-center gap-2">
++                <span className="grid h-7 w-7 place-items-center rounded-full bg-foreground text-xs font-extrabold text-background" aria-hidden="true">{s.n}</span>
++                <span className="font-display text-sm font-extrabold tracking-wide text-foreground">{s.t}</span>
++              </span>
++              <span className="mt-2 block text-sm text-foreground/70">{s.d}</span>
++              {s.kind === "practice" ? (
++                <Link to="/pyq" search={jeePracticeSearch() as never} onClick={practiceClick("how-to-prepare")} className="mt-2 inline-flex min-h-11 items-center text-xs font-bold text-[var(--sky-deep)] hover:underline">Open JEE PYQs →</Link>
++              ) : (
++                <Link to={s.to as never} onClick={resourceClick("how-to-prepare", { step: s.t.toLowerCase() })} className="mt-2 inline-flex min-h-11 items-center text-xs font-bold text-[var(--sky-deep)] hover:underline">Open the library →</Link>
++              )}
++            </li>
++          ))}
++        </ol>
++      </Section>
++
++      {/* ── Planning guides (existing pages) ── */}
++      <Section id="jee-plan">
++        <H2 id="jee-plan">Know What to Study First</H2>
++        <ul className="flex flex-wrap gap-2">
++          {[
++            { label: "JEE Main syllabus", to: "/jee/syllabus" },
++            { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
++            { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" },
++            { label: "Paper analysis", to: "/jee/paper-analysis" },
++            { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" },
++          ].map((l) => (
++            <li key={l.to}>
++              <Link to={l.to as never} className="clay-chip inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-foreground/80 hover:underline">{l.label}</Link>
++            </li>
++          ))}
++        </ul>
++      </Section>
++
++      {/* ── FAQ: plain <details>, so every answer is in the server-rendered HTML ── */}
++      <Section id="jee-faq">
++        <H2 id="jee-faq">JEE Main {JEE_LIBRARY_YEAR} FAQs</H2>
++        <div className="space-y-2">
++          {JEE_LANDING_FAQS.map((f) => (
++            <details key={f.q} className="clay group rounded-2xl p-4">
++              <summary className="cursor-pointer list-none font-display text-[15px] font-bold text-foreground marker:content-none">{f.q}</summary>
++              <p className="mt-2 text-sm leading-relaxed text-foreground/70">{f.a}</p>
++            </details>
++          ))}
 +        </div>
-+      </div>
-+      <div className="flex shrink-0 items-center gap-2">
-+        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground">Join session</a>}
-+        <Link to="/my-sessions" className={ghost}>{info.total > 1 ? `All ${info.total} sessions` : "My sessions"}</Link>
-+      </div>
-+    </section>
++      </Section>
++    </Page>
 +  );
 +}
+diff --git a/src/components/jee/jee-resource-views.tsx b/src/components/jee/jee-resource-views.tsx
+index 0688a48..20efa61 100644
+--- a/src/components/jee/jee-resource-views.tsx
++++ b/src/components/jee/jee-resource-views.tsx
+@@ -14,6 +14,7 @@ import { Crumbs, H1, Page, PracticeCta, SectionTitle } from "@/components/jee/je
+ import { PdfPreviewModal } from "@/components/pdf-preview-modal";
+ import { getJeeChapter, getJeeSubject, getJeeSubjects, jeeChapterPath, jeePracticeSearch } from "@/lib/jee-blueprint";
+ import { track } from "@/lib/analytics";
++import { JEE_LANDING_PATH } from "@/lib/jee-landing-types";
+ import { getDeviceId } from "@/lib/device";
+ import { useAuth } from "@/lib/auth-context";
+ import { accessJeeResource } from "@/server-functions/jee-resources";
+@@ -45,6 +46,9 @@ export function JeeLibraryHubView({ summary }: { summary: JeeLibrarySummary }) {
+       <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-foreground/80">
+         Chapter-wise PDF notes, quick revision sheets, practice sheets, answer keys and detailed solutions prepared by the Edurack team. Pick a subject to see the chapters that have resources.
+       </p>
++      <p className="mt-3 text-sm">
++        <Link to={JEE_LANDING_PATH as never} className="font-bold text-[var(--sky-deep)] hover:underline">JEE Main {JEE_LIBRARY_YEAR} hub: updates, practice and guides →</Link>
++      </p>
+ 
+       {summary.total === 0 ? (
+         <div className="clay mt-8 rounded-3xl p-6 text-sm text-foreground/70">
+diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
+index 8661cb3..36183d4 100644
+--- a/src/components/landing/site-chrome.tsx
++++ b/src/components/landing/site-chrome.tsx
+@@ -216,6 +216,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
+   {
+     title: "JEE guides",
+     links: [
++      { label: "JEE Main 2027 hub", to: "/jee-main-2027" },
+       { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
+       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
+       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
+diff --git a/src/lib/edge-cache.ts b/src/lib/edge-cache.ts
+index dcb0f2e..9b1facd 100644
+--- a/src/lib/edge-cache.ts
++++ b/src/lib/edge-cache.ts
+@@ -15,12 +15,16 @@ const swr = (sMaxAge: number, stale: number) =>
+ const HOUR = swr(3600, 86400);
+ const SHORT = swr(300, 86400); // content that an admin edits (blog)
+ const DAILY = swr(300, 600); // changes at midnight (question of the day)
++// The JEE Main 2027 hub shows published articles and resources, so a pulled item must disappear quickly:
++// a minute at the CDN, and at most a minute of stale-while-revalidate.
++const LIVE = swr(60, 60);
+ 
+ /** Cache-Control for a public page path, or null when the path must not be edge-cached. */
+ export function edgeCachePolicy(pathname: string): string | null {
+   const p = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+ 
+   if (p === "/neet/question-of-the-day") return DAILY;
++  if (p === "/jee-main-2027") return LIVE;
+   if (p === "/blog" || p.startsWith("/blog/")) return SHORT;
+   if (p === "/free-resources") return swr(600, 86400);
+   if (p.startsWith("/question/")) return HOUR;
+diff --git a/src/lib/jee-landing-copy.ts b/src/lib/jee-landing-copy.ts
+new file mode 100644
+index 0000000..abd171b
+--- /dev/null
++++ b/src/lib/jee-landing-copy.ts
+@@ -0,0 +1,39 @@
++// src/lib/jee-landing-copy.ts
++//
++// Fixed wording for the JEE Main 2027 landing page: SEO title/description and the FAQ.
++// Every FAQ answer describes what Edurack actually does today (checked against the code that serves it) and
++// makes no claim about official exam dates, eligibility or the syllabus — those belong to NTA's notices.
++import { JEE_LIB_BASE } from "@/lib/jee-resource-types";
 +
- /** Fetches the practice summary and renders the merged card. If the summary fails the card still shows "Up next". */
- export function TodayCard({ upNext, onBrowseSessions, className, upNextOnly = false }: { upNext?: UpNextInfo; onBrowseSessions?: () => void; className?: string; /** Skip the practice part (the dashboard's PYQ hero already shows it). */ upNextOnly?: boolean }) {
-   const { user } = useAuth();
-diff --git a/src/lib/analytics.ts b/src/lib/analytics.ts
-index e2940bb..73187f3 100644
---- a/src/lib/analytics.ts
-+++ b/src/lib/analytics.ts
-@@ -23,9 +23,10 @@ let identifiedUid: string | null = null;
- const queue: Array<(p: PostHog) => void> = [];
- 
- const enabled = () => typeof window !== "undefined" && Boolean(KEY) && navigator.doNotTrack !== "1";
-+const MAX_QUEUE = 100;
- const run = (fn: (p: PostHog) => void) => {
-   if (ph) fn(ph);
--  else if (started) queue.push(fn); // init is still loading: replay these once it's ready
-+  else if (queue.length < MAX_QUEUE) queue.push(fn); // not ready yet (init is idle-scheduled or still loading): replay, in order, once it is
- };
- 
- /** Start analytics once per page load. Safe to call repeatedly. */
-@@ -52,6 +53,7 @@ export function initAnalytics(): void {
-     .catch(() => {
-       // blocked by an ad blocker or offline: analytics must never break the app
-       started = false;
-+      queue.length = 0;
-     });
- }
- 
-@@ -73,7 +75,13 @@ export function trackPageview(path: string): void {
-   });
- }
- 
--/** Tie events to the signed-in student (by id only). Pass null on sign-out. */
-+/**
-+ * Tie events to the signed-in student (by account id only: no name, email or phone).
-+ * identify() on a browser that already has anonymous activity MERGES that activity into the student, so a visitor
-+ * who tried guest PYQs and then signed up is one person in PostHog, not two. If the call comes before PostHog has
-+ * finished loading it is queued, not dropped (it used to be dropped, leaving the student anonymous for the visit).
-+ * Pass null on sign-out.
-+ */
- export function identifyUser(uid: string | null): void {
-   if (!enabled()) return;
-   if (uid && uid !== identifiedUid) {
-@@ -95,6 +103,35 @@ export function track(event: string, props: Props = {}): void {
-   }
- }
- 
-+export type OnceScope = "page" | "session" | "day";
-+const firedOnce = new Set<string>();
-+const istDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
++export const JEE_LANDING_TITLE = "JEE Main 2027: Exam Updates, Notes, Practice Sheets & PYQs | Edurack";
++export const JEE_LANDING_DESCRIPTION =
++  "Prepare for JEE Main 2027 with exam updates, Physics, Chemistry and Mathematics revision notes, downloadable practice sheets and available PYQs on Edurack.";
++
++export type LandingFaq = { q: string; a: string };
++
++export const JEE_LANDING_FAQS: LandingFaq[] = [
++  {
++    q: "Where can I find JEE Main 2027 chapter-wise notes?",
++    a: `In the Edurack JEE Main 2027 resource library (${JEE_LIB_BASE}). Choose Physics, Chemistry or Mathematics, then open a chapter to see the notes published for it. Chapters are added over time, so not every chapter has every type of resource yet.`,
++  },
++  {
++    q: "Can I download practice sheets?",
++    a: "Yes. Where a practice sheet has been published for a chapter, you can preview it in your browser or download it as a PDF from that chapter's page. You don't need an account to preview or download library PDFs.",
++  },
++  {
++    q: "Are Edurack's JEE resources free?",
++    a: "The notes, revision sheets and practice sheets in the resource library are free to preview and download, with no payment or Pro plan needed. Edurack Pro is a separate, optional plan for extra practice features and does not affect access to library PDFs.",
++  },
++  {
++    q: "Can I practise JEE Main PYQs?",
++    a: "Yes. Edurack has JEE previous-year questions you can practise subject-wise and chapter-wise, with solutions. You can try a few questions without logging in; sign in to practise more and track your progress. The question bank does not cover every paper or chapter yet, so availability varies.",
++  },
++  {
++    q: "How do I find resources for a specific subject?",
++    a: `Use the Physics, Chemistry and Mathematics cards on this page, or open the resource library (${JEE_LIB_BASE}) and pick a subject. Each subject page lists the chapters that currently have published resources.`,
++  },
++  {
++    q: "Where can I read the latest JEE Main 2027 updates?",
++    a: "The Latest JEE Main 2027 Updates section on this page shows the newest published exam-news articles from the Edurack blog, and the blog's JEE filter lists every published JEE article. Articles summarise public information, so always confirm dates, eligibility and syllabus against the official NTA notices.",
++  },
++];
+diff --git a/src/lib/jee-landing-core.ts b/src/lib/jee-landing-core.ts
+new file mode 100644
+index 0000000..fb6b349
+--- /dev/null
++++ b/src/lib/jee-landing-core.ts
+@@ -0,0 +1,40 @@
++// src/lib/jee-landing-core.ts
++//
++// SERVER-ONLY. Cheap "how much real content is there" counts for the JEE Main 2027 landing page. Used by the
++// sitemap (to list the page only when it is indexable) so it applies the exact same rule as the page's own
++// <head>. Every number comes from an existing source of truth and an existing published-only filter.
++import { getDb } from "@/lib/mongo";
++import { librarySummary } from "@/lib/jee-resource-core";
++import { loadTreeRows } from "@/lib/pyq-server";
++import { JEE_POST_CLASSIFIER } from "@/lib/jee-landing-types";
++
++/** Total JEE questions in the PYQ bank. Reuses the PYQ page's own (10-minute cached) tree, so no extra query. */
++export async function jeePyqTotal(): Promise<number> {
++  const db = await getDb();
++  const rows = await loadTreeRows(db, "jee");
++  return rows.reduce((n, r) => n + r.count, 0);
++}
 +
 +/**
-+ * Like track(), but sends the event at most once for `key`, so a re-render, a double tap, a retry or a refetch can't
-+ * double count it.
-+ *   "page"    once until the tab is reloaded
-+ *   "session" once per browser tab session (survives in-app navigation and reloads)
-+ *   "day"     once per India calendar day on this browser (e.g. "completed today's question")
-+ * Returns true when the event was actually sent. Nothing is recorded as "sent" when analytics is off or blocked, so it
-+ * can still fire later in the same visit if analytics comes on.
++ * Published JEE posts: how many, and when the newest was published or edited. Same published rule as
++ * blog-public.ts (status "published", not soft-deleted) plus the shared JEE classifier.
 + */
-+export function trackOnce(key: string, event: string, props: Props = {}, scope: OnceScope = "page"): boolean {
-+  if (!enabled() || !captureAllowed(window.location.pathname)) return false;
-+  try {
-+    if (firedOnce.has(key)) return false;
-+    if (scope === "session" && window.sessionStorage.getItem(`ph-once:${key}`)) return false;
-+    if (scope === "day" && window.localStorage.getItem(`ph-once:${key}`) === istDay()) return false;
-+    firedOnce.add(key);
-+    if (scope === "session") window.sessionStorage.setItem(`ph-once:${key}`, "1");
-+    if (scope === "day") window.localStorage.setItem(`ph-once:${key}`, istDay());
-+  } catch {
-+    // storage blocked: the in-memory guard above still prevents duplicates within this page load
++export async function jeePostStats(): Promise<{ total: number; latestAt: string | null }> {
++  const db = await getDb();
++  const filter = { status: "published", deletedAt: null, ...JEE_POST_CLASSIFIER };
++  const col = db.collection("blogPosts");
++  const [total, latest] = await Promise.all([
++    col.countDocuments(filter),
++    col.find(filter).project({ publishedAt: 1, updatedAt: 1 }).sort({ publishedAt: -1 }).limit(1).toArray(),
++  ]);
++  const t = (v: unknown) => (v instanceof Date ? v.getTime() : typeof v === "string" ? Date.parse(v) || 0 : 0);
++  const newest = latest[0] ? Math.max(t(latest[0].publishedAt), t(latest[0].updatedAt)) : 0;
++  return { total, latestAt: newest ? new Date(newest).toISOString() : null };
++}
++
++/** Everything the sitemap needs to decide whether, and with what lastmod, to list /jee-main-2027. Throws on a DB failure. */
++export async function jeeLandingMeta(): Promise<{ resources: number; posts: number; pyq: number; lastmod: string | null }> {
++  const [sum, posts, pyq] = await Promise.all([librarySummary(), jeePostStats(), jeePyqTotal()]);
++  const times = [sum.lastUpdated, posts.latestAt].filter((x): x is string => !!x).map((x) => Date.parse(x));
++  return { resources: sum.total, posts: posts.total, pyq, lastmod: times.length ? new Date(Math.max(...times)).toISOString() : null };
++}
+diff --git a/src/lib/jee-landing-types.ts b/src/lib/jee-landing-types.ts
+new file mode 100644
+index 0000000..4d56587
+--- /dev/null
++++ b/src/lib/jee-landing-types.ts
+@@ -0,0 +1,83 @@
++// src/lib/jee-landing-types.ts
++//
++// Shared (client + server), pure types and helpers for the JEE Main 2027 landing page (/jee-main-2027).
++// No server or browser imports, so it is safe in route heads, components and server code alike.
++//
++// The landing page owns no content of its own. Everything dynamic on it is read from systems that already
++// exist and already enforce "published only":
++//   • blog posts       → server-functions/blog-public.ts   (status "published", not soft-deleted)
++//   • resource library → lib/jee-resource-core.ts          (published, not deleted, JEE Main 2027)
++//   • PYQ question bank → lib/pyq-server.ts                (the same tree the /pyq page uses)
++import type { PublicBlogPostSummary } from "@/lib/blog-types";
++import type { JeeLibrarySummary, JeeResourceSubject, JeeResourceType } from "@/lib/jee-resource-types";
++
++export const JEE_LANDING_PATH = "/jee-main-2027";
++
++/**
++ * What makes a blog post a "JEE post". One definition, shared by the landing-page query and the sitemap check,
++ * so the two can never disagree. Matches how the blog already decides the JEE audience
++ * (resolveBlogPromoAudience in blog-types.ts): exam tag "jee" OR the JEE Strategy category.
++ */
++// (Plain mutable array type on purpose: the MongoDB driver's Filter type does not accept a readonly $or.)
++export const JEE_POST_CLASSIFIER: { $or: Record<string, string>[] } = { $or: [{ examKey: "jee" }, { category: "jeeStrategy" }] };
++
++/** Blog category used for the "Latest updates" block. Everything else JEE-related goes under "Preparation guides". */
++export const JEE_UPDATES_CATEGORY = "examNews" as const;
++
++/** A chapter that really has published resources. Metadata only — never a file path, link or storage detail. */
++export type JeeFeaturedChapter = {
++  subjectKey: JeeResourceSubject;
++  subjectName: string;
++  chapterSlug: string;
++  chapterName: string;
++  /** Resource types that exist and are published for this chapter, in the library's display order. */
++  types: JeeResourceType[];
++  count: number;
++};
++
++export type JeeLandingBlog = {
++  /** Published JEE posts in the Exam News category, newest first. */
++  updates: PublicBlogPostSummary[];
++  /** Other published JEE posts, newest first, never repeating anything in `updates`. */
++  guides: PublicBlogPostSummary[];
++  /** Number of published JEE posts in total (for the "view all" link and indexability). */
++  total: number;
++};
++
++export type JeeLandingData = {
++  summary: JeeLibrarySummary;
++  featured: JeeFeaturedChapter[];
++  blog: JeeLandingBlog;
++  /** JEE questions currently in the PYQ bank (0 when none or when the count couldn't be read). */
++  pyqTotal: number;
++};
++
++export const EMPTY_JEE_LANDING_BLOG: JeeLandingBlog = { updates: [], guides: [], total: 0 };
++
++/**
++ * The page is indexable when there is real content behind it. The static parts (syllabus, weightage and PYQ
++ * links) are useful on their own, so one published resource, one published article or any JEE question is enough.
++ * Only a completely empty state is kept out of search (and out of the sitemap).
++ */
++export const jeeLandingIndexable = (counts: { resources: number; posts: number; pyq: number }) => counts.resources > 0 || counts.posts > 0 || counts.pyq > 0;
++
++/**
++ * Picks up to `limit` rows, taking one from each subject in turn so Physics, Chemistry and Mathematics are
++ * balanced where possible. `rows` must already be ordered best-first (newest first); that order is kept
++ * within each subject. A subject with nothing simply drops out of the rotation.
++ */
++export function pickBalanced<T extends { subjectKey: string }>(rows: T[], subjectOrder: readonly string[], limit: number): T[] {
++  const queues = subjectOrder.map((s) => rows.filter((r) => r.subjectKey === s));
++  const out: T[] = [];
++  for (let i = 0; out.length < limit; i++) {
++    let took = false;
++    for (const q of queues) {
++      if (q[i] && out.length < limit) {
++        out.push(q[i]);
++        took = true;
++      }
++    }
++    if (!took) break;
 +  }
-+  track(event, props);
-+  return true;
-+}
-+
- /** Send a caught error to PostHog's error tracking. */
- export function reportError(error: unknown): void {
-   if (!enabled()) return;
-diff --git a/src/lib/dashboard-core.ts b/src/lib/dashboard-core.ts
-index 558a033..a265b14 100644
---- a/src/lib/dashboard-core.ts
-+++ b/src/lib/dashboard-core.ts
-@@ -14,6 +14,7 @@
- //
- // Nothing here verifies a token: callers MUST authenticate first and pass the
- // verified uid.
-+import { testScorePercent } from "@/lib/practice-stats";
- import { getDb } from "@/lib/mongo";
- import { supabase } from "@/lib/supabase";
- import { expandOfferingToSlots } from "@/lib/session-slots";
-@@ -54,6 +55,7 @@ export async function loadProfile(db: Db, uid: string) {
-     board: (doc.board as string) ?? "",
-     targetExam: (doc.targetExam as string) ?? "",
-     track: (doc.track as Track) ?? "",
-+    targetYear: typeof doc.targetYear === "number" ? (doc.targetYear as number) : null,
-     cuetDomainSubjects: (doc.cuetDomainSubjects as string[]) ?? [],
-     provider: (doc.provider as string) ?? null,
-     createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : null,
-@@ -302,6 +304,11 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
-     .find({ _id: { $in: bundleIds.map((id) => new ObjectId(id)) } })
-     .toArray();
-   const bundleTitleById = new Map(bundles.map((b) => [String(b._id), b.title as string]));
-+  const examOf = (v: unknown) => {
-+    const t = String(v ?? "").toLowerCase();
-+    return t.includes("jee") ? "jee" : t.includes("cuet") ? "cuet" : t.includes("ipmat") ? "ipmat" : "neet";
-+  };
-+  const bundleExamById = new Map(bundles.map((b) => [String(b._id), examOf(b.exam)]));
- 
-   const attempts = await db
-     .collection("testAttempts")
-@@ -323,7 +330,9 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
-     };
-     entry.testIds.add(a.testId as string);
-     entry.attemptCount += 1;
--    const percent = a.totalMarks > 0 ? (a.score / a.totalMarks) * 100 : 0;
-+    // NEET/JEE tests have negative marking, so score/total can dip below zero. Floor it for display, BEFORE
-+    // averaging, so the average, the best and the per-test bars always agree (see lib/practice-stats.ts).
-+    const percent = testScorePercent(Number(a.score), Number(a.totalMarks));
-     entry.totalPercent += percent;
-     entry.bestPercent = Math.max(entry.bestPercent, percent);
-     byBundleId.set(bundleId, entry);
-@@ -335,9 +344,13 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
-       return {
-         bundleId,
-         bundleTitle: bundleTitleById.get(bundleId) ?? "Bundle",
-+        // Old bundles have no exam field; the rest of the app treats those as NEET.
-+        exam: bundleExamById.get(bundleId) ?? "neet",
-         testsAttempted: stats?.testIds.size ?? 0,
-         totalAttempts: stats?.attemptCount ?? 0,
-         averagePercent: stats ? Math.round(stats.totalPercent / stats.attemptCount) : 0,
-+        // Unrounded sum so the dashboard can average across bundles without compounding rounding.
-+        percentSum: stats ? Math.round(stats.totalPercent * 100) / 100 : 0,
-         bestPercent: stats ? Math.round(stats.bestPercent) : 0,
-       };
-     }),
-diff --git a/src/lib/posthog-admin-core.ts b/src/lib/posthog-admin-core.ts
-index d38aa0c..c719c15 100644
---- a/src/lib/posthog-admin-core.ts
-+++ b/src/lib/posthog-admin-core.ts
-@@ -13,6 +13,16 @@ export type HogConfig = { key: string; projectId: string; appHost: string; embed
- /** The events this app sends (see the callers of track() in the app). Order doesn't matter. */
- export const TRACKED_EVENTS = [
-   "login_completed",
-+  "signup_completed",
-+  // Practice. Ordinary PYQ practice and timed drills share the practice_* names and are told apart by the
-+  // `practice_type` property ("pyq" | "timed_drill"). drill_started / drill_submitted are kept for older insights.
-+  "practice_started",
-+  "question_answered",
-+  "practice_completed",
-+  "daily_question_completed",
-+  "mistake_revision_started",
-+  "mistake_revision_completed",
-+  "mentor_profile_viewed",
-   "drill_started",
-   "drill_submitted",
-   "test_submitted",
-@@ -314,7 +324,9 @@ export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | nul
- 
- // ─── Funnels and plain-language takeaways ───────────────────────────────────────────────────────────
- export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
--  { title: "Practice", steps: [{ event: "login_completed", label: "Signed in or signed up" }, { event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
-+  { title: "PYQ practice", steps: [{ event: "practice_started", label: "Started practising" }, { event: "question_answered", label: "Answered a question" }, { event: "practice_completed", label: "Finished a session" }] },
-+  { title: "Mistake revision", steps: [{ event: "mistake_revision_started", label: "Started revising" }, { event: "mistake_revision_completed", label: "Finished revising" }] },
-+  { title: "Timed drills", steps: [{ event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
-   { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
-   { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
- ];
-diff --git a/src/lib/practice-events.ts b/src/lib/practice-events.ts
-new file mode 100644
-index 0000000..66a66f0
---- /dev/null
-+++ b/src/lib/practice-events.ts
-@@ -0,0 +1,69 @@
-+// What the practice analytics events look like. Pure (no PostHog, no DOM) so the rules are testable.
-+//
-+// Privacy rules, enforced here in one place:
-+//   - never the answer a student chose or typed (only whether it was right)
-+//   - never an email, name, phone number or city
-+//   - ids are internal question / mentor ids, which identify content, not a person
-+//
-+// Ordinary PYQ practice and timed drills are told apart by `practice_type`:
-+//   "pyq"         chapter practice, today's PYQ, revision, mistakes, bookmarks, weak-topic runs
-+//   "timed_drill" the 20-question timed drill
-+export type PracticeType = "pyq" | "timed_drill";
-+export type PracticeMode = "chapter" | "daily" | "revision" | "mistakes" | "bookmarks" | "weak_topics" | "timed_drill";
-+
-+type Session = "daily" | "due" | "wrong" | "bookmarked" | undefined;
-+
-+export function practiceModeFor(opts: { session?: Session; weakAttemptId?: string | null }): PracticeMode {
-+  if (opts.session === "daily") return "daily";
-+  if (opts.session === "due") return "revision";
-+  if (opts.session === "wrong") return "mistakes";
-+  if (opts.session === "bookmarked") return "bookmarks";
-+  if (opts.weakAttemptId) return "weak_topics";
-+  return "chapter";
-+}
-+
-+/** The two modes that are "revising past mistakes" (mistake_revision_* events). */
-+export const isMistakeRevision = (mode: PracticeMode) => mode === "revision" || mode === "mistakes";
-+
-+export type EventProps = Record<string, string | number | boolean | null | undefined>;
-+
-+export type PracticeContext = {
-+  mode: PracticeMode;
-+  exam?: string | null;
-+  subject?: string | null;
-+  chapter?: string | null;
-+  guest?: boolean;
-+  /** "first_five" when started from the new-student button on the dashboard. */
-+  source?: string | null;
-+};
-+
-+const cap = (v: string | null | undefined, n = 80) => (v ? String(v).slice(0, n) : undefined);
-+
-+export function practiceProps(ctx: PracticeContext): EventProps {
-+  return {
-+    practice_type: ctx.mode === "timed_drill" ? "timed_drill" : "pyq",
-+    mode: ctx.mode,
-+    exam: cap(ctx.exam) ?? null,
-+    subject: cap(ctx.subject) ?? null,
-+    chapter: cap(ctx.chapter) ?? null,
-+    guest: ctx.guest === true,
-+    source: cap(ctx.source) ?? null,
-+  };
-+}
-+
-+export function answeredProps(ctx: PracticeContext, a: { questionId: string; questionType?: string; isCorrect: boolean }): EventProps {
-+  return { ...practiceProps(ctx), question_id: a.questionId, question_type: a.questionType ?? null, is_correct: a.isCorrect };
-+}
-+
-+export type SessionCounts = { answered: number; correct: number; wrong: number; peeked: number };
-+
-+export function completedProps(ctx: PracticeContext, c: SessionCounts): EventProps {
-+  return {
-+    ...practiceProps(ctx),
-+    answered: c.answered,
-+    correct: c.correct,
-+    wrong: c.wrong,
-+    peeked: c.peeked,
-+    accuracy: c.answered > 0 ? Math.round((c.correct / c.answered) * 100) : null,
-+  };
-+}
-diff --git a/src/lib/practice-stats.ts b/src/lib/practice-stats.ts
-new file mode 100644
-index 0000000..6e77b97
---- /dev/null
-+++ b/src/lib/practice-stats.ts
-@@ -0,0 +1,147 @@
-+// Pure helpers (client + server safe, no I/O, relative imports only so they can be unit-tested
-+// with plain Node) for the dashboard's practice numbers.
-+//
-+// ONE definition of every number, used by BOTH the hero and the performance card, so the dashboard
-+// can never show two different accuracies:
-+//   solved   = distinct questions with at least one real answer (revealing a solution is not solving)
-+//   correct  = of those, how many were right the last time they were answered
-+//   accuracy = correct / solved  (null, never 0%, until something has been solved)
-+//   week     = answers given in the last 7 IST days (repeat attempts on revision count)
-+//   days     = distinct IST days with at least one real answer
-+//   due      = mistakes whose revision date has arrived (the same count the revision button shows)
-+
-+export type PracticeExam = "neet" | "jee" | "cuet" | "ipmat";
-+
-+export type ExamStats = {
-+  solved: number;
-+  correct: number;
-+  /** Whole percent, 0..100, or null when nothing has been solved yet. */
-+  accuracy: number | null;
-+  weekAnswered: number;
-+  distinctDays: number;
-+  due: number;
-+};
-+
-+export type LastAttempt = {
-+  subject: string;
-+  /** Empty when the question has no chapter tag. */
-+  chapter: string;
-+  exam: string | null;
-+  at: string;
-+};
-+
-+export type PracticeStats = {
-+  /** Distinct questions answered across ALL exams. 0 means "never started practising". */
-+  questionsAnswered: number;
-+  overall: ExamStats;
-+  byExam: Partial<Record<PracticeExam, ExamStats>>;
-+  lastAttempt: LastAttempt | null;
-+  /** True when the append-only event log has nothing for this student (they practised before it existed), so week/day figures are estimates. */
-+  approximate: boolean;
-+};
-+
-+export const EMPTY_EXAM_STATS: ExamStats = { solved: 0, correct: 0, accuracy: null, weekAnswered: 0, distinctDays: 0, due: 0 };
-+
-+export const EMPTY_PRACTICE_STATS: PracticeStats = {
-+  questionsAnswered: 0,
-+  overall: EMPTY_EXAM_STATS,
-+  byExam: {},
-+  lastAttempt: null,
-+  approximate: false,
-+};
-+
-+/** Whole-number percentage clamped to 0..100. Anything non-finite (NaN, Infinity) becomes 0. */
-+export function clampPercent(n: number): number {
-+  if (!Number.isFinite(n)) return 0;
-+  return Math.max(0, Math.min(100, Math.round(n)));
-+}
-+
-+/** correct / total as a whole percent, or null when there is nothing to divide by. Correct can never exceed total. */
-+export function accuracyPercent(correct: number, total: number): number | null {
-+  if (!Number.isFinite(total) || total <= 0) return null;
-+  return clampPercent((Math.min(Math.max(correct, 0), total) / total) * 100);
-+}
-+
-+export function buildExamStats(raw: { solved: number; correct: number; weekAnswered: number; distinctDays: number; due: number }): ExamStats {
-+  const solved = Math.max(0, Math.floor(raw.solved));
-+  const correct = Math.min(solved, Math.max(0, Math.floor(raw.correct)));
-+  return {
-+    solved,
-+    correct,
-+    accuracy: accuracyPercent(correct, solved),
-+    weekAnswered: Math.max(0, Math.floor(raw.weekAnswered)),
-+    distinctDays: Math.max(0, Math.floor(raw.distinctDays)),
-+    due: Math.max(0, Math.floor(raw.due)),
-+  };
-+}
-+
-+const norm = (v: unknown): PracticeExam | null => {
-+  const t = String(v ?? "").toLowerCase();
-+  return (["neet", "jee", "cuet", "ipmat"] as const).find((k) => t.includes(k)) ?? null;
-+};
-+
-+/** Which exam tab to open first: the exam they have practised most, else their target exam, else NEET. */
-+export function defaultExamTab(stats: PracticeStats, targetExam: string | null | undefined): "neet" | "jee" {
-+  const neet = stats.byExam.neet?.solved ?? 0;
-+  const jee = stats.byExam.jee?.solved ?? 0;
-+  if (neet !== jee) return jee > neet ? "jee" : "neet";
-+  return norm(targetExam) === "jee" ? "jee" : "neet";
-+}
-+
-+// ─── Mock-test (test series) scores ────────────────────────────────────────
-+/**
-+ * A test score as a percentage for DISPLAY. NEET/JEE have negative marking, so score/total can be below zero
-+ * (e.g. -12 of 720 = -1.7%). A negative "average score" reads as a bug to a student, so it is floored at 0.
-+ * Used for every attempt BEFORE averaging so the average, the best and the per-test bars always agree.
-+ */
-+export function testScorePercent(score: number, totalMarks: number): number {
-+  if (!Number.isFinite(score) || !Number.isFinite(totalMarks) || totalMarks <= 0) return 0;
-+  return Math.max(0, Math.min(100, (score / totalMarks) * 100));
-+}
-+
-+export type BatchPerf = {
-+  bundleId: string;
-+  bundleTitle: string;
-+  exam?: string;
-+  testsAttempted: number;
-+  totalAttempts: number;
-+  averagePercent: number;
-+  bestPercent: number;
-+  /** Sum of the (clamped) per-attempt percentages. Lets the dashboard average across bundles without compounding rounding. */
-+  percentSum?: number;
-+};
-+
-+/** Mock-test summary across bundles, optionally for one exam. Returns null when there are no scored attempts. */
-+export function summariseTests(batches: BatchPerf[] | null | undefined, exam?: "neet" | "jee"): { average: number; best: number; tests: number; attempts: number } | null {
-+  const rows = (batches ?? []).filter((b) => b.totalAttempts > 0 && (!exam || (norm(b.exam) ?? "neet") === exam));
-+  const attempts = rows.reduce((n, b) => n + b.totalAttempts, 0);
-+  if (attempts === 0) return null;
-+  const sum = rows.reduce((s, b) => s + (b.percentSum ?? b.averagePercent * b.totalAttempts), 0);
-+  return {
-+    average: clampPercent(sum / attempts),
-+    best: clampPercent(Math.max(...rows.map((b) => b.bestPercent))),
-+    tests: rows.reduce((n, b) => n + b.testsAttempted, 0),
-+    attempts,
-+  };
-+}
-+
-+// ─── Where to send a brand-new / returning student ─────────────────────────
-+type TreeLike = { subjects: { subject: string; count: number; chapters: { chapter: string; count: number }[] }[] };
-+export const UNTAGGED = "Not yet tagged";
-+
-+/** The chapter to open for "Start your first 5": the biggest properly-tagged chapter of the first subject that has any. */
-+export function pickFirstChapter(tree: TreeLike | null | undefined): { subject: string; chapter: string } | null {
-+  if (!tree) return null;
-+  for (const s of tree.subjects) {
-+    const tagged = s.chapters.filter((c) => c.count > 0 && c.chapter !== UNTAGGED);
-+    if (tagged.length === 0) continue;
-+    const best = tagged.reduce((a, b) => (b.count > a.count ? b : a));
-+    return { subject: s.subject, chapter: best.chapter };
-+  }
-+  return null;
-+}
-+
-+export function examLabel(exam: string | null | undefined): string {
-+  const k = norm(exam);
-+  return k ? { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" }[k] : "NEET";
-+}
-diff --git a/src/lib/prep-profile.ts b/src/lib/prep-profile.ts
-new file mode 100644
-index 0000000..7f02cd7
---- /dev/null
-+++ b/src/lib/prep-profile.ts
-@@ -0,0 +1,26 @@
-+// Pure helpers for the dashboard's "finish your prep details" card. Reuses what onboarding already saved
-+// (targetExam, track) and only asks for what is genuinely missing.
-+
-+export type PrepProfile = { targetExam?: string | null; track?: string | null; targetYear?: number | null };
-+export type MissingPrepField = "exam" | "track" | "year";
-+
-+export const TRACKS = ["11th", "12th", "Dropper"] as const;
-+
-+export function missingPrepFields(p: PrepProfile | null | undefined): MissingPrepField[] {
-+  if (!p) return [];
-+  const out: MissingPrepField[] = [];
-+  const exam = String(p.targetExam ?? "").toLowerCase();
-+  if (!exam.includes("neet") && !exam.includes("jee") && !exam.includes("cuet") && !exam.includes("ipmat")) out.push("exam");
-+  if (!TRACKS.includes(String(p.track ?? "") as (typeof TRACKS)[number])) out.push("track");
-+  if (!(typeof p.targetYear === "number" && Number.isInteger(p.targetYear) && p.targetYear > 2000)) out.push("year");
 +  return out;
 +}
+diff --git a/src/lib/jee-resource-core.ts b/src/lib/jee-resource-core.ts
+index 8fe6cee..79a65d2 100644
+--- a/src/lib/jee-resource-core.ts
++++ b/src/lib/jee-resource-core.ts
+@@ -10,11 +10,14 @@ import { createClient } from "@supabase/supabase-js";
+ import { getDb } from "@/lib/mongo";
+ import { getJeeChapter } from "@/lib/jee-blueprint";
+ import { createTtlCache } from "@/lib/simple-cache";
++import { pickBalanced, type JeeFeaturedChapter } from "@/lib/jee-landing-types";
+ import {
+   ADMIN_PAGE_SIZE,
+   DEFAULT_JEE_EXAM,
+   JEE_LIBRARY_YEAR,
+   JEE_RESOURCES_BUCKET,
++  JEE_RESOURCE_SUBJECTS,
++  JEE_RESOURCE_SUBJECT_LABELS,
+   JEE_RESOURCE_TYPES,
+   MAX_JEE_RESOURCE_BYTES,
+   hasPdfMagic,
+@@ -404,7 +407,12 @@ const libraryFilter = { published: true, deletedAt: null, exam: DEFAULT_JEE_EXAM
+ // Entry points on the (otherwise static) JEE pages read this on every load, so keep it cheap: identical for
+ // every visitor, fine to be 30 s old, and reset on any admin write handled by this server instance.
+ let summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
+-const invalidateSummary = () => { summaryCache = createTtlCache<JeeLibrarySummary>(30_000); };
++// The landing page's "Featured chapters" block reads the same published data, so it is reset by the same writes.
++let featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
++const invalidateSummary = () => {
++  summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
++  featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
++};
+ 
+ /** Counts of PUBLISHED resources — drives entry points, empty states and sitemap inclusion. */
+ export async function librarySummary(): Promise<JeeLibrarySummary> {
+@@ -445,3 +453,46 @@ export async function chapterResources(subjectKey: string, chapterSlug: string):
+     .sort((a, b) => rank(a.type) - rank(b.type) || (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || +new Date(a.createdAt) - +new Date(b.createdAt))
+     .map(toPublic);
+ }
 +
 +/**
-+ * Exam years to offer. NEET/JEE are held in the first half of the year, so from June onward this year's sitting has
-+ * passed and the first option is next year. Four options, always >= the current year (the server enforces the same floor).
++ * Chapters that have at least one PUBLISHED resource, for the JEE Main 2027 landing page — newest-updated first,
++ * balanced across Physics, Chemistry and Mathematics where possible. Metadata only (no path, bucket or link):
++ * a file's real location is still released only by accessResource() when a student previews or downloads it.
++ * Chapters no longer in the syllabus are skipped. Same filter, and same 30 s cache + reset-on-write, as librarySummary().
 + */
-+export function targetYearOptions(now: Date = new Date()): number[] {
-+  const first = now.getMonth() >= 5 ? now.getFullYear() + 1 : now.getFullYear();
-+  return [first, first + 1, first + 2, first + 3];
++export async function featuredChapters(limit = 6): Promise<JeeFeaturedChapter[]> {
++  const max = Math.min(Math.max(Math.trunc(limit) || 6, 1), 12);
++  const key = String(max);
++  const hit = featuredCache.get(key);
++  if (hit) return hit;
++  await ensureIndexes();
++  const db = await getDb();
++  const rows = await db
++    .collection(COLLECTION)
++    .aggregate([
++      { $match: libraryFilter },
++      { $group: { _id: { s: "$subjectKey", c: "$chapterSlug" }, types: { $addToSet: "$type" }, n: { $sum: 1 }, updated: { $max: "$updatedAt" } } },
++      { $sort: { updated: -1 } },
++    ])
++    .toArray();
++  const rank = (t: string) => JEE_RESOURCE_TYPES.indexOf(t as JeeResourceType);
++  const candidates: JeeFeaturedChapter[] = [];
++  for (const r of rows) {
++    if (!isJeeSubject(r._id.s)) continue;
++    const chapter = getJeeChapter(r._id.s, r._id.c);
++    if (!chapter || chapter.retired) continue;
++    const types = (r.types as string[]).filter(isJeeType).sort((a, b) => rank(a) - rank(b));
++    if (!types.length) continue;
++    candidates.push({
++      subjectKey: r._id.s,
++      subjectName: JEE_RESOURCE_SUBJECT_LABELS[r._id.s as JeeResourceSubject],
++      chapterSlug: chapter.slug,
++      chapterName: chapter.name,
++      types,
++      count: r.n as number,
++    });
++  }
++  const picked = pickBalanced(candidates, JEE_RESOURCE_SUBJECTS, max);
++  featuredCache.set(key, picked);
++  return picked;
 +}
-diff --git a/src/routes/auth.tsx b/src/routes/auth.tsx
-index d38a364..81ac475 100644
---- a/src/routes/auth.tsx
-+++ b/src/routes/auth.tsx
-@@ -10,7 +10,7 @@ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/se
- import { recordSession } from "@/server-functions/sessions";
- import { trackEvent } from "@/lib/funnel-events";
- import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
--import { track } from "@/lib/analytics";
-+import { track, trackOnce } from "@/lib/analytics";
+diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
+index 511a79b..0be4ac8 100644
+--- a/src/lib/sitemap-core.ts
++++ b/src/lib/sitemap-core.ts
+@@ -15,6 +15,8 @@ import { istDayKey } from "@/lib/practice-schedule";
+ import { getJeeSubjects } from "@/lib/jee-blueprint";
+ import { librarySummary } from "@/lib/jee-resource-core";
+ import { JEE_LIB_BASE, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
++import { jeeLandingMeta } from "@/lib/jee-landing-core";
++import { JEE_LANDING_PATH, jeeLandingIndexable } from "@/lib/jee-landing-types";
  
- export const Route = createFileRoute("/auth")({
-   validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
-@@ -64,7 +64,10 @@ type OnboardingProfile = {
- async function completeLogin(user: FirebaseUser, provider: "password" | "google.com") {
-   const token = await user.getIdToken();
+ type Db = Awaited<ReturnType<typeof getDb>>;
  
--  await ensureUserRecord({ data: { token, provider } });
-+  const record = await ensureUserRecord({ data: { token, provider } });
-+  // `isNew` is true for exactly one call per account: the one that created the profile. That makes signup_completed
-+  // once-per-student by construction (no browser flags to lose), and it works for Google sign-up and email sign-up alike.
-+  if (record.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider }, "session");
-   await recordSession({
-     data: { token, deviceId: getDeviceId(), deviceLabel: getDeviceLabel() },
-   });
-@@ -584,7 +587,9 @@ function SignUpForm({
-       const user = auth.currentUser!;
-       const token = await user.getIdToken();
+@@ -170,6 +172,15 @@ export async function jeeResourceEntries(): Promise<string[]> {
+   return out;
+ }
  
--      await ensureUserRecord({ data: { token, provider: "password" } });
-+      // Email sign-up creates the profile here (before the email is verified), so this is where isNew is true.
-+      const created = await ensureUserRecord({ data: { token, provider: "password" } });
-+      if (created.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider: "password" }, "session");
-       await sendEmailVerificationOtp({ data: { token } });
++// The JEE Main 2027 landing page (/jee-main-2027). Listed only when the page itself is indexable (same rule as its
++// <head>: something published, or JEE questions available), with lastmod = newest published article or resource edit.
++// Throws on a DB failure so the caller can answer 503 instead of caching a short list.
++export async function jeeLandingEntries(): Promise<string[]> {
++  const meta = await jeeLandingMeta();
++  if (!jeeLandingIndexable(meta)) return [];
++  return [urlEntry(`${SITE_URL}${JEE_LANDING_PATH}`, meta.lastmod ? toIsoDate(meta.lastmod) : JEE_LASTMOD, 0.9, "daily")];
++}
++
+ // Free tools and the data-driven NEET pages. Static content, so these are always listed.
+ const SEO_LASTMOD = "2026-10-15";
+ export function seoEntries(): string[] {
+diff --git a/src/routeTree.gen.ts b/src/routeTree.gen.ts
+index 09915b5..0acb9d0 100644
+--- a/src/routeTree.gen.ts
++++ b/src/routeTree.gen.ts
+@@ -87,6 +87,7 @@ import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certif
+ import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
+ import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
+ import { Route as JeeMain2027ResourcesIndexRouteImport } from './routes/jee-main-2027.resources.index'
++import { Route as JeeMain2027IndexRouteImport } from './routes/jee-main-2027.index'
+ import { Route as JeeChapterWiseWeightageIndexRouteImport } from './routes/jee.chapter-wise-weightage.index'
+ import { Route as JeePaperAnalysisIndexRouteImport } from './routes/jee.paper-analysis.index'
+ import { Route as JeeSyllabusIndexRouteImport } from './routes/jee.syllabus.index'
+@@ -494,6 +495,11 @@ const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
+   path: '/intern/trial/$code',
+   getParentRoute: () => rootRouteImport,
+ } as any)
++const JeeMain2027IndexRoute = JeeMain2027IndexRouteImport.update({
++  id: '/jee-main-2027/',
++  path: '/jee-main-2027/',
++  getParentRoute: () => rootRouteImport,
++} as any)
+ const JeeMain2027ResourcesIndexRoute =
+   JeeMain2027ResourcesIndexRouteImport.update({
+     id: '/jee-main-2027/resources/',
+@@ -679,6 +685,7 @@ export interface FileRoutesByFullPath {
+   '/intern/trial/$code': typeof InternTrialCodeRoute
+   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
+   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
++  '/jee-main-2027/': typeof JeeMain2027IndexRoute
+   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
+   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
+   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
+@@ -776,6 +783,7 @@ export interface FileRoutesByTo {
+   '/intern/trial/$code': typeof InternTrialCodeRoute
+   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
+   '/jee-main-2027/resources': typeof JeeMain2027ResourcesIndexRoute
++  '/jee-main-2027': typeof JeeMain2027IndexRoute
+   '/jee/chapter-wise-weightage': typeof JeeChapterWiseWeightageIndexRoute
+   '/jee/paper-analysis': typeof JeePaperAnalysisIndexRoute
+   '/jee/syllabus': typeof JeeSyllabusIndexRoute
+@@ -874,6 +882,7 @@ export interface FileRoutesById {
+   '/intern/trial/$code': typeof InternTrialCodeRoute
+   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
+   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
++  '/jee-main-2027/': typeof JeeMain2027IndexRoute
+   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
+   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
+   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
+@@ -973,6 +982,7 @@ export interface FileRouteTypes {
+     | '/intern/trial/$code'
+     | '/jee/syllabus/$subject'
+     | '/jee-main-2027/resources/'
++    | '/jee-main-2027/'
+     | '/jee/chapter-wise-weightage/'
+     | '/jee/paper-analysis/'
+     | '/jee/syllabus/'
+@@ -1070,6 +1080,7 @@ export interface FileRouteTypes {
+     | '/intern/trial/$code'
+     | '/jee/syllabus/$subject'
+     | '/jee-main-2027/resources'
++    | '/jee-main-2027'
+     | '/jee/chapter-wise-weightage'
+     | '/jee/paper-analysis'
+     | '/jee/syllabus'
+@@ -1167,6 +1178,7 @@ export interface FileRouteTypes {
+     | '/intern/trial/$code'
+     | '/jee/syllabus/$subject'
+     | '/jee-main-2027/resources/'
++    | '/jee-main-2027/'
+     | '/jee/chapter-wise-weightage/'
+     | '/jee/paper-analysis/'
+     | '/jee/syllabus/'
+@@ -1264,6 +1276,7 @@ export interface RootRouteChildren {
+   InternTrialCodeRoute: typeof InternTrialCodeRoute
+   JeeSyllabusSubjectRoute: typeof JeeSyllabusSubjectRoute
+   JeeMain2027ResourcesIndexRoute: typeof JeeMain2027ResourcesIndexRoute
++  JeeMain2027IndexRoute: typeof JeeMain2027IndexRoute
+   JeeChapterWiseWeightageIndexRoute: typeof JeeChapterWiseWeightageIndexRoute
+   JeePaperAnalysisIndexRoute: typeof JeePaperAnalysisIndexRoute
+   JeeSyllabusIndexRoute: typeof JeeSyllabusIndexRoute
+@@ -1823,6 +1836,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof InternTrialCodeRouteImport
+       parentRoute: typeof rootRouteImport
+     }
++    '/jee-main-2027/': {
++      id: '/jee-main-2027/'
++      path: '/jee-main-2027'
++      fullPath: '/jee-main-2027/'
++      preLoaderRoute: typeof JeeMain2027IndexRouteImport
++      parentRoute: typeof rootRouteImport
++    }
+     '/jee-main-2027/resources/': {
+       id: '/jee-main-2027/resources/'
+       path: '/jee-main-2027/resources'
+@@ -2042,6 +2062,7 @@ const rootRouteChildren: RootRouteChildren = {
+   InternTrialCodeRoute: InternTrialCodeRoute,
+   JeeSyllabusSubjectRoute: JeeSyllabusSubjectRoute,
+   JeeMain2027ResourcesIndexRoute: JeeMain2027ResourcesIndexRoute,
++  JeeMain2027IndexRoute: JeeMain2027IndexRoute,
+   JeeChapterWiseWeightageIndexRoute: JeeChapterWiseWeightageIndexRoute,
+   JeePaperAnalysisIndexRoute: JeePaperAnalysisIndexRoute,
+   JeeSyllabusIndexRoute: JeeSyllabusIndexRoute,
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 15a9ee4..1a6ed87 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -774,7 +774,7 @@ type FooterLink = { label: string; to: string };
+ const footerColumns: { title: string; links: FooterLink[] }[] = [
+   { title: "Product", links: [{ label: "About us", to: "/about" }, { label: "CBT Simulator", to: "/simulator/live" }, { label: "Dashboard", to: "/dashboard" }, { label: "Mentorship sessions", to: "/mentorship-sessions" }, { label: "Edurack Pro", to: "/pro" }, { label: "Become a mentor", to: "/join-mentor" }, { label: "Internships", to: "/join-intern" }, { label: "Blog", to: "/blog" }, { label: "Free resources", to: "/free-resources" }] },
+   { title: "NEET guides", links: [{ label: "Chapter-wise weightage", to: "/neet/chapter-wise-weightage" }, { label: "Physics weightage", to: "/neet/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/neet/chapter-wise-weightage/chemistry" }, { label: "Botany weightage", to: "/neet/chapter-wise-weightage/botany" }, { label: "Zoology weightage", to: "/neet/chapter-wise-weightage/zoology" }, { label: "PYQ practice", to: "/pyq" }] },
+-  { title: "JEE guides", links: [{ label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
++  { title: "JEE guides", links: [{ label: "JEE Main 2027 hub", to: "/jee-main-2027" }, { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" }, { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" }, { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" }, { label: "Maths weightage", to: "/jee/chapter-wise-weightage/maths" }, { label: "JEE syllabus 2026", to: "/jee/syllabus" }, { label: "Paper analysis", to: "/jee/paper-analysis" }, { label: "High-weightage chapters", to: "/jee/high-weightage-chapters" }, { label: "Most repeated concepts", to: "/jee/most-repeated-concepts" }, { label: "PYQ practice", to: "/pyq" }] },
+   { title: "Help", links: [{ label: "FAQ", to: "/faq" }, { label: "Help centre", to: "/help" }, { label: "Contact us", to: "/contact" }, { label: "Verify certificate", to: "/verify" }] },
+   { title: "Legal", links: [{ label: "Terms", to: "/legal/terms" }, { label: "Privacy", to: "/legal/privacy" }, { label: "Refund", to: "/legal/refund" }] },
+ ];
+diff --git a/src/routes/jee-main-2027.index.tsx b/src/routes/jee-main-2027.index.tsx
+new file mode 100644
+index 0000000..91704d4
+--- /dev/null
++++ b/src/routes/jee-main-2027.index.tsx
+@@ -0,0 +1,51 @@
++// src/routes/jee-main-2027.index.tsx  →  /jee-main-2027
++//
++// The JEE Main 2027 preparation hub. Server-rendered from existing published data (see server-functions/jee-landing.ts):
++// the loader runs on the server for a first visit, so the articles, subject counts and featured chapters are in the
++// HTML crawlers receive. Nothing is hardcoded; unpublishing content removes it on the next uncached load.
++import { createFileRoute } from "@tanstack/react-router";
++import { SITE_URL, breadcrumbJsonLd, noindexHead, pageHead } from "@/lib/seo";
++import { faqPageJsonLd } from "@/lib/neet-blueprint-copy";
++import { JEE_LANDING_DESCRIPTION, JEE_LANDING_FAQS, JEE_LANDING_TITLE } from "@/lib/jee-landing-copy";
++import { JEE_LANDING_PATH, jeeLandingIndexable } from "@/lib/jee-landing-types";
++import { JEE_LIBRARY_YEAR } from "@/lib/jee-resource-types";
++import { getJeeLandingData } from "@/server-functions/jee-landing";
++import { JeeLandingView } from "@/components/jee/jee-landing-view";
++
++export const Route = createFileRoute("/jee-main-2027/")({
++  loader: () => getJeeLandingData(),
++  head: ({ loaderData }) => {
++    // Completely empty (nothing published, no JEE questions) is a placeholder, not content: keep it out of search.
++    if (loaderData && !jeeLandingIndexable({ resources: loaderData.summary.total, posts: loaderData.blog.total, pyq: loaderData.pyqTotal })) {
++      return noindexHead(`JEE Main ${JEE_LIBRARY_YEAR}`, JEE_LANDING_DESCRIPTION);
++    }
++    const articles = [...(loaderData?.blog.updates ?? []), ...(loaderData?.blog.guides ?? [])];
++    return pageHead({
++      title: JEE_LANDING_TITLE,
++      rawTitle: true, // the suggested title already carries the brand; the default suffix would double it
++      description: JEE_LANDING_DESCRIPTION,
++      path: JEE_LANDING_PATH,
++      jsonLd: [
++        breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: `JEE Main ${JEE_LIBRARY_YEAR}`, path: JEE_LANDING_PATH }]),
++        {
++          "@context": "https://schema.org",
++          "@type": "CollectionPage",
++          name: `JEE Main ${JEE_LIBRARY_YEAR} preparation hub`,
++          description: JEE_LANDING_DESCRIPTION,
++          url: `${SITE_URL}${JEE_LANDING_PATH}`,
++          isPartOf: { "@type": "WebSite", name: "Edurack", url: SITE_URL },
++          ...(articles.length
++            ? { mainEntity: { "@type": "ItemList", itemListElement: articles.map((a, i) => ({ "@type": "ListItem", position: i + 1, name: a.title, url: `${SITE_URL}/blog/${a.slug}` })) } }
++            : {}),
++        },
++        // Same FAQPage markup the site's other FAQ pages use; the answers are visible on the page.
++        faqPageJsonLd(JEE_LANDING_FAQS),
++      ],
++    });
++  },
++  component: JeeLandingPage,
++});
++
++function JeeLandingPage() {
++  return <JeeLandingView data={Route.useLoaderData()} />;
++}
+diff --git a/src/routes/sitemap-jee[.]xml.ts b/src/routes/sitemap-jee[.]xml.ts
+index d0f5deb..1685d6f 100644
+--- a/src/routes/sitemap-jee[.]xml.ts
++++ b/src/routes/sitemap-jee[.]xml.ts
+@@ -1,15 +1,15 @@
+ // src/routes/sitemap-jee[.]xml.ts — GET /sitemap-jee.xml
+-// JEE Main chapter-wise weightage pages (hub, subjects, chapters), most-repeated concepts and the published
++// JEE Main chapter-wise weightage pages (hub, subjects, chapters), most-repeated concepts, the JEE Main 2027 landing page and the published
+ // JEE Main 2027 resource pages. The weightage pages are static data; the resource pages come from the database.
+ import { createFileRoute } from "@tanstack/react-router";
+-import { jeeEntries, jeeResourceEntries, sitemapUnavailable, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
++import { jeeEntries, jeeLandingEntries, jeeResourceEntries, sitemapUnavailable, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
  
-       onNeedsVerification(email);
-diff --git a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
-index 0e8613e..09075c7 100644
---- a/src/routes/dashboard.tsx
-+++ b/src/routes/dashboard.tsx
-@@ -1,4 +1,8 @@
--import { TodayCard, type UpNextInfo } from "@/components/today-card";
-+import { MentorshipCompactCard, type UpNextInfo } from "@/components/today-card";
-+import { PracticePerformanceCard } from "@/components/dashboard/practice-performance-card";
-+import { PrepSetupCard } from "@/components/dashboard/prep-setup-card";
-+import { usePracticeStats } from "@/components/dashboard/use-practice-stats";
-+import type { PracticeStats } from "@/lib/practice-stats";
- import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
- import { PyqHero } from "@/components/dashboard/pyq-hero";
- import { StreakPopup } from "@/components/dashboard/streak-popup";
-@@ -51,6 +55,7 @@ type StudentProfile = {
-   city: string;
-   targetExam: string;
-   track: Track;
-+  targetYear: number | null;
- };
- 
- type Bundle = {
-@@ -198,7 +203,7 @@ type BookingRow = {
-   mentor_session_offerings?: { title: string };
- };
- 
--type BatchPerf = { bundleId: string; bundleTitle: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number };
-+type BatchPerf = { bundleId: string; bundleTitle: string; exam?: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number; percentSum?: number };
- 
- // Slots are India wall-clock; parse them as such, not in the browser's timezone.
- const slotDate = (r: BookingRow) => slotStart(r.session_date, r.start_time);
-@@ -230,6 +235,8 @@ function DashboardPage() {
-   const [view, setView] = useState<View>("home");
-   const [bookings, setBookings] = useState<BookingRow[] | null>(null);
-   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
-+  // The practice numbers, fetched once and shared by the hero and the performance card so they always agree.
-+  const { stats: practiceStats, failed: statsFailed, reload: reloadStats } = usePracticeStats();
- 
-   // One request for the whole dashboard (profile, catalog, purchases, sessions,
-   // bookings, performance) — see server-functions/dashboard.ts. If that request
-@@ -281,6 +288,7 @@ function DashboardPage() {
-             city: p.city ?? "",
-             targetExam: p.targetExam || "",
-             track: (p.track as Track) || "",
-+            targetYear: typeof p.targetYear === "number" ? p.targetYear : null,
-           });
+ export const Route = createFileRoute("/sitemap-jee.xml")({
+   server: {
+     handlers: {
+       GET: async () => {
+         try {
+-          return xmlResponse(urlsetXml([...jeeEntries(), ...(await jeeResourceEntries())]));
++          return xmlResponse(urlsetXml([...jeeEntries(), ...(await jeeLandingEntries()), ...(await jeeResourceEntries())]));
+         } catch (err) {
+           return sitemapUnavailable("jee", err);
          }
-         if (bundlesRes) setBundles(bundlesRes.bundles as Bundle[]);
-@@ -426,10 +434,6 @@ function DashboardPage() {
-   const ownedTests = (soldTests ?? []).filter((t) => t.purchased);
-   const now = new Date();
-   const upcoming = (bookings ?? []).filter((r) => r.status === "upcoming" && slotDate(r) >= now).sort((a, b) => slotDate(a).getTime() - slotDate(b).getTime());
--  const attempts = perf?.reduce((n, b) => n + b.totalAttempts, 0) ?? 0;
--  const avg = perf && attempts > 0 ? Math.round(perf.reduce((s, b) => s + b.averagePercent * b.totalAttempts, 0) / attempts) : null;
--  const best = perf && attempts > 0 ? Math.max(...perf.map((b) => b.bestPercent)) : null;
--  const testsDone = perf?.reduce((n, b) => n + b.testsAttempted, 0) ?? 0;
-   const hour = now.getHours();
-   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+diff --git a/src/server-functions/blog-public.ts b/src/server-functions/blog-public.ts
+index 116e127..3d17194 100644
+--- a/src/server-functions/blog-public.ts
++++ b/src/server-functions/blog-public.ts
+@@ -12,6 +12,7 @@ import { getCurrentRequest } from "@/lib/get-request";
+ import type { BlogCategory, BlogDocument, BlogPromoAudience, BlogPromoConfig, PublicBlogDocument, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
+ import { DEFAULT_BLOG_PROMO_SETTINGS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
+ import type { ExamKey } from "@/lib/admin-types";
++import { EMPTY_JEE_LANDING_BLOG, JEE_POST_CLASSIFIER, JEE_UPDATES_CATEGORY, type JeeLandingBlog } from "@/lib/jee-landing-types";
  
-@@ -449,6 +453,8 @@ function DashboardPage() {
-       <AppHeader user={user} displayName={profile?.fullName} />
-       <StreakPopup />
-       <CompleteProfilePopup
-+        // Never interrupt a student who hasn't answered a single question yet: practice first, paperwork later.
-+        hold={!statsFailed && (practiceStats === null || practiceStats.questionsAnswered === 0)}
-         profile={profile ? { fullName: profile.fullName, mobile: profile.mobile, city: profile.city } : null}
-         onSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } : prev))}
-       />
-@@ -494,7 +500,9 @@ function DashboardPage() {
-               <SearchResults query={query} matchedMentors={matchedMentors} matchedListings={matchedListings} matchedTests={matchedTests} loading={mentors === null || allListings === null || soldTests === null} />
-             ) : view === "home" ? (
-               <Overview
--                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf} avg={avg} best={best} testsDone={testsDone} attempts={attempts}
-+                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf}
-+                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats}
-+                profile={profile} onProfileSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } as StudentProfile : prev))}
-                 ownedListings={ownedListings} ownedTests={ownedTests} freeSlots={featuredFreeSlots}
-                 recommended={(track ? recommended : (allListings ?? []).filter((l) => l.kind === "Test Series")).slice(0, 3)}
-                 go={setView} getToken={() => user.getIdToken()} onBooked={loadSessions}
-@@ -581,23 +589,28 @@ function Panel({ title, action, children, className = "" }: { title: string; act
+ // Same header-based lookup used for session/device tracking elsewhere
+ // (see server-functions/sessions.ts) — the IP is read server-side from
+@@ -134,6 +135,43 @@ export const getPublishedPostBySlug = createServerFn({ method: "GET" })
+     return { post: mapToFull(row) };
+   });
  
- const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
- 
--function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attempts, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
--  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null; avg: number | null; best: number | null; testsDone: number; attempts: number;
-+function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
-+  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
-+  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void;
-+  profile: StudentProfile | null; onProfileSaved: (next: Partial<StudentProfile>) => void;
-   ownedListings: Listing[]; ownedTests: SoldTestEntry[]; freeSlots: { offering: PublicMentorOffering; slot: OpenSlot }[]; recommended: Listing[];
-   go: (v: View) => void; getToken: () => Promise<string>; onBooked: () => void;
- }) {
-   const navigate = useNavigate();
-   const next = upcoming[0];
-   const continueCount = ownedListings.length + ownedTests.length;
-+  // A student who has never answered a question gets a short page: one clear action, then the rest further down.
-+  // (Until the numbers load we assume "returning" so nothing is hidden and then pops back in.)
-+  const isNew = stats !== null && stats.questionsAnswered === 0;
-+  // PYQ practice isn't a tile any more: it is the hero above and the first item in the sidebar / bottom bar.
-   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
--    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq", highlight: true },
-     { icon: Trophy, label: "Weekly leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
-     { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
-     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
-     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
-     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
-   ];
--  // What the merged Today card shows in its "Up next" row.
-+  // What the mentorship card shows.
-   const upNext: UpNextInfo = next
-     ? {
-         state: "session",
-@@ -617,73 +630,57 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
- 
-   return (
-     <div className="space-y-4">
--      {/* PYQ practice comes first: streak, milestones and a tile per subject. */}
--      <PyqHero />
--
--      {/* The team's weekly shout-out (renders nothing until one is published). */}
--      <StudentOfTheWeekBanner />
--
--      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
--        {/* The next mentor session (the practice part lives in the hero above). */}
--        <TodayCard className="lg:col-span-3" upNext={upNext} upNextOnly onBrowseSessions={() => go("sessions")} />
--
--        {/* Performance */}
--        <Panel title="Your performance" className="lg:col-span-2">
--          {perf === null ? (
--            <div className="h-40 animate-pulse rounded-2xl bg-secondary" />
--          ) : avg === null ? (
--            <div>
--              <p className="text-sm text-muted-foreground">No scored attempts in your courses yet. Take a test to see your average and where marks leak.</p>
--              <Link to="/simulator/live" className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
--            </div>
--          ) : (
--            <>
--              <div className="flex items-end gap-6">
--                <div><p className="font-display text-5xl font-extrabold leading-none tracking-tight">{avg}<span className="text-2xl font-semibold text-muted-foreground">%</span></p><p className="mt-1 text-xs font-semibold text-muted-foreground">average score</p></div>
--                <div className="pb-0.5 text-xs text-muted-foreground"><p><b className="text-foreground">{best}%</b> best</p><p><b className="text-foreground">{testsDone}</b> tests · <b className="text-foreground">{attempts}</b> attempts</p></div>
--              </div>
--              <ul className="mt-5 space-y-3">
--                {perf.filter((b) => b.totalAttempts > 0).slice(0, 4).map((b) => (
--                  <li key={b.bundleId}>
--                    <div className="mb-1 flex justify-between gap-3 text-xs font-semibold"><span className="truncate">{b.bundleTitle}</span><span className="shrink-0 text-muted-foreground">{b.averagePercent}%</span></div>
--                    <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><motion.div className="h-full rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${b.averagePercent}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} /></div>
--                  </li>
--                ))}
--              </ul>
--            </>
--          )}
--        </Panel>
--      </div>
-+      {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
-+      <PyqHero stats={stats} statsFailed={statsFailed} />
++// ─── JEE Main 2027 landing page ───────────────────────────────────────────
++// The two article blocks on /jee-main-2027: "Latest updates" (JEE posts in the Exam News category) and
++// "Preparation guides" (every other JEE post, never repeating one already shown above). Same PUBLISHED_FILTER as
++// every read in this file, so a draft, scheduled, archived or soft-deleted post can never appear here — and a post
++// drops out the moment it is unpublished (the next uncached read no longer matches it). bodyMarkdown is never loaded.
++// A failure returns an empty result: the landing page must still render without its article blocks.
++const JEE_POST_FILTER = { ...PUBLISHED_FILTER, ...JEE_POST_CLASSIFIER };
++const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
++  const n = Math.trunc(Number(v));
++  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
++};
 +
-+      {/* 2. Exam, class and target year: only what's missing, one tap each, never blocks practice. A new student is asked for the year after their first question. */}
-+      <PrepSetupCard
-+        profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
-+        deferYear={isNew}
-+        onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
-+      />
- 
--      {/* Quick actions */}
--      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
--        {actions.map((a, i) => {
--          const inner = (<><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${a.highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}{a.highlight && <span className="ml-1.5 rounded-full bg-amber-300 px-1.5 py-0.5 align-middle text-[9px] font-extrabold uppercase text-amber-950">Free</span>}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
--          const base = a.highlight ? `${tile} border-primary/60 bg-primary/5` : tile;
--          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${base} col-span-2 lg:col-span-1` : base;
--          return a.to ? <Link key={a.label} to={a.to as "/pyq"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
--        })}
--      </div>
-+      {/* 3. One performance card: practice numbers per exam + mock-test scores, from one source. */}
-+      <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
- 
--      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
--        <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
--          {continueCount === 0 ? (
--            <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
--          ) : (
--            <div className="-mx-2">
--              {ownedListings.slice(0, 4).map((l) => (
--                <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
--                  icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
--                  title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
--              ))}
--              {ownedTests.slice(0, 3).map((t) => (
--                <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
--              ))}
--            </div>
--          )}
--        </Panel>
-+      {/* The team's weekly shout-out (renders nothing until one is published). Not for a student who hasn't started. */}
-+      {!isNew && <StudentOfTheWeekBanner />}
++export async function loadJeeBlogSections(opts: { updatesLimit?: number; guidesLimit?: number } = {}): Promise<JeeLandingBlog> {
++  try {
++    const db = await getDb();
++    const col = db.collection("blogPosts");
++    const updatesLimit = clampInt(opts.updatesLimit, 1, 6, 3);
++    const guidesLimit = clampInt(opts.guidesLimit, 1, 6, 3);
 +
-+      {/* Quick actions: for students who have started. A new student finds all of these in the menu. */}
-+      {!isNew && (
-+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-+          {actions.map((a, i) => {
-+            const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
-+            const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 sm:col-span-1` : tile;
-+            return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
-+          })}
-+        </div>
-+      )}
++    const [updateRows, total] = await Promise.all([
++      col.find({ ...JEE_POST_FILTER, category: JEE_UPDATES_CATEGORY }).project({ bodyMarkdown: 0 }).sort({ publishedAt: -1 }).limit(updatesLimit).toArray(),
++      col.countDocuments(JEE_POST_FILTER),
++    ]);
++    const guideRows = await col
++      .find({ ...JEE_POST_FILTER, _id: { $nin: updateRows.map((r: any) => r._id) } })
++      .project({ bodyMarkdown: 0 })
++      .sort({ publishedAt: -1 })
++      .limit(guidesLimit)
++      .toArray();
 +
-+      {/* 4. Mentorship, below the practice content, as a compact card (the marketplace itself is unchanged: Sessions / Mentors / Explore). */}
-+      <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
++    return { updates: updateRows.map(mapToSummary), guides: guideRows.map(mapToSummary), total };
++  } catch (e) {
++    console.error("[blog-public] JEE landing posts failed:", e);
++    return EMPTY_JEE_LANDING_BLOG;
++  }
++}
 +
-+      <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-5"}`}>
-+        {!isNew && (
-+          <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
-+            {continueCount === 0 ? (
-+              <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
-+            ) : (
-+              <div className="-mx-2">
-+                {ownedListings.slice(0, 4).map((l) => (
-+                  <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
-+                    icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
-+                    title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
-+                ))}
-+                {ownedTests.slice(0, 3).map((t) => (
-+                  <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
-+                ))}
-+              </div>
-+            )}
-+          </Panel>
-+        )}
- 
--        <Panel title="Free sessions open" className="lg:col-span-2" action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
-+        <Panel title="Free sessions open" className={isNew ? "" : "lg:col-span-2"} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
-           {freeSlots.length === 0 ? <p className="text-sm text-muted-foreground">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
-         </Panel>
-       </div>
-diff --git a/src/routes/mentor-profile.$mentorId.tsx b/src/routes/mentor-profile.$mentorId.tsx
-index 7d1b4d1..b72b496 100644
---- a/src/routes/mentor-profile.$mentorId.tsx
-+++ b/src/routes/mentor-profile.$mentorId.tsx
-@@ -1,6 +1,6 @@
- import { createFileRoute, useNavigate, Link, notFound, isNotFound } from "@tanstack/react-router";
- import { pageHead, noindexHead, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
--import { useEffect, useState } from "react";
-+import { useEffect, useRef, useState } from "react";
- import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
- import { UserX, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
- import { useAuth } from "@/lib/auth-context";
-@@ -10,6 +10,7 @@ import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
- import { listPublicMentorSessions } from "@/server-functions/public-sessions";
- import { SessionCard } from "@/components/sessions/session-card";
- import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
-+import { track } from "@/lib/analytics";
- 
- export const Route = createFileRoute("/mentor-profile/$mentorId")({
-   // Runs on the server for the first request, so crawlers and link
-@@ -160,6 +161,8 @@ function MentorProfilePage() {
-   const [batches, setBatches] = useState<Batch[]>((initial?.batches as Batch[] | undefined) ?? []);
-   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
-   const [notFound, setNotFound] = useState(false);
-+  // The fetch effect below re-runs when auth resolves, so the view is sent from a ref-guarded spot: once per mentor per visit.
-+  const viewedMentor = useRef<string | null>(null);
- 
-   // ---------------------------------------------------------------------
-   // PERF: fetch immediately, don't wait on `loading` (Firebase Auth
-@@ -183,6 +186,11 @@ function MentorProfilePage() {
-         setMentor(m);
-         setBatches(b);
-         setSoldTests(st as SoldTestEntry[]);
-+        if (viewedMentor.current !== mentorId) {
-+          viewedMentor.current = mentorId;
-+          // Ids and counts only: nothing about the visitor, and nothing about the mentor beyond what the public page shows.
-+          track("mentor_profile_viewed", { mentor_id: mentorId, batch_count: b.length, signed_in: Boolean(user) });
-+        }
-       } catch {
-         // If listPublicSoldTestsForMentor still requires auth on the
-         // backend, don't let that break the whole page for guests —
-diff --git a/src/routes/pyq-drill.tsx b/src/routes/pyq-drill.tsx
-index 143bea1..478ac52 100644
---- a/src/routes/pyq-drill.tsx
-+++ b/src/routes/pyq-drill.tsx
-@@ -10,7 +10,8 @@ import { DrillLauncher, type StartOptions } from "@/components/pyq/drill-launche
- import { getPyqDrill, startPyqDrill, submitPyqDrill } from "@/server-functions/practice-extras";
- import type { DrillState } from "@/lib/pyq-types";
- import type { DrillAnswer } from "@/lib/practice-schedule";
--import { track } from "@/lib/analytics";
-+import { track, trackOnce } from "@/lib/analytics";
-+import { practiceProps } from "@/lib/practice-events";
- 
- // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
- // the server's clock, and a finished drill reopens its result.
-@@ -67,7 +68,10 @@ function DrillPage() {
-       const token = await user.getIdToken();
-       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
-       setState({ status: "running", set });
-+      // Same event names as ordinary PYQ practice, told apart by practice_type = "timed_drill". The older drill_started /
-+      // drill_submitted events are kept so existing PostHog insights keep working.
-       track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
-+      trackOnce(`drill-start:${set.drillId}`, "practice_started", { ...practiceProps({ mode: "timed_drill", exam, subject: opts.subject }), custom: Boolean(opts.custom), question_count: set.questions.length });
-       navigate({ search: { exam, drillId: set.drillId }, replace: true });
-     } catch (e) {
-       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
-@@ -82,7 +86,18 @@ function DrillPage() {
-       const token = await user.getIdToken();
-       const result = await submitPyqDrill({ data: { token, drillId, answers } });
-       setState({ status: "done", result });
--      track("drill_submitted");
-+      // submit() can run twice (the auto-submit at 0:00 racing the button); the key makes it count once.
-+      if (trackOnce(`drill-done:${drillId}`, "drill_submitted")) {
-+        track("practice_completed", {
-+          ...practiceProps({ mode: "timed_drill", exam }),
-+          answered: result.correct + result.wrong,
-+          correct: result.correct,
-+          wrong: result.wrong,
-+          skipped: result.skipped,
-+          accuracy: result.correct + result.wrong > 0 ? Math.round((result.correct / (result.correct + result.wrong)) * 100) : null,
-+          time_taken_sec: result.timeTakenSec,
-+        });
-+      }
-       try {
-         sessionStorage.removeItem(`edurack:drill:${drillId}`);
-       } catch {
-@@ -90,7 +105,7 @@ function DrillPage() {
-       }
-       window.scrollTo({ top: 0 });
-     },
--    [user, drillId],
-+    [user, drillId, exam],
-   );
- 
-   if (loading || !user) {
-diff --git a/src/routes/pyq.tsx b/src/routes/pyq.tsx
-index 02c70ab..6555cb7 100644
---- a/src/routes/pyq.tsx
-+++ b/src/routes/pyq.tsx
-@@ -22,7 +22,10 @@ import type { SessionKind } from "@/lib/pyq-types";
- // Subjects — instead of leaving the page.
- // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
- // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
--type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind };
-+// `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
-+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean };
-+
-+const FIRST_N = 5;
- 
- const SESSIONS: SessionKind[] = ["daily", "due", "wrong", "bookmarked"];
- 
-@@ -37,6 +40,7 @@ export const Route = createFileRoute("/pyq")({
-     weakAttempt: str(search.weakAttempt),
-     session: SESSIONS.find((k) => k === search.session),
-     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
-+    first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
-   }),
-   // Public now: logged-out visitors can browse and try a few questions.
-   head: () =>
-@@ -157,7 +161,7 @@ function PyqPage() {
-         ) : practising ? (
-           <PyqPractice
-             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
--            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
-+            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}`}
-             subject={search.subject}
-             chapter={search.chapter}
-             topic={search.topic}
-@@ -165,11 +169,15 @@ function PyqPage() {
-             session={search.session}
-             exam={tree?.exam ?? search.exam}
-             guest={guest}
-+            limit={search.first5 && !guest ? FIRST_N : undefined}
-+            source={search.first5 ? "first_five" : undefined}
-             // A weak-topics session started from a result page returns to that result page.
-             // Sessions go back to where they started: the daily question to the dashboard,
-             // the other sessions to the notebook.
-             onExit={() =>
--              search.session
-+              search.first5 && !guest
-+                ? navigate({ to: "/dashboard" })
-+                : search.session
-                 ? navigate({ to: search.session === "daily" ? "/dashboard" : "/notebook" })
-                 : search.weakAttempt
-                   ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })
-diff --git a/src/server-functions/practice-stats.ts b/src/server-functions/practice-stats.ts
+ // Shared by listRelatedPosts and getBlogSidebarData.
+ async function queryRelated(db: any, ObjectId: any, data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) {
+   // Same category first; top up with same-exam posts if the category
+diff --git a/src/server-functions/jee-landing.ts b/src/server-functions/jee-landing.ts
 new file mode 100644
-index 0000000..47f9be7
+index 0000000..789540d
 --- /dev/null
-+++ b/src/server-functions/practice-stats.ts
-@@ -0,0 +1,128 @@
-+// The dashboard's practice numbers, computed in ONE place (see lib/practice-stats.ts for the definitions).
-+// Read-only: it never writes, and it only ever reads the signed-in student's own rows.
++++ b/src/server-functions/jee-landing.ts
+@@ -0,0 +1,37 @@
++// JEE Main 2027 landing page (/jee-main-2027) — PUBLIC server function. No login needed.
++//
++// One read for the whole page, assembled ONLY from existing public reads, each of which already filters to
++// published content:
++//   • summary   → librarySummary()        (published JEE Main 2027 resources: counts per subject and chapter)
++//   • featured  → featuredChapters()      (chapters with published resources, and which types exist; metadata only)
++//   • blog      → loadJeeBlogSections()   (published JEE posts; never drafts, scheduled, archived or deleted)
++//   • pyqTotal  → the PYQ page's own question tree for JEE
++// Nothing here carries a storage path, bucket or file link. Each part fails on its own: if one source is down the
++// page still renders with that block empty (and hidden), exactly like getJeeLibrarySummary.
 +import { createServerFn } from "@tanstack/react-start";
-+import { adminAuth } from "@/lib/firebase-admin";
-+import { getDb } from "@/lib/mongo";
-+import { addDays, istDayKey } from "@/lib/practice-schedule";
-+import { buildExamStats, EMPTY_PRACTICE_STATS, type ExamStats, type LastAttempt, type PracticeExam, type PracticeStats } from "@/lib/practice-stats";
-+import type { Db } from "@/lib/pyq-server";
++import { loadJeeBlogSections } from "@/server-functions/blog-public";
++import { featuredChapters, librarySummary } from "@/lib/jee-resource-core";
++import { jeePyqTotal } from "@/lib/jee-landing-core";
++import { EMPTY_JEE_LANDING_BLOG, type JeeLandingData } from "@/lib/jee-landing-types";
++import type { JeeLibrarySummary } from "@/lib/jee-resource-types";
 +
-+const EXAMS: PracticeExam[] = ["neet", "jee", "cuet", "ipmat"];
-+// Old rows were written before `exam` existed on a progress row; the rest of the app treats those as NEET.
-+const EXAM_OF = { $ifNull: ["$exam", "neet"] };
-+const IST_DAY = (field: string) => ({ $dateToString: { format: "%Y-%m-%d", date: field, timezone: "Asia/Kolkata" } });
++const EMPTY_SUMMARY: JeeLibrarySummary = { total: 0, bySubject: {}, byChapter: {}, lastUpdated: null };
 +
-+let indexed = false;
-+async function ensureIndexes(db: Db) {
-+  if (indexed) return;
-+  indexed = true;
++async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
 +  try {
-+    await db.collection("practiceEvents").createIndex({ uid: 1, at: -1 });
-+    await db.collection("practiceProgress").createIndex({ uid: 1, attempts: 1 });
-+  } catch {
-+    // best-effort; everything works (more slowly) without them
++    return await fn();
++  } catch (e) {
++    console.error(`[jee-landing] ${label} failed:`, e);
++    return fallback;
 +  }
 +}
 +
-+type Counter = Map<string, number>;
-+const toMap = (rows: { _id: unknown; n: number }[]): Counter => new Map(rows.map((r) => [String(r._id), Number(r.n)]));
-+const get = (m: Counter, k: string) => m.get(k) ?? 0;
-+
-+export async function loadPracticeStats(db: Db, uid: string, now: Date = new Date()): Promise<PracticeStats> {
-+  await ensureIndexes(db);
-+  const progress = db.collection("practiceProgress");
-+  const events = db.collection("practiceEvents");
-+  const today = istDayKey(now);
-+  // Last 7 IST days including today: from IST midnight six days ago.
-+  const weekStart = new Date(`${addDays(today, -6)}T00:00:00+05:30`);
-+
-+  const answered = { uid, attempts: { $gt: 0 } };
-+  const [solvedRows, correctRows, dueRows, eventTotal] = await Promise.all([
-+    progress.aggregate([{ $match: answered }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
-+    progress.aggregate([{ $match: { ...answered, correct: true } }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
-+    // Same filter as the revision button (TodaySummary.due / the notebook's "due"), so the numbers always match it.
-+    progress.aggregate([{ $match: { uid, nextReviewAt: { $lte: now }, mastered: { $ne: true } } }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
-+    events.countDocuments({ uid, outcome: { $ne: "revealed" } }, { limit: 1 }),
++export const getJeeLandingData = createServerFn({ method: "GET" }).handler(async (): Promise<JeeLandingData> => {
++  const [summary, featured, blog, pyqTotal] = await Promise.all([
++    safe("summary", () => librarySummary(), EMPTY_SUMMARY),
++    safe("featured", () => featuredChapters(6), []),
++    loadJeeBlogSections({ updatesLimit: 3, guidesLimit: 3 }), // handles its own failures
++    safe("pyq count", () => jeePyqTotal(), 0),
 +  ]);
-+
-+  const solved = toMap(solvedRows as { _id: unknown; n: number }[]);
-+  const correct = toMap(correctRows as { _id: unknown; n: number }[]);
-+  const due = toMap(dueRows as { _id: unknown; n: number }[]);
-+  const questionsAnswered = [...solved.values()].reduce((a, b) => a + b, 0);
-+  if (questionsAnswered === 0 && due.size === 0) return { ...EMPTY_PRACTICE_STATS };
-+
-+  // Week + distinct days come from the append-only event log. A student who practised before it existed has no
-+  // events, so we fall back to practiceProgress (latest answer per question) and flag the result approximate.
-+  const approximate = eventTotal === 0;
-+  const src = approximate
-+    ? { col: progress, match: answered, at: "$updatedAt", weekMatch: { ...answered, updatedAt: { $gte: weekStart } } }
-+    : { col: events, match: { uid, outcome: { $ne: "revealed" } }, at: "$at", weekMatch: { uid, outcome: { $ne: "revealed" }, at: { $gte: weekStart } } };
-+
-+  const [weekRows, dayRows] = await Promise.all([
-+    src.col.aggregate([{ $match: src.weekMatch }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
-+    src.col.aggregate([{ $match: src.match }, { $group: { _id: { exam: EXAM_OF, day: IST_DAY(src.at) } } }]).toArray(),
-+  ]);
-+  const week = toMap(weekRows as { _id: unknown; n: number }[]);
-+  const daysByExam = new Map<string, Set<string>>();
-+  const allDays = new Set<string>();
-+  for (const r of dayRows as { _id: { exam: unknown; day: unknown } }[]) {
-+    const day = String(r._id.day ?? "");
-+    if (!day || day === "null") continue;
-+    const exam = String(r._id.exam);
-+    if (!daysByExam.has(exam)) daysByExam.set(exam, new Set());
-+    daysByExam.get(exam)!.add(day);
-+    allDays.add(day);
-+  }
-+
-+  const byExam: PracticeStats["byExam"] = {};
-+  for (const e of EXAMS) {
-+    const s = get(solved, e), d = get(due, e);
-+    if (s === 0 && d === 0) continue;
-+    byExam[e] = buildExamStats({ solved: s, correct: get(correct, e), weekAnswered: get(week, e), distinctDays: daysByExam.get(e)?.size ?? 0, due: d });
-+  }
-+  const overall: ExamStats = buildExamStats({
-+    solved: questionsAnswered,
-+    correct: [...correct.values()].reduce((a, b) => a + b, 0),
-+    weekAnswered: [...week.values()].reduce((a, b) => a + b, 0),
-+    distinctDays: allDays.size,
-+    due: [...due.values()].reduce((a, b) => a + b, 0),
-+  });
-+
-+  return { questionsAnswered, overall, byExam, lastAttempt: await lastAttemptFor(db, uid, approximate), approximate };
-+}
-+
-+/** The most recent real answer (not a peek), resolved to a displayable subject + chapter. */
-+async function lastAttemptFor(db: Db, uid: string, approximate: boolean): Promise<LastAttempt | null> {
-+  try {
-+    const row = approximate
-+      ? await db.collection("practiceProgress").find({ uid, attempts: { $gt: 0 } }).sort({ updatedAt: -1 }).limit(1).next()
-+      : await db.collection("practiceEvents").find({ uid, outcome: { $ne: "revealed" } }).sort({ at: -1 }).limit(1).next();
-+    if (!row) return null;
-+    const at = (approximate ? row.updatedAt : row.at) as Date | undefined;
-+    let subject = String(row.subject ?? "");
-+    let chapter = "";
-+    if (/^[a-f0-9]{24}$/i.test(String(row.questionId))) {
-+      const { ObjectId } = await import("mongodb");
-+      const q = await db.collection("questions").findOne({ _id: new ObjectId(String(row.questionId)) }, { projection: { subject: 1, chapter: 1 } });
-+      if (q) {
-+        subject = String(q.subject ?? subject);
-+        chapter = String(q.chapter ?? "").trim();
-+      } else {
-+        chapter = String(row.chapterKey ?? ""); // question since deleted: the stored (lower-case) key still matches the practice filter
-+      }
-+    }
-+    if (!subject) return null;
-+    if (chapter.toLowerCase() === "not yet tagged") chapter = "";
-+    return { subject, chapter, exam: (row.exam as string | undefined) ?? null, at: at instanceof Date ? at.toISOString() : new Date().toISOString() };
-+  } catch {
-+    return null; // a hiccup here must never take the dashboard down
-+  }
-+}
-+
-+export const getPracticeStats = createServerFn({ method: "POST" })
-+  .validator((data: { token: string }) => data)
-+  .handler(async ({ data }): Promise<PracticeStats> => {
-+    const decoded = await adminAuth.verifyIdToken(data.token);
-+    const db = await getDb();
-+    return loadPracticeStats(db, decoded.uid);
-+  });
-diff --git a/src/server-functions/profile.ts b/src/server-functions/profile.ts
-index c99163a..14f8b8e 100644
---- a/src/server-functions/profile.ts
-+++ b/src/server-functions/profile.ts
-@@ -12,6 +12,8 @@ type OnboardingProfileInput = {
-   targetExam: string;
-   track: "Dropper" | "11th" | "12th" | "";
-   cuetDomainSubjects: string[];
-+  /** The year they plan to sit the exam (e.g. 2027). Optional: collected on the dashboard, not at sign-up. */
-+  targetYear?: number | null;
- };
- 
- const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
-@@ -36,7 +38,7 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
-     const db = await getDb();
-     const now = new Date();
- 
--    await db.collection("profiles").updateOne(
-+    const res = await db.collection("profiles").updateOne(
-       { uid: decoded.uid },
-       {
-         $set: {
-@@ -54,7 +56,10 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
-       { upsert: true },
-     );
- 
--    return { ok: true };
-+    // isNew is true exactly once per account (the call that created the profile). The client uses it to send
-+    // `signup_completed` once, instead of guessing from "onboarding still incomplete" (which repeats on every
-+    // login until onboarding is finished).
-+    return { ok: true, isNew: res.upsertedCount > 0 };
-   });
- 
- export const saveProfile = createServerFn({ method: "POST" })
-@@ -126,6 +131,35 @@ export const updateAcademicInfo = createServerFn({ method: "POST" })
-     return { ok: true };
-   });
- 
-+// Fills in the prep details onboarding doesn't ask for (target year) or that an older account never set
-+// (exam, class/track). Only the fields that are sent are written, and they are validated here, so this can't be
-+// used to blank out or corrupt anything else on the profile.
-+const CLASS_FOR_TRACK = { "11th": "Class 11", "12th": "Class 12", Dropper: "Dropper" } as const;
-+export const updatePrepInfo = createServerFn({ method: "POST" })
-+  .validator((data: { token: string; targetExam?: "neet" | "jee"; track?: "11th" | "12th" | "Dropper"; targetYear?: number }) => data)
-+  .handler(async ({ data }) => {
-+    const decoded = await adminAuth.verifyIdToken(data.token);
-+    const set: Record<string, unknown> = {};
-+    if (data.targetExam !== undefined) {
-+      if (data.targetExam !== "neet" && data.targetExam !== "jee") throw new Error("Pick NEET or JEE.");
-+      set.targetExam = data.targetExam;
-+    }
-+    if (data.track !== undefined) {
-+      if (!(data.track in CLASS_FOR_TRACK)) throw new Error("Pick 11th, 12th or Dropper.");
-+      set.track = data.track;
-+      set.currentClass = CLASS_FOR_TRACK[data.track];
-+    }
-+    if (data.targetYear !== undefined) {
-+      const thisYear = new Date().getFullYear();
-+      if (!Number.isInteger(data.targetYear) || data.targetYear < thisYear || data.targetYear > thisYear + 6) throw new Error("Pick a valid target year.");
-+      set.targetYear = data.targetYear;
-+    }
-+    if (Object.keys(set).length === 0) return { ok: true };
-+    const db = await getDb();
-+    await db.collection("profiles").updateOne({ uid: decoded.uid }, { $set: { ...set, updatedAt: new Date() } }, { upsert: true });
-+    return { ok: true };
-+  });
-+
- export const getProfile = createServerFn({ method: "POST" })
-   .validator((data: { token: string }) => data)
-   .handler(async ({ data }) => {
-diff --git a/tests/practice-stats.test.ts b/tests/practice-stats.test.ts
-new file mode 100644
-index 0000000..f50b760
---- /dev/null
-+++ b/tests/practice-stats.test.ts
-@@ -0,0 +1,114 @@
-+// Run with: node --experimental-strip-types --test tests/
-+import test from "node:test";
-+import assert from "node:assert/strict";
-+import {
-+  accuracyPercent, buildExamStats, clampPercent, defaultExamTab, pickFirstChapter, summariseTests, testScorePercent,
-+  EMPTY_PRACTICE_STATS, type PracticeStats,
-+} from "../src/lib/practice-stats.ts";
-+import { answeredProps, completedProps, isMistakeRevision, practiceModeFor, practiceProps } from "../src/lib/practice-events.ts";
-+
-+test("accuracy: null (not 0%) when nothing solved, never above 100", () => {
-+  assert.equal(accuracyPercent(0, 0), null);
-+  assert.equal(accuracyPercent(3, 4), 75);
-+  assert.equal(accuracyPercent(9, 4), 100);
-+  assert.equal(accuracyPercent(-2, 4), 0);
-+  assert.equal(accuracyPercent(1, Number.NaN), null);
-+});
-+
-+test("buildExamStats clamps and derives accuracy", () => {
-+  const s = buildExamStats({ solved: 10, correct: 12, weekAnswered: 4, distinctDays: 2, due: 3 });
-+  assert.equal(s.correct, 10);
-+  assert.equal(s.accuracy, 100);
-+  assert.deepEqual(buildExamStats({ solved: 0, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }).accuracy, null);
-+});
-+
-+test("negative-marking test scores are floored at 0 and capped at 100", () => {
-+  assert.equal(testScorePercent(-12, 720), 0);
-+  assert.equal(testScorePercent(360, 720), 50);
-+  assert.equal(testScorePercent(800, 720), 100);
-+  assert.equal(testScorePercent(10, 0), 0);
-+});
-+
-+test("summariseTests: weighted by attempts, exact when percentSum is present, filterable by exam", () => {
-+  const rows = [
-+    { bundleId: "a", bundleTitle: "A", exam: "neet", testsAttempted: 1, totalAttempts: 1, averagePercent: 50, bestPercent: 50, percentSum: 50 },
-+    { bundleId: "b", bundleTitle: "B", exam: "neet", testsAttempted: 2, totalAttempts: 2, averagePercent: 33, bestPercent: 40, percentSum: 66.5 },
-+    { bundleId: "c", bundleTitle: "C", exam: "jee", testsAttempted: 1, totalAttempts: 1, averagePercent: 80, bestPercent: 80, percentSum: 80 },
-+    { bundleId: "d", bundleTitle: "D", exam: "neet", testsAttempted: 0, totalAttempts: 0, averagePercent: 0, bestPercent: 0 },
-+  ];
-+  assert.deepEqual(summariseTests(rows, "neet"), { average: 39, best: 50, tests: 3, attempts: 3 });
-+  assert.deepEqual(summariseTests(rows, "jee"), { average: 80, best: 80, tests: 1, attempts: 1 });
-+  assert.equal(summariseTests([], "neet"), null);
-+  assert.equal(summariseTests(null), null);
-+  // legacy rows without exam count as NEET
-+  assert.equal(summariseTests([{ bundleId: "x", bundleTitle: "X", testsAttempted: 1, totalAttempts: 1, averagePercent: 10, bestPercent: 10 }], "neet")?.average, 10);
-+});
-+
-+test("defaultExamTab: most practised exam wins, tie falls back to target exam then NEET", () => {
-+  const mk = (neet: number, jee: number): PracticeStats => ({
-+    ...EMPTY_PRACTICE_STATS,
-+    byExam: { neet: buildExamStats({ solved: neet, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }), jee: buildExamStats({ solved: jee, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }) },
-+  });
-+  assert.equal(defaultExamTab(mk(5, 9), "neet"), "jee");
-+  assert.equal(defaultExamTab(mk(9, 5), "jee"), "neet");
-+  assert.equal(defaultExamTab(mk(0, 0), "JEE Mains"), "jee");
-+  assert.equal(defaultExamTab(mk(0, 0), ""), "neet");
-+});
-+
-+test("pickFirstChapter: biggest tagged chapter of the first usable subject; skips untagged", () => {
-+  const tree = {
-+    subjects: [
-+      { subject: "Physics", count: 0, chapters: [] },
-+      { subject: "Chemistry", count: 30, chapters: [{ chapter: "Not yet tagged", count: 20 }, { chapter: "Mole concept", count: 6 }, { chapter: "Atomic structure", count: 9 }] },
-+      { subject: "Botany", count: 50, chapters: [{ chapter: "Cell", count: 50 }] },
-+    ],
-+  };
-+  assert.deepEqual(pickFirstChapter(tree), { subject: "Chemistry", chapter: "Atomic structure" });
-+  assert.equal(pickFirstChapter({ subjects: [] }), null);
-+  assert.equal(pickFirstChapter(null), null);
-+  assert.equal(pickFirstChapter({ subjects: [{ subject: "X", count: 3, chapters: [{ chapter: "Not yet tagged", count: 3 }] }] }), null);
-+});
-+
-+test("clampPercent handles junk", () => {
-+  assert.equal(clampPercent(Number.NaN), 0);
-+  assert.equal(clampPercent(120.4), 100);
-+  assert.equal(clampPercent(-3), 0);
-+});
-+
-+test("practice mode mapping and the mistake-revision pair", () => {
-+  assert.equal(practiceModeFor({ session: "daily" }), "daily");
-+  assert.equal(practiceModeFor({ session: "due" }), "revision");
-+  assert.equal(practiceModeFor({ session: "wrong" }), "mistakes");
-+  assert.equal(practiceModeFor({ session: "bookmarked" }), "bookmarks");
-+  assert.equal(practiceModeFor({ weakAttemptId: "abc" }), "weak_topics");
-+  assert.equal(practiceModeFor({}), "chapter");
-+  assert.equal(isMistakeRevision("revision"), true);
-+  assert.equal(isMistakeRevision("mistakes"), true);
-+  assert.equal(isMistakeRevision("chapter"), false);
-+});
-+
-+test("event props separate ordinary PYQ from timed drills and never carry the chosen answer or personal data", () => {
-+  assert.equal(practiceProps({ mode: "chapter", exam: "neet" }).practice_type, "pyq");
-+  assert.equal(practiceProps({ mode: "timed_drill" }).practice_type, "timed_drill");
-+  const a = answeredProps({ mode: "daily", exam: "neet", subject: "Physics", chapter: "Kinematics" }, { questionId: "q1", questionType: "mcq", isCorrect: true });
-+  assert.deepEqual(Object.keys(a).sort(), ["chapter", "exam", "guest", "is_correct", "mode", "practice_type", "question_id", "question_type", "source", "subject"]);
-+  for (const k of Object.keys(a)) assert.ok(!/answer|option|email|name|phone|mobile|city/.test(k) || k === "question_type", `unexpected key ${k}`);
-+  const c = completedProps({ mode: "chapter" }, { answered: 4, correct: 3, wrong: 1, peeked: 0 });
-+  assert.equal(c.accuracy, 75);
-+  assert.equal(completedProps({ mode: "chapter" }, { answered: 0, correct: 0, wrong: 0, peeked: 1 }).accuracy, null);
-+});
-+
-+import { missingPrepFields, targetYearOptions } from "../src/lib/prep-profile.ts";
-+
-+test("prep card only asks for what is missing", () => {
-+  assert.deepEqual(missingPrepFields({ targetExam: "neet", track: "12th", targetYear: 2027 }), []);
-+  assert.deepEqual(missingPrepFields({ targetExam: "neet", track: "12th", targetYear: null }), ["year"]);
-+  assert.deepEqual(missingPrepFields({ targetExam: "", track: "", targetYear: null }), ["exam", "track", "year"]);
-+  assert.deepEqual(missingPrepFields({ targetExam: "JEE Main", track: "Dropper", targetYear: 2026 }), []);
-+  assert.deepEqual(missingPrepFields(null), []);
-+});
-+
-+test("target years start next year once this year's exam season has passed", () => {
-+  assert.deepEqual(targetYearOptions(new Date(2026, 9, 24)), [2027, 2028, 2029, 2030]); // 24 Oct 2026
-+  assert.deepEqual(targetYearOptions(new Date(2026, 2, 1)), [2026, 2027, 2028, 2029]); // 1 Mar 2026
++  return { summary, featured, blog: blog ?? EMPTY_JEE_LANDING_BLOG, pyqTotal };
 +});

@@ -12,6 +12,7 @@ import { getCurrentRequest } from "@/lib/get-request";
 import type { BlogCategory, BlogDocument, BlogPromoAudience, BlogPromoConfig, PublicBlogDocument, PublicBlogPost, PublicBlogPostSummary } from "@/lib/blog-types";
 import { DEFAULT_BLOG_PROMO_SETTINGS, MAX_FEATURED_POSTS } from "@/lib/blog-types";
 import type { ExamKey } from "@/lib/admin-types";
+import { EMPTY_JEE_LANDING_BLOG, JEE_POST_CLASSIFIER, JEE_UPDATES_CATEGORY, type JeeLandingBlog } from "@/lib/jee-landing-types";
 
 // Same header-based lookup used for session/device tracking elsewhere
 // (see server-functions/sessions.ts) — the IP is read server-side from
@@ -133,6 +134,43 @@ export const getPublishedPostBySlug = createServerFn({ method: "GET" })
     if (!row) return { post: null };
     return { post: mapToFull(row) };
   });
+
+// ─── JEE Main 2027 landing page ───────────────────────────────────────────
+// The two article blocks on /jee-main-2027: "Latest updates" (JEE posts in the Exam News category) and
+// "Preparation guides" (every other JEE post, never repeating one already shown above). Same PUBLISHED_FILTER as
+// every read in this file, so a draft, scheduled, archived or soft-deleted post can never appear here — and a post
+// drops out the moment it is unpublished (the next uncached read no longer matches it). bodyMarkdown is never loaded.
+// A failure returns an empty result: the landing page must still render without its article blocks.
+const JEE_POST_FILTER = { ...PUBLISHED_FILTER, ...JEE_POST_CLASSIFIER };
+const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+export async function loadJeeBlogSections(opts: { updatesLimit?: number; guidesLimit?: number } = {}): Promise<JeeLandingBlog> {
+  try {
+    const db = await getDb();
+    const col = db.collection("blogPosts");
+    const updatesLimit = clampInt(opts.updatesLimit, 1, 6, 3);
+    const guidesLimit = clampInt(opts.guidesLimit, 1, 6, 3);
+
+    const [updateRows, total] = await Promise.all([
+      col.find({ ...JEE_POST_FILTER, category: JEE_UPDATES_CATEGORY }).project({ bodyMarkdown: 0 }).sort({ publishedAt: -1 }).limit(updatesLimit).toArray(),
+      col.countDocuments(JEE_POST_FILTER),
+    ]);
+    const guideRows = await col
+      .find({ ...JEE_POST_FILTER, _id: { $nin: updateRows.map((r: any) => r._id) } })
+      .project({ bodyMarkdown: 0 })
+      .sort({ publishedAt: -1 })
+      .limit(guidesLimit)
+      .toArray();
+
+    return { updates: updateRows.map(mapToSummary), guides: guideRows.map(mapToSummary), total };
+  } catch (e) {
+    console.error("[blog-public] JEE landing posts failed:", e);
+    return EMPTY_JEE_LANDING_BLOG;
+  }
+}
 
 // Shared by listRelatedPosts and getBlogSidebarData.
 async function queryRelated(db: any, ObjectId: any, data: { postId: string; category: BlogCategory; examKey?: ExamKey | null }) {

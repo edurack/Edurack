@@ -7,7 +7,7 @@
 import { Link } from "@tanstack/react-router";
 import { IconArrowRight as ArrowRight, IconFlame as Flame, IconClock as Clock, IconCompass as Compass, IconTargetArrow as Target } from "@tabler/icons-react";
 import { TableOfContentsSidebar } from "@/components/blog/table-of-contents";
-import { BLOG_CATEGORY_LABELS } from "@/lib/blog-types";
+import { BLOG_CATEGORY_LABELS, resolveBlogPromoAudience } from "@/lib/blog-types";
 import type { BlogCategory, PublicBlogPost, PublicBlogPostSummary, SidebarChapter, SidebarTopic } from "@/lib/blog-types";
 import type { BlogHeading } from "@/lib/blog-content";
 
@@ -150,6 +150,16 @@ export function BlogSidebar({ post, headings, data }: { post: PublicBlogPost; he
             See all most repeated topics <ArrowRight className="h-3 w-3" aria-hidden="true" />
           </Link>
         </Card>
+      )}
+
+      {resolveBlogPromoAudience(post) === "jee" && (
+        <section aria-labelledby="sb-jee-hub" className="clay p-4">
+          <h2 id="sb-jee-hub" className="font-display text-sm font-extrabold tracking-tight text-foreground">JEE Main 2027 hub</h2>
+          <p className="mt-1 text-xs leading-relaxed text-foreground/60">Updates, chapter notes, practice sheets and JEE PYQs in one place.</p>
+          <Link to="/jee-main-2027" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline">
+            Open the JEE Main 2027 hub <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </section>
       )}
 
       {data.popular.length > 0 && (

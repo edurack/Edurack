@@ -14,6 +14,7 @@ import { Crumbs, H1, Page, PracticeCta, SectionTitle } from "@/components/jee/je
 import { PdfPreviewModal } from "@/components/pdf-preview-modal";
 import { getJeeChapter, getJeeSubject, getJeeSubjects, jeeChapterPath, jeePracticeSearch } from "@/lib/jee-blueprint";
 import { track } from "@/lib/analytics";
+import { JEE_LANDING_PATH } from "@/lib/jee-landing-types";
 import { getDeviceId } from "@/lib/device";
 import { useAuth } from "@/lib/auth-context";
 import { accessJeeResource } from "@/server-functions/jee-resources";
@@ -44,6 +45,9 @@ export function JeeLibraryHubView({ summary }: { summary: JeeLibrarySummary }) {
       <H1>JEE Main {JEE_LIBRARY_YEAR} Notes &amp; Practice Sheets</H1>
       <p className="mt-4 max-w-3xl text-[15px] leading-relaxed text-foreground/80">
         Chapter-wise PDF notes, quick revision sheets, practice sheets, answer keys and detailed solutions prepared by the Edurack team. Pick a subject to see the chapters that have resources.
+      </p>
+      <p className="mt-3 text-sm">
+        <Link to={JEE_LANDING_PATH as never} className="font-bold text-[var(--sky-deep)] hover:underline">JEE Main {JEE_LIBRARY_YEAR} hub: updates, practice and guides →</Link>
       </p>
 
       {summary.total === 0 ? (

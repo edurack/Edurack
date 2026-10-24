@@ -87,6 +87,7 @@ import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certif
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 import { Route as JeeMain2027ResourcesIndexRouteImport } from './routes/jee-main-2027.resources.index'
+import { Route as JeeMain2027IndexRouteImport } from './routes/jee-main-2027.index'
 import { Route as JeeChapterWiseWeightageIndexRouteImport } from './routes/jee.chapter-wise-weightage.index'
 import { Route as JeePaperAnalysisIndexRouteImport } from './routes/jee.paper-analysis.index'
 import { Route as JeeSyllabusIndexRouteImport } from './routes/jee.syllabus.index'
@@ -494,6 +495,11 @@ const InternTrialCodeRoute = InternTrialCodeRouteImport.update({
   path: '/intern/trial/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JeeMain2027IndexRoute = JeeMain2027IndexRouteImport.update({
+  id: '/jee-main-2027/',
+  path: '/jee-main-2027/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JeeMain2027ResourcesIndexRoute =
   JeeMain2027ResourcesIndexRouteImport.update({
     id: '/jee-main-2027/resources/',
@@ -679,6 +685,7 @@ export interface FileRoutesByFullPath {
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
+  '/jee-main-2027/': typeof JeeMain2027IndexRoute
   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
@@ -776,6 +783,7 @@ export interface FileRoutesByTo {
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee-main-2027/resources': typeof JeeMain2027ResourcesIndexRoute
+  '/jee-main-2027': typeof JeeMain2027IndexRoute
   '/jee/chapter-wise-weightage': typeof JeeChapterWiseWeightageIndexRoute
   '/jee/paper-analysis': typeof JeePaperAnalysisIndexRoute
   '/jee/syllabus': typeof JeeSyllabusIndexRoute
@@ -874,6 +882,7 @@ export interface FileRoutesById {
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
   '/jee-main-2027/resources/': typeof JeeMain2027ResourcesIndexRoute
+  '/jee-main-2027/': typeof JeeMain2027IndexRoute
   '/jee/chapter-wise-weightage/': typeof JeeChapterWiseWeightageIndexRoute
   '/jee/paper-analysis/': typeof JeePaperAnalysisIndexRoute
   '/jee/syllabus/': typeof JeeSyllabusIndexRoute
@@ -973,6 +982,7 @@ export interface FileRouteTypes {
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
     | '/jee-main-2027/resources/'
+    | '/jee-main-2027/'
     | '/jee/chapter-wise-weightage/'
     | '/jee/paper-analysis/'
     | '/jee/syllabus/'
@@ -1070,6 +1080,7 @@ export interface FileRouteTypes {
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
     | '/jee-main-2027/resources'
+    | '/jee-main-2027'
     | '/jee/chapter-wise-weightage'
     | '/jee/paper-analysis'
     | '/jee/syllabus'
@@ -1167,6 +1178,7 @@ export interface FileRouteTypes {
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
     | '/jee-main-2027/resources/'
+    | '/jee-main-2027/'
     | '/jee/chapter-wise-weightage/'
     | '/jee/paper-analysis/'
     | '/jee/syllabus/'
@@ -1264,6 +1276,7 @@ export interface RootRouteChildren {
   InternTrialCodeRoute: typeof InternTrialCodeRoute
   JeeSyllabusSubjectRoute: typeof JeeSyllabusSubjectRoute
   JeeMain2027ResourcesIndexRoute: typeof JeeMain2027ResourcesIndexRoute
+  JeeMain2027IndexRoute: typeof JeeMain2027IndexRoute
   JeeChapterWiseWeightageIndexRoute: typeof JeeChapterWiseWeightageIndexRoute
   JeePaperAnalysisIndexRoute: typeof JeePaperAnalysisIndexRoute
   JeeSyllabusIndexRoute: typeof JeeSyllabusIndexRoute
@@ -1823,6 +1836,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InternTrialCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/jee-main-2027/': {
+      id: '/jee-main-2027/'
+      path: '/jee-main-2027'
+      fullPath: '/jee-main-2027/'
+      preLoaderRoute: typeof JeeMain2027IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jee-main-2027/resources/': {
       id: '/jee-main-2027/resources/'
       path: '/jee-main-2027/resources'
@@ -2042,6 +2062,7 @@ const rootRouteChildren: RootRouteChildren = {
   InternTrialCodeRoute: InternTrialCodeRoute,
   JeeSyllabusSubjectRoute: JeeSyllabusSubjectRoute,
   JeeMain2027ResourcesIndexRoute: JeeMain2027ResourcesIndexRoute,
+  JeeMain2027IndexRoute: JeeMain2027IndexRoute,
   JeeChapterWiseWeightageIndexRoute: JeeChapterWiseWeightageIndexRoute,
   JeePaperAnalysisIndexRoute: JeePaperAnalysisIndexRoute,
   JeeSyllabusIndexRoute: JeeSyllabusIndexRoute,

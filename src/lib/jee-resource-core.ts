@@ -10,11 +10,14 @@ import { createClient } from "@supabase/supabase-js";
 import { getDb } from "@/lib/mongo";
 import { getJeeChapter } from "@/lib/jee-blueprint";
 import { createTtlCache } from "@/lib/simple-cache";
+import { pickBalanced, type JeeFeaturedChapter } from "@/lib/jee-landing-types";
 import {
   ADMIN_PAGE_SIZE,
   DEFAULT_JEE_EXAM,
   JEE_LIBRARY_YEAR,
   JEE_RESOURCES_BUCKET,
+  JEE_RESOURCE_SUBJECTS,
+  JEE_RESOURCE_SUBJECT_LABELS,
   JEE_RESOURCE_TYPES,
   MAX_JEE_RESOURCE_BYTES,
   hasPdfMagic,
@@ -404,7 +407,12 @@ const libraryFilter = { published: true, deletedAt: null, exam: DEFAULT_JEE_EXAM
 // Entry points on the (otherwise static) JEE pages read this on every load, so keep it cheap: identical for
 // every visitor, fine to be 30 s old, and reset on any admin write handled by this server instance.
 let summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
-const invalidateSummary = () => { summaryCache = createTtlCache<JeeLibrarySummary>(30_000); };
+// The landing page's "Featured chapters" block reads the same published data, so it is reset by the same writes.
+let featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
+const invalidateSummary = () => {
+  summaryCache = createTtlCache<JeeLibrarySummary>(30_000);
+  featuredCache = createTtlCache<JeeFeaturedChapter[]>(30_000);
+};
 
 /** Counts of PUBLISHED resources — drives entry points, empty states and sitemap inclusion. */
 export async function librarySummary(): Promise<JeeLibrarySummary> {
@@ -444,4 +452,47 @@ export async function chapterResources(subjectKey: string, chapterSlug: string):
   return docs
     .sort((a, b) => rank(a.type) - rank(b.type) || (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || +new Date(a.createdAt) - +new Date(b.createdAt))
     .map(toPublic);
+}
+
+/**
+ * Chapters that have at least one PUBLISHED resource, for the JEE Main 2027 landing page — newest-updated first,
+ * balanced across Physics, Chemistry and Mathematics where possible. Metadata only (no path, bucket or link):
+ * a file's real location is still released only by accessResource() when a student previews or downloads it.
+ * Chapters no longer in the syllabus are skipped. Same filter, and same 30 s cache + reset-on-write, as librarySummary().
+ */
+export async function featuredChapters(limit = 6): Promise<JeeFeaturedChapter[]> {
+  const max = Math.min(Math.max(Math.trunc(limit) || 6, 1), 12);
+  const key = String(max);
+  const hit = featuredCache.get(key);
+  if (hit) return hit;
+  await ensureIndexes();
+  const db = await getDb();
+  const rows = await db
+    .collection(COLLECTION)
+    .aggregate([
+      { $match: libraryFilter },
+      { $group: { _id: { s: "$subjectKey", c: "$chapterSlug" }, types: { $addToSet: "$type" }, n: { $sum: 1 }, updated: { $max: "$updatedAt" } } },
+      { $sort: { updated: -1 } },
+    ])
+    .toArray();
+  const rank = (t: string) => JEE_RESOURCE_TYPES.indexOf(t as JeeResourceType);
+  const candidates: JeeFeaturedChapter[] = [];
+  for (const r of rows) {
+    if (!isJeeSubject(r._id.s)) continue;
+    const chapter = getJeeChapter(r._id.s, r._id.c);
+    if (!chapter || chapter.retired) continue;
+    const types = (r.types as string[]).filter(isJeeType).sort((a, b) => rank(a) - rank(b));
+    if (!types.length) continue;
+    candidates.push({
+      subjectKey: r._id.s,
+      subjectName: JEE_RESOURCE_SUBJECT_LABELS[r._id.s as JeeResourceSubject],
+      chapterSlug: chapter.slug,
+      chapterName: chapter.name,
+      types,
+      count: r.n as number,
+    });
+  }
+  const picked = pickBalanced(candidates, JEE_RESOURCE_SUBJECTS, max);
+  featuredCache.set(key, picked);
+  return picked;
 }

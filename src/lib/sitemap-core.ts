@@ -15,6 +15,8 @@ import { istDayKey } from "@/lib/practice-schedule";
 import { getJeeSubjects } from "@/lib/jee-blueprint";
 import { librarySummary } from "@/lib/jee-resource-core";
 import { JEE_LIB_BASE, jeeLibChapterPath, jeeLibSubjectPath } from "@/lib/jee-resource-types";
+import { jeeLandingMeta } from "@/lib/jee-landing-core";
+import { JEE_LANDING_PATH, jeeLandingIndexable } from "@/lib/jee-landing-types";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -168,6 +170,15 @@ export async function jeeResourceEntries(): Promise<string[]> {
     }
   }
   return out;
+}
+
+// The JEE Main 2027 landing page (/jee-main-2027). Listed only when the page itself is indexable (same rule as its
+// <head>: something published, or JEE questions available), with lastmod = newest published article or resource edit.
+// Throws on a DB failure so the caller can answer 503 instead of caching a short list.
+export async function jeeLandingEntries(): Promise<string[]> {
+  const meta = await jeeLandingMeta();
+  if (!jeeLandingIndexable(meta)) return [];
+  return [urlEntry(`${SITE_URL}${JEE_LANDING_PATH}`, meta.lastmod ? toIsoDate(meta.lastmod) : JEE_LASTMOD, 0.9, "daily")];
 }
 
 // Free tools and the data-driven NEET pages. Static content, so these are always listed.

@@ -216,6 +216,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
   {
     title: "JEE guides",
     links: [
+      { label: "JEE Main 2027 hub", to: "/jee-main-2027" },
       { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
