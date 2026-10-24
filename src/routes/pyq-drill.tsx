@@ -10,7 +10,8 @@ import { DrillLauncher, type StartOptions } from "@/components/pyq/drill-launche
 import { getPyqDrill, startPyqDrill, submitPyqDrill } from "@/server-functions/practice-extras";
 import type { DrillState } from "@/lib/pyq-types";
 import type { DrillAnswer } from "@/lib/practice-schedule";
-import { track } from "@/lib/analytics";
+import { track, trackOnce } from "@/lib/analytics";
+import { practiceProps } from "@/lib/practice-events";
 
 // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
 // the server's clock, and a finished drill reopens its result.
@@ -67,7 +68,10 @@ function DrillPage() {
       const token = await user.getIdToken();
       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
       setState({ status: "running", set });
+      // Same event names as ordinary PYQ practice, told apart by practice_type = "timed_drill". The older drill_started /
+      // drill_submitted events are kept so existing PostHog insights keep working.
       track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
+      trackOnce(`drill-start:${set.drillId}`, "practice_started", { ...practiceProps({ mode: "timed_drill", exam, subject: opts.subject }), custom: Boolean(opts.custom), question_count: set.questions.length });
       navigate({ search: { exam, drillId: set.drillId }, replace: true });
     } catch (e) {
       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
@@ -82,7 +86,18 @@ function DrillPage() {
       const token = await user.getIdToken();
       const result = await submitPyqDrill({ data: { token, drillId, answers } });
       setState({ status: "done", result });
-      track("drill_submitted");
+      // submit() can run twice (the auto-submit at 0:00 racing the button); the key makes it count once.
+      if (trackOnce(`drill-done:${drillId}`, "drill_submitted")) {
+        track("practice_completed", {
+          ...practiceProps({ mode: "timed_drill", exam }),
+          answered: result.correct + result.wrong,
+          correct: result.correct,
+          wrong: result.wrong,
+          skipped: result.skipped,
+          accuracy: result.correct + result.wrong > 0 ? Math.round((result.correct / (result.correct + result.wrong)) * 100) : null,
+          time_taken_sec: result.timeTakenSec,
+        });
+      }
       try {
         sessionStorage.removeItem(`edurack:drill:${drillId}`);
       } catch {
@@ -90,7 +105,7 @@ function DrillPage() {
       }
       window.scrollTo({ top: 0 });
     },
-    [user, drillId],
+    [user, drillId, exam],
   );
 
   if (loading || !user) {

@@ -23,9 +23,10 @@ let identifiedUid: string | null = null;
 const queue: Array<(p: PostHog) => void> = [];
 
 const enabled = () => typeof window !== "undefined" && Boolean(KEY) && navigator.doNotTrack !== "1";
+const MAX_QUEUE = 100;
 const run = (fn: (p: PostHog) => void) => {
   if (ph) fn(ph);
-  else if (started) queue.push(fn); // init is still loading: replay these once it's ready
+  else if (queue.length < MAX_QUEUE) queue.push(fn); // not ready yet (init is idle-scheduled or still loading): replay, in order, once it is
 };
 
 /** Start analytics once per page load. Safe to call repeatedly. */
@@ -52,6 +53,7 @@ export function initAnalytics(): void {
     .catch(() => {
       // blocked by an ad blocker or offline: analytics must never break the app
       started = false;
+      queue.length = 0;
     });
 }
 
@@ -73,7 +75,13 @@ export function trackPageview(path: string): void {
   });
 }
 
-/** Tie events to the signed-in student (by id only). Pass null on sign-out. */
+/**
+ * Tie events to the signed-in student (by account id only: no name, email or phone).
+ * identify() on a browser that already has anonymous activity MERGES that activity into the student, so a visitor
+ * who tried guest PYQs and then signed up is one person in PostHog, not two. If the call comes before PostHog has
+ * finished loading it is queued, not dropped (it used to be dropped, leaving the student anonymous for the visit).
+ * Pass null on sign-out.
+ */
 export function identifyUser(uid: string | null): void {
   if (!enabled()) return;
   if (uid && uid !== identifiedUid) {
@@ -93,6 +101,35 @@ export function track(event: string, props: Props = {}): void {
   } catch {
     // analytics must never break the page
   }
+}
+
+export type OnceScope = "page" | "session" | "day";
+const firedOnce = new Set<string>();
+const istDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+/**
+ * Like track(), but sends the event at most once for `key`, so a re-render, a double tap, a retry or a refetch can't
+ * double count it.
+ *   "page"    once until the tab is reloaded
+ *   "session" once per browser tab session (survives in-app navigation and reloads)
+ *   "day"     once per India calendar day on this browser (e.g. "completed today's question")
+ * Returns true when the event was actually sent. Nothing is recorded as "sent" when analytics is off or blocked, so it
+ * can still fire later in the same visit if analytics comes on.
+ */
+export function trackOnce(key: string, event: string, props: Props = {}, scope: OnceScope = "page"): boolean {
+  if (!enabled() || !captureAllowed(window.location.pathname)) return false;
+  try {
+    if (firedOnce.has(key)) return false;
+    if (scope === "session" && window.sessionStorage.getItem(`ph-once:${key}`)) return false;
+    if (scope === "day" && window.localStorage.getItem(`ph-once:${key}`) === istDay()) return false;
+    firedOnce.add(key);
+    if (scope === "session") window.sessionStorage.setItem(`ph-once:${key}`, "1");
+    if (scope === "day") window.localStorage.setItem(`ph-once:${key}`, istDay());
+  } catch {
+    // storage blocked: the in-memory guard above still prevents duplicates within this page load
+  }
+  track(event, props);
+  return true;
 }
 
 /** Send a caught error to PostHog's error tracking. */

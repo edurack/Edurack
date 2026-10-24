@@ -14,6 +14,7 @@
 //
 // Nothing here verifies a token: callers MUST authenticate first and pass the
 // verified uid.
+import { testScorePercent } from "@/lib/practice-stats";
 import { getDb } from "@/lib/mongo";
 import { supabase } from "@/lib/supabase";
 import { expandOfferingToSlots } from "@/lib/session-slots";
@@ -54,6 +55,7 @@ export async function loadProfile(db: Db, uid: string) {
     board: (doc.board as string) ?? "",
     targetExam: (doc.targetExam as string) ?? "",
     track: (doc.track as Track) ?? "",
+    targetYear: typeof doc.targetYear === "number" ? (doc.targetYear as number) : null,
     cuetDomainSubjects: (doc.cuetDomainSubjects as string[]) ?? [],
     provider: (doc.provider as string) ?? null,
     createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : null,
@@ -302,6 +304,11 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
     .find({ _id: { $in: bundleIds.map((id) => new ObjectId(id)) } })
     .toArray();
   const bundleTitleById = new Map(bundles.map((b) => [String(b._id), b.title as string]));
+  const examOf = (v: unknown) => {
+    const t = String(v ?? "").toLowerCase();
+    return t.includes("jee") ? "jee" : t.includes("cuet") ? "cuet" : t.includes("ipmat") ? "ipmat" : "neet";
+  };
+  const bundleExamById = new Map(bundles.map((b) => [String(b._id), examOf(b.exam)]));
 
   const attempts = await db
     .collection("testAttempts")
@@ -323,7 +330,9 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
     };
     entry.testIds.add(a.testId as string);
     entry.attemptCount += 1;
-    const percent = a.totalMarks > 0 ? (a.score / a.totalMarks) * 100 : 0;
+    // NEET/JEE tests have negative marking, so score/total can dip below zero. Floor it for display, BEFORE
+    // averaging, so the average, the best and the per-test bars always agree (see lib/practice-stats.ts).
+    const percent = testScorePercent(Number(a.score), Number(a.totalMarks));
     entry.totalPercent += percent;
     entry.bestPercent = Math.max(entry.bestPercent, percent);
     byBundleId.set(bundleId, entry);
@@ -335,9 +344,13 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
       return {
         bundleId,
         bundleTitle: bundleTitleById.get(bundleId) ?? "Bundle",
+        // Old bundles have no exam field; the rest of the app treats those as NEET.
+        exam: bundleExamById.get(bundleId) ?? "neet",
         testsAttempted: stats?.testIds.size ?? 0,
         totalAttempts: stats?.attemptCount ?? 0,
         averagePercent: stats ? Math.round(stats.totalPercent / stats.attemptCount) : 0,
+        // Unrounded sum so the dashboard can average across bundles without compounding rounding.
+        percentSum: stats ? Math.round(stats.totalPercent * 100) / 100 : 0,
         bestPercent: stats ? Math.round(stats.bestPercent) : 0,
       };
     }),

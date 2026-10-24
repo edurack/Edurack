@@ -12,6 +12,8 @@ type OnboardingProfileInput = {
   targetExam: string;
   track: "Dropper" | "11th" | "12th" | "";
   cuetDomainSubjects: string[];
+  /** The year they plan to sit the exam (e.g. 2027). Optional: collected on the dashboard, not at sign-up. */
+  targetYear?: number | null;
 };
 
 const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
@@ -36,7 +38,7 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
     const db = await getDb();
     const now = new Date();
 
-    await db.collection("profiles").updateOne(
+    const res = await db.collection("profiles").updateOne(
       { uid: decoded.uid },
       {
         $set: {
@@ -54,7 +56,10 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
       { upsert: true },
     );
 
-    return { ok: true };
+    // isNew is true exactly once per account (the call that created the profile). The client uses it to send
+    // `signup_completed` once, instead of guessing from "onboarding still incomplete" (which repeats on every
+    // login until onboarding is finished).
+    return { ok: true, isNew: res.upsertedCount > 0 };
   });
 
 export const saveProfile = createServerFn({ method: "POST" })
@@ -123,6 +128,35 @@ export const updateAcademicInfo = createServerFn({ method: "POST" })
       },
       { upsert: true },
     );
+    return { ok: true };
+  });
+
+// Fills in the prep details onboarding doesn't ask for (target year) or that an older account never set
+// (exam, class/track). Only the fields that are sent are written, and they are validated here, so this can't be
+// used to blank out or corrupt anything else on the profile.
+const CLASS_FOR_TRACK = { "11th": "Class 11", "12th": "Class 12", Dropper: "Dropper" } as const;
+export const updatePrepInfo = createServerFn({ method: "POST" })
+  .validator((data: { token: string; targetExam?: "neet" | "jee"; track?: "11th" | "12th" | "Dropper"; targetYear?: number }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await adminAuth.verifyIdToken(data.token);
+    const set: Record<string, unknown> = {};
+    if (data.targetExam !== undefined) {
+      if (data.targetExam !== "neet" && data.targetExam !== "jee") throw new Error("Pick NEET or JEE.");
+      set.targetExam = data.targetExam;
+    }
+    if (data.track !== undefined) {
+      if (!(data.track in CLASS_FOR_TRACK)) throw new Error("Pick 11th, 12th or Dropper.");
+      set.track = data.track;
+      set.currentClass = CLASS_FOR_TRACK[data.track];
+    }
+    if (data.targetYear !== undefined) {
+      const thisYear = new Date().getFullYear();
+      if (!Number.isInteger(data.targetYear) || data.targetYear < thisYear || data.targetYear > thisYear + 6) throw new Error("Pick a valid target year.");
+      set.targetYear = data.targetYear;
+    }
+    if (Object.keys(set).length === 0) return { ok: true };
+    const db = await getDb();
+    await db.collection("profiles").updateOne({ uid: decoded.uid }, { $set: { ...set, updatedAt: new Date() } }, { upsert: true });
     return { ok: true };
   });
 

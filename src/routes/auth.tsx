@@ -10,7 +10,7 @@ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/se
 import { recordSession } from "@/server-functions/sessions";
 import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
-import { track } from "@/lib/analytics";
+import { track, trackOnce } from "@/lib/analytics";
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
@@ -64,7 +64,10 @@ type OnboardingProfile = {
 async function completeLogin(user: FirebaseUser, provider: "password" | "google.com") {
   const token = await user.getIdToken();
 
-  await ensureUserRecord({ data: { token, provider } });
+  const record = await ensureUserRecord({ data: { token, provider } });
+  // `isNew` is true for exactly one call per account: the one that created the profile. That makes signup_completed
+  // once-per-student by construction (no browser flags to lose), and it works for Google sign-up and email sign-up alike.
+  if (record.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider }, "session");
   await recordSession({
     data: { token, deviceId: getDeviceId(), deviceLabel: getDeviceLabel() },
   });
@@ -584,7 +587,9 @@ function SignUpForm({
       const user = auth.currentUser!;
       const token = await user.getIdToken();
 
-      await ensureUserRecord({ data: { token, provider: "password" } });
+      // Email sign-up creates the profile here (before the email is verified), so this is where isNew is true.
+      const created = await ensureUserRecord({ data: { token, provider: "password" } });
+      if (created.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider: "password" }, "session");
       await sendEmailVerificationOtp({ data: { token } });
 
       onNeedsVerification(email);

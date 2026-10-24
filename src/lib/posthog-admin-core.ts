@@ -13,6 +13,16 @@ export type HogConfig = { key: string; projectId: string; appHost: string; embed
 /** The events this app sends (see the callers of track() in the app). Order doesn't matter. */
 export const TRACKED_EVENTS = [
   "login_completed",
+  "signup_completed",
+  // Practice. Ordinary PYQ practice and timed drills share the practice_* names and are told apart by the
+  // `practice_type` property ("pyq" | "timed_drill"). drill_started / drill_submitted are kept for older insights.
+  "practice_started",
+  "question_answered",
+  "practice_completed",
+  "daily_question_completed",
+  "mistake_revision_started",
+  "mistake_revision_completed",
+  "mentor_profile_viewed",
   "drill_started",
   "drill_submitted",
   "test_submitted",
@@ -314,7 +324,9 @@ export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | nul
 
 // ─── Funnels and plain-language takeaways ───────────────────────────────────────────────────────────
 export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
-  { title: "Practice", steps: [{ event: "login_completed", label: "Signed in or signed up" }, { event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
+  { title: "PYQ practice", steps: [{ event: "practice_started", label: "Started practising" }, { event: "question_answered", label: "Answered a question" }, { event: "practice_completed", label: "Finished a session" }] },
+  { title: "Mistake revision", steps: [{ event: "mistake_revision_started", label: "Started revising" }, { event: "mistake_revision_completed", label: "Finished revising" }] },
+  { title: "Timed drills", steps: [{ event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
   { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
   { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
 ];

@@ -1,4 +1,8 @@
-import { TodayCard, type UpNextInfo } from "@/components/today-card";
+import { MentorshipCompactCard, type UpNextInfo } from "@/components/today-card";
+import { PracticePerformanceCard } from "@/components/dashboard/practice-performance-card";
+import { PrepSetupCard } from "@/components/dashboard/prep-setup-card";
+import { usePracticeStats } from "@/components/dashboard/use-practice-stats";
+import type { PracticeStats } from "@/lib/practice-stats";
 import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
 import { PyqHero } from "@/components/dashboard/pyq-hero";
 import { StreakPopup } from "@/components/dashboard/streak-popup";
@@ -51,6 +55,7 @@ type StudentProfile = {
   city: string;
   targetExam: string;
   track: Track;
+  targetYear: number | null;
 };
 
 type Bundle = {
@@ -198,7 +203,7 @@ type BookingRow = {
   mentor_session_offerings?: { title: string };
 };
 
-type BatchPerf = { bundleId: string; bundleTitle: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number };
+type BatchPerf = { bundleId: string; bundleTitle: string; exam?: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number; percentSum?: number };
 
 // Slots are India wall-clock; parse them as such, not in the browser's timezone.
 const slotDate = (r: BookingRow) => slotStart(r.session_date, r.start_time);
@@ -230,6 +235,8 @@ function DashboardPage() {
   const [view, setView] = useState<View>("home");
   const [bookings, setBookings] = useState<BookingRow[] | null>(null);
   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
+  // The practice numbers, fetched once and shared by the hero and the performance card so they always agree.
+  const { stats: practiceStats, failed: statsFailed, reload: reloadStats } = usePracticeStats();
 
   // One request for the whole dashboard (profile, catalog, purchases, sessions,
   // bookings, performance) — see server-functions/dashboard.ts. If that request
@@ -281,6 +288,7 @@ function DashboardPage() {
             city: p.city ?? "",
             targetExam: p.targetExam || "",
             track: (p.track as Track) || "",
+            targetYear: typeof p.targetYear === "number" ? p.targetYear : null,
           });
         }
         if (bundlesRes) setBundles(bundlesRes.bundles as Bundle[]);
@@ -426,10 +434,6 @@ function DashboardPage() {
   const ownedTests = (soldTests ?? []).filter((t) => t.purchased);
   const now = new Date();
   const upcoming = (bookings ?? []).filter((r) => r.status === "upcoming" && slotDate(r) >= now).sort((a, b) => slotDate(a).getTime() - slotDate(b).getTime());
-  const attempts = perf?.reduce((n, b) => n + b.totalAttempts, 0) ?? 0;
-  const avg = perf && attempts > 0 ? Math.round(perf.reduce((s, b) => s + b.averagePercent * b.totalAttempts, 0) / attempts) : null;
-  const best = perf && attempts > 0 ? Math.max(...perf.map((b) => b.bestPercent)) : null;
-  const testsDone = perf?.reduce((n, b) => n + b.testsAttempted, 0) ?? 0;
   const hour = now.getHours();
   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
@@ -449,6 +453,8 @@ function DashboardPage() {
       <AppHeader user={user} displayName={profile?.fullName} />
       <StreakPopup />
       <CompleteProfilePopup
+        // Never interrupt a student who hasn't answered a single question yet: practice first, paperwork later.
+        hold={!statsFailed && (practiceStats === null || practiceStats.questionsAnswered === 0)}
         profile={profile ? { fullName: profile.fullName, mobile: profile.mobile, city: profile.city } : null}
         onSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } : prev))}
       />
@@ -494,7 +500,9 @@ function DashboardPage() {
               <SearchResults query={query} matchedMentors={matchedMentors} matchedListings={matchedListings} matchedTests={matchedTests} loading={mentors === null || allListings === null || soldTests === null} />
             ) : view === "home" ? (
               <Overview
-                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf} avg={avg} best={best} testsDone={testsDone} attempts={attempts}
+                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf}
+                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats}
+                profile={profile} onProfileSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } as StudentProfile : prev))}
                 ownedListings={ownedListings} ownedTests={ownedTests} freeSlots={featuredFreeSlots}
                 recommended={(track ? recommended : (allListings ?? []).filter((l) => l.kind === "Test Series")).slice(0, 3)}
                 go={setView} getToken={() => user.getIdToken()} onBooked={loadSessions}
@@ -581,23 +589,28 @@ function Panel({ title, action, children, className = "" }: { title: string; act
 
 const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
 
-function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attempts, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
-  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null; avg: number | null; best: number | null; testsDone: number; attempts: number;
+function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
+  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
+  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void;
+  profile: StudentProfile | null; onProfileSaved: (next: Partial<StudentProfile>) => void;
   ownedListings: Listing[]; ownedTests: SoldTestEntry[]; freeSlots: { offering: PublicMentorOffering; slot: OpenSlot }[]; recommended: Listing[];
   go: (v: View) => void; getToken: () => Promise<string>; onBooked: () => void;
 }) {
   const navigate = useNavigate();
   const next = upcoming[0];
   const continueCount = ownedListings.length + ownedTests.length;
+  // A student who has never answered a question gets a short page: one clear action, then the rest further down.
+  // (Until the numbers load we assume "returning" so nothing is hidden and then pops back in.)
+  const isNew = stats !== null && stats.questionsAnswered === 0;
+  // PYQ practice isn't a tile any more: it is the hero above and the first item in the sidebar / bottom bar.
   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
-    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq", highlight: true },
     { icon: Trophy, label: "Weekly leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
     { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
   ];
-  // What the merged Today card shows in its "Up next" row.
+  // What the mentorship card shows.
   const upNext: UpNextInfo = next
     ? {
         state: "session",
@@ -617,73 +630,57 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
 
   return (
     <div className="space-y-4">
-      {/* PYQ practice comes first: streak, milestones and a tile per subject. */}
-      <PyqHero />
+      {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
+      <PyqHero stats={stats} statsFailed={statsFailed} />
 
-      {/* The team's weekly shout-out (renders nothing until one is published). */}
-      <StudentOfTheWeekBanner />
+      {/* 2. Exam, class and target year: only what's missing, one tap each, never blocks practice. A new student is asked for the year after their first question. */}
+      <PrepSetupCard
+        profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
+        deferYear={isNew}
+        onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
+      />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        {/* The next mentor session (the practice part lives in the hero above). */}
-        <TodayCard className="lg:col-span-3" upNext={upNext} upNextOnly onBrowseSessions={() => go("sessions")} />
+      {/* 3. One performance card: practice numbers per exam + mock-test scores, from one source. */}
+      <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
 
-        {/* Performance */}
-        <Panel title="Your performance" className="lg:col-span-2">
-          {perf === null ? (
-            <div className="h-40 animate-pulse rounded-2xl bg-secondary" />
-          ) : avg === null ? (
-            <div>
-              <p className="text-sm text-muted-foreground">No scored attempts in your courses yet. Take a test to see your average and where marks leak.</p>
-              <Link to="/simulator/live" className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-end gap-6">
-                <div><p className="font-display text-5xl font-extrabold leading-none tracking-tight">{avg}<span className="text-2xl font-semibold text-muted-foreground">%</span></p><p className="mt-1 text-xs font-semibold text-muted-foreground">average score</p></div>
-                <div className="pb-0.5 text-xs text-muted-foreground"><p><b className="text-foreground">{best}%</b> best</p><p><b className="text-foreground">{testsDone}</b> tests · <b className="text-foreground">{attempts}</b> attempts</p></div>
-              </div>
-              <ul className="mt-5 space-y-3">
-                {perf.filter((b) => b.totalAttempts > 0).slice(0, 4).map((b) => (
-                  <li key={b.bundleId}>
-                    <div className="mb-1 flex justify-between gap-3 text-xs font-semibold"><span className="truncate">{b.bundleTitle}</span><span className="shrink-0 text-muted-foreground">{b.averagePercent}%</span></div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><motion.div className="h-full rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${b.averagePercent}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} /></div>
-                  </li>
+      {/* The team's weekly shout-out (renders nothing until one is published). Not for a student who hasn't started. */}
+      {!isNew && <StudentOfTheWeekBanner />}
+
+      {/* Quick actions: for students who have started. A new student finds all of these in the menu. */}
+      {!isNew && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {actions.map((a, i) => {
+            const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
+            const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 sm:col-span-1` : tile;
+            return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
+          })}
+        </div>
+      )}
+
+      {/* 4. Mentorship, below the practice content, as a compact card (the marketplace itself is unchanged: Sessions / Mentors / Explore). */}
+      <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
+
+      <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-5"}`}>
+        {!isNew && (
+          <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
+            {continueCount === 0 ? (
+              <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
+            ) : (
+              <div className="-mx-2">
+                {ownedListings.slice(0, 4).map((l) => (
+                  <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
+                    icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
+                    title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
                 ))}
-              </ul>
-            </>
-          )}
-        </Panel>
-      </div>
+                {ownedTests.slice(0, 3).map((t) => (
+                  <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
+                ))}
+              </div>
+            )}
+          </Panel>
+        )}
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {actions.map((a, i) => {
-          const inner = (<><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${a.highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}{a.highlight && <span className="ml-1.5 rounded-full bg-amber-300 px-1.5 py-0.5 align-middle text-[9px] font-extrabold uppercase text-amber-950">Free</span>}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
-          const base = a.highlight ? `${tile} border-primary/60 bg-primary/5` : tile;
-          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${base} col-span-2 lg:col-span-1` : base;
-          return a.to ? <Link key={a.label} to={a.to as "/pyq"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
-          {continueCount === 0 ? (
-            <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
-          ) : (
-            <div className="-mx-2">
-              {ownedListings.slice(0, 4).map((l) => (
-                <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
-                  icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
-                  title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
-              ))}
-              {ownedTests.slice(0, 3).map((t) => (
-                <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel title="Free sessions open" className="lg:col-span-2" action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
+        <Panel title="Free sessions open" className={isNew ? "" : "lg:col-span-2"} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
           {freeSlots.length === 0 ? <p className="text-sm text-muted-foreground">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
         </Panel>
       </div>

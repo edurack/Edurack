@@ -1,975 +1,1976 @@
-diff --git a/src/components/admin/product-analytics-module.tsx b/src/components/admin/product-analytics-module.tsx
-index f9dad93..6771d83 100644
---- a/src/components/admin/product-analytics-module.tsx
-+++ b/src/components/admin/product-analytics-module.tsx
-@@ -1,35 +1,54 @@
- // Admin → Analytics. The numbers from PostHog, inside the admin, so nobody has to log in to PostHog to check
- // how the site is doing. Read-only; the data comes from server-functions/posthog-admin.ts.
-+//
-+// Built to explain itself: every number says what it counts, arrows compare with the previous period, and a short
-+// "What stands out" list turns the figures into plain sentences.
- import { useCallback, useEffect, useRef, useState } from "react";
- import { getPostHogSnapshot } from "@/server-functions/posthog-admin";
--import type { Days, PostHogNotConfigured, PostHogSnapshot } from "@/lib/posthog-admin-core";
-+import { FUNNELS, buildInsights, rateVital, type Days, type Details, type Insight, type Overview, type Rating } from "@/lib/posthog-admin-core";
+diff --git a/src/components/dashboard/complete-profile-popup.tsx b/src/components/dashboard/complete-profile-popup.tsx
+index ac0c261..6aff67b 100644
+--- a/src/components/dashboard/complete-profile-popup.tsx
++++ b/src/components/dashboard/complete-profile-popup.tsx
+@@ -35,7 +35,7 @@ function snooze(uid: string) {
  
- type AdminUser = { getIdToken: () => Promise<string> };
--type Result = PostHogSnapshot | PostHogNotConfigured;
+ type Basic = { fullName: string; mobile: string; city: string };
  
- const n = (x: number) => x.toLocaleString("en-IN");
- const rupees = (x: number) => `₹${Math.round(x).toLocaleString("en-IN")}`;
- const short = (day: string) => new Date(`${day}T12:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
- const pct = (a: number, b: number) => (b > 0 ? `${Math.round((a / b) * 100)}%` : "–");
-+const hour12 = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
+-export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | null; onSaved: (next: Basic) => void }) {
++export function CompleteProfilePopup({ profile, onSaved, hold = false }: { profile: Basic | null; onSaved: (next: Basic) => void; /** Don't show yet (e.g. the student hasn't answered a question): they get asked on a later visit. */ hold?: boolean }) {
+   const { user } = useAuth();
+   const [open, setOpen] = useState(false);
+   const [done, setDone] = useState(false);
+@@ -49,7 +49,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
  
--function Kpi({ label, value, sub, bad }: { label: string; value: string; sub?: string; bad?: boolean }) {
-+type Delta = { text: string; tone: "good" | "bad" | "flat" } | null;
-+/** "▲ 24%" against the previous period. Small bases show the raw old number instead of a misleading percentage. */
-+function delta(now: number, prev: number, higherIsBetter = true): Delta {
-+  if (now === 0 && prev === 0) return null;
-+  if (prev === 0) return { text: "new", tone: higherIsBetter ? "good" : "bad" };
-+  if (prev < 5) return { text: `was ${prev}`, tone: "flat" };
-+  const p = Math.round(((now - prev) / prev) * 100);
-+  if (p === 0) return { text: "no change", tone: "flat" };
-+  const up = p > 0;
-+  return { text: `${up ? "▲" : "▼"} ${Math.abs(p)}%`, tone: (higherIsBetter ? up : !up) ? "good" : "bad" };
-+}
+   // Decide once, after the profile has loaded, whether to show.
+   useEffect(() => {
+-    if (!user || !profile || !incomplete || done || isSnoozed(user.uid)) return;
++    if (!user || !profile || !incomplete || done || hold || isSnoozed(user.uid)) return;
+     const t = window.setTimeout(() => {
+       // Don't pile onto another dialog (e.g. the streak popup) — try again on the next visit.
+       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+@@ -61,7 +61,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
+     }, SHOW_DELAY_MS);
+     return () => window.clearTimeout(t);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [user?.uid, !!profile, incomplete]);
++  }, [user?.uid, !!profile, incomplete, hold]);
+ 
+   function close() {
+     setOpen(false);
+diff --git a/src/components/dashboard/practice-performance-card.tsx b/src/components/dashboard/practice-performance-card.tsx
+new file mode 100644
+index 0000000..eea34b7
+--- /dev/null
++++ b/src/components/dashboard/practice-performance-card.tsx
+@@ -0,0 +1,126 @@
++// "Your performance": practice numbers (NEET and JEE kept apart) plus mock-test scores, from ONE source
++// (getPracticeStats + the test-series summary), with real empty states instead of zeros or negative scores.
++import { useEffect, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { cn } from "@/lib/utils";
++import { defaultExamTab, EMPTY_EXAM_STATS, summariseTests, type BatchPerf, type PracticeStats } from "@/lib/practice-stats";
 +
-+function Kpi({ label, hint, value, sub, change, bad }: { label: string; hint: string; value: string; sub?: string; change?: Delta; bad?: boolean }) {
-   return (
-     <div className="clay px-5 py-4">
-       <p className="text-[11px] font-bold uppercase tracking-wide text-foreground/45">{label}</p>
--      <p className="mt-1 font-display text-3xl font-bold leading-tight text-foreground">{value}</p>
--      {sub && <p className={`mt-0.5 text-xs ${bad ? "text-red-600" : "text-foreground/50"}`}>{sub}</p>}
-+      <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-+        <p className="font-display text-3xl font-bold leading-tight text-foreground">{value}</p>
-+        {change && <span className={`text-xs font-bold ${change.tone === "good" ? "text-emerald-600" : change.tone === "bad" ? "text-red-600" : "text-foreground/45"}`}>{change.text}</span>}
-+      </div>
-+      {sub && <p className={`text-xs ${bad ? "text-red-600" : "text-foreground/60"}`}>{sub}</p>}
-+      <p className="mt-1 text-[11px] leading-snug text-foreground/40">{hint}</p>
-     </div>
-   );
- }
- 
--function Card({ title, hint, failed, children }: { title: string; hint?: string; failed?: string; children: React.ReactNode }) {
-+function Card({ title, hint, failed, loading, children }: { title: string; hint?: string; failed?: string; loading?: boolean; children: React.ReactNode }) {
-   return (
-     <div className="clay p-5">
-       <div className="mb-4">
-         <h3 className="font-display text-sm font-bold text-foreground">{title}</h3>
-         {hint && <p className="text-xs text-foreground/45">{hint}</p>}
-       </div>
--      {failed ? <p className="text-sm text-red-600">Couldn't load this: {failed}</p> : children}
-+      {failed ? <p className="text-sm text-red-600">Couldn't load this: {failed}</p> : loading ? <p className="text-sm text-foreground/45">Loading…</p> : children}
-     </div>
-   );
- }
-@@ -54,13 +73,65 @@ function Rows({ rows }: { rows: { label: string; n: number }[] }) {
-   );
- }
- 
--// Each funnel is "how many people did this step in the period". It is not a strict ordered funnel: someone who
--// only did step 2 still counts there. Good for spotting where people fall away, not for exact conversion rates.
--const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
--  { title: "Practice", steps: [{ event: "login_completed", label: "Signed in or signed up" }, { event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
--  { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
--  { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
--];
-+function Table({ head, rows }: { head: string[]; rows: React.ReactNode[][] }) {
-+  if (rows.length === 0) return <p className="text-sm text-foreground/45">No data yet.</p>;
-+  return (
-+    <div className="overflow-x-auto">
-+      <table className="w-full text-left text-xs">
-+        <thead>
-+          <tr className="text-foreground/45">
-+            {head.map((h, i) => (
-+              <th key={h} className={`pb-2 font-semibold ${i > 0 ? "text-right" : ""}`}>{h}</th>
-+            ))}
-+          </tr>
-+        </thead>
-+        <tbody className="divide-y divide-border">
-+          {rows.map((r, i) => (
-+            <tr key={i}>
-+              {r.map((c, j) => (
-+                <td key={j} className={`py-2 ${j > 0 ? "text-right tabular-nums" : "pr-2"} text-foreground`}>{c}</td>
-+              ))}
-+            </tr>
-+          ))}
-+        </tbody>
-+      </table>
-+    </div>
-+  );
-+}
++type Tab = "neet" | "jee";
++const TABS: { key: Tab; label: string }[] = [
++  { key: "neet", label: "NEET" },
++  { key: "jee", label: "JEE" },
++];
 +
-+type Daily = NonNullable<Overview["daily"]>;
-+function DayBars({ data, pick, unit }: { data: Daily; pick: (d: Daily[number]) => number; unit: string }) {
-+  const max = Math.max(1, ...data.map(pick));
-+  return (
++function Cell({ label, value, hint, to, search, tone }: { label: string; value: string; hint?: string; to?: "/pyq"; search?: Record<string, unknown>; tone?: "attention" }) {
++  const body = (
 +    <>
-+      <div className="flex h-28 items-end gap-[3px]">
-+        {data.map((d) => (
-+          <div key={d.day} title={`${short(d.day)}: ${pick(d)} ${unit}`} className="flex h-full flex-1 flex-col justify-end">
-+            <div className="w-full rounded-t-md bg-primary" style={{ height: `${Math.max(pick(d) ? 4 : 1.5, (pick(d) / max) * 100)}%`, opacity: pick(d) ? 1 : 0.25 }} />
-+          </div>
-+        ))}
-+      </div>
-+      <div className="mt-1.5 flex justify-between text-[10px] text-foreground/40">
-+        <span>{data[0] ? short(data[0].day) : ""}</span>
-+        <span>{data.length ? short(data[data.length - 1].day) : ""}</span>
-+      </div>
++      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-muted-foreground/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
++      <p className="mt-1.5 text-xs font-semibold text-muted-foreground">{label}</p>
++      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground/80">{hint}</p>}
 +    </>
 +  );
++  const cls = "min-w-0 rounded-2xl bg-secondary/60 p-3.5";
++  return to ? (
++    <Link to={to} search={search} className={cn(cls, "transition-colors hover:bg-secondary")}>{body}</Link>
++  ) : (
++    <div className={cls}>{body}</div>
++  );
 +}
 +
-+const TONE: Record<Insight["tone"], { dot: string; label: string }> = {
-+  good: { dot: "bg-emerald-500", label: "Good" },
-+  watch: { dot: "bg-amber-500", label: "Watch" },
-+  info: { dot: "bg-sky-500", label: "Note" },
++export function PracticePerformanceCard({
++  stats,
++  failed,
++  onRetry,
++  targetExam,
++  tests,
++  className,
++}: {
++  stats: PracticeStats | null;
++  failed: boolean;
++  onRetry: () => void;
++  targetExam: string | null | undefined;
++  /** Test-series performance (already floored at 0%); null while loading. */
++  tests: BatchPerf[] | null;
++  className?: string;
++}) {
++  const [tab, setTab] = useState<Tab | null>(null);
++  // Open on the exam they actually practise most (or their target exam), once the numbers are in; never override a manual pick.
++  useEffect(() => {
++    if (stats && tab === null) setTab(defaultExamTab(stats, targetExam));
++  }, [stats, targetExam, tab]);
++
++  const shell = cn("min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6", className);
++
++  if (!stats && !failed) {
++    return (
++      <section aria-label="Your performance" className={shell}>
++        <div className="h-5 w-40 animate-pulse rounded bg-secondary" />
++        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-20 animate-pulse rounded-2xl bg-secondary" />)}</div>
++      </section>
++    );
++  }
++  if (!stats) {
++    return (
++      <section aria-label="Your performance" className={shell}>
++        <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
++        <p className="mt-2 text-sm text-muted-foreground">We couldn't load your numbers just now. <button type="button" onClick={onRetry} className="font-bold text-primary hover:underline">Try again</button></p>
++      </section>
++    );
++  }
++
++  const exam: Tab = tab ?? "neet";
++  const label = exam === "jee" ? "JEE" : "NEET";
++  const s = stats.byExam[exam] ?? EMPTY_EXAM_STATS;
++  const hasPractice = s.solved > 0;
++  const mock = summariseTests(tests, exam);
++  const dash = "—";
++  const approx = stats.approximate && hasPractice;
++
++  return (
++    <section aria-label="Your performance" className={shell}>
++      <div className="flex flex-wrap items-center justify-between gap-3">
++        <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
++        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-border p-0.5">
++          {TABS.map((t) => (
++            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-9 rounded-full px-4 text-xs font-bold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
++              {t.label}
++            </button>
++          ))}
++        </div>
++      </div>
++
++      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
++        <Cell label="Questions solved" value={hasPractice ? s.solved.toLocaleString("en-IN") : dash} />
++        <Cell label="Accuracy" value={s.accuracy === null ? dash : `${s.accuracy}%`} hint={hasPractice ? `${s.correct} of ${s.solved} right` : undefined} />
++        <Cell label="This week" value={hasPractice ? s.weekAnswered.toLocaleString("en-IN") : dash} hint={approx ? "estimate" : "last 7 days"} />
++        <Cell
++          label="Mistakes to revise"
++          value={hasPractice || s.due > 0 ? String(s.due) : dash}
++          hint={s.due > 0 ? "due now · tap to revise" : hasPractice ? "all clear" : undefined}
++          tone={s.due > 0 ? "attention" : undefined}
++          to={s.due > 0 ? "/pyq" : undefined}
++          search={s.due > 0 ? { practice: true, session: "due" } : undefined}
++        />
++        <div className="col-span-2 sm:col-span-1">
++          <Cell label="Practice days" value={hasPractice ? String(s.distinctDays) : dash} hint={approx ? "estimate" : undefined} />
++        </div>
++      </div>
++
++      {!hasPractice && (
++        <p className="mt-3 text-sm text-muted-foreground">
++          {stats.questionsAnswered > 0 ? `No ${label} practice yet. Switch the tab above to see your other exam.` : `Solve your first ${label} question and your numbers show up here.`}
++        </p>
++      )}
++
++      <div className="mt-4 border-t border-border pt-3 text-sm">
++        {mock ? (
++          <p className="text-muted-foreground">
++            <span className="font-bold text-foreground">{label} mock tests</span> · average <b className="text-foreground">{mock.average}%</b> · best <b className="text-foreground">{mock.best}%</b> · {mock.attempts} attempt{mock.attempts === 1 ? "" : "s"} across {mock.tests} test{mock.tests === 1 ? "" : "s"}
++          </p>
++        ) : (
++          <p className="text-muted-foreground">{tests === null ? "Checking your mock tests…" : `No ${label} mock tests attempted yet.`}</p>
++        )}
++      </div>
++    </section>
++  );
++}
+diff --git a/src/components/dashboard/prep-setup-card.tsx b/src/components/dashboard/prep-setup-card.tsx
+new file mode 100644
+index 0000000..b86f3df
+--- /dev/null
++++ b/src/components/dashboard/prep-setup-card.tsx
+@@ -0,0 +1,91 @@
++// A slim, never-blocking card that asks only for the prep details the student hasn't given yet (exam, class/track,
++// target year). Onboarding already saved exam + track for most students, so usually this is one row of year chips.
++// Each tap saves straight away; "Not now" hides it for a week. It is a card in the page, not a modal, so it can't stand
++// between a student and practice.
++import { useMemo, useState } from "react";
++import { Check } from "lucide-react";
++import { useAuth } from "@/lib/auth-context";
++import { updatePrepInfo } from "@/server-functions/profile";
++import { missingPrepFields, targetYearOptions, TRACKS, type PrepProfile } from "@/lib/prep-profile";
++import { cn } from "@/lib/utils";
++
++const SNOOZE_DAYS = 7;
++const key = (uid: string) => `edurack-prep-setup-snooze:${uid}`;
++const snoozed = (uid: string) => {
++  try { return Number(localStorage.getItem(key(uid)) ?? 0) > Date.now(); } catch { return false; }
++};
++const snooze = (uid: string) => {
++  try { localStorage.setItem(key(uid), String(Date.now() + SNOOZE_DAYS * 86_400_000)); } catch { /* storage unavailable: it may show again next visit */ }
 +};
 +
-+const RATING_STYLE: Record<Rating, string> = { good: "bg-emerald-100 text-emerald-800", needs: "bg-amber-100 text-amber-900", poor: "bg-red-100 text-red-800" };
-+function Vital({ metric, value }: { metric: "lcp" | "inp" | "cls"; value: number | null }) {
-+  const r = rateVital(metric, value);
-+  if (value === null || r === null) return <span className="text-foreground/35">–</span>;
-+  const text = metric === "lcp" ? `${(value / 1000).toFixed(1)} s` : metric === "inp" ? `${Math.round(value)} ms` : value.toFixed(2);
-+  return <span className={`rounded-full px-2 py-0.5 font-semibold ${RATING_STYLE[r]}`}>{text}</span>;
++const CHIP = "inline-flex min-h-10 items-center justify-center gap-1 rounded-full border px-4 text-xs font-bold transition-colors";
++
++export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile: PrepProfile | null; /** New students: ask for exam/class now, the target year after their first question. */ deferYear?: boolean; onSaved: (next: Partial<PrepProfile>) => void }) {
++  const { user } = useAuth();
++  const [hidden, setHidden] = useState(false);
++  const [busy, setBusy] = useState<string | null>(null);
++  const [err, setErr] = useState<string | null>(null);
++  const years = useMemo(() => targetYearOptions(), []);
++
++  if (!user || !profile || hidden || snoozed(user.uid)) return null;
++  const missing = missingPrepFields(profile).filter((f) => !(deferYear && f === "year"));
++  if (missing.length === 0) return null;
++
++  async function save(field: string, patch: { targetExam?: "neet" | "jee"; track?: "11th" | "12th" | "Dropper"; targetYear?: number }, local: Partial<PrepProfile>) {
++    if (!user || busy) return;
++    setBusy(field);
++    setErr(null);
++    try {
++      await updatePrepInfo({ data: { token: await user.getIdToken(), ...patch } });
++      onSaved(local);
++    } catch {
++      setErr("Couldn't save that. Try again.");
++    } finally {
++      setBusy(null);
++    }
++  }
++
++  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/80 hover:border-foreground/40");
++
++  return (
++    <section aria-label="Finish your prep details" className="rounded-3xl border border-border bg-card p-4 sm:p-5">
++      <div className="flex items-start justify-between gap-3">
++        <div className="min-w-0">
++          <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-muted-foreground">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
++          <p className="mt-0.5 text-xs text-muted-foreground">So we recommend the right questions. You can change this later in Profile.</p>
++        </div>
++        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-muted-foreground hover:bg-secondary">Not now</button>
++      </div>
++
++      <div className="mt-3 space-y-3">
++        {missing.includes("exam") && (
++          <div role="radiogroup" aria-label="Target exam" className="flex flex-wrap items-center gap-2">
++            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Exam</span>
++            {(["neet", "jee"] as const).map((e) => (
++              <button key={e} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("exam", { targetExam: e }, { targetExam: e })} className={chip(false)}>{e === "neet" ? "NEET" : "JEE"}</button>
++            ))}
++          </div>
++        )}
++        {missing.includes("track") && (
++          <div role="radiogroup" aria-label="Current class" className="flex flex-wrap items-center gap-2">
++            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">I am in</span>
++            {TRACKS.map((t) => (
++              <button key={t} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("track", { track: t }, { track: t })} className={chip(false)}>{t}</button>
++            ))}
++          </div>
++        )}
++        {missing.includes("year") && (
++          <div role="radiogroup" aria-label="Target year" className="flex flex-wrap items-center gap-2">
++            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Target year</span>
++            {years.map((y) => (
++              <button key={y} type="button" role="radio" aria-checked={profile.targetYear === y} disabled={busy !== null} onClick={() => save("year", { targetYear: y }, { targetYear: y })} className={chip(profile.targetYear === y)}>
++                {profile.targetYear === y && <Check className="h-3.5 w-3.5" aria-hidden />}{y}
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++      {err && <p role="alert" className="mt-2 text-xs font-semibold text-rose-600">{err}</p>}
++    </section>
++  );
 +}
+diff --git a/src/components/dashboard/pyq-hero.tsx b/src/components/dashboard/pyq-hero.tsx
+index d5e0029..da2ddf0 100644
+--- a/src/components/dashboard/pyq-hero.tsx
++++ b/src/components/dashboard/pyq-hero.tsx
+@@ -4,16 +4,16 @@
+ import { useCallback, useEffect, useState } from "react";
+ import { Link } from "@tanstack/react-router";
+ import { motion } from "motion/react";
+-import { ArrowRight, Check, Flame, Lock, Sparkles, Trophy } from "lucide-react";
++import { ArrowRight, CalendarCheck, Check, Flame, Lock, RotateCcw, Sparkles, Trophy } from "lucide-react";
+ import { useAuth } from "@/lib/auth-context";
+ import { getTodaySummary } from "@/server-functions/practice-extras";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
+-import { pickStartHere, headlineFor } from "@/components/today-card";
++import { headlineFor } from "@/components/today-card";
++import { examLabel, pickFirstChapter, type PracticeStats } from "@/lib/practice-stats";
+ import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
+ import { cn } from "@/lib/utils";
  
- function SetupHelp({ missing }: { missing: string[] }) {
-   return (
-@@ -100,18 +171,26 @@ function EmbeddedDashboard({ url }: { url: string }) {
+-const EXAM_NAME: Record<string, string> = { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" };
+ 
+ // Fixed colours (like the Today card) so the hero looks the same in light and dark mode.
+ const SUBJECT_STYLE: { match: RegExp; bar: string; chip: string }[] = [
+@@ -62,7 +62,7 @@ function Ring({ percent, size = 96 }: { percent: number; size?: number }) {
+   );
  }
  
- export function ProductAnalyticsView({
--  result,
-+  overview,
-+  details: detailsIn,
-+  missing,
-   days,
-   onDays,
-   onRefresh,
-   busy,
-+  detailsBusy,
-+  detailsError,
-   error,
- }: {
--  result: Result | null;
-+  overview: Overview | null;
-+  details: Details | null;
-+  missing: string[] | null;
-   days: Days;
-   onDays: (d: Days) => void;
-   onRefresh: () => void;
-   busy: boolean;
-+  detailsBusy: boolean;
-+  detailsError?: string | null;
-   error: string | null;
- }) {
-   if (error) {
-@@ -122,25 +201,34 @@ export function ProductAnalyticsView({
-       </div>
-     );
-   }
--  if (!result) return <div className="clay p-6 text-sm text-foreground/50">Loading analytics…</div>;
--  if (!result.configured) return <SetupHelp missing={result.missing} />;
-+  if (missing) return <SetupHelp missing={missing} />;
-+  if (!overview) return <div className="clay p-6 text-sm text-foreground/50">Loading analytics…</div>;
+-export function PyqHero({ className }: { className?: string }) {
++export function PyqHero({ className, stats = null, statsFailed = false }: { className?: string; /** The shared practice numbers (see use-practice-stats). null while loading. */ stats?: PracticeStats | null; statsFailed?: boolean }) {
+   const { user } = useAuth();
+   const [t, setT] = useState<TodaySummary | null>(null);
+   const [tree, setTree] = useState<PyqTree | null>(null);
+@@ -88,30 +88,53 @@ export function PyqHero({ className }: { className?: string }) {
+   }, [load]);
  
--  const s = result;
-+  const s = overview;
-+  // Detail cards load separately; never show another period's detail next to this period's headline numbers.
-+  const details = detailsIn && detailsIn.days === s.days ? detailsIn : null;
-   const failed = (card: string) => s.failures.find((f) => f.card === card)?.message;
-+  // If the whole detail request failed, say so on every detail card instead of showing a misleading "No data yet".
-+  const dfailed = (card: string) => details?.failures.find((f) => f.card === card)?.message ?? (!details && !detailsBusy && detailsError ? detailsError : undefined);
-   const ev = (name: string) => s.events?.[name];
-   const bookings = ev("session_booked");
-   const pro = ev("pro_purchased");
-+  const drills = ev("drill_started");
-   const updated = new Date(s.fetchedAt).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
--  const maxDaily = Math.max(1, ...(s.daily ?? []).map((d) => d.visitors));
-+  const insights = buildInsights(s, details);
-+  const hours = details?.hours ?? null;
-+  const peak = hours && Math.max(...hours) > 0 ? hours.indexOf(Math.max(...hours)) : null;
-+  const maxHour = hours ? Math.max(1, ...hours) : 1;
-+  const t = s.totals;
+   const exam = t?.exam ?? tree?.exam ?? null;
+-  const examName = exam ? EXAM_NAME[exam] ?? exam.toUpperCase() : "PYQ";
+-  const attempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
++  const examName = exam ? examLabel(exam) : "NEET";
+   const total = tree?.totalQuestions ?? 0;
+-  const correct = tree?.totalCorrect ?? 0;
++
++  // The numbers come from the shared stats (the same ones the performance card shows). If they failed to load we fall
++  // back to the browse tree's own counts so the hero still works.
++  const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
++  const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
++  const attempted = Math.min(total || Infinity, examStats ? examStats.solved : treeAttempted);
++  const accuracy = examStats ? examStats.accuracy : attempted > 0 ? Math.round(((tree?.totalCorrect ?? 0) / attempted) * 100) : null;
+   const percent = total > 0 ? Math.min(100, Math.round((attempted / total) * 100)) : 0;
+-  const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : null;
+-  const isNew = loaded && attempted === 0 && (t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0;
+-  const quests = buildQuests(t, attempted);
++
++  // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
++  // student who had practised JEE while their profile said NEET was told to "solve your first question".)
++  const ready = loaded && (stats !== null || statsFailed);
++  const questionsAnswered = stats ? stats.questionsAnswered : treeAttempted;
++  const isNew = ready && questionsAnswered === 0 && (stats !== null || ((t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0));
++
++  const quests = buildQuests(t, questionsAnswered);
+   const nextQuest = quests.find((q) => !q.done);
+-  const step = t ? pickStartHere(t) : null;
+   const head = t ? headlineFor(t) : null;
+   const s = t?.streak;
+   const lit = (s?.current ?? 0) > 0;
++  const due = stats ? stats.overall.due : t?.due ?? 0;
++  const dailyPending = Boolean(t?.daily.available && !t.daily.done);
++
++  // ── Where the main button goes ──
++  // New student: straight into 5 questions of the biggest chapter of their exam (no browsing, no setup).
++  const first = pickFirstChapter(tree);
++  const startTo = first ? { subject: first.subject, chapter: first.chapter, practice: true, first5: true, exam: exam ?? undefined } : { exam: exam ?? undefined };
++  // Returning student: back to the chapter they were last in. (A chapter-less question opens that subject's chapter list.)
++  const last = stats?.lastAttempt ?? null;
++  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) : null;
++  const continueSearch = last
++    ? last.chapter
++      ? { subject: last.subject, chapter: last.chapter, practice: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
++      : { subject: last.subject, exam: exam ?? undefined }
++    : { exam: exam ?? undefined };
+ 
+-  const cta = isNew
+-    ? { label: "Solve my first question", sub: "About 2 minutes. Answer + solution included." }
+-    : step
+-      ? { label: step.label, sub: step.sub }
+-      : { label: "Start practising PYQs", sub: "Pick a chapter and go" };
+-  const ctaTo = (step?.to ?? "/pyq") as "/pyq";
+-  const ctaSearch = step?.search ?? { exam: exam ?? undefined };
++  const CTA = "group inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none";
++  const ARROW = "grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none";
+ 
+-  const title = isNew ? `Solve your first ${examName} question` : head?.title ?? `${examName} PYQ practice`;
+-  const sub = isNew ? "One real previous-year question, a clear solution, and your streak starts. That's the whole first step." : head?.sub ?? "Chapter-wise questions with solutions, free.";
++  const title = !ready ? "Your PYQ practice" : isNew ? "Welcome to Edurack" : head?.title ?? `${examName} PYQ practice`;
++  const sub = !ready
++    ? "Loading your progress…"
++    : isNew
++      ? `Start with 5 real previous-year ${examName} questions. Every one comes with the answer and a clear solution, and your streak starts with the first.`
++      : head?.sub ?? "Chapter-wise questions with solutions, free.";
  
    return (
-     <div className="space-y-5">
-       <div className="flex flex-wrap items-center justify-between gap-3">
-         <div>
-           <h2 className="font-display text-xl font-bold text-foreground">Analytics</h2>
--          <p className="text-xs text-foreground/50">Last {s.days} days · from PostHog · updated {updated} IST (refreshes every 10 minutes)</p>
-+          <p className="text-xs text-foreground/50">Last {s.days} days · arrows compare with the previous {s.days} days · updated {updated} IST (refreshes every 15 minutes)</p>
+     <section aria-label="PYQ practice" className={cn("ink-section relative isolate overflow-hidden rounded-3xl p-5 sm:p-7", className)}>
+@@ -124,86 +147,128 @@ export function PyqHero({ className }: { className?: string }) {
+             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-950">
+               <Sparkles className="h-3 w-3" aria-hidden /> {examName} PYQ practice · Free
+             </span>
+-            <span
+-              data-testid="hero-streak"
+-              className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
+-            >
+-              <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
+-              {lit ? `${s!.current} day streak` : "No streak yet"}
+-            </span>
++            {!isNew && (
++              <span
++                data-testid="hero-streak"
++                className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
++              >
++                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
++                {lit ? `${s!.current} day streak` : "No streak yet"}
++              </span>
++            )}
+           </div>
+ 
+-          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{loaded ? title : "Your PYQ practice"}</h2>
+-          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{loaded ? sub : "Loading your progress…"}</p>
+-
+-          <Link
+-            to={ctaTo}
+-            search={ctaSearch}
+-            className="group mt-5 inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none"
+-          >
+-            <span className="min-w-0">
+-              <span className="block truncate">{cta.label}</span>
+-              <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{cta.sub}</span>
+-            </span>
+-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none">
+-              <ArrowRight className="h-5 w-5" aria-hidden />
+-            </span>
+-          </Link>
+-
+-          {s && (
+-            <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
+-              <div className="grid grid-cols-7 gap-1.5">
+-                {s.week.map((d) => (
+-                  <div key={d.day} className="flex flex-col items-center gap-1">
+-                    <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
+-                    <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
+-                      {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
+-                    </span>
++          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{title}</h2>
++          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{sub}</p>
++
++          {isNew ? (
++            <>
++              <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
++                <span className="min-w-0">
++                  <span className="block truncate">Start Your First 5 {examName} PYQs</span>
++                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
++                </span>
++                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
++              </Link>
++              <Link to="/pyq" search={{ exam: exam ?? undefined }} className="mt-3 inline-flex min-h-9 items-center text-xs font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
++                or pick a subject yourself
++              </Link>
++            </>
++          ) : (
++            <>
++              {/* Returning students: today's question + streak come first. */}
++              {ready && t && (
++                <div className="mt-4 flex flex-wrap items-center gap-2">
++                  {t.daily.available && (
++                    dailyPending ? (
++                      <Link to="/pyq" search={{ practice: true, session: "daily" }} data-testid="hero-daily" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/50 bg-amber-300/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-300/25">
++                        <CalendarCheck className="h-4 w-4" aria-hidden />
++                        Solve today's PYQ
++                        <span className="text-xs font-semibold text-amber-200/80">{lit ? `keeps your ${s!.current}-day streak` : "starts your streak"}</span>
++                      </Link>
++                    ) : (
++                      <span data-testid="hero-daily-done" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 text-sm font-bold text-emerald-100">
++                        <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> Today's PYQ done
++                      </span>
++                    )
++                  )}
++                </div>
++              )}
++
++              <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, "mt-4")}>
++                <span className="min-w-0">
++                  <span className="block truncate">Continue Practising</span>
++                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
++                </span>
++                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
++              </Link>
++
++              {due > 0 && (
++                <Link to="/pyq" search={{ practice: true, session: "due" }} data-testid="hero-revise" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 px-4 text-sm font-bold text-white transition-colors hover:border-white/60">
++                  <RotateCcw className="h-4 w-4" aria-hidden />
++                  Revise {due} mistake{due === 1 ? "" : "s"} due today
++                </Link>
++              )}
++
++              {s && (
++                <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
++                  <div className="grid grid-cols-7 gap-1.5">
++                    {s.week.map((d) => (
++                      <div key={d.day} className="flex flex-col items-center gap-1">
++                        <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
++                        <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
++                          {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
++                        </span>
++                      </div>
++                    ))}
+                   </div>
+-                ))}
+-              </div>
+-            </div>
++                </div>
++              )}
++            </>
+           )}
          </div>
--        <div className="flex items-center gap-2">
-+        <div className="flex flex-wrap items-center gap-2">
-           {([7, 30] as Days[]).map((d) => (
-             <button key={d} type="button" onClick={() => onDays(d)} aria-pressed={days === d} className={`rounded-full border px-4 py-1.5 text-sm font-semibold ${days === d ? "border-foreground bg-foreground text-background" : "border-border"}`}>
-               {d} days
-@@ -153,28 +241,38 @@ export function ProductAnalyticsView({
  
-       {s.failures.length > 0 && <p className="rounded-xl bg-amber-50 px-4 py-2 text-xs text-amber-900">Some cards couldn't load, see the red notes below. The rest is fine.</p>}
+-        {/* Progress panel */}
+-        <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
+-          <div className="flex items-center gap-4">
+-            <Ring percent={percent} />
+-            <div className="min-w-0">
+-              <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
+-              <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
+-              {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
++        {/* Progress panel: only once there is progress to show. */}
++        {!isNew && (
++          <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
++            <div className="flex items-center gap-4">
++              <Ring percent={percent} />
++              <div className="min-w-0">
++                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
++                <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
++                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
++              </div>
+             </div>
+           </div>
+-        </div>
++        )}
+       </div>
  
--      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
--        <Kpi label="Visitors" value={s.totals ? n(s.totals.visitors) : "–"} sub={failed("totals")} bad={!!failed("totals")} />
--        <Kpi label="Pageviews" value={s.totals ? n(s.totals.pageviews) : "–"} />
--        <Kpi label="Drills started" value={ev("drill_started") ? n(ev("drill_started")!.total) : "–"} sub={ev("drill_started") ? `${n(ev("drill_started")!.people)} people` : undefined} />
--        <Kpi label="Sessions booked" value={bookings ? n(bookings.total) : "–"} sub={bookings && bookings.value > 0 ? `${rupees(bookings.value)} booking value` : undefined} />
--        <Kpi label="Pro purchases" value={pro ? n(pro.total) : "–"} sub={pro && pro.value > 0 ? rupees(pro.value) : undefined} />
--        <Kpi label="Errors" value={s.errors === null ? "–" : n(s.errors)} sub={s.errors ? "Open PostHog → Error tracking" : undefined} bad={!!s.errors} />
-+      {insights.length > 0 && (
-+        <div className="clay p-5">
-+          <h3 className="font-display text-sm font-bold text-foreground">What stands out</h3>
-+          <ul className="mt-3 space-y-2">
-+            {insights.map((i, k) => (
-+              <li key={k} className="flex gap-3 text-sm text-foreground/85">
-+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONE[i.tone].dot}`} aria-label={TONE[i.tone].label} />
-+                <span>{i.text}</span>
+-      {/* Quest path */}
+-      <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
+-        {quests.map((q) => {
+-          const isNext = nextQuest?.key === q.key;
+-          return (
+-            <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
+-              <div className="flex items-center gap-2">
+-                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
+-                  {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
+-                </span>
+-                <p className="truncate text-xs font-extrabold">{q.label}</p>
+-              </div>
+-              <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
+-              {!q.done && (
+-                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+-                  <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
++      {/* Milestones + subject tiles are for students who have started; a brand-new student gets one clear action instead. */}
++      {!isNew && (
++        <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
++          {quests.map((q) => {
++            const isNext = nextQuest?.key === q.key;
++            return (
++              <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
++                <div className="flex items-center gap-2">
++                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
++                    {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
++                  </span>
++                  <p className="truncate text-xs font-extrabold">{q.label}</p>
+                 </div>
+-              )}
+-            </li>
+-          );
+-        })}
+-      </ol>
++                <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
++                {!q.done && (
++                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
++                    <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
++                  </div>
++                )}
 +              </li>
-+            ))}
-+          </ul>
++            );
++          })}
++        </ol>
++      )}
+ 
+-      {/* Subject tiles */}
+-      {tree && tree.subjects.length > 0 && (
++      {!isNew && tree && tree.subjects.length > 0 && (
+         <div className="mt-5">
+           <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
+           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+diff --git a/src/components/dashboard/streak-popup.tsx b/src/components/dashboard/streak-popup.tsx
+index 6d8b844..d09e88c 100644
+--- a/src/components/dashboard/streak-popup.tsx
++++ b/src/components/dashboard/streak-popup.tsx
+@@ -12,6 +12,8 @@ import { getTodaySummary, listPyqSession } from "@/server-functions/practice-ext
+ import { submitPyqAnswer } from "@/server-functions/pyq-practice";
+ import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib/pyq-types";
+ import { cn } from "@/lib/utils";
++import { track, trackOnce } from "@/lib/analytics";
++import { answeredProps, practiceProps } from "@/lib/practice-events";
+ 
+ const OPTS: OptionKey[] = ["A", "B", "C", "D"];
+ /** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
+@@ -70,6 +72,10 @@ export function StreakPopup() {
+       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
+       const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
+       setResult(out);
++      // This answer bypasses the PYQ practice screen, so it is tracked here: it's an answered question AND today's daily question.
++      const ctx = { mode: "daily" as const, exam: today?.exam, subject: q.subject, chapter: q.chapter, source: "daily_popup" };
++      track("question_answered", answeredProps(ctx, { questionId: q.id, questionType: q.type, isCorrect: out.isCorrect }));
++      trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctx), is_correct: out.isCorrect }, "day");
+       // The dashboard hero (flame, week strip, progress ring) lives outside this dialog: tell it to refresh.
+       window.dispatchEvent(new Event(PRACTICE_ANSWERED_EVENT));
+     } catch (e) {
+diff --git a/src/components/dashboard/use-practice-stats.ts b/src/components/dashboard/use-practice-stats.ts
+new file mode 100644
+index 0000000..ca8dda1
+--- /dev/null
++++ b/src/components/dashboard/use-practice-stats.ts
+@@ -0,0 +1,42 @@
++// One fetch of the student's practice numbers, shared by everything on the dashboard that shows them (the hero and
++// the performance card), so they can never disagree. Refetches when an answer is saved from the daily-question popup.
++import { useCallback, useEffect, useState } from "react";
++import { useAuth } from "@/lib/auth-context";
++import { getPracticeStats } from "@/server-functions/practice-stats";
++import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
++import type { PracticeStats } from "@/lib/practice-stats";
++
++export function usePracticeStats() {
++  const { user } = useAuth();
++  const [stats, setStats] = useState<PracticeStats | null>(null);
++  const [failed, setFailed] = useState(false);
++
++  const load = useCallback(
++    async (isCancelled: () => boolean = () => false) => {
++      if (!user) return;
++      try {
++        const res = await getPracticeStats({ data: { token: await user.getIdToken() } });
++        if (isCancelled()) return;
++        setStats(res);
++        setFailed(false);
++      } catch (err) {
++        console.error("[dashboard] practice stats failed:", err);
++        if (!isCancelled()) setFailed(true);
++      }
++    },
++    [user],
++  );
++
++  useEffect(() => {
++    let cancelled = false;
++    void load(() => cancelled);
++    const onAnswered = () => void load(() => cancelled);
++    window.addEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
++    return () => {
++      cancelled = true;
++      window.removeEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
++    };
++  }, [load]);
++
++  return { stats, failed, reload: () => void load() };
++}
+diff --git a/src/components/pyq/pyq-practice.tsx b/src/components/pyq/pyq-practice.tsx
+index 6a30127..bed6ffc 100644
+--- a/src/components/pyq/pyq-practice.tsx
++++ b/src/components/pyq/pyq-practice.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useMemo, useState } from "react";
++import { useEffect, useMemo, useRef, useState } from "react";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+ import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Flag, Flame, Lightbulb, SlidersHorizontal } from "lucide-react";
+ import { Link } from "@tanstack/react-router";
+@@ -12,6 +12,8 @@ import { ReportDialog } from "@/components/pyq/report-dialog";
+ import { SessionSummary } from "@/components/pyq/session-summary";
+ import { GUEST_PYQ_LIMIT, SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
+ import { cn } from "@/lib/utils";
++import { track, trackOnce } from "@/lib/analytics";
++import { answeredProps, completedProps, isMistakeRevision, practiceModeFor, practiceProps, type PracticeContext } from "@/lib/practice-events";
+ 
+ type Props = {
+   /** Chapter practice (browse mode). Omit when `weakAttemptId` is set. */
+@@ -27,6 +29,10 @@ type Props = {
+   exam?: string;
+   /** Logged-out visitor: free preview via the guest endpoints, nothing saved, sign-up prompt after a few questions. */
+   guest?: boolean;
++  /** Cap the list (e.g. 5 for the new-student "first 5 PYQs" start). Finishing the capped list ends the session normally. */
++  limit?: number;
++  /** Where the session was launched from, for analytics only (e.g. "first_five"). */
++  source?: string;
+   onExit: () => void;
+ };
+ 
+@@ -42,7 +48,7 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
+ };
+ const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+ 
+-export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, onExit }: Props) {
++export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, source, onExit }: Props) {
+   const { user: authUser } = useAuth();
+   // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
+   const user = guest ? null : authUser;
+@@ -68,6 +74,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+   const [streakNow, setStreakNow] = useState<number | null>(null);
+   const [actionError, setActionError] = useState<string | null>(null);
+ 
++  // Analytics. One `practice_started` per practice session and one `practice_completed` per finished session: the refs
++  // make a refetch (difficulty chip), a StrictMode re-run or a re-render unable to send either twice.
++  const mode = practiceModeFor({ session, weakAttemptId });
++  const startedFor = useRef<string | null>(null);
++  const completedSent = useRef(false);
++  const ctxFor = (qq?: PyqQuestion): PracticeContext => ({ mode, exam, subject: qq?.subject ?? subject, chapter: qq?.chapter ?? chapter, guest, source });
++
+   // Already used the free questions on an earlier visit? Go straight to the sign-up prompt.
+   useEffect(() => {
+     if (guest && getGuestPyqCount() >= GUEST_PYQ_LIMIT) setGated(true);
+@@ -101,6 +114,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+         }
+         if (cancelled) return;
+         setList(res);
++        const sessionKey = [mode, subject, chapter, topic, weakAttemptId, session, guest ? "g" : "u"].join("|");
++        if (res.questions.length > 0 && startedFor.current !== sessionKey) {
++          startedFor.current = sessionKey;
++          const props = { ...practiceProps(ctxFor()), question_count: limit ? Math.min(limit, res.questions.length) : res.questions.length };
++          track("practice_started", props);
++          if (isMistakeRevision(mode)) track("mistake_revision_started", { ...props, source: session });
++        }
+         // Union, not replace: other filters shrink the server's year list, and the
+         // filter panel shouldn't change shape while the student is using it.
+         setYears((prev) => [...new Set([...prev, ...res.years])].sort((a, b) => b.localeCompare(a)));
+@@ -124,8 +144,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
+     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
+     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
+-    return qs;
+-  }, [list, year, statusF]);
++    return limit ? qs.slice(0, limit) : qs;
++  }, [list, year, statusF, limit]);
+   const q: PyqQuestion | undefined = questions[idx];
+   const result = q ? results[q.id] : undefined;
+   const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
+@@ -151,6 +171,12 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+         bumpGuestPyqCount();
+       }
+       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
++      // Only a real answer is an answer; peeking at the solution (answer === null) isn't sent. Never the chosen option/number.
++      if (answer !== null) {
++        track("question_answered", answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }));
++        // Once per India day per student, however many times the daily question screen is opened.
++        if (mode === "daily" && user) trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctxFor(q)), is_correct: res.isCorrect }, "day");
++      }
+       if (res.streak) setStreakNow(res.streak.current);
+       // Keep the status chip in sync without refetching the list.
+       setList((l) =>
+@@ -208,6 +234,21 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
+       : "From your last test"
+     : subject;
+ 
++  useEffect(() => {
++    if (!finished || completedSent.current) return;
++    completedSent.current = true;
++    const all = Object.values(results);
++    const counts = {
++      answered: all.filter((r) => !r.revealed).length,
++      correct: all.filter((r) => !r.revealed && r.isCorrect).length,
++      wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
++      peeked: all.filter((r) => r.revealed).length,
++    };
++    track("practice_completed", completedProps(ctxFor(), counts));
++    if (isMistakeRevision(mode)) track("mistake_revision_completed", { ...completedProps(ctxFor(), counts), source: session });
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [finished]);
++
+   if (gated) {
+     const all = Object.values(results);
+     return (
+diff --git a/src/components/today-card.tsx b/src/components/today-card.tsx
+index f8330e0..db4f2a6 100644
+--- a/src/components/today-card.tsx
++++ b/src/components/today-card.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useState } from "react";
+ import { Link } from "@tanstack/react-router";
+-import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target } from "lucide-react";
++import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target, Users } from "lucide-react";
+ import { useAuth } from "@/lib/auth-context";
+ import { getTodaySummary } from "@/server-functions/practice-extras";
+ import type { TodaySummary } from "@/lib/pyq-types";
+@@ -264,6 +264,55 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
+   );
+ }
+ 
++/**
++ * The mentorship "Up next" as a slim card for the dashboard, shown BELOW the practice content. It replaces the old
++ * full-size "Nothing booked yet" panel: an empty calendar is one short line with one button, and a booked session is a
++ * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
++ */
++export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
++  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-border bg-card px-4 py-3", className);
++  const icon = (
++    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
++  );
++  const ghost = "inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-bold text-foreground transition-colors hover:border-foreground/40";
++
++  if (info.state === "loading") {
++    return <div className={cn(shell, "h-[4.25rem] animate-pulse bg-secondary")} aria-hidden />;
++  }
++  if (info.state === "empty") {
++    return (
++      <section aria-label="Mentor sessions" className={shell}>
++        <div className="flex min-w-0 items-center gap-3">
++          {icon}
++          <div className="min-w-0">
++            <p className="text-sm font-bold leading-tight">No mentor session booked</p>
++            <p className="truncate text-xs text-muted-foreground">{info.text}</p>
++          </div>
++        </div>
++        <div className="flex shrink-0 items-center gap-2">
++          <button type="button" onClick={onBrowse} className={ghost}>Browse sessions<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden /></button>
++        </div>
++      </section>
++    );
++  }
++  return (
++    <section aria-label="Up next: mentor session" className={shell}>
++      <div className="flex min-w-0 items-center gap-3">
++        {icon}
++        <div className="min-w-0">
++          <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Up next</p>
++          <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
++          <p className="truncate text-xs text-muted-foreground">{info.title}</p>
++        </div>
++      </div>
++      <div className="flex shrink-0 items-center gap-2">
++        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground">Join session</a>}
++        <Link to="/my-sessions" className={ghost}>{info.total > 1 ? `All ${info.total} sessions` : "My sessions"}</Link>
++      </div>
++    </section>
++  );
++}
++
+ /** Fetches the practice summary and renders the merged card. If the summary fails the card still shows "Up next". */
+ export function TodayCard({ upNext, onBrowseSessions, className, upNextOnly = false }: { upNext?: UpNextInfo; onBrowseSessions?: () => void; className?: string; /** Skip the practice part (the dashboard's PYQ hero already shows it). */ upNextOnly?: boolean }) {
+   const { user } = useAuth();
+diff --git a/src/lib/analytics.ts b/src/lib/analytics.ts
+index e2940bb..73187f3 100644
+--- a/src/lib/analytics.ts
++++ b/src/lib/analytics.ts
+@@ -23,9 +23,10 @@ let identifiedUid: string | null = null;
+ const queue: Array<(p: PostHog) => void> = [];
+ 
+ const enabled = () => typeof window !== "undefined" && Boolean(KEY) && navigator.doNotTrack !== "1";
++const MAX_QUEUE = 100;
+ const run = (fn: (p: PostHog) => void) => {
+   if (ph) fn(ph);
+-  else if (started) queue.push(fn); // init is still loading: replay these once it's ready
++  else if (queue.length < MAX_QUEUE) queue.push(fn); // not ready yet (init is idle-scheduled or still loading): replay, in order, once it is
+ };
+ 
+ /** Start analytics once per page load. Safe to call repeatedly. */
+@@ -52,6 +53,7 @@ export function initAnalytics(): void {
+     .catch(() => {
+       // blocked by an ad blocker or offline: analytics must never break the app
+       started = false;
++      queue.length = 0;
+     });
+ }
+ 
+@@ -73,7 +75,13 @@ export function trackPageview(path: string): void {
+   });
+ }
+ 
+-/** Tie events to the signed-in student (by id only). Pass null on sign-out. */
++/**
++ * Tie events to the signed-in student (by account id only: no name, email or phone).
++ * identify() on a browser that already has anonymous activity MERGES that activity into the student, so a visitor
++ * who tried guest PYQs and then signed up is one person in PostHog, not two. If the call comes before PostHog has
++ * finished loading it is queued, not dropped (it used to be dropped, leaving the student anonymous for the visit).
++ * Pass null on sign-out.
++ */
+ export function identifyUser(uid: string | null): void {
+   if (!enabled()) return;
+   if (uid && uid !== identifiedUid) {
+@@ -95,6 +103,35 @@ export function track(event: string, props: Props = {}): void {
+   }
+ }
+ 
++export type OnceScope = "page" | "session" | "day";
++const firedOnce = new Set<string>();
++const istDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
++
++/**
++ * Like track(), but sends the event at most once for `key`, so a re-render, a double tap, a retry or a refetch can't
++ * double count it.
++ *   "page"    once until the tab is reloaded
++ *   "session" once per browser tab session (survives in-app navigation and reloads)
++ *   "day"     once per India calendar day on this browser (e.g. "completed today's question")
++ * Returns true when the event was actually sent. Nothing is recorded as "sent" when analytics is off or blocked, so it
++ * can still fire later in the same visit if analytics comes on.
++ */
++export function trackOnce(key: string, event: string, props: Props = {}, scope: OnceScope = "page"): boolean {
++  if (!enabled() || !captureAllowed(window.location.pathname)) return false;
++  try {
++    if (firedOnce.has(key)) return false;
++    if (scope === "session" && window.sessionStorage.getItem(`ph-once:${key}`)) return false;
++    if (scope === "day" && window.localStorage.getItem(`ph-once:${key}`) === istDay()) return false;
++    firedOnce.add(key);
++    if (scope === "session") window.sessionStorage.setItem(`ph-once:${key}`, "1");
++    if (scope === "day") window.localStorage.setItem(`ph-once:${key}`, istDay());
++  } catch {
++    // storage blocked: the in-memory guard above still prevents duplicates within this page load
++  }
++  track(event, props);
++  return true;
++}
++
+ /** Send a caught error to PostHog's error tracking. */
+ export function reportError(error: unknown): void {
+   if (!enabled()) return;
+diff --git a/src/lib/dashboard-core.ts b/src/lib/dashboard-core.ts
+index 558a033..a265b14 100644
+--- a/src/lib/dashboard-core.ts
++++ b/src/lib/dashboard-core.ts
+@@ -14,6 +14,7 @@
+ //
+ // Nothing here verifies a token: callers MUST authenticate first and pass the
+ // verified uid.
++import { testScorePercent } from "@/lib/practice-stats";
+ import { getDb } from "@/lib/mongo";
+ import { supabase } from "@/lib/supabase";
+ import { expandOfferingToSlots } from "@/lib/session-slots";
+@@ -54,6 +55,7 @@ export async function loadProfile(db: Db, uid: string) {
+     board: (doc.board as string) ?? "",
+     targetExam: (doc.targetExam as string) ?? "",
+     track: (doc.track as Track) ?? "",
++    targetYear: typeof doc.targetYear === "number" ? (doc.targetYear as number) : null,
+     cuetDomainSubjects: (doc.cuetDomainSubjects as string[]) ?? [],
+     provider: (doc.provider as string) ?? null,
+     createdAt: doc.createdAt instanceof Date ? doc.createdAt.toISOString() : null,
+@@ -302,6 +304,11 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
+     .find({ _id: { $in: bundleIds.map((id) => new ObjectId(id)) } })
+     .toArray();
+   const bundleTitleById = new Map(bundles.map((b) => [String(b._id), b.title as string]));
++  const examOf = (v: unknown) => {
++    const t = String(v ?? "").toLowerCase();
++    return t.includes("jee") ? "jee" : t.includes("cuet") ? "cuet" : t.includes("ipmat") ? "ipmat" : "neet";
++  };
++  const bundleExamById = new Map(bundles.map((b) => [String(b._id), examOf(b.exam)]));
+ 
+   const attempts = await db
+     .collection("testAttempts")
+@@ -323,7 +330,9 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
+     };
+     entry.testIds.add(a.testId as string);
+     entry.attemptCount += 1;
+-    const percent = a.totalMarks > 0 ? (a.score / a.totalMarks) * 100 : 0;
++    // NEET/JEE tests have negative marking, so score/total can dip below zero. Floor it for display, BEFORE
++    // averaging, so the average, the best and the per-test bars always agree (see lib/practice-stats.ts).
++    const percent = testScorePercent(Number(a.score), Number(a.totalMarks));
+     entry.totalPercent += percent;
+     entry.bestPercent = Math.max(entry.bestPercent, percent);
+     byBundleId.set(bundleId, entry);
+@@ -335,9 +344,13 @@ export async function loadMyBatchPerformance(db: Db, uid: string) {
+       return {
+         bundleId,
+         bundleTitle: bundleTitleById.get(bundleId) ?? "Bundle",
++        // Old bundles have no exam field; the rest of the app treats those as NEET.
++        exam: bundleExamById.get(bundleId) ?? "neet",
+         testsAttempted: stats?.testIds.size ?? 0,
+         totalAttempts: stats?.attemptCount ?? 0,
+         averagePercent: stats ? Math.round(stats.totalPercent / stats.attemptCount) : 0,
++        // Unrounded sum so the dashboard can average across bundles without compounding rounding.
++        percentSum: stats ? Math.round(stats.totalPercent * 100) / 100 : 0,
+         bestPercent: stats ? Math.round(stats.bestPercent) : 0,
+       };
+     }),
+diff --git a/src/lib/posthog-admin-core.ts b/src/lib/posthog-admin-core.ts
+index d38aa0c..c719c15 100644
+--- a/src/lib/posthog-admin-core.ts
++++ b/src/lib/posthog-admin-core.ts
+@@ -13,6 +13,16 @@ export type HogConfig = { key: string; projectId: string; appHost: string; embed
+ /** The events this app sends (see the callers of track() in the app). Order doesn't matter. */
+ export const TRACKED_EVENTS = [
+   "login_completed",
++  "signup_completed",
++  // Practice. Ordinary PYQ practice and timed drills share the practice_* names and are told apart by the
++  // `practice_type` property ("pyq" | "timed_drill"). drill_started / drill_submitted are kept for older insights.
++  "practice_started",
++  "question_answered",
++  "practice_completed",
++  "daily_question_completed",
++  "mistake_revision_started",
++  "mistake_revision_completed",
++  "mentor_profile_viewed",
+   "drill_started",
+   "drill_submitted",
+   "test_submitted",
+@@ -314,7 +324,9 @@ export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | nul
+ 
+ // ─── Funnels and plain-language takeaways ───────────────────────────────────────────────────────────
+ export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
+-  { title: "Practice", steps: [{ event: "login_completed", label: "Signed in or signed up" }, { event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
++  { title: "PYQ practice", steps: [{ event: "practice_started", label: "Started practising" }, { event: "question_answered", label: "Answered a question" }, { event: "practice_completed", label: "Finished a session" }] },
++  { title: "Mistake revision", steps: [{ event: "mistake_revision_started", label: "Started revising" }, { event: "mistake_revision_completed", label: "Finished revising" }] },
++  { title: "Timed drills", steps: [{ event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
+   { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
+   { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
+ ];
+diff --git a/src/lib/practice-events.ts b/src/lib/practice-events.ts
+new file mode 100644
+index 0000000..66a66f0
+--- /dev/null
++++ b/src/lib/practice-events.ts
+@@ -0,0 +1,69 @@
++// What the practice analytics events look like. Pure (no PostHog, no DOM) so the rules are testable.
++//
++// Privacy rules, enforced here in one place:
++//   - never the answer a student chose or typed (only whether it was right)
++//   - never an email, name, phone number or city
++//   - ids are internal question / mentor ids, which identify content, not a person
++//
++// Ordinary PYQ practice and timed drills are told apart by `practice_type`:
++//   "pyq"         chapter practice, today's PYQ, revision, mistakes, bookmarks, weak-topic runs
++//   "timed_drill" the 20-question timed drill
++export type PracticeType = "pyq" | "timed_drill";
++export type PracticeMode = "chapter" | "daily" | "revision" | "mistakes" | "bookmarks" | "weak_topics" | "timed_drill";
++
++type Session = "daily" | "due" | "wrong" | "bookmarked" | undefined;
++
++export function practiceModeFor(opts: { session?: Session; weakAttemptId?: string | null }): PracticeMode {
++  if (opts.session === "daily") return "daily";
++  if (opts.session === "due") return "revision";
++  if (opts.session === "wrong") return "mistakes";
++  if (opts.session === "bookmarked") return "bookmarks";
++  if (opts.weakAttemptId) return "weak_topics";
++  return "chapter";
++}
++
++/** The two modes that are "revising past mistakes" (mistake_revision_* events). */
++export const isMistakeRevision = (mode: PracticeMode) => mode === "revision" || mode === "mistakes";
++
++export type EventProps = Record<string, string | number | boolean | null | undefined>;
++
++export type PracticeContext = {
++  mode: PracticeMode;
++  exam?: string | null;
++  subject?: string | null;
++  chapter?: string | null;
++  guest?: boolean;
++  /** "first_five" when started from the new-student button on the dashboard. */
++  source?: string | null;
++};
++
++const cap = (v: string | null | undefined, n = 80) => (v ? String(v).slice(0, n) : undefined);
++
++export function practiceProps(ctx: PracticeContext): EventProps {
++  return {
++    practice_type: ctx.mode === "timed_drill" ? "timed_drill" : "pyq",
++    mode: ctx.mode,
++    exam: cap(ctx.exam) ?? null,
++    subject: cap(ctx.subject) ?? null,
++    chapter: cap(ctx.chapter) ?? null,
++    guest: ctx.guest === true,
++    source: cap(ctx.source) ?? null,
++  };
++}
++
++export function answeredProps(ctx: PracticeContext, a: { questionId: string; questionType?: string; isCorrect: boolean }): EventProps {
++  return { ...practiceProps(ctx), question_id: a.questionId, question_type: a.questionType ?? null, is_correct: a.isCorrect };
++}
++
++export type SessionCounts = { answered: number; correct: number; wrong: number; peeked: number };
++
++export function completedProps(ctx: PracticeContext, c: SessionCounts): EventProps {
++  return {
++    ...practiceProps(ctx),
++    answered: c.answered,
++    correct: c.correct,
++    wrong: c.wrong,
++    peeked: c.peeked,
++    accuracy: c.answered > 0 ? Math.round((c.correct / c.answered) * 100) : null,
++  };
++}
+diff --git a/src/lib/practice-stats.ts b/src/lib/practice-stats.ts
+new file mode 100644
+index 0000000..6e77b97
+--- /dev/null
++++ b/src/lib/practice-stats.ts
+@@ -0,0 +1,147 @@
++// Pure helpers (client + server safe, no I/O, relative imports only so they can be unit-tested
++// with plain Node) for the dashboard's practice numbers.
++//
++// ONE definition of every number, used by BOTH the hero and the performance card, so the dashboard
++// can never show two different accuracies:
++//   solved   = distinct questions with at least one real answer (revealing a solution is not solving)
++//   correct  = of those, how many were right the last time they were answered
++//   accuracy = correct / solved  (null, never 0%, until something has been solved)
++//   week     = answers given in the last 7 IST days (repeat attempts on revision count)
++//   days     = distinct IST days with at least one real answer
++//   due      = mistakes whose revision date has arrived (the same count the revision button shows)
++
++export type PracticeExam = "neet" | "jee" | "cuet" | "ipmat";
++
++export type ExamStats = {
++  solved: number;
++  correct: number;
++  /** Whole percent, 0..100, or null when nothing has been solved yet. */
++  accuracy: number | null;
++  weekAnswered: number;
++  distinctDays: number;
++  due: number;
++};
++
++export type LastAttempt = {
++  subject: string;
++  /** Empty when the question has no chapter tag. */
++  chapter: string;
++  exam: string | null;
++  at: string;
++};
++
++export type PracticeStats = {
++  /** Distinct questions answered across ALL exams. 0 means "never started practising". */
++  questionsAnswered: number;
++  overall: ExamStats;
++  byExam: Partial<Record<PracticeExam, ExamStats>>;
++  lastAttempt: LastAttempt | null;
++  /** True when the append-only event log has nothing for this student (they practised before it existed), so week/day figures are estimates. */
++  approximate: boolean;
++};
++
++export const EMPTY_EXAM_STATS: ExamStats = { solved: 0, correct: 0, accuracy: null, weekAnswered: 0, distinctDays: 0, due: 0 };
++
++export const EMPTY_PRACTICE_STATS: PracticeStats = {
++  questionsAnswered: 0,
++  overall: EMPTY_EXAM_STATS,
++  byExam: {},
++  lastAttempt: null,
++  approximate: false,
++};
++
++/** Whole-number percentage clamped to 0..100. Anything non-finite (NaN, Infinity) becomes 0. */
++export function clampPercent(n: number): number {
++  if (!Number.isFinite(n)) return 0;
++  return Math.max(0, Math.min(100, Math.round(n)));
++}
++
++/** correct / total as a whole percent, or null when there is nothing to divide by. Correct can never exceed total. */
++export function accuracyPercent(correct: number, total: number): number | null {
++  if (!Number.isFinite(total) || total <= 0) return null;
++  return clampPercent((Math.min(Math.max(correct, 0), total) / total) * 100);
++}
++
++export function buildExamStats(raw: { solved: number; correct: number; weekAnswered: number; distinctDays: number; due: number }): ExamStats {
++  const solved = Math.max(0, Math.floor(raw.solved));
++  const correct = Math.min(solved, Math.max(0, Math.floor(raw.correct)));
++  return {
++    solved,
++    correct,
++    accuracy: accuracyPercent(correct, solved),
++    weekAnswered: Math.max(0, Math.floor(raw.weekAnswered)),
++    distinctDays: Math.max(0, Math.floor(raw.distinctDays)),
++    due: Math.max(0, Math.floor(raw.due)),
++  };
++}
++
++const norm = (v: unknown): PracticeExam | null => {
++  const t = String(v ?? "").toLowerCase();
++  return (["neet", "jee", "cuet", "ipmat"] as const).find((k) => t.includes(k)) ?? null;
++};
++
++/** Which exam tab to open first: the exam they have practised most, else their target exam, else NEET. */
++export function defaultExamTab(stats: PracticeStats, targetExam: string | null | undefined): "neet" | "jee" {
++  const neet = stats.byExam.neet?.solved ?? 0;
++  const jee = stats.byExam.jee?.solved ?? 0;
++  if (neet !== jee) return jee > neet ? "jee" : "neet";
++  return norm(targetExam) === "jee" ? "jee" : "neet";
++}
++
++// ─── Mock-test (test series) scores ────────────────────────────────────────
++/**
++ * A test score as a percentage for DISPLAY. NEET/JEE have negative marking, so score/total can be below zero
++ * (e.g. -12 of 720 = -1.7%). A negative "average score" reads as a bug to a student, so it is floored at 0.
++ * Used for every attempt BEFORE averaging so the average, the best and the per-test bars always agree.
++ */
++export function testScorePercent(score: number, totalMarks: number): number {
++  if (!Number.isFinite(score) || !Number.isFinite(totalMarks) || totalMarks <= 0) return 0;
++  return Math.max(0, Math.min(100, (score / totalMarks) * 100));
++}
++
++export type BatchPerf = {
++  bundleId: string;
++  bundleTitle: string;
++  exam?: string;
++  testsAttempted: number;
++  totalAttempts: number;
++  averagePercent: number;
++  bestPercent: number;
++  /** Sum of the (clamped) per-attempt percentages. Lets the dashboard average across bundles without compounding rounding. */
++  percentSum?: number;
++};
++
++/** Mock-test summary across bundles, optionally for one exam. Returns null when there are no scored attempts. */
++export function summariseTests(batches: BatchPerf[] | null | undefined, exam?: "neet" | "jee"): { average: number; best: number; tests: number; attempts: number } | null {
++  const rows = (batches ?? []).filter((b) => b.totalAttempts > 0 && (!exam || (norm(b.exam) ?? "neet") === exam));
++  const attempts = rows.reduce((n, b) => n + b.totalAttempts, 0);
++  if (attempts === 0) return null;
++  const sum = rows.reduce((s, b) => s + (b.percentSum ?? b.averagePercent * b.totalAttempts), 0);
++  return {
++    average: clampPercent(sum / attempts),
++    best: clampPercent(Math.max(...rows.map((b) => b.bestPercent))),
++    tests: rows.reduce((n, b) => n + b.testsAttempted, 0),
++    attempts,
++  };
++}
++
++// ─── Where to send a brand-new / returning student ─────────────────────────
++type TreeLike = { subjects: { subject: string; count: number; chapters: { chapter: string; count: number }[] }[] };
++export const UNTAGGED = "Not yet tagged";
++
++/** The chapter to open for "Start your first 5": the biggest properly-tagged chapter of the first subject that has any. */
++export function pickFirstChapter(tree: TreeLike | null | undefined): { subject: string; chapter: string } | null {
++  if (!tree) return null;
++  for (const s of tree.subjects) {
++    const tagged = s.chapters.filter((c) => c.count > 0 && c.chapter !== UNTAGGED);
++    if (tagged.length === 0) continue;
++    const best = tagged.reduce((a, b) => (b.count > a.count ? b : a));
++    return { subject: s.subject, chapter: best.chapter };
++  }
++  return null;
++}
++
++export function examLabel(exam: string | null | undefined): string {
++  const k = norm(exam);
++  return k ? { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" }[k] : "NEET";
++}
+diff --git a/src/lib/prep-profile.ts b/src/lib/prep-profile.ts
+new file mode 100644
+index 0000000..7f02cd7
+--- /dev/null
++++ b/src/lib/prep-profile.ts
+@@ -0,0 +1,26 @@
++// Pure helpers for the dashboard's "finish your prep details" card. Reuses what onboarding already saved
++// (targetExam, track) and only asks for what is genuinely missing.
++
++export type PrepProfile = { targetExam?: string | null; track?: string | null; targetYear?: number | null };
++export type MissingPrepField = "exam" | "track" | "year";
++
++export const TRACKS = ["11th", "12th", "Dropper"] as const;
++
++export function missingPrepFields(p: PrepProfile | null | undefined): MissingPrepField[] {
++  if (!p) return [];
++  const out: MissingPrepField[] = [];
++  const exam = String(p.targetExam ?? "").toLowerCase();
++  if (!exam.includes("neet") && !exam.includes("jee") && !exam.includes("cuet") && !exam.includes("ipmat")) out.push("exam");
++  if (!TRACKS.includes(String(p.track ?? "") as (typeof TRACKS)[number])) out.push("track");
++  if (!(typeof p.targetYear === "number" && Number.isInteger(p.targetYear) && p.targetYear > 2000)) out.push("year");
++  return out;
++}
++
++/**
++ * Exam years to offer. NEET/JEE are held in the first half of the year, so from June onward this year's sitting has
++ * passed and the first option is next year. Four options, always >= the current year (the server enforces the same floor).
++ */
++export function targetYearOptions(now: Date = new Date()): number[] {
++  const first = now.getMonth() >= 5 ? now.getFullYear() + 1 : now.getFullYear();
++  return [first, first + 1, first + 2, first + 3];
++}
+diff --git a/src/routes/auth.tsx b/src/routes/auth.tsx
+index d38a364..81ac475 100644
+--- a/src/routes/auth.tsx
++++ b/src/routes/auth.tsx
+@@ -10,7 +10,7 @@ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/se
+ import { recordSession } from "@/server-functions/sessions";
+ import { trackEvent } from "@/lib/funnel-events";
+ import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
+-import { track } from "@/lib/analytics";
++import { track, trackOnce } from "@/lib/analytics";
+ 
+ export const Route = createFileRoute("/auth")({
+   validateSearch: (search: Record<string, unknown>): { tab?: "signin" | "signup"; redirect?: string } => ({
+@@ -64,7 +64,10 @@ type OnboardingProfile = {
+ async function completeLogin(user: FirebaseUser, provider: "password" | "google.com") {
+   const token = await user.getIdToken();
+ 
+-  await ensureUserRecord({ data: { token, provider } });
++  const record = await ensureUserRecord({ data: { token, provider } });
++  // `isNew` is true for exactly one call per account: the one that created the profile. That makes signup_completed
++  // once-per-student by construction (no browser flags to lose), and it works for Google sign-up and email sign-up alike.
++  if (record.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider }, "session");
+   await recordSession({
+     data: { token, deviceId: getDeviceId(), deviceLabel: getDeviceLabel() },
+   });
+@@ -584,7 +587,9 @@ function SignUpForm({
+       const user = auth.currentUser!;
+       const token = await user.getIdToken();
+ 
+-      await ensureUserRecord({ data: { token, provider: "password" } });
++      // Email sign-up creates the profile here (before the email is verified), so this is where isNew is true.
++      const created = await ensureUserRecord({ data: { token, provider: "password" } });
++      if (created.isNew) trackOnce(`signup:${user.uid}`, "signup_completed", { provider: "password" }, "session");
+       await sendEmailVerificationOtp({ data: { token } });
+ 
+       onNeedsVerification(email);
+diff --git a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
+index 0e8613e..09075c7 100644
+--- a/src/routes/dashboard.tsx
++++ b/src/routes/dashboard.tsx
+@@ -1,4 +1,8 @@
+-import { TodayCard, type UpNextInfo } from "@/components/today-card";
++import { MentorshipCompactCard, type UpNextInfo } from "@/components/today-card";
++import { PracticePerformanceCard } from "@/components/dashboard/practice-performance-card";
++import { PrepSetupCard } from "@/components/dashboard/prep-setup-card";
++import { usePracticeStats } from "@/components/dashboard/use-practice-stats";
++import type { PracticeStats } from "@/lib/practice-stats";
+ import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
+ import { PyqHero } from "@/components/dashboard/pyq-hero";
+ import { StreakPopup } from "@/components/dashboard/streak-popup";
+@@ -51,6 +55,7 @@ type StudentProfile = {
+   city: string;
+   targetExam: string;
+   track: Track;
++  targetYear: number | null;
+ };
+ 
+ type Bundle = {
+@@ -198,7 +203,7 @@ type BookingRow = {
+   mentor_session_offerings?: { title: string };
+ };
+ 
+-type BatchPerf = { bundleId: string; bundleTitle: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number };
++type BatchPerf = { bundleId: string; bundleTitle: string; exam?: string; testsAttempted: number; totalAttempts: number; averagePercent: number; bestPercent: number; percentSum?: number };
+ 
+ // Slots are India wall-clock; parse them as such, not in the browser's timezone.
+ const slotDate = (r: BookingRow) => slotStart(r.session_date, r.start_time);
+@@ -230,6 +235,8 @@ function DashboardPage() {
+   const [view, setView] = useState<View>("home");
+   const [bookings, setBookings] = useState<BookingRow[] | null>(null);
+   const [perf, setPerf] = useState<BatchPerf[] | null>(null);
++  // The practice numbers, fetched once and shared by the hero and the performance card so they always agree.
++  const { stats: practiceStats, failed: statsFailed, reload: reloadStats } = usePracticeStats();
+ 
+   // One request for the whole dashboard (profile, catalog, purchases, sessions,
+   // bookings, performance) — see server-functions/dashboard.ts. If that request
+@@ -281,6 +288,7 @@ function DashboardPage() {
+             city: p.city ?? "",
+             targetExam: p.targetExam || "",
+             track: (p.track as Track) || "",
++            targetYear: typeof p.targetYear === "number" ? p.targetYear : null,
+           });
+         }
+         if (bundlesRes) setBundles(bundlesRes.bundles as Bundle[]);
+@@ -426,10 +434,6 @@ function DashboardPage() {
+   const ownedTests = (soldTests ?? []).filter((t) => t.purchased);
+   const now = new Date();
+   const upcoming = (bookings ?? []).filter((r) => r.status === "upcoming" && slotDate(r) >= now).sort((a, b) => slotDate(a).getTime() - slotDate(b).getTime());
+-  const attempts = perf?.reduce((n, b) => n + b.totalAttempts, 0) ?? 0;
+-  const avg = perf && attempts > 0 ? Math.round(perf.reduce((s, b) => s + b.averagePercent * b.totalAttempts, 0) / attempts) : null;
+-  const best = perf && attempts > 0 ? Math.max(...perf.map((b) => b.bestPercent)) : null;
+-  const testsDone = perf?.reduce((n, b) => n + b.testsAttempted, 0) ?? 0;
+   const hour = now.getHours();
+   const greet = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+ 
+@@ -449,6 +453,8 @@ function DashboardPage() {
+       <AppHeader user={user} displayName={profile?.fullName} />
+       <StreakPopup />
+       <CompleteProfilePopup
++        // Never interrupt a student who hasn't answered a single question yet: practice first, paperwork later.
++        hold={!statsFailed && (practiceStats === null || practiceStats.questionsAnswered === 0)}
+         profile={profile ? { fullName: profile.fullName, mobile: profile.mobile, city: profile.city } : null}
+         onSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } : prev))}
+       />
+@@ -494,7 +500,9 @@ function DashboardPage() {
+               <SearchResults query={query} matchedMentors={matchedMentors} matchedListings={matchedListings} matchedTests={matchedTests} loading={mentors === null || allListings === null || soldTests === null} />
+             ) : view === "home" ? (
+               <Overview
+-                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf} avg={avg} best={best} testsDone={testsDone} attempts={attempts}
++                upcoming={upcoming} bookingsLoaded={bookings !== null} perf={perf}
++                stats={practiceStats} statsFailed={statsFailed} reloadStats={reloadStats}
++                profile={profile} onProfileSaved={(next) => setProfile((prev) => (prev ? { ...prev, ...next } as StudentProfile : prev))}
+                 ownedListings={ownedListings} ownedTests={ownedTests} freeSlots={featuredFreeSlots}
+                 recommended={(track ? recommended : (allListings ?? []).filter((l) => l.kind === "Test Series")).slice(0, 3)}
+                 go={setView} getToken={() => user.getIdToken()} onBooked={loadSessions}
+@@ -581,23 +589,28 @@ function Panel({ title, action, children, className = "" }: { title: string; act
+ 
+ const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
+ 
+-function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attempts, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
+-  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null; avg: number | null; best: number | null; testsDone: number; attempts: number;
++function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
++  upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
++  stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void;
++  profile: StudentProfile | null; onProfileSaved: (next: Partial<StudentProfile>) => void;
+   ownedListings: Listing[]; ownedTests: SoldTestEntry[]; freeSlots: { offering: PublicMentorOffering; slot: OpenSlot }[]; recommended: Listing[];
+   go: (v: View) => void; getToken: () => Promise<string>; onBooked: () => void;
+ }) {
+   const navigate = useNavigate();
+   const next = upcoming[0];
+   const continueCount = ownedListings.length + ownedTests.length;
++  // A student who has never answered a question gets a short page: one clear action, then the rest further down.
++  // (Until the numbers load we assume "returning" so nothing is hidden and then pops back in.)
++  const isNew = stats !== null && stats.questionsAnswered === 0;
++  // PYQ practice isn't a tile any more: it is the hero above and the first item in the sidebar / bottom bar.
+   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
+-    { icon: ClipboardList, label: "PYQ practice", sub: "Chapter-wise, with solutions", to: "/pyq", highlight: true },
+     { icon: Trophy, label: "Weekly leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
+     { icon: Play, label: "Try the CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
+     { icon: Users2, label: "Find a mentor", sub: "Who cleared your exam", onClick: () => go("mentors") },
+     { icon: Compass, label: "Explore courses", sub: "Series and mentorships", onClick: () => go("explore") },
+     { icon: LifeBuoy, label: "Get support", sub: "Raise a ticket", to: "/tickets" },
+   ];
+-  // What the merged Today card shows in its "Up next" row.
++  // What the mentorship card shows.
+   const upNext: UpNextInfo = next
+     ? {
+         state: "session",
+@@ -617,73 +630,57 @@ function Overview({ upcoming, bookingsLoaded, perf, avg, best, testsDone, attemp
+ 
+   return (
+     <div className="space-y-4">
+-      {/* PYQ practice comes first: streak, milestones and a tile per subject. */}
+-      <PyqHero />
+-
+-      {/* The team's weekly shout-out (renders nothing until one is published). */}
+-      <StudentOfTheWeekBanner />
+-
+-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+-        {/* The next mentor session (the practice part lives in the hero above). */}
+-        <TodayCard className="lg:col-span-3" upNext={upNext} upNextOnly onBrowseSessions={() => go("sessions")} />
+-
+-        {/* Performance */}
+-        <Panel title="Your performance" className="lg:col-span-2">
+-          {perf === null ? (
+-            <div className="h-40 animate-pulse rounded-2xl bg-secondary" />
+-          ) : avg === null ? (
+-            <div>
+-              <p className="text-sm text-muted-foreground">No scored attempts in your courses yet. Take a test to see your average and where marks leak.</p>
+-              <Link to="/simulator/live" className="clay-btn mt-4 inline-flex min-h-11 items-center gap-2 px-5 text-sm">Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
+-            </div>
+-          ) : (
+-            <>
+-              <div className="flex items-end gap-6">
+-                <div><p className="font-display text-5xl font-extrabold leading-none tracking-tight">{avg}<span className="text-2xl font-semibold text-muted-foreground">%</span></p><p className="mt-1 text-xs font-semibold text-muted-foreground">average score</p></div>
+-                <div className="pb-0.5 text-xs text-muted-foreground"><p><b className="text-foreground">{best}%</b> best</p><p><b className="text-foreground">{testsDone}</b> tests · <b className="text-foreground">{attempts}</b> attempts</p></div>
+-              </div>
+-              <ul className="mt-5 space-y-3">
+-                {perf.filter((b) => b.totalAttempts > 0).slice(0, 4).map((b) => (
+-                  <li key={b.bundleId}>
+-                    <div className="mb-1 flex justify-between gap-3 text-xs font-semibold"><span className="truncate">{b.bundleTitle}</span><span className="shrink-0 text-muted-foreground">{b.averagePercent}%</span></div>
+-                    <div className="h-1.5 overflow-hidden rounded-full bg-secondary"><motion.div className="h-full rounded-full bg-primary" initial={{ width: 0 }} animate={{ width: `${b.averagePercent}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} /></div>
+-                  </li>
+-                ))}
+-              </ul>
+-            </>
+-          )}
+-        </Panel>
+-      </div>
++      {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
++      <PyqHero stats={stats} statsFailed={statsFailed} />
++
++      {/* 2. Exam, class and target year: only what's missing, one tap each, never blocks practice. A new student is asked for the year after their first question. */}
++      <PrepSetupCard
++        profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
++        deferYear={isNew}
++        onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
++      />
+ 
+-      {/* Quick actions */}
+-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+-        {actions.map((a, i) => {
+-          const inner = (<><div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${a.highlight ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}{a.highlight && <span className="ml-1.5 rounded-full bg-amber-300 px-1.5 py-0.5 align-middle text-[9px] font-extrabold uppercase text-amber-950">Free</span>}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
+-          const base = a.highlight ? `${tile} border-primary/60 bg-primary/5` : tile;
+-          const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${base} col-span-2 lg:col-span-1` : base;
+-          return a.to ? <Link key={a.label} to={a.to as "/pyq"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
+-        })}
+-      </div>
++      {/* 3. One performance card: practice numbers per exam + mock-test scores, from one source. */}
++      <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
+ 
+-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+-        <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
+-          {continueCount === 0 ? (
+-            <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
+-          ) : (
+-            <div className="-mx-2">
+-              {ownedListings.slice(0, 4).map((l) => (
+-                <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
+-                  icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
+-                  title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
+-              ))}
+-              {ownedTests.slice(0, 3).map((t) => (
+-                <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
+-              ))}
+-            </div>
+-          )}
+-        </Panel>
++      {/* The team's weekly shout-out (renders nothing until one is published). Not for a student who hasn't started. */}
++      {!isNew && <StudentOfTheWeekBanner />}
++
++      {/* Quick actions: for students who have started. A new student finds all of these in the menu. */}
++      {!isNew && (
++        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
++          {actions.map((a, i) => {
++            const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
++            const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 sm:col-span-1` : tile;
++            return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
++          })}
 +        </div>
 +      )}
 +
-+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-+        <Kpi label="Visitors" hint="Different browsers that opened any page." value={t ? n(t.visitors) : "–"} change={t ? delta(t.visitors, t.prevVisitors) : null} sub={failed("totals")} bad={!!failed("totals")} />
-+        <Kpi label="Pageviews" hint="Pages opened in total, repeat visits included." value={t ? n(t.pageviews) : "–"} change={t ? delta(t.pageviews, t.prevPageviews) : null} />
-+        <Kpi label="New accounts" hint="People who created an account." value={s.signups ? n(s.signups.now) : "–"} change={s.signups ? delta(s.signups.now, s.signups.prev) : null} sub={failed("signups")} bad={!!failed("signups")} />
-+        <Kpi label="Drills started" hint="Timed practice drills begun." value={drills ? n(drills.total) : "–"} sub={drills ? `${n(drills.people)} people` : undefined} change={drills ? delta(drills.total, drills.prevTotal) : null} />
-+        <Kpi label="Sessions booked" hint="Mentor sessions booked (free and paid)." value={bookings ? n(bookings.total) : "–"} sub={bookings && bookings.value > 0 ? `${rupees(bookings.value)} booking value` : undefined} change={bookings ? delta(bookings.total, bookings.prevTotal) : null} />
-+        <Kpi label="Pro purchases" hint="Edurack Pro plans bought." value={pro ? n(pro.total) : "–"} sub={pro && pro.value > 0 ? rupees(pro.value) : undefined} change={pro ? delta(pro.total, pro.prevTotal) : null} />
-+        <Kpi label="Errors" hint="Things that broke for a visitor." value={s.errors ? n(s.errors.now) : "–"} change={s.errors ? delta(s.errors.now, s.errors.prev, false) : null} bad={!!s.errors?.now} />
-       </div>
- 
--      <Card title="Visitors per day" failed={failed("daily")}>
--        <div className="flex h-32 items-end gap-[3px]">
--          {(s.daily ?? []).map((d) => (
--            <div key={d.day} title={`${short(d.day)}: ${d.visitors} visitors, ${d.pageviews} pageviews`} className="flex h-full flex-1 flex-col justify-end">
--              <div className="w-full rounded-t-md bg-primary" style={{ height: `${Math.max(d.visitors ? 4 : 1.5, (d.visitors / maxDaily) * 100)}%`, opacity: d.visitors ? 1 : 0.25 }} />
--            </div>
--          ))}
--        </div>
--        <div className="mt-1.5 flex justify-between text-[10px] text-foreground/40">
--          <span>{s.daily?.[0] ? short(s.daily[0].day) : ""}</span>
--          <span>{s.daily?.length ? short(s.daily[s.daily.length - 1].day) : ""}</span>
--        </div>
--      </Card>
-+      <div className="grid gap-4 lg:grid-cols-2">
-+        <Card title="Visitors per day" hint="Hover a bar for the exact number." failed={failed("daily")}>
-+          {s.daily && <DayBars data={s.daily} pick={(d) => d.visitors} unit="visitors" />}
-+        </Card>
-+        <Card title="New accounts per day" hint="People who signed up that day." failed={failed("daily")}>
-+          {s.daily && <DayBars data={s.daily} pick={(d) => d.signups} unit="new accounts" />}
-+        </Card>
-+      </div>
- 
-       <div className="grid gap-4 lg:grid-cols-3">
-         {FUNNELS.map((f) => {
-@@ -184,15 +282,21 @@ export function ProductAnalyticsView({
-               <ul className="space-y-3">
-                 {f.steps.map((st, i) => {
-                   const people = ev(st.event)?.people ?? 0;
-+                  const before = i > 0 ? (ev(f.steps[i - 1].event)?.people ?? 0) : 0;
-+                  const lost = i > 0 && before > 0 ? Math.max(0, Math.round((1 - people / before) * 100)) : null;
-                   return (
-                     <li key={st.event}>
-                       <div className="flex items-center justify-between gap-2 text-xs">
-                         <span className="text-foreground">{st.label}</span>
--                        <span className="font-semibold tabular-nums text-foreground">{n(people)}{i > 0 && <span className="ml-1 font-normal text-foreground/45">({pct(people, first)})</span>}</span>
-+                        <span className="font-semibold tabular-nums text-foreground">
-+                          {n(people)}
-+                          {i > 0 && <span className="ml-1 font-normal text-foreground/45">({pct(people, first)})</span>}
-+                        </span>
-                       </div>
-                       <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary">
-                         <div className="h-full rounded-full bg-primary" style={{ width: `${first > 0 ? Math.max(people ? 3 : 0, (people / first) * 100) : 0}%` }} />
-                       </div>
-+                      {lost !== null && lost > 0 && <p className="mt-0.5 text-[11px] text-red-600">{lost}% dropped off before this step</p>}
-                     </li>
-                   );
-                 })}
-@@ -214,6 +318,87 @@ export function ProductAnalyticsView({
-         </Card>
-       </div>
- 
-+      <div className="grid gap-4 lg:grid-cols-2">
-+        <Card title="When people visit" hint="Pageviews by hour, India time" failed={dfailed("hours")} loading={detailsBusy && !hours}>
-+          {hours && (
-+            <>
-+              <div className="flex h-24 items-end gap-[2px]">
-+                {hours.map((v, h) => (
-+                  <div key={h} title={`${hour12(h)}: ${v} pageviews`} className="flex h-full flex-1 flex-col justify-end">
-+                    <div className={`w-full rounded-t-sm ${h === peak ? "bg-primary" : "bg-primary/45"}`} style={{ height: `${Math.max(v ? 4 : 1.5, (v / maxHour) * 100)}%` }} />
-+                  </div>
++      {/* 4. Mentorship, below the practice content, as a compact card (the marketplace itself is unchanged: Sessions / Mentors / Explore). */}
++      <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
++
++      <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-5"}`}>
++        {!isNew && (
++          <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
++            {continueCount === 0 ? (
++              <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
++            ) : (
++              <div className="-mx-2">
++                {ownedListings.slice(0, 4).map((l) => (
++                  <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
++                    icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
++                    title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
++                ))}
++                {ownedTests.slice(0, 3).map((t) => (
++                  <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
 +                ))}
 +              </div>
-+              <div className="mt-1.5 flex justify-between text-[10px] text-foreground/40">
-+                <span>12 AM</span>
-+                <span>6 AM</span>
-+                <span>12 PM</span>
-+                <span>6 PM</span>
-+                <span>11 PM</span>
-+              </div>
-+              {peak !== null && <p className="mt-2 text-xs text-foreground/60">Busiest: {hour12(peak)}–{hour12((peak + 1) % 24)}</p>}
-+            </>
-+          )}
-+        </Card>
-+        <Card title="Where visitors are" hint="Visitors, by state" failed={dfailed("places")} loading={detailsBusy && !details?.places}>
-+          <Rows rows={(details?.places ?? []).map((p) => ({ label: p.label, n: p.visitors }))} />
-+        </Card>
-+      </div>
-+
-+      <div className="grid gap-4 lg:grid-cols-2">
-+        <Card title="What students practise" hint="Drills started, by exam and subject. Custom = built with the Pro drill builder." failed={dfailed("drills")} loading={detailsBusy && !details?.drills}>
-+          <Table
-+            head={["Exam · subject", "Started", "Custom"]}
-+            rows={(details?.drills ?? []).map((d) => [`${d.exam.toUpperCase()} · ${d.subject}`, n(d.started), d.custom ? `${n(d.custom)} (${pct(d.custom, d.started)})` : "0"])}
-+          />
-+        </Card>
-+        <Card title="Mentor sessions: views to bookings" hint="Which sessions people look at, start booking, and finish booking." failed={dfailed("sessions")} loading={detailsBusy && !details?.sessions}>
-+          <Table
-+            head={["Session", "Views", "Started", "Booked"]}
-+            rows={(details?.sessions ?? []).map((x) => [<span key={x.id} className="line-clamp-2">{x.title ?? `Session …${x.id.slice(-4)}`}</span>, n(x.views), n(x.started), `${n(x.booked)}${x.views > 0 ? ` (${pct(x.booked, x.views)})` : ""}`])}
-+          />
-+        </Card>
-+      </div>
-+
-+      <div className="grid gap-4 lg:grid-cols-2">
-+        <Card title="Edurack Pro plans" hint="Checkouts opened against purchases, per plan." failed={dfailed("plans")} loading={detailsBusy && !details?.plans}>
-+          <Table
-+            head={["Plan", "Opened checkout", "Bought", "Sales"]}
-+            rows={(details?.plans ?? []).map((p) => [p.name ?? `Plan …${p.id.slice(-4)}`, n(p.checkouts), n(p.purchases), p.value > 0 ? rupees(p.value) : "–"])}
-+          />
-+        </Card>
-+        <Card title="Page speed" hint="How fast pages feel for a typical visitor (Google's Core Web Vitals)." failed={dfailed("vitals")} loading={detailsBusy && !details?.vitals}>
-+          <Table
-+            head={["Device", "Visits measured", "Main content", "Tap response", "Layout shift"]}
-+            rows={(details?.vitals ?? []).map((v) => [v.device, n(v.samples), <Vital key="l" metric="lcp" value={v.lcp} />, <Vital key="i" metric="inp" value={v.inp} />, <Vital key="c" metric="cls" value={v.cls} />])}
-+          />
-+          <p className="mt-3 text-[11px] leading-snug text-foreground/45">Good is: main content under 2.5 s, tap response under 200 ms, layout shift under 0.1. Slower than that shows amber, then red.</p>
-+        </Card>
-+      </div>
-+
-+      <Card title="Most common errors" hint="What broke for visitors, most frequent first." failed={dfailed("errorList")} loading={detailsBusy && !details?.errorList}>
-+        {(details?.errorList ?? []).length === 0 ? (
-+          <p className="text-sm text-foreground/45">No errors recorded in this period.</p>
-+        ) : (
-+          <>
-+            <Table head={["Error", "Times"]} rows={(details?.errorList ?? []).map((e) => [<span key={e.label} className="break-words">{e.label}</span>, n(e.count)])} />
-+            <a href={`${s.appUrl}/error_tracking`} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-xs font-semibold text-primary hover:underline">Open Error tracking in PostHog ↗</a>
-+          </>
++            )}
++          </Panel>
 +        )}
-+      </Card>
-+
-+      <details className="clay px-5 py-4 text-sm text-foreground/75">
-+        <summary className="cursor-pointer font-display text-sm font-bold text-foreground">How to read this page</summary>
-+        <ul className="mt-3 list-disc space-y-1.5 pl-5">
-+          <li><b>Visitor</b> means one browser. Someone using a phone and a laptop counts twice, and clearing cookies counts again.</li>
-+          <li><b>Arrows</b> compare with the previous period of the same length. With very few people a percentage jumps around, so small numbers are shown as "was 3" instead.</li>
-+          <li><b>Funnels</b> count the people who did each step in the period, not strictly in order. They show where people fall away, not exact conversion rates.</li>
-+          <li><b>Booking value</b> is the listed price of booked sessions, not Edurack's commission. Pro sales use the plan price.</li>
-+          <li>Times are India time (IST). Numbers refresh at most every 15 minutes.</li>
-+          <li>Private pages (admin, mentor, promoter and intern dashboards, mentor onboarding) are never tracked, and screens are never recorded on sign-in, profile, purchases, booked sessions, tickets and application forms.</li>
-+        </ul>
-+      </details>
-+
-       {s.embedUrl && (
-         <div>
-           <h3 className="mb-2 font-display text-sm font-bold text-foreground">Your PostHog dashboard</h3>
-@@ -225,21 +410,49 @@ export function ProductAnalyticsView({
- }
  
- export function ProductAnalyticsModule({ adminUser }: { adminUser: AdminUser }) {
--  const [result, setResult] = useState<Result | null>(null);
-+  const [overview, setOverview] = useState<Overview | null>(null);
-+  const [details, setDetails] = useState<Details | null>(null);
-+  const [missing, setMissing] = useState<string[] | null>(null);
-   const [days, setDays] = useState<Days>(7);
-   const [busy, setBusy] = useState(false);
-+  const [detailsBusy, setDetailsBusy] = useState(false);
-+  const [detailsError, setDetailsError] = useState<string | null>(null);
-   const [error, setError] = useState<string | null>(null);
+-        <Panel title="Free sessions open" className="lg:col-span-2" action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
++        <Panel title="Free sessions open" className={isNew ? "" : "lg:col-span-2"} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
+           {freeSlots.length === 0 ? <p className="text-sm text-muted-foreground">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
+         </Panel>
+       </div>
+diff --git a/src/routes/mentor-profile.$mentorId.tsx b/src/routes/mentor-profile.$mentorId.tsx
+index 7d1b4d1..b72b496 100644
+--- a/src/routes/mentor-profile.$mentorId.tsx
++++ b/src/routes/mentor-profile.$mentorId.tsx
+@@ -1,6 +1,6 @@
+ import { createFileRoute, useNavigate, Link, notFound, isNotFound } from "@tanstack/react-router";
+ import { pageHead, noindexHead, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
+-import { useEffect, useState } from "react";
++import { useEffect, useRef, useState } from "react";
+ import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
+ import { UserX, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
+ import { useAuth } from "@/lib/auth-context";
+@@ -10,6 +10,7 @@ import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
+ import { listPublicMentorSessions } from "@/server-functions/public-sessions";
+ import { SessionCard } from "@/components/sessions/session-card";
+ import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
++import { track } from "@/lib/analytics";
  
-   const load = useCallback(
-     async (force: boolean) => {
-       setBusy(true);
-+      setDetailsBusy(true);
-       setError(null);
-+      setDetailsError(null);
-+      setMissing(null);
-+      let token: string;
-       try {
--        setResult(await getPostHogSnapshot({ data: { token: await adminUser.getIdToken(), days, force } }));
-+        token = await adminUser.getIdToken();
-       } catch (e) {
--        setError((e as Error).message || "Couldn't load analytics.");
-+        setError((e as Error).message || "Couldn't sign in to load analytics.");
-+        setBusy(false);
-+        setDetailsBusy(false);
-+        return;
-       }
--      setBusy(false);
-+      // Two calls side by side: the headline numbers appear first, the detail cards fill in as they arrive.
-+      const first = getPostHogSnapshot({ data: { token, days, force, section: "overview" } })
-+        .then((r) => {
-+          if (!r.configured) setMissing(r.missing);
-+          else if (r.section === "overview") setOverview(r.overview);
-+        })
-+        .catch((e) => setError((e as Error).message || "Couldn't load analytics."))
-+        .finally(() => setBusy(false));
-+      const second = getPostHogSnapshot({ data: { token, days, force, section: "details" } })
-+        .then((r) => {
-+          if (r.configured && r.section === "details") setDetails(r.details);
-+        })
-+        .catch((e) => {
-+          setDetails(null);
-+          setDetailsError((e as Error).message || "Couldn't load the detail cards.");
-+        })
-+        .finally(() => setDetailsBusy(false));
-+      await Promise.all([first, second]);
-     },
-     [adminUser, days],
-   );
-@@ -247,5 +460,5 @@ export function ProductAnalyticsModule({ adminUser }: { adminUser: AdminUser })
-     void load(false);
-   }, [load]);
+ export const Route = createFileRoute("/mentor-profile/$mentorId")({
+   // Runs on the server for the first request, so crawlers and link
+@@ -160,6 +161,8 @@ function MentorProfilePage() {
+   const [batches, setBatches] = useState<Batch[]>((initial?.batches as Batch[] | undefined) ?? []);
+   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
+   const [notFound, setNotFound] = useState(false);
++  // The fetch effect below re-runs when auth resolves, so the view is sent from a ref-guarded spot: once per mentor per visit.
++  const viewedMentor = useRef<string | null>(null);
  
--  return <ProductAnalyticsView result={result} days={days} onDays={setDays} onRefresh={() => void load(true)} busy={busy} error={error} />;
-+  return <ProductAnalyticsView overview={overview} details={details} missing={missing} days={days} onDays={setDays} onRefresh={() => void load(true)} busy={busy} detailsBusy={detailsBusy} detailsError={detailsError} error={error} />;
- }
-diff --git a/src/lib/posthog-admin-core.ts b/src/lib/posthog-admin-core.ts
-index 987549e..b813425 100644
---- a/src/lib/posthog-admin-core.ts
-+++ b/src/lib/posthog-admin-core.ts
-@@ -1,5 +1,5 @@
- // Reads Edurack's own numbers back out of PostHog for the admin "Analytics" tab, so nobody has to log in to
--// PostHog just to look at them. Pure logic (config, queries, shaping), so it can be tested without a server.
-+// PostHog just to look at them. Pure logic (config, queries, shaping, insights), so it can be tested without a server.
- //
- // Only aggregate counts leave PostHog: no person records, no emails, no replays.
- // The personal API key stays on the server; the browser only ever receives the shaped numbers.
-@@ -10,7 +10,7 @@ export const clampDays = (d: unknown): Days => (d === 30 ? 30 : 7);
- export type HogEnv = Partial<Record<"POSTHOG_PERSONAL_API_KEY" | "POSTHOG_PROJECT_ID" | "POSTHOG_APP_HOST" | "POSTHOG_EMBED_URL" | "VITE_PUBLIC_POSTHOG_HOST", string | undefined>>;
- export type HogConfig = { key: string; projectId: string; appHost: string; embedUrl: string | null };
- 
--/** The events this app sends (see lib/analytics.ts callers). Order doesn't matter. */
-+/** The events this app sends (see the callers of track() in the app). Order doesn't matter. */
- export const TRACKED_EVENTS = [
-   "login_completed",
-   "drill_started",
-@@ -60,115 +60,341 @@ export function resolveConfig(env: HogEnv): { ok: true; config: HogConfig } | {
-   return { ok: true, config: { key, projectId, appHost: host.host, embedUrl: EMBED_URL.test(embed) ? embed : null } };
- }
- 
--const since = (days: Days) => `timestamp >= now() - INTERVAL ${days} DAY`;
-+// ─── Queries ────────────────────────────────────────────────────────────────────────────────────────
-+// Every card has its own query, so one failing never blanks the page. "cur"/"prev" are this period and the
-+// equal-length period before it, which is how every number gets its "vs previous" comparison.
-+const win = (days: Days) => ({
-+  cur: `timestamp >= now() - INTERVAL ${days} DAY`,
-+  prev: `timestamp < now() - INTERVAL ${days} DAY`,
-+  both: `timestamp >= now() - INTERVAL ${days * 2} DAY`,
-+  since: `timestamp >= now() - INTERVAL ${days} DAY`,
-+});
- const eventList = TRACKED_EVENTS.map((e) => `'${e}'`).join(", ");
- 
--/** One independent query per card, so one failing never blanks the whole page. */
--export function buildQueries(days: Days) {
-+export function overviewQueries(days: Days) {
-+  const w = win(days);
-   return {
--    totals: `SELECT count(DISTINCT distinct_id) AS visitors, count() AS pageviews FROM events WHERE event = '$pageview' AND ${since(days)}`,
--    daily: `SELECT toString(toDate(timestamp)) AS day, count() AS pageviews, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${since(days)} GROUP BY day ORDER BY day`,
--    events: `SELECT event, count(DISTINCT distinct_id) AS people, count() AS total, sum(toFloat(properties.price)) AS value FROM events WHERE event IN (${eventList}) AND ${since(days)} GROUP BY event`,
--    pages: `SELECT properties.$pathname AS path, count() AS views FROM events WHERE event = '$pageview' AND ${since(days)} GROUP BY path ORDER BY views DESC LIMIT 10`,
--    sources: `SELECT if(properties.$referring_domain IS NULL OR properties.$referring_domain IN ('', '$direct'), 'Direct', properties.$referring_domain) AS source, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${since(days)} GROUP BY source ORDER BY visitors DESC LIMIT 8`,
--    devices: `SELECT ifNull(properties.$device_type, 'Unknown') AS device, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${since(days)} GROUP BY device ORDER BY visitors DESC`,
--    errors: `SELECT count() AS errors FROM events WHERE event = '$exception' AND ${since(days)}`,
-+    totals: `SELECT count(DISTINCT if(${w.cur}, distinct_id, NULL)) AS visitors, countIf(${w.cur}) AS pageviews, count(DISTINCT if(${w.prev}, distinct_id, NULL)) AS prev_visitors, countIf(${w.prev}) AS prev_pageviews FROM events WHERE event = '$pageview' AND ${w.both}`,
-+    daily: `SELECT toString(toDate(timestamp)) AS day, countIf(event = '$pageview') AS pageviews, count(DISTINCT if(event = '$pageview', distinct_id, NULL)) AS visitors, count(DISTINCT if(event = 'login_completed' AND toString(properties.needs_onboarding) = 'true', distinct_id, NULL)) AS signups FROM events WHERE event IN ('$pageview', 'login_completed') AND ${w.since} GROUP BY day ORDER BY day`,
-+    events: `SELECT event, count(DISTINCT if(${w.cur}, distinct_id, NULL)) AS people, countIf(${w.cur}) AS total, sum(if(${w.cur}, toFloat(properties.price), 0)) AS value, count(DISTINCT if(${w.prev}, distinct_id, NULL)) AS prev_people, countIf(${w.prev}) AS prev_total, sum(if(${w.prev}, toFloat(properties.price), 0)) AS prev_value FROM events WHERE event IN (${eventList}) AND ${w.both} GROUP BY event`,
-+    signups: `SELECT count(DISTINCT if(${w.cur}, distinct_id, NULL)) AS now_n, count(DISTINCT if(${w.prev}, distinct_id, NULL)) AS prev_n FROM events WHERE event = 'login_completed' AND toString(properties.needs_onboarding) = 'true' AND ${w.both}`,
-+    errors: `SELECT countIf(${w.cur}) AS now_n, countIf(${w.prev}) AS prev_n FROM events WHERE event = '$exception' AND ${w.both}`,
-+    pages: `SELECT properties.$pathname AS path, count() AS views FROM events WHERE event = '$pageview' AND ${w.since} GROUP BY path ORDER BY views DESC LIMIT 10`,
-+    sources: `SELECT if(properties.$referring_domain IS NULL OR properties.$referring_domain IN ('', '$direct'), 'Direct', properties.$referring_domain) AS source, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${w.since} GROUP BY source ORDER BY visitors DESC LIMIT 8`,
-+    devices: `SELECT ifNull(properties.$device_type, 'Unknown') AS device, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${w.since} GROUP BY device ORDER BY visitors DESC`,
-   } as const;
- }
--export type QueryName = keyof ReturnType<typeof buildQueries>;
--export const QUERY_COUNT = Object.keys(buildQueries(7)).length;
-+
-+export function detailQueries(days: Days) {
-+  const w = win(days);
-+  return {
-+    hours: `SELECT toHour(toTimeZone(timestamp, 'Asia/Kolkata')) AS hr, count() AS views FROM events WHERE event = '$pageview' AND ${w.since} GROUP BY hr ORDER BY hr`,
-+    places: `SELECT ifNull(properties.$geoip_subdivision_1_name, 'Unknown') AS state, ifNull(properties.$geoip_country_name, 'Unknown') AS country, count(DISTINCT distinct_id) AS visitors FROM events WHERE event = '$pageview' AND ${w.since} GROUP BY state, country ORDER BY visitors DESC LIMIT 8`,
-+    drills: `SELECT ifNull(properties.exam, 'unknown') AS exam, ifNull(properties.subject, 'Any subject') AS subject, count() AS started, countIf(toString(properties.custom) = 'true') AS custom FROM events WHERE event = 'drill_started' AND ${w.since} GROUP BY exam, subject ORDER BY started DESC LIMIT 8`,
-+    sessions: `SELECT properties.offering_id AS id, countIf(event = 'session_viewed') AS views, countIf(event = 'session_booking_started') AS started, countIf(event = 'session_booked') AS booked FROM events WHERE event IN ('session_viewed', 'session_booking_started', 'session_booked') AND ${w.since} GROUP BY id ORDER BY views DESC LIMIT 8`,
-+    plans: `SELECT properties.plan_id AS id, countIf(event = 'pro_checkout_started') AS checkouts, countIf(event = 'pro_purchased') AS purchases, sum(if(event = 'pro_purchased', toFloat(properties.price), 0)) AS value FROM events WHERE event IN ('pro_checkout_started', 'pro_purchased') AND ${w.since} GROUP BY id ORDER BY checkouts DESC LIMIT 6`,
-+    vitals: `SELECT ifNull(properties.$device_type, 'Unknown') AS device, count() AS samples, quantile(0.75)(toFloat(properties.$web_vitals_LCP_value)) AS lcp, quantile(0.75)(toFloat(properties.$web_vitals_INP_value)) AS inp, quantile(0.75)(toFloat(properties.$web_vitals_CLS_value)) AS cls FROM events WHERE event = '$web_vitals' AND ${w.since} GROUP BY device ORDER BY samples DESC`,
-+    errorList: `SELECT properties.$exception_types AS types, properties.$exception_values AS msgs, count() AS n FROM events WHERE event = '$exception' AND ${w.since} GROUP BY types, msgs ORDER BY n DESC LIMIT 5`,
-+  } as const;
-+}
-+export type OverviewCard = keyof ReturnType<typeof overviewQueries>;
-+export type DetailCard = keyof ReturnType<typeof detailQueries>;
-+export const OVERVIEW_QUERY_COUNT = Object.keys(overviewQueries(7)).length;
-+export const DETAIL_QUERY_COUNT = Object.keys(detailQueries(7)).length;
- 
- type Fetch = typeof fetch;
-+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
- 
- /** Run one HogQL query. Throws a short, admin-readable message on any failure. */
--export async function runHogQL(cfg: HogConfig, sql: string, name: string, fetchImpl: Fetch = fetch, timeoutMs = 20_000): Promise<unknown[][]> {
--  const ctrl = new AbortController();
--  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
--  try {
--    const res = await fetchImpl(`${cfg.appHost}/api/projects/${cfg.projectId}/query/`, {
--      method: "POST",
--      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.key}` },
--      body: JSON.stringify({ query: { kind: "HogQLQuery", query: sql, name: `edurack-admin-${name}` } }),
--      signal: ctrl.signal,
--    });
--    if (!res.ok) {
--      if (res.status === 401 || res.status === 403) throw new Error("PostHog refused the key. Check it is a personal API key with the Query: Read scope, and that the project ID is right.");
--      if (res.status === 404) throw new Error("PostHog couldn't find that project. Check POSTHOG_PROJECT_ID and the region (US/EU).");
--      if (res.status === 429) throw new Error("PostHog is rate-limiting requests. Wait a few minutes and refresh.");
--      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
--      throw new Error(`PostHog error ${res.status}${body?.detail ? `: ${String(body.detail).slice(0, 160)}` : ""}`);
-+export async function runHogQL(
-+  cfg: HogConfig,
-+  sql: string,
-+  name: string,
-+  fetchImpl: Fetch = fetch,
-+  opts: { timeoutMs?: number; retryDelayMs?: number } = {},
-+): Promise<unknown[][]> {
-+  const { timeoutMs = 9_000, retryDelayMs = 1_500 } = opts;
-+  for (let attempt = 0; ; attempt++) {
-+    const ctrl = new AbortController();
-+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-+    try {
-+      const res = await fetchImpl(`${cfg.appHost}/api/projects/${cfg.projectId}/query/`, {
-+        method: "POST",
-+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.key}` },
-+        body: JSON.stringify({ query: { kind: "HogQLQuery", query: sql, name: `edurack-admin-${name}` } }),
-+        signal: ctrl.signal,
-+      });
-+      if (res.status === 429 && attempt === 0) {
-+        await sleep(retryDelayMs); // PostHog limits concurrent/hourly queries: wait a moment and try once more
-+        continue;
-+      }
-+      if (!res.ok) {
-+        if (res.status === 401 || res.status === 403) throw new Error("PostHog refused the key. Check it is a personal API key with the Query: Read scope, and that the project ID is right.");
-+        if (res.status === 404) throw new Error("PostHog couldn't find that project. Check POSTHOG_PROJECT_ID and the region (US/EU).");
-+        if (res.status === 429) throw new Error("PostHog is rate-limiting requests. Wait a few minutes and refresh.");
-+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
-+        throw new Error(`PostHog error ${res.status}${body?.detail ? `: ${String(body.detail).slice(0, 160)}` : ""}`);
-+      }
-+      const json = (await res.json()) as { results?: unknown[][] };
-+      return Array.isArray(json.results) ? json.results : [];
-+    } catch (e) {
-+      if ((e as Error).name === "AbortError") throw new Error("PostHog took too long to answer.");
-+      throw e;
-+    } finally {
-+      clearTimeout(timer);
-     }
--    const json = (await res.json()) as { results?: unknown[][] };
--    return Array.isArray(json.results) ? json.results : [];
--  } catch (e) {
--    if ((e as Error).name === "AbortError") throw new Error("PostHog took too long to answer.");
--    throw e;
--  } finally {
--    clearTimeout(timer);
-   }
- }
- 
-+/** Run tasks with at most `limit` in flight (PostHog restricts concurrent queries), never rejecting. */
-+async function settleLimited<T>(tasks: (() => Promise<T>)[], limit = 3): Promise<PromiseSettledResult<T>[]> {
-+  const out: PromiseSettledResult<T>[] = new Array(tasks.length);
-+  let next = 0;
-+  await Promise.all(
-+    Array.from({ length: Math.min(limit, tasks.length) }, async () => {
-+      while (next < tasks.length) {
-+        const i = next++;
-+        try {
-+          out[i] = { status: "fulfilled", value: await tasks[i]() };
-+        } catch (reason) {
-+          out[i] = { status: "rejected", reason };
+   // ---------------------------------------------------------------------
+   // PERF: fetch immediately, don't wait on `loading` (Firebase Auth
+@@ -183,6 +186,11 @@ function MentorProfilePage() {
+         setMentor(m);
+         setBatches(b);
+         setSoldTests(st as SoldTestEntry[]);
++        if (viewedMentor.current !== mentorId) {
++          viewedMentor.current = mentorId;
++          // Ids and counts only: nothing about the visitor, and nothing about the mentor beyond what the public page shows.
++          track("mentor_profile_viewed", { mentor_id: mentorId, batch_count: b.length, signed_in: Boolean(user) });
 +        }
+       } catch {
+         // If listPublicSoldTestsForMentor still requires auth on the
+         // backend, don't let that break the whole page for guests —
+diff --git a/src/routes/pyq-drill.tsx b/src/routes/pyq-drill.tsx
+index 143bea1..478ac52 100644
+--- a/src/routes/pyq-drill.tsx
++++ b/src/routes/pyq-drill.tsx
+@@ -10,7 +10,8 @@ import { DrillLauncher, type StartOptions } from "@/components/pyq/drill-launche
+ import { getPyqDrill, startPyqDrill, submitPyqDrill } from "@/server-functions/practice-extras";
+ import type { DrillState } from "@/lib/pyq-types";
+ import type { DrillAnswer } from "@/lib/practice-schedule";
+-import { track } from "@/lib/analytics";
++import { track, trackOnce } from "@/lib/analytics";
++import { practiceProps } from "@/lib/practice-events";
+ 
+ // ?drillId= makes the drill refresh-safe: reloading resumes the same drill with
+ // the server's clock, and a finished drill reopens its result.
+@@ -67,7 +68,10 @@ function DrillPage() {
+       const token = await user.getIdToken();
+       const set = await startPyqDrill({ data: { token, exam, subject: opts.subject, custom: opts.custom } });
+       setState({ status: "running", set });
++      // Same event names as ordinary PYQ practice, told apart by practice_type = "timed_drill". The older drill_started /
++      // drill_submitted events are kept so existing PostHog insights keep working.
+       track("drill_started", { exam, subject: opts.subject ?? null, custom: Boolean(opts.custom) });
++      trackOnce(`drill-start:${set.drillId}`, "practice_started", { ...practiceProps({ mode: "timed_drill", exam, subject: opts.subject }), custom: Boolean(opts.custom), question_count: set.questions.length });
+       navigate({ search: { exam, drillId: set.drillId }, replace: true });
+     } catch (e) {
+       setStartError(e instanceof Error ? e.message : "Could not start the drill.");
+@@ -82,7 +86,18 @@ function DrillPage() {
+       const token = await user.getIdToken();
+       const result = await submitPyqDrill({ data: { token, drillId, answers } });
+       setState({ status: "done", result });
+-      track("drill_submitted");
++      // submit() can run twice (the auto-submit at 0:00 racing the button); the key makes it count once.
++      if (trackOnce(`drill-done:${drillId}`, "drill_submitted")) {
++        track("practice_completed", {
++          ...practiceProps({ mode: "timed_drill", exam }),
++          answered: result.correct + result.wrong,
++          correct: result.correct,
++          wrong: result.wrong,
++          skipped: result.skipped,
++          accuracy: result.correct + result.wrong > 0 ? Math.round((result.correct / (result.correct + result.wrong)) * 100) : null,
++          time_taken_sec: result.timeTakenSec,
++        });
 +      }
-+    }),
-+  );
-+  return out;
-+}
-+
-+async function runAll<K extends string>(cfg: HogConfig, queries: Record<K, string>, fetchImpl: Fetch, opts?: { retryDelayMs?: number }) {
-+  const names = Object.keys(queries) as K[];
-+  const settled = await settleLimited(names.map((n) => () => runHogQL(cfg, queries[n], n, fetchImpl, opts)));
-+  const rows = {} as Record<K, unknown[][]>;
-+  const failures: { card: K; message: string }[] = [];
-+  settled.forEach((r, i) => {
-+    if (r.status === "fulfilled") rows[names[i]] = r.value;
-+    else failures.push({ card: names[i], message: r.reason instanceof Error ? r.reason.message : "Unknown error" });
-+  });
-+  return { rows, failures };
-+}
-+
- const num = (v: unknown) => {
-   const n = Number(v);
-   return Number.isFinite(n) ? n : 0;
- };
-+/** For measurements where "no data" must stay distinct from zero (page speed). */
-+const numOrNull = (v: unknown) => {
-+  if (v === null || v === undefined || v === "") return null;
-+  const n = Number(v);
-+  return Number.isFinite(n) ? n : null;
-+};
+       try {
+         sessionStorage.removeItem(`edurack:drill:${drillId}`);
+       } catch {
+@@ -90,7 +105,7 @@ function DrillPage() {
+       }
+       window.scrollTo({ top: 0 });
+     },
+-    [user, drillId],
++    [user, drillId, exam],
+   );
  
--export type PostHogSnapshot = {
--  configured: true;
--  fetchedAt: string;
-+// ─── Shapes ─────────────────────────────────────────────────────────────────────────────────────────
-+export type EventStat = { people: number; total: number; value: number; prevPeople: number; prevTotal: number; prevValue: number };
-+export type Overview = {
-   days: Days;
-+  fetchedAt: string;
-   appUrl: string;
-   embedUrl: string | null;
--  totals: { visitors: number; pageviews: number } | null;
--  daily: { day: string; pageviews: number; visitors: number }[] | null;
--  events: Record<string, { people: number; total: number; value: number }> | null;
-+  totals: { visitors: number; pageviews: number; prevVisitors: number; prevPageviews: number } | null;
-+  daily: { day: string; pageviews: number; visitors: number; signups: number }[] | null;
-+  events: Record<string, EventStat> | null;
-+  signups: { now: number; prev: number } | null;
-+  errors: { now: number; prev: number } | null;
-   topPages: { path: string; views: number }[] | null;
-   sources: { source: string; visitors: number }[] | null;
-   devices: { device: string; visitors: number }[] | null;
--  errors: number | null;
-   /** Cards that couldn't load, with a plain reason. Everything else still renders. */
--  failures: { card: QueryName; message: string }[];
-+  failures: { card: OverviewCard; message: string }[];
-+};
-+export type Details = {
-+  days: Days;
-+  fetchedAt: string;
-+  hours: number[] | null; // pageviews for each hour 0-23, India time
-+  places: { label: string; visitors: number }[] | null;
-+  drills: { exam: string; subject: string; started: number; custom: number }[] | null;
-+  sessions: { id: string; title: string | null; views: number; started: number; booked: number }[] | null;
-+  plans: { id: string; name: string | null; checkouts: number; purchases: number; value: number }[] | null;
-+  vitals: { device: string; samples: number; lcp: number | null; inp: number | null; cls: number | null }[] | null;
-+  errorList: { label: string; count: number }[] | null;
-+  failures: { card: DetailCard; message: string }[];
- };
- export type PostHogNotConfigured = { configured: false; missing: string[] };
-+export type PostHogResult = PostHogNotConfigured | { configured: true; section: "overview"; overview: Overview } | { configured: true; section: "details"; details: Details };
+   if (loading || !user) {
+diff --git a/src/routes/pyq.tsx b/src/routes/pyq.tsx
+index 02c70ab..6555cb7 100644
+--- a/src/routes/pyq.tsx
++++ b/src/routes/pyq.tsx
+@@ -22,7 +22,10 @@ import type { SessionKind } from "@/lib/pyq-types";
+ // Subjects — instead of leaving the page.
+ // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
+ // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
+-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind };
++// `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
++type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean };
++
++const FIRST_N = 5;
  
--/** Fill days with no traffic so the chart has a bar (an empty one) for every day. */
--function fillDays(rows: { day: string; pageviews: number; visitors: number }[], days: Days) {
-+/** Fill days with no traffic so the charts have a bar (an empty one) for every day. */
-+function fillDays(rows: NonNullable<Overview["daily"]>, days: Days) {
-   const byDay = new Map(rows.map((r) => [r.day, r]));
-   const last = rows.length ? rows[rows.length - 1].day : new Date().toISOString().slice(0, 10);
-   const out: typeof rows = [];
-   const end = new Date(`${last}T00:00:00Z`).getTime();
-   for (let i = days - 1; i >= 0; i--) {
-     const day = new Date(end - i * 86_400_000).toISOString().slice(0, 10);
--    out.push(byDay.get(day) ?? { day, pageviews: 0, visitors: 0 });
-+    out.push(byDay.get(day) ?? { day, pageviews: 0, visitors: 0, signups: 0 });
-   }
-   return out;
- }
+ const SESSIONS: SessionKind[] = ["daily", "due", "wrong", "bookmarked"];
  
--export async function buildSnapshot(cfg: HogConfig, days: Days, fetchImpl: Fetch = fetch): Promise<PostHogSnapshot> {
--  const queries = buildQueries(days);
--  const names = Object.keys(queries) as QueryName[];
--  const settled = await Promise.allSettled(names.map((n) => runHogQL(cfg, queries[n], n, fetchImpl)));
--  const rows = {} as Record<QueryName, unknown[][]>;
--  const failures: PostHogSnapshot["failures"] = [];
--  settled.forEach((r, i) => {
--    if (r.status === "fulfilled") rows[names[i]] = r.value;
--    else failures.push({ card: names[i], message: r.reason instanceof Error ? r.reason.message : "Unknown error" });
--  });
--
--  const ok = (n: QueryName) => rows[n] !== undefined;
-+export async function buildOverview(cfg: HogConfig, days: Days, fetchImpl: Fetch = fetch, opts?: { retryDelayMs?: number }): Promise<Overview> {
-+  const { rows, failures } = await runAll(cfg, overviewQueries(days), fetchImpl, opts);
-+  const ok = (n: OverviewCard) => rows[n] !== undefined;
-   return {
--    configured: true,
--    fetchedAt: new Date().toISOString(),
-     days,
-+    fetchedAt: new Date().toISOString(),
-     appUrl: `${cfg.appHost}/project/${cfg.projectId}`,
-     embedUrl: cfg.embedUrl,
--    totals: ok("totals") ? { visitors: num(rows.totals[0]?.[0]), pageviews: num(rows.totals[0]?.[1]) } : null,
--    daily: ok("daily") ? fillDays(rows.daily.map((r) => ({ day: String(r[0]), pageviews: num(r[1]), visitors: num(r[2]) })), days) : null,
--    events: ok("events") ? Object.fromEntries(rows.events.map((r) => [String(r[0]), { people: num(r[1]), total: num(r[2]), value: num(r[3]) }])) : null,
-+    totals: ok("totals") ? { visitors: num(rows.totals[0]?.[0]), pageviews: num(rows.totals[0]?.[1]), prevVisitors: num(rows.totals[0]?.[2]), prevPageviews: num(rows.totals[0]?.[3]) } : null,
-+    daily: ok("daily") ? fillDays(rows.daily.map((r) => ({ day: String(r[0]), pageviews: num(r[1]), visitors: num(r[2]), signups: num(r[3]) })), days) : null,
-+    events: ok("events")
-+      ? Object.fromEntries(rows.events.map((r) => [String(r[0]), { people: num(r[1]), total: num(r[2]), value: num(r[3]), prevPeople: num(r[4]), prevTotal: num(r[5]), prevValue: num(r[6]) }]))
-+      : null,
-+    signups: ok("signups") ? { now: num(rows.signups[0]?.[0]), prev: num(rows.signups[0]?.[1]) } : null,
-+    errors: ok("errors") ? { now: num(rows.errors[0]?.[0]), prev: num(rows.errors[0]?.[1]) } : null,
-     topPages: ok("pages") ? rows.pages.filter((r) => r[0]).map((r) => ({ path: String(r[0]), views: num(r[1]) })) : null,
-     sources: ok("sources") ? rows.sources.map((r) => ({ source: String(r[0]), visitors: num(r[1]) })) : null,
-     devices: ok("devices") ? rows.devices.map((r) => ({ device: String(r[0]), visitors: num(r[1]) })) : null,
--    errors: ok("errors") ? num(rows.errors[0]?.[0]) : null,
-     failures,
-   };
- }
-+
-+/** PostHog stores exception types/messages as JSON arrays inside a property; make that one readable line. */
-+export function exceptionLabel(types: unknown, msgs: unknown): string {
-+  const first = (v: unknown) => {
-+    if (Array.isArray(v)) return v[0] == null ? "" : String(v[0]);
-+    if (typeof v === "string") {
-+      try {
-+        const p = JSON.parse(v);
-+        if (Array.isArray(p)) return p[0] == null ? "" : String(p[0]);
-+      } catch {
-+        // not JSON: treat as plain text
-+      }
-+      return v;
-+    }
-+    return "";
-+  };
-+  const t = first(types).trim();
-+  const m = first(msgs).replace(/\s+/g, " ").trim();
-+  const label = [t, m].filter(Boolean).join(": ");
-+  return (label || "Unknown error").slice(0, 160);
-+}
-+
-+export async function buildDetails(cfg: HogConfig, days: Days, fetchImpl: Fetch = fetch, opts?: { retryDelayMs?: number }): Promise<Details> {
-+  const { rows, failures } = await runAll(cfg, detailQueries(days), fetchImpl, opts);
-+  const ok = (n: DetailCard) => rows[n] !== undefined;
-+  return {
-+    days,
-+    fetchedAt: new Date().toISOString(),
-+    hours: ok("hours")
-+      ? (() => {
-+          const h = new Array(24).fill(0) as number[];
-+          for (const r of rows.hours) {
-+            const i = num(r[0]);
-+            if (i >= 0 && i < 24) h[i] = num(r[1]);
-+          }
-+          return h;
-+        })()
-+      : null,
-+    places: ok("places") ? rows.places.map((r) => ({ label: String(r[0]) === "Unknown" ? "Unknown location" : `${r[0]}${r[1] && r[1] !== "India" ? `, ${r[1]}` : ""}`, visitors: num(r[2]) })) : null,
-+    drills: ok("drills") ? rows.drills.map((r) => ({ exam: String(r[0]), subject: String(r[1]), started: num(r[2]), custom: num(r[3]) })) : null,
-+    sessions: ok("sessions") ? rows.sessions.filter((r) => r[0]).map((r) => ({ id: String(r[0]), title: null, views: num(r[1]), started: num(r[2]), booked: num(r[3]) })) : null,
-+    plans: ok("plans") ? rows.plans.filter((r) => r[0]).map((r) => ({ id: String(r[0]), name: null, checkouts: num(r[1]), purchases: num(r[2]), value: num(r[3]) })) : null,
-+    vitals: ok("vitals") ? rows.vitals.map((r) => ({ device: String(r[0]), samples: num(r[1]), lcp: numOrNull(r[2]), inp: numOrNull(r[3]), cls: numOrNull(r[4]) })) : null,
-+    errorList: ok("errorList") ? rows.errorList.map((r) => ({ label: exceptionLabel(r[0], r[1]), count: num(r[2]) })) : null,
-+    failures,
-+  };
-+}
-+
-+// ─── Page speed ratings (Google's Core Web Vitals thresholds) ───────────────────────────────────────
-+export type Rating = "good" | "needs" | "poor";
-+export const VITAL_LIMITS = { lcp: [2500, 4000], inp: [200, 500], cls: [0.1, 0.25] } as const;
-+export function rateVital(metric: keyof typeof VITAL_LIMITS, value: number | null): Rating | null {
-+  if (value === null) return null;
-+  const [good, poor] = VITAL_LIMITS[metric];
-+  return value <= good ? "good" : value <= poor ? "needs" : "poor";
-+}
-+
-+// ─── Funnels and plain-language takeaways ───────────────────────────────────────────────────────────
-+export const FUNNELS: { title: string; steps: { event: string; label: string }[] }[] = [
-+  { title: "Practice", steps: [{ event: "login_completed", label: "Signed in or signed up" }, { event: "drill_started", label: "Started a drill" }, { event: "drill_submitted", label: "Finished a drill" }] },
-+  { title: "Mentor sessions", steps: [{ event: "session_viewed", label: "Viewed a session" }, { event: "session_booking_started", label: "Started booking" }, { event: "session_booked", label: "Booked" }] },
-+  { title: "Edurack Pro", steps: [{ event: "pro_checkout_started", label: "Opened checkout" }, { event: "pro_purchased", label: "Bought Pro" }] },
-+];
-+
-+export type Insight = { tone: "good" | "watch" | "info"; text: string };
-+const pctStr = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
-+const inr = (x: number) => `₹${Math.round(x).toLocaleString("en-IN")}`;
-+const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
-+
-+/**
-+ * Turns the numbers into a few plain sentences. Each rule needs enough data to mean something, so a quiet week
-+ * doesn't produce alarming percentages from three visitors.
-+ */
-+export function buildInsights(o: Overview, d: Details | null): Insight[] {
-+  const out: Insight[] = [];
-+  const days = o.days;
-+  const ev = (name: string) => o.events?.[name];
-+
-+  const t = o.totals;
-+  if (t && t.visitors < 10) {
-+    out.push({ tone: "info", text: `Only ${t.visitors} visitor${t.visitors === 1 ? "" : "s"} in the last ${days} days so far. Numbers this small swing a lot, so give it more time before drawing conclusions.` });
-+  } else if (t && t.prevVisitors >= 20) {
-+    const change = (t.visitors - t.prevVisitors) / t.prevVisitors;
-+    if (Math.abs(change) >= 0.15) {
-+      out.push({ tone: change > 0 ? "good" : "watch", text: `Visitors are ${change > 0 ? "up" : "down"} ${Math.round(Math.abs(change) * 100)}% compared with the previous ${days} days (${t.visitors.toLocaleString("en-IN")} vs ${t.prevVisitors.toLocaleString("en-IN")}).` });
-+    } else {
-+      out.push({ tone: "info", text: `Traffic is steady: ${t.visitors.toLocaleString("en-IN")} visitors, about the same as the previous ${days} days.` });
-+    }
-+  }
-+
-+  const devTotal = (o.devices ?? []).reduce((a, x) => a + x.visitors, 0);
-+  const mobile = (o.devices ?? []).find((x) => x.device.toLowerCase() === "mobile");
-+  if (mobile && devTotal >= 20 && mobile.visitors / devTotal >= 0.6) {
-+    out.push({ tone: "info", text: `${pctStr(mobile.visitors, devTotal)} of visitors are on a phone, so check every new page on a phone first.` });
-+  }
-+
-+  // The weakest step across all funnels that have enough people to judge.
-+  let worst: { title: string; from: string; to: string; a: number; b: number } | null = null;
-+  for (const f of FUNNELS) {
-+    for (let i = 1; i < f.steps.length; i++) {
-+      const a = ev(f.steps[i - 1].event)?.people ?? 0;
-+      const b = ev(f.steps[i].event)?.people ?? 0;
-+      if (a >= 10 && (!worst || b / a < worst.b / worst.a)) worst = { title: f.title, from: f.steps[i - 1].label.toLowerCase(), to: f.steps[i].label.toLowerCase(), a, b };
-+    }
-+  }
-+  if (worst) {
-+    const rate = worst.b / worst.a;
-+    out.push({ tone: rate < 0.5 ? "watch" : "info", text: `${worst.title}: of ${worst.a.toLocaleString("en-IN")} people who ${worst.from}, ${worst.b.toLocaleString("en-IN")} ${worst.to} (${pctStr(worst.b, worst.a)}). This is the biggest drop-off right now.` });
-+  }
-+
-+  const co = ev("pro_checkout_started");
-+  const pur = ev("pro_purchased");
-+  if (pur && pur.total > 0) out.push({ tone: "good", text: `${pur.total} Pro purchase${pur.total === 1 ? "" : "s"} (${inr(pur.value)}) in the last ${days} days.` });
-+  else if (co && co.people >= 3) out.push({ tone: "watch", text: `${co.people} people opened Pro checkout but nobody has bought yet.` });
-+
-+  const failedBookings = ev("session_booking_failed");
-+  if (failedBookings && failedBookings.total > 0) out.push({ tone: "watch", text: `${failedBookings.total} session booking attempt${failedBookings.total === 1 ? "" : "s"} failed. Worth a look in PostHog session replays.` });
-+
-+  if (o.errors) {
-+    if (o.errors.now === 0) out.push({ tone: "good", text: "No errors were recorded." });
-+    else out.push({ tone: "watch", text: `${o.errors.now} error${o.errors.now === 1 ? "" : "s"} recorded (${o.errors.prev} in the previous ${days} days). The most common ones are listed further down.` });
-+  }
-+
-+  const top = o.sources?.[0];
-+  const srcTotal = (o.sources ?? []).reduce((a, x) => a + x.visitors, 0);
-+  if (top && srcTotal >= 20) out.push({ tone: "info", text: `The biggest source of visitors is ${top.source} (${pctStr(top.visitors, srcTotal)}).` });
-+
-+  if (d) {
-+    const m = d.vitals?.find((v) => v.device.toLowerCase() === "mobile");
-+    const lcp = m ? rateVital("lcp", m.lcp) : null;
-+    if (m && m.samples >= 20 && m.lcp !== null && lcp === "poor") out.push({ tone: "watch", text: `Pages are slow to load on phones (the main content takes about ${(m.lcp / 1000).toFixed(1)} seconds for a typical visitor; under 2.5 seconds is good).` });
-+    else if (m && m.samples >= 20 && m.lcp !== null && lcp === "good") out.push({ tone: "good", text: `Pages load quickly on phones (about ${(m.lcp / 1000).toFixed(1)} seconds).` });
-+
-+    const views = (d.hours ?? []).reduce((a, x) => a + x, 0);
-+    if (d.hours && views >= 50) {
-+      const peak = d.hours.indexOf(Math.max(...d.hours));
-+      out.push({ tone: "info", text: `Traffic peaks around ${hourLabel(peak)}–${hourLabel((peak + 1) % 24)} India time, a good time to publish or send reminders.` });
-+    }
-+  }
-+
-+  const order = { watch: 0, good: 1, info: 2 } as const;
-+  return out.sort((a, b) => order[a.tone] - order[b.tone]).slice(0, 8);
-+}
-diff --git a/src/server-functions/posthog-admin.ts b/src/server-functions/posthog-admin.ts
-index 2196091..cb46022 100644
---- a/src/server-functions/posthog-admin.ts
-+++ b/src/server-functions/posthog-admin.ts
-@@ -3,10 +3,25 @@
- // Feeds the admin "Analytics" tab with numbers read from PostHog. Its own file with its own private admin check,
- // same convention as pro-admin.ts and blog-admin.ts (requireAdmin must never be imported across
- // server-functions files). The PostHog personal API key is read here, on the server, and never sent to the browser.
-+//
-+// The tab loads in two calls (overview, then details) that run side by side. Each makes only a handful of
-+// PostHog queries, so each finishes well inside a serverless function's time limit.
- import { createServerFn } from "@tanstack/react-start";
- import { adminAuth } from "@/lib/firebase-admin";
+@@ -37,6 +40,7 @@ export const Route = createFileRoute("/pyq")({
+     weakAttempt: str(search.weakAttempt),
+     session: SESSIONS.find((k) => k === search.session),
+     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
++    first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
+   }),
+   // Public now: logged-out visitors can browse and try a few questions.
+   head: () =>
+@@ -157,7 +161,7 @@ function PyqPage() {
+         ) : practising ? (
+           <PyqPractice
+             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
+-            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
++            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}`}
+             subject={search.subject}
+             chapter={search.chapter}
+             topic={search.topic}
+@@ -165,11 +169,15 @@ function PyqPage() {
+             session={search.session}
+             exam={tree?.exam ?? search.exam}
+             guest={guest}
++            limit={search.first5 && !guest ? FIRST_N : undefined}
++            source={search.first5 ? "first_five" : undefined}
+             // A weak-topics session started from a result page returns to that result page.
+             // Sessions go back to where they started: the daily question to the dashboard,
+             // the other sessions to the notebook.
+             onExit={() =>
+-              search.session
++              search.first5 && !guest
++                ? navigate({ to: "/dashboard" })
++                : search.session
+                 ? navigate({ to: search.session === "daily" ? "/dashboard" : "/notebook" })
+                 : search.weakAttempt
+                   ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })
+diff --git a/src/server-functions/practice-stats.ts b/src/server-functions/practice-stats.ts
+new file mode 100644
+index 0000000..47f9be7
+--- /dev/null
++++ b/src/server-functions/practice-stats.ts
+@@ -0,0 +1,128 @@
++// The dashboard's practice numbers, computed in ONE place (see lib/practice-stats.ts for the definitions).
++// Read-only: it never writes, and it only ever reads the signed-in student's own rows.
++import { createServerFn } from "@tanstack/react-start";
++import { adminAuth } from "@/lib/firebase-admin";
 +import { getDb } from "@/lib/mongo";
-+import { supabase } from "@/lib/supabase";
- import { createTtlCache } from "@/lib/simple-cache";
--import { QUERY_COUNT, buildSnapshot, clampDays, resolveConfig, type PostHogNotConfigured, type PostHogSnapshot } from "@/lib/posthog-admin-core";
-+import {
-+  DETAIL_QUERY_COUNT,
-+  OVERVIEW_QUERY_COUNT,
-+  buildDetails,
-+  buildOverview,
-+  clampDays,
-+  resolveConfig,
-+  type Details,
-+  type Overview,
-+  type PostHogResult,
-+} from "@/lib/posthog-admin-core";
- 
- async function requireAdmin(token: string) {
-   const decoded = await adminAuth.verifyIdToken(token);
-@@ -17,13 +32,45 @@ async function requireAdmin(token: string) {
- }
- 
- // PostHog limits how often its API can be called, so an admin opening the tab repeatedly (or several admins at
--// once) is served from here for 10 minutes. "Refresh" bypasses it, but no more than once a minute.
--const cache = createTtlCache<PostHogSnapshot & { cachedAt: number }>(10 * 60_000);
-+// once) is served from here for 15 minutes. "Refresh" bypasses it, but no more than once a minute.
-+type Cached = { value: Overview | Details; cachedAt: number };
-+const cache = createTtlCache<Cached>(15 * 60_000);
- const MIN_FORCE_GAP_MS = 60_000;
- 
-+/** PostHog only knows ids. Swap in the names admins recognise (session titles, Pro plan names). */
-+async function nameThings(details: Details): Promise<Details> {
-+  const out = { ...details };
-+  if (out.sessions?.length) {
-+    try {
-+      const { data } = await supabase
-+        .from("mentor_session_offerings")
-+        .select("id, title")
-+        .in(
-+          "id",
-+          out.sessions.map((s) => s.id),
-+        );
-+      const titles = new Map((data ?? []).map((r: { id: string; title: string }) => [r.id, r.title]));
-+      out.sessions = out.sessions.map((s) => ({ ...s, title: titles.get(s.id) ?? null }));
-+    } catch {
-+      // names are a nicety: keep the ids if the lookup fails
-+    }
++import { addDays, istDayKey } from "@/lib/practice-schedule";
++import { buildExamStats, EMPTY_PRACTICE_STATS, type ExamStats, type LastAttempt, type PracticeExam, type PracticeStats } from "@/lib/practice-stats";
++import type { Db } from "@/lib/pyq-server";
++
++const EXAMS: PracticeExam[] = ["neet", "jee", "cuet", "ipmat"];
++// Old rows were written before `exam` existed on a progress row; the rest of the app treats those as NEET.
++const EXAM_OF = { $ifNull: ["$exam", "neet"] };
++const IST_DAY = (field: string) => ({ $dateToString: { format: "%Y-%m-%d", date: field, timezone: "Asia/Kolkata" } });
++
++let indexed = false;
++async function ensureIndexes(db: Db) {
++  if (indexed) return;
++  indexed = true;
++  try {
++    await db.collection("practiceEvents").createIndex({ uid: 1, at: -1 });
++    await db.collection("practiceProgress").createIndex({ uid: 1, attempts: 1 });
++  } catch {
++    // best-effort; everything works (more slowly) without them
 +  }
-+  if (out.plans?.length) {
-+    try {
-+      const { listActivePlans } = await import("@/lib/pro-server");
-+      const plans = await listActivePlans(await getDb());
-+      const names = new Map(plans.map((p) => [String(p.id), p.name]));
-+      out.plans = out.plans.map((p) => ({ ...p, name: names.get(p.id) ?? null }));
-+    } catch {
-+      // same: fall back to the id
-+    }
-+  }
-+  return out;
 +}
 +
- export const getPostHogSnapshot = createServerFn({ method: "POST" })
--  .validator((d: { token: string; days?: number; force?: boolean }) => d)
--  .handler(async ({ data }): Promise<PostHogSnapshot | PostHogNotConfigured> => {
-+  .validator((d: { token: string; days?: number; force?: boolean; section?: "overview" | "details" }) => d)
-+  .handler(async ({ data }): Promise<PostHogResult> => {
-     await requireAdmin(data.token);
- 
-     const cfg = resolveConfig({
-@@ -36,15 +83,20 @@ export const getPostHogSnapshot = createServerFn({ method: "POST" })
-     if (!cfg.ok) return { configured: false, missing: cfg.missing };
- 
-     const days = clampDays(data.days);
--    const key = `d${days}`;
-+    const section = data.section === "details" ? "details" : "overview";
-+    const key = `${section}:${days}`;
-     const hit = cache.get(key);
-     if (hit && !(data.force && Date.now() - hit.cachedAt > MIN_FORCE_GAP_MS)) {
--      const { cachedAt: _ignored, ...snapshot } = hit;
--      return snapshot;
-+      return section === "overview" ? { configured: true, section, overview: hit.value as Overview } : { configured: true, section, details: hit.value as Details };
-     }
- 
--    const snapshot = await buildSnapshot(cfg.config, days);
--    // Don't remember a total failure (e.g. a wrong key): fixing it should work on the very next refresh.
--    if (snapshot.failures.length < QUERY_COUNT) cache.set(key, { ...snapshot, cachedAt: Date.now() });
--    return snapshot;
-+    if (section === "overview") {
-+      const overview = await buildOverview(cfg.config, days);
-+      // Don't remember a total failure (e.g. a wrong key): fixing it should work on the very next refresh.
-+      if (overview.failures.length < OVERVIEW_QUERY_COUNT) cache.set(key, { value: overview, cachedAt: Date.now() });
-+      return { configured: true, section, overview };
++type Counter = Map<string, number>;
++const toMap = (rows: { _id: unknown; n: number }[]): Counter => new Map(rows.map((r) => [String(r._id), Number(r.n)]));
++const get = (m: Counter, k: string) => m.get(k) ?? 0;
++
++export async function loadPracticeStats(db: Db, uid: string, now: Date = new Date()): Promise<PracticeStats> {
++  await ensureIndexes(db);
++  const progress = db.collection("practiceProgress");
++  const events = db.collection("practiceEvents");
++  const today = istDayKey(now);
++  // Last 7 IST days including today: from IST midnight six days ago.
++  const weekStart = new Date(`${addDays(today, -6)}T00:00:00+05:30`);
++
++  const answered = { uid, attempts: { $gt: 0 } };
++  const [solvedRows, correctRows, dueRows, eventTotal] = await Promise.all([
++    progress.aggregate([{ $match: answered }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
++    progress.aggregate([{ $match: { ...answered, correct: true } }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
++    // Same filter as the revision button (TodaySummary.due / the notebook's "due"), so the numbers always match it.
++    progress.aggregate([{ $match: { uid, nextReviewAt: { $lte: now }, mastered: { $ne: true } } }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
++    events.countDocuments({ uid, outcome: { $ne: "revealed" } }, { limit: 1 }),
++  ]);
++
++  const solved = toMap(solvedRows as { _id: unknown; n: number }[]);
++  const correct = toMap(correctRows as { _id: unknown; n: number }[]);
++  const due = toMap(dueRows as { _id: unknown; n: number }[]);
++  const questionsAnswered = [...solved.values()].reduce((a, b) => a + b, 0);
++  if (questionsAnswered === 0 && due.size === 0) return { ...EMPTY_PRACTICE_STATS };
++
++  // Week + distinct days come from the append-only event log. A student who practised before it existed has no
++  // events, so we fall back to practiceProgress (latest answer per question) and flag the result approximate.
++  const approximate = eventTotal === 0;
++  const src = approximate
++    ? { col: progress, match: answered, at: "$updatedAt", weekMatch: { ...answered, updatedAt: { $gte: weekStart } } }
++    : { col: events, match: { uid, outcome: { $ne: "revealed" } }, at: "$at", weekMatch: { uid, outcome: { $ne: "revealed" }, at: { $gte: weekStart } } };
++
++  const [weekRows, dayRows] = await Promise.all([
++    src.col.aggregate([{ $match: src.weekMatch }, { $group: { _id: EXAM_OF, n: { $sum: 1 } } }]).toArray(),
++    src.col.aggregate([{ $match: src.match }, { $group: { _id: { exam: EXAM_OF, day: IST_DAY(src.at) } } }]).toArray(),
++  ]);
++  const week = toMap(weekRows as { _id: unknown; n: number }[]);
++  const daysByExam = new Map<string, Set<string>>();
++  const allDays = new Set<string>();
++  for (const r of dayRows as { _id: { exam: unknown; day: unknown } }[]) {
++    const day = String(r._id.day ?? "");
++    if (!day || day === "null") continue;
++    const exam = String(r._id.exam);
++    if (!daysByExam.has(exam)) daysByExam.set(exam, new Set());
++    daysByExam.get(exam)!.add(day);
++    allDays.add(day);
++  }
++
++  const byExam: PracticeStats["byExam"] = {};
++  for (const e of EXAMS) {
++    const s = get(solved, e), d = get(due, e);
++    if (s === 0 && d === 0) continue;
++    byExam[e] = buildExamStats({ solved: s, correct: get(correct, e), weekAnswered: get(week, e), distinctDays: daysByExam.get(e)?.size ?? 0, due: d });
++  }
++  const overall: ExamStats = buildExamStats({
++    solved: questionsAnswered,
++    correct: [...correct.values()].reduce((a, b) => a + b, 0),
++    weekAnswered: [...week.values()].reduce((a, b) => a + b, 0),
++    distinctDays: allDays.size,
++    due: [...due.values()].reduce((a, b) => a + b, 0),
++  });
++
++  return { questionsAnswered, overall, byExam, lastAttempt: await lastAttemptFor(db, uid, approximate), approximate };
++}
++
++/** The most recent real answer (not a peek), resolved to a displayable subject + chapter. */
++async function lastAttemptFor(db: Db, uid: string, approximate: boolean): Promise<LastAttempt | null> {
++  try {
++    const row = approximate
++      ? await db.collection("practiceProgress").find({ uid, attempts: { $gt: 0 } }).sort({ updatedAt: -1 }).limit(1).next()
++      : await db.collection("practiceEvents").find({ uid, outcome: { $ne: "revealed" } }).sort({ at: -1 }).limit(1).next();
++    if (!row) return null;
++    const at = (approximate ? row.updatedAt : row.at) as Date | undefined;
++    let subject = String(row.subject ?? "");
++    let chapter = "";
++    if (/^[a-f0-9]{24}$/i.test(String(row.questionId))) {
++      const { ObjectId } = await import("mongodb");
++      const q = await db.collection("questions").findOne({ _id: new ObjectId(String(row.questionId)) }, { projection: { subject: 1, chapter: 1 } });
++      if (q) {
++        subject = String(q.subject ?? subject);
++        chapter = String(q.chapter ?? "").trim();
++      } else {
++        chapter = String(row.chapterKey ?? ""); // question since deleted: the stored (lower-case) key still matches the practice filter
++      }
 +    }
-+    const details = await nameThings(await buildDetails(cfg.config, days));
-+    if (details.failures.length < DETAIL_QUERY_COUNT) cache.set(key, { value: details, cachedAt: Date.now() });
-+    return { configured: true, section, details };
++    if (!subject) return null;
++    if (chapter.toLowerCase() === "not yet tagged") chapter = "";
++    return { subject, chapter, exam: (row.exam as string | undefined) ?? null, at: at instanceof Date ? at.toISOString() : new Date().toISOString() };
++  } catch {
++    return null; // a hiccup here must never take the dashboard down
++  }
++}
++
++export const getPracticeStats = createServerFn({ method: "POST" })
++  .validator((data: { token: string }) => data)
++  .handler(async ({ data }): Promise<PracticeStats> => {
++    const decoded = await adminAuth.verifyIdToken(data.token);
++    const db = await getDb();
++    return loadPracticeStats(db, decoded.uid);
++  });
+diff --git a/src/server-functions/profile.ts b/src/server-functions/profile.ts
+index c99163a..14f8b8e 100644
+--- a/src/server-functions/profile.ts
++++ b/src/server-functions/profile.ts
+@@ -12,6 +12,8 @@ type OnboardingProfileInput = {
+   targetExam: string;
+   track: "Dropper" | "11th" | "12th" | "";
+   cuetDomainSubjects: string[];
++  /** The year they plan to sit the exam (e.g. 2027). Optional: collected on the dashboard, not at sign-up. */
++  targetYear?: number | null;
+ };
+ 
+ const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
+@@ -36,7 +38,7 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
+     const db = await getDb();
+     const now = new Date();
+ 
+-    await db.collection("profiles").updateOne(
++    const res = await db.collection("profiles").updateOne(
+       { uid: decoded.uid },
+       {
+         $set: {
+@@ -54,7 +56,10 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
+       { upsert: true },
+     );
+ 
+-    return { ok: true };
++    // isNew is true exactly once per account (the call that created the profile). The client uses it to send
++    // `signup_completed` once, instead of guessing from "onboarding still incomplete" (which repeats on every
++    // login until onboarding is finished).
++    return { ok: true, isNew: res.upsertedCount > 0 };
    });
+ 
+ export const saveProfile = createServerFn({ method: "POST" })
+@@ -126,6 +131,35 @@ export const updateAcademicInfo = createServerFn({ method: "POST" })
+     return { ok: true };
+   });
+ 
++// Fills in the prep details onboarding doesn't ask for (target year) or that an older account never set
++// (exam, class/track). Only the fields that are sent are written, and they are validated here, so this can't be
++// used to blank out or corrupt anything else on the profile.
++const CLASS_FOR_TRACK = { "11th": "Class 11", "12th": "Class 12", Dropper: "Dropper" } as const;
++export const updatePrepInfo = createServerFn({ method: "POST" })
++  .validator((data: { token: string; targetExam?: "neet" | "jee"; track?: "11th" | "12th" | "Dropper"; targetYear?: number }) => data)
++  .handler(async ({ data }) => {
++    const decoded = await adminAuth.verifyIdToken(data.token);
++    const set: Record<string, unknown> = {};
++    if (data.targetExam !== undefined) {
++      if (data.targetExam !== "neet" && data.targetExam !== "jee") throw new Error("Pick NEET or JEE.");
++      set.targetExam = data.targetExam;
++    }
++    if (data.track !== undefined) {
++      if (!(data.track in CLASS_FOR_TRACK)) throw new Error("Pick 11th, 12th or Dropper.");
++      set.track = data.track;
++      set.currentClass = CLASS_FOR_TRACK[data.track];
++    }
++    if (data.targetYear !== undefined) {
++      const thisYear = new Date().getFullYear();
++      if (!Number.isInteger(data.targetYear) || data.targetYear < thisYear || data.targetYear > thisYear + 6) throw new Error("Pick a valid target year.");
++      set.targetYear = data.targetYear;
++    }
++    if (Object.keys(set).length === 0) return { ok: true };
++    const db = await getDb();
++    await db.collection("profiles").updateOne({ uid: decoded.uid }, { $set: { ...set, updatedAt: new Date() } }, { upsert: true });
++    return { ok: true };
++  });
++
+ export const getProfile = createServerFn({ method: "POST" })
+   .validator((data: { token: string }) => data)
+   .handler(async ({ data }) => {
+diff --git a/tests/practice-stats.test.ts b/tests/practice-stats.test.ts
+new file mode 100644
+index 0000000..f50b760
+--- /dev/null
++++ b/tests/practice-stats.test.ts
+@@ -0,0 +1,114 @@
++// Run with: node --experimental-strip-types --test tests/
++import test from "node:test";
++import assert from "node:assert/strict";
++import {
++  accuracyPercent, buildExamStats, clampPercent, defaultExamTab, pickFirstChapter, summariseTests, testScorePercent,
++  EMPTY_PRACTICE_STATS, type PracticeStats,
++} from "../src/lib/practice-stats.ts";
++import { answeredProps, completedProps, isMistakeRevision, practiceModeFor, practiceProps } from "../src/lib/practice-events.ts";
++
++test("accuracy: null (not 0%) when nothing solved, never above 100", () => {
++  assert.equal(accuracyPercent(0, 0), null);
++  assert.equal(accuracyPercent(3, 4), 75);
++  assert.equal(accuracyPercent(9, 4), 100);
++  assert.equal(accuracyPercent(-2, 4), 0);
++  assert.equal(accuracyPercent(1, Number.NaN), null);
++});
++
++test("buildExamStats clamps and derives accuracy", () => {
++  const s = buildExamStats({ solved: 10, correct: 12, weekAnswered: 4, distinctDays: 2, due: 3 });
++  assert.equal(s.correct, 10);
++  assert.equal(s.accuracy, 100);
++  assert.deepEqual(buildExamStats({ solved: 0, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }).accuracy, null);
++});
++
++test("negative-marking test scores are floored at 0 and capped at 100", () => {
++  assert.equal(testScorePercent(-12, 720), 0);
++  assert.equal(testScorePercent(360, 720), 50);
++  assert.equal(testScorePercent(800, 720), 100);
++  assert.equal(testScorePercent(10, 0), 0);
++});
++
++test("summariseTests: weighted by attempts, exact when percentSum is present, filterable by exam", () => {
++  const rows = [
++    { bundleId: "a", bundleTitle: "A", exam: "neet", testsAttempted: 1, totalAttempts: 1, averagePercent: 50, bestPercent: 50, percentSum: 50 },
++    { bundleId: "b", bundleTitle: "B", exam: "neet", testsAttempted: 2, totalAttempts: 2, averagePercent: 33, bestPercent: 40, percentSum: 66.5 },
++    { bundleId: "c", bundleTitle: "C", exam: "jee", testsAttempted: 1, totalAttempts: 1, averagePercent: 80, bestPercent: 80, percentSum: 80 },
++    { bundleId: "d", bundleTitle: "D", exam: "neet", testsAttempted: 0, totalAttempts: 0, averagePercent: 0, bestPercent: 0 },
++  ];
++  assert.deepEqual(summariseTests(rows, "neet"), { average: 39, best: 50, tests: 3, attempts: 3 });
++  assert.deepEqual(summariseTests(rows, "jee"), { average: 80, best: 80, tests: 1, attempts: 1 });
++  assert.equal(summariseTests([], "neet"), null);
++  assert.equal(summariseTests(null), null);
++  // legacy rows without exam count as NEET
++  assert.equal(summariseTests([{ bundleId: "x", bundleTitle: "X", testsAttempted: 1, totalAttempts: 1, averagePercent: 10, bestPercent: 10 }], "neet")?.average, 10);
++});
++
++test("defaultExamTab: most practised exam wins, tie falls back to target exam then NEET", () => {
++  const mk = (neet: number, jee: number): PracticeStats => ({
++    ...EMPTY_PRACTICE_STATS,
++    byExam: { neet: buildExamStats({ solved: neet, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }), jee: buildExamStats({ solved: jee, correct: 0, weekAnswered: 0, distinctDays: 0, due: 0 }) },
++  });
++  assert.equal(defaultExamTab(mk(5, 9), "neet"), "jee");
++  assert.equal(defaultExamTab(mk(9, 5), "jee"), "neet");
++  assert.equal(defaultExamTab(mk(0, 0), "JEE Mains"), "jee");
++  assert.equal(defaultExamTab(mk(0, 0), ""), "neet");
++});
++
++test("pickFirstChapter: biggest tagged chapter of the first usable subject; skips untagged", () => {
++  const tree = {
++    subjects: [
++      { subject: "Physics", count: 0, chapters: [] },
++      { subject: "Chemistry", count: 30, chapters: [{ chapter: "Not yet tagged", count: 20 }, { chapter: "Mole concept", count: 6 }, { chapter: "Atomic structure", count: 9 }] },
++      { subject: "Botany", count: 50, chapters: [{ chapter: "Cell", count: 50 }] },
++    ],
++  };
++  assert.deepEqual(pickFirstChapter(tree), { subject: "Chemistry", chapter: "Atomic structure" });
++  assert.equal(pickFirstChapter({ subjects: [] }), null);
++  assert.equal(pickFirstChapter(null), null);
++  assert.equal(pickFirstChapter({ subjects: [{ subject: "X", count: 3, chapters: [{ chapter: "Not yet tagged", count: 3 }] }] }), null);
++});
++
++test("clampPercent handles junk", () => {
++  assert.equal(clampPercent(Number.NaN), 0);
++  assert.equal(clampPercent(120.4), 100);
++  assert.equal(clampPercent(-3), 0);
++});
++
++test("practice mode mapping and the mistake-revision pair", () => {
++  assert.equal(practiceModeFor({ session: "daily" }), "daily");
++  assert.equal(practiceModeFor({ session: "due" }), "revision");
++  assert.equal(practiceModeFor({ session: "wrong" }), "mistakes");
++  assert.equal(practiceModeFor({ session: "bookmarked" }), "bookmarks");
++  assert.equal(practiceModeFor({ weakAttemptId: "abc" }), "weak_topics");
++  assert.equal(practiceModeFor({}), "chapter");
++  assert.equal(isMistakeRevision("revision"), true);
++  assert.equal(isMistakeRevision("mistakes"), true);
++  assert.equal(isMistakeRevision("chapter"), false);
++});
++
++test("event props separate ordinary PYQ from timed drills and never carry the chosen answer or personal data", () => {
++  assert.equal(practiceProps({ mode: "chapter", exam: "neet" }).practice_type, "pyq");
++  assert.equal(practiceProps({ mode: "timed_drill" }).practice_type, "timed_drill");
++  const a = answeredProps({ mode: "daily", exam: "neet", subject: "Physics", chapter: "Kinematics" }, { questionId: "q1", questionType: "mcq", isCorrect: true });
++  assert.deepEqual(Object.keys(a).sort(), ["chapter", "exam", "guest", "is_correct", "mode", "practice_type", "question_id", "question_type", "source", "subject"]);
++  for (const k of Object.keys(a)) assert.ok(!/answer|option|email|name|phone|mobile|city/.test(k) || k === "question_type", `unexpected key ${k}`);
++  const c = completedProps({ mode: "chapter" }, { answered: 4, correct: 3, wrong: 1, peeked: 0 });
++  assert.equal(c.accuracy, 75);
++  assert.equal(completedProps({ mode: "chapter" }, { answered: 0, correct: 0, wrong: 0, peeked: 1 }).accuracy, null);
++});
++
++import { missingPrepFields, targetYearOptions } from "../src/lib/prep-profile.ts";
++
++test("prep card only asks for what is missing", () => {
++  assert.deepEqual(missingPrepFields({ targetExam: "neet", track: "12th", targetYear: 2027 }), []);
++  assert.deepEqual(missingPrepFields({ targetExam: "neet", track: "12th", targetYear: null }), ["year"]);
++  assert.deepEqual(missingPrepFields({ targetExam: "", track: "", targetYear: null }), ["exam", "track", "year"]);
++  assert.deepEqual(missingPrepFields({ targetExam: "JEE Main", track: "Dropper", targetYear: 2026 }), []);
++  assert.deepEqual(missingPrepFields(null), []);
++});
++
++test("target years start next year once this year's exam season has passed", () => {
++  assert.deepEqual(targetYearOptions(new Date(2026, 9, 24)), [2027, 2028, 2029, 2030]); // 24 Oct 2026
++  assert.deepEqual(targetYearOptions(new Date(2026, 2, 1)), [2026, 2027, 2028, 2029]); // 1 Mar 2026
++});

@@ -22,7 +22,10 @@ import type { SessionKind } from "@/lib/pyq-types";
 // Subjects — instead of leaving the page.
 // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
 // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind };
+// `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean };
+
+const FIRST_N = 5;
 
 const SESSIONS: SessionKind[] = ["daily", "due", "wrong", "bookmarked"];
 
@@ -37,6 +40,7 @@ export const Route = createFileRoute("/pyq")({
     weakAttempt: str(search.weakAttempt),
     session: SESSIONS.find((k) => k === search.session),
     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
+    first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
   }),
   // Public now: logged-out visitors can browse and try a few questions.
   head: () =>
@@ -157,7 +161,7 @@ function PyqPage() {
         ) : practising ? (
           <PyqPractice
             // Re-mount (fresh filters/answers) when the student picks a different chapter or topic.
-            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}`}
+            key={`${search.session ?? ""}|${search.weakAttempt ?? ""}|${search.subject}|${search.chapter}|${search.topic ?? ""}|${search.first5 ? "f5" : ""}`}
             subject={search.subject}
             chapter={search.chapter}
             topic={search.topic}
@@ -165,11 +169,15 @@ function PyqPage() {
             session={search.session}
             exam={tree?.exam ?? search.exam}
             guest={guest}
+            limit={search.first5 && !guest ? FIRST_N : undefined}
+            source={search.first5 ? "first_five" : undefined}
             // A weak-topics session started from a result page returns to that result page.
             // Sessions go back to where they started: the daily question to the dashboard,
             // the other sessions to the notebook.
             onExit={() =>
-              search.session
+              search.first5 && !guest
+                ? navigate({ to: "/dashboard" })
+                : search.session
                 ? navigate({ to: search.session === "daily" ? "/dashboard" : "/notebook" })
                 : search.weakAttempt
                   ? navigate({ to: "/test-result/$attemptId", params: { attemptId: search.weakAttempt } })

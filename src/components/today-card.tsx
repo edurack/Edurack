@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target } from "lucide-react";
+import { ArrowRight, BookMarked, CalendarCheck, Check, Flame, RotateCcw, Target, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getTodaySummary } from "@/server-functions/practice-extras";
 import type { TodaySummary } from "@/lib/pyq-types";
@@ -261,6 +261,55 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The mentorship "Up next" as a slim card for the dashboard, shown BELOW the practice content. It replaces the old
+ * full-size "Nothing booked yet" panel: an empty calendar is one short line with one button, and a booked session is a
+ * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
+ */
+export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
+  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-border bg-card px-4 py-3", className);
+  const icon = (
+    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
+  );
+  const ghost = "inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-bold text-foreground transition-colors hover:border-foreground/40";
+
+  if (info.state === "loading") {
+    return <div className={cn(shell, "h-[4.25rem] animate-pulse bg-secondary")} aria-hidden />;
+  }
+  if (info.state === "empty") {
+    return (
+      <section aria-label="Mentor sessions" className={shell}>
+        <div className="flex min-w-0 items-center gap-3">
+          {icon}
+          <div className="min-w-0">
+            <p className="text-sm font-bold leading-tight">No mentor session booked</p>
+            <p className="truncate text-xs text-muted-foreground">{info.text}</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={onBrowse} className={ghost}>Browse sessions<ArrowRight className="ml-1.5 h-3.5 w-3.5" aria-hidden /></button>
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section aria-label="Up next: mentor session" className={shell}>
+      <div className="flex min-w-0 items-center gap-3">
+        {icon}
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Up next</p>
+          <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
+          <p className="truncate text-xs text-muted-foreground">{info.title}</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground">Join session</a>}
+        <Link to="/my-sessions" className={ghost}>{info.total > 1 ? `All ${info.total} sessions` : "My sessions"}</Link>
+      </div>
+    </section>
   );
 }
 

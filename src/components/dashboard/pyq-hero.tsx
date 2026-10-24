@@ -4,16 +4,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Check, Flame, Lock, Sparkles, Trophy } from "lucide-react";
+import { ArrowRight, CalendarCheck, Check, Flame, Lock, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { getTodaySummary } from "@/server-functions/practice-extras";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
-import { pickStartHere, headlineFor } from "@/components/today-card";
+import { headlineFor } from "@/components/today-card";
+import { examLabel, pickFirstChapter, type PracticeStats } from "@/lib/practice-stats";
 import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
 import { cn } from "@/lib/utils";
 
-const EXAM_NAME: Record<string, string> = { neet: "NEET", jee: "JEE", cuet: "CUET", ipmat: "IPMAT" };
 
 // Fixed colours (like the Today card) so the hero looks the same in light and dark mode.
 const SUBJECT_STYLE: { match: RegExp; bar: string; chip: string }[] = [
@@ -62,7 +62,7 @@ function Ring({ percent, size = 96 }: { percent: number; size?: number }) {
   );
 }
 
-export function PyqHero({ className }: { className?: string }) {
+export function PyqHero({ className, stats = null, statsFailed = false }: { className?: string; /** The shared practice numbers (see use-practice-stats). null while loading. */ stats?: PracticeStats | null; statsFailed?: boolean }) {
   const { user } = useAuth();
   const [t, setT] = useState<TodaySummary | null>(null);
   const [tree, setTree] = useState<PyqTree | null>(null);
@@ -88,30 +88,53 @@ export function PyqHero({ className }: { className?: string }) {
   }, [load]);
 
   const exam = t?.exam ?? tree?.exam ?? null;
-  const examName = exam ? EXAM_NAME[exam] ?? exam.toUpperCase() : "PYQ";
-  const attempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
+  const examName = exam ? examLabel(exam) : "NEET";
   const total = tree?.totalQuestions ?? 0;
-  const correct = tree?.totalCorrect ?? 0;
+
+  // The numbers come from the shared stats (the same ones the performance card shows). If they failed to load we fall
+  // back to the browse tree's own counts so the hero still works.
+  const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
+  const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
+  const attempted = Math.min(total || Infinity, examStats ? examStats.solved : treeAttempted);
+  const accuracy = examStats ? examStats.accuracy : attempted > 0 ? Math.round(((tree?.totalCorrect ?? 0) / attempted) * 100) : null;
   const percent = total > 0 ? Math.min(100, Math.round((attempted / total) * 100)) : 0;
-  const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : null;
-  const isNew = loaded && attempted === 0 && (t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0;
-  const quests = buildQuests(t, attempted);
+
+  // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
+  // student who had practised JEE while their profile said NEET was told to "solve your first question".)
+  const ready = loaded && (stats !== null || statsFailed);
+  const questionsAnswered = stats ? stats.questionsAnswered : treeAttempted;
+  const isNew = ready && questionsAnswered === 0 && (stats !== null || ((t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0));
+
+  const quests = buildQuests(t, questionsAnswered);
   const nextQuest = quests.find((q) => !q.done);
-  const step = t ? pickStartHere(t) : null;
   const head = t ? headlineFor(t) : null;
   const s = t?.streak;
   const lit = (s?.current ?? 0) > 0;
+  const due = stats ? stats.overall.due : t?.due ?? 0;
+  const dailyPending = Boolean(t?.daily.available && !t.daily.done);
 
-  const cta = isNew
-    ? { label: "Solve my first question", sub: "About 2 minutes. Answer + solution included." }
-    : step
-      ? { label: step.label, sub: step.sub }
-      : { label: "Start practising PYQs", sub: "Pick a chapter and go" };
-  const ctaTo = (step?.to ?? "/pyq") as "/pyq";
-  const ctaSearch = step?.search ?? { exam: exam ?? undefined };
+  // ── Where the main button goes ──
+  // New student: straight into 5 questions of the biggest chapter of their exam (no browsing, no setup).
+  const first = pickFirstChapter(tree);
+  const startTo = first ? { subject: first.subject, chapter: first.chapter, practice: true, first5: true, exam: exam ?? undefined } : { exam: exam ?? undefined };
+  // Returning student: back to the chapter they were last in. (A chapter-less question opens that subject's chapter list.)
+  const last = stats?.lastAttempt ?? null;
+  const lastLabel = last ? (last.chapter ? `${last.subject} · ${last.chapter}` : last.subject) : null;
+  const continueSearch = last
+    ? last.chapter
+      ? { subject: last.subject, chapter: last.chapter, practice: true, exam: (last.exam as "neet" | "jee" | null) ?? exam ?? undefined }
+      : { subject: last.subject, exam: exam ?? undefined }
+    : { exam: exam ?? undefined };
 
-  const title = isNew ? `Solve your first ${examName} question` : head?.title ?? `${examName} PYQ practice`;
-  const sub = isNew ? "One real previous-year question, a clear solution, and your streak starts. That's the whole first step." : head?.sub ?? "Chapter-wise questions with solutions, free.";
+  const CTA = "group inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none";
+  const ARROW = "grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none";
+
+  const title = !ready ? "Your PYQ practice" : isNew ? "Welcome to Edurack" : head?.title ?? `${examName} PYQ practice`;
+  const sub = !ready
+    ? "Loading your progress…"
+    : isNew
+      ? `Start with 5 real previous-year ${examName} questions. Every one comes with the answer and a clear solution, and your streak starts with the first.`
+      : head?.sub ?? "Chapter-wise questions with solutions, free.";
 
   return (
     <section aria-label="PYQ practice" className={cn("ink-section relative isolate overflow-hidden rounded-3xl p-5 sm:p-7", className)}>
@@ -124,86 +147,128 @@ export function PyqHero({ className }: { className?: string }) {
             <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-950">
               <Sparkles className="h-3 w-3" aria-hidden /> {examName} PYQ practice · Free
             </span>
-            <span
-              data-testid="hero-streak"
-              className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
-            >
-              <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
-              {lit ? `${s!.current} day streak` : "No streak yet"}
-            </span>
+            {!isNew && (
+              <span
+                data-testid="hero-streak"
+                className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
+              >
+                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
+                {lit ? `${s!.current} day streak` : "No streak yet"}
+              </span>
+            )}
           </div>
 
-          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{loaded ? title : "Your PYQ practice"}</h2>
-          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{loaded ? sub : "Loading your progress…"}</p>
+          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{title}</h2>
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{sub}</p>
 
-          <Link
-            to={ctaTo}
-            search={ctaSearch}
-            className="group mt-5 inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none"
-          >
-            <span className="min-w-0">
-              <span className="block truncate">{cta.label}</span>
-              <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{cta.sub}</span>
-            </span>
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none">
-              <ArrowRight className="h-5 w-5" aria-hidden />
-            </span>
-          </Link>
+          {isNew ? (
+            <>
+              <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
+                <span className="min-w-0">
+                  <span className="block truncate">Start Your First 5 {examName} PYQs</span>
+                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
+                </span>
+                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
+              </Link>
+              <Link to="/pyq" search={{ exam: exam ?? undefined }} className="mt-3 inline-flex min-h-9 items-center text-xs font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
+                or pick a subject yourself
+              </Link>
+            </>
+          ) : (
+            <>
+              {/* Returning students: today's question + streak come first. */}
+              {ready && t && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {t.daily.available && (
+                    dailyPending ? (
+                      <Link to="/pyq" search={{ practice: true, session: "daily" }} data-testid="hero-daily" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/50 bg-amber-300/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-300/25">
+                        <CalendarCheck className="h-4 w-4" aria-hidden />
+                        Solve today's PYQ
+                        <span className="text-xs font-semibold text-amber-200/80">{lit ? `keeps your ${s!.current}-day streak` : "starts your streak"}</span>
+                      </Link>
+                    ) : (
+                      <span data-testid="hero-daily-done" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 text-sm font-bold text-emerald-100">
+                        <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> Today's PYQ done
+                      </span>
+                    )
+                  )}
+                </div>
+              )}
 
-          {s && (
-            <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
-              <div className="grid grid-cols-7 gap-1.5">
-                {s.week.map((d) => (
-                  <div key={d.day} className="flex flex-col items-center gap-1">
-                    <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
-                    <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
-                      {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
-                    </span>
+              <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, "mt-4")}>
+                <span className="min-w-0">
+                  <span className="block truncate">Continue Practising</span>
+                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
+                </span>
+                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
+              </Link>
+
+              {due > 0 && (
+                <Link to="/pyq" search={{ practice: true, session: "due" }} data-testid="hero-revise" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 px-4 text-sm font-bold text-white transition-colors hover:border-white/60">
+                  <RotateCcw className="h-4 w-4" aria-hidden />
+                  Revise {due} mistake{due === 1 ? "" : "s"} due today
+                </Link>
+              )}
+
+              {s && (
+                <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {s.week.map((d) => (
+                      <div key={d.day} className="flex flex-col items-center gap-1">
+                        <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
+                        <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
+                          {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Progress panel */}
-        <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
-          <div className="flex items-center gap-4">
-            <Ring percent={percent} />
-            <div className="min-w-0">
-              <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
-              <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
-              {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
+        {/* Progress panel: only once there is progress to show. */}
+        {!isNew && (
+          <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
+            <div className="flex items-center gap-4">
+              <Ring percent={percent} />
+              <div className="min-w-0">
+                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs</span></p>
+                <p className="mt-0.5 text-xs text-white/60">{accuracy !== null ? `${accuracy}% accuracy so far` : "Your accuracy shows here"}</p>
+                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Quest path */}
-      <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
-        {quests.map((q) => {
-          const isNext = nextQuest?.key === q.key;
-          return (
-            <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
-              <div className="flex items-center gap-2">
-                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
-                  {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
-                </span>
-                <p className="truncate text-xs font-extrabold">{q.label}</p>
-              </div>
-              <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
-              {!q.done && (
-                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
-                  <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
+      {/* Milestones + subject tiles are for students who have started; a brand-new student gets one clear action instead. */}
+      {!isNew && (
+        <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
+          {quests.map((q) => {
+            const isNext = nextQuest?.key === q.key;
+            return (
+              <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
+                <div className="flex items-center gap-2">
+                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
+                    {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
+                  </span>
+                  <p className="truncate text-xs font-extrabold">{q.label}</p>
                 </div>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+                <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
+                {!q.done && (
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                    <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
 
-      {/* Subject tiles */}
-      {tree && tree.subjects.length > 0 && (
+      {!isNew && tree && tree.subjects.length > 0 && (
         <div className="mt-5">
           <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">

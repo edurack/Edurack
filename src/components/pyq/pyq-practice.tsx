@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Flag, Flame, Lightbulb, SlidersHorizontal } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -12,6 +12,8 @@ import { ReportDialog } from "@/components/pyq/report-dialog";
 import { SessionSummary } from "@/components/pyq/session-summary";
 import { GUEST_PYQ_LIMIT, SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
+import { track, trackOnce } from "@/lib/analytics";
+import { answeredProps, completedProps, isMistakeRevision, practiceModeFor, practiceProps, type PracticeContext } from "@/lib/practice-events";
 
 type Props = {
   /** Chapter practice (browse mode). Omit when `weakAttemptId` is set. */
@@ -27,6 +29,10 @@ type Props = {
   exam?: string;
   /** Logged-out visitor: free preview via the guest endpoints, nothing saved, sign-up prompt after a few questions. */
   guest?: boolean;
+  /** Cap the list (e.g. 5 for the new-student "first 5 PYQs" start). Finishing the capped list ends the session normally. */
+  limit?: number;
+  /** Where the session was launched from, for analytics only (e.g. "first_five"). */
+  source?: string;
   onExit: () => void;
 };
 
@@ -42,7 +48,7 @@ const EMPTY_SESSION: Record<SessionKind, string> = {
 };
 const SCROLL_ROW = "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
-export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, onExit }: Props) {
+export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, exam, guest = false, limit, source, onExit }: Props) {
   const { user: authUser } = useAuth();
   // A guest never uses the signed-in endpoints, even if auth finishes loading mid-session.
   const user = guest ? null : authUser;
@@ -67,6 +73,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   const [finished, setFinished] = useState(false);
   const [streakNow, setStreakNow] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Analytics. One `practice_started` per practice session and one `practice_completed` per finished session: the refs
+  // make a refetch (difficulty chip), a StrictMode re-run or a re-render unable to send either twice.
+  const mode = practiceModeFor({ session, weakAttemptId });
+  const startedFor = useRef<string | null>(null);
+  const completedSent = useRef(false);
+  const ctxFor = (qq?: PyqQuestion): PracticeContext => ({ mode, exam, subject: qq?.subject ?? subject, chapter: qq?.chapter ?? chapter, guest, source });
 
   // Already used the free questions on an earlier visit? Go straight to the sign-up prompt.
   useEffect(() => {
@@ -101,6 +114,13 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
         }
         if (cancelled) return;
         setList(res);
+        const sessionKey = [mode, subject, chapter, topic, weakAttemptId, session, guest ? "g" : "u"].join("|");
+        if (res.questions.length > 0 && startedFor.current !== sessionKey) {
+          startedFor.current = sessionKey;
+          const props = { ...practiceProps(ctxFor()), question_count: limit ? Math.min(limit, res.questions.length) : res.questions.length };
+          track("practice_started", props);
+          if (isMistakeRevision(mode)) track("mistake_revision_started", { ...props, source: session });
+        }
         // Union, not replace: other filters shrink the server's year list, and the
         // filter panel shouldn't change shape while the student is using it.
         setYears((prev) => [...new Set([...prev, ...res.years])].sort((a, b) => b.localeCompare(a)));
@@ -124,8 +144,8 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
-    return qs;
-  }, [list, year, statusF]);
+    return limit ? qs.slice(0, limit) : qs;
+  }, [list, year, statusF, limit]);
   const q: PyqQuestion | undefined = questions[idx];
   const result = q ? results[q.id] : undefined;
   const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
@@ -151,6 +171,12 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
         bumpGuestPyqCount();
       }
       setResults((r) => ({ ...r, [q.id]: { ...res, chosenOption: answer?.option, chosenValue: answer?.value } }));
+      // Only a real answer is an answer; peeking at the solution (answer === null) isn't sent. Never the chosen option/number.
+      if (answer !== null) {
+        track("question_answered", answeredProps(ctxFor(q), { questionId: q.id, questionType: q.type, isCorrect: res.isCorrect }));
+        // Once per India day per student, however many times the daily question screen is opened.
+        if (mode === "daily" && user) trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctxFor(q)), is_correct: res.isCorrect }, "day");
+      }
       if (res.streak) setStreakNow(res.streak.current);
       // Keep the status chip in sync without refetching the list.
       setList((l) =>
@@ -207,6 +233,21 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
       ? weakChapters.map((c) => c.chapter).join(" · ")
       : "From your last test"
     : subject;
+
+  useEffect(() => {
+    if (!finished || completedSent.current) return;
+    completedSent.current = true;
+    const all = Object.values(results);
+    const counts = {
+      answered: all.filter((r) => !r.revealed).length,
+      correct: all.filter((r) => !r.revealed && r.isCorrect).length,
+      wrong: all.filter((r) => !r.revealed && !r.isCorrect).length,
+      peeked: all.filter((r) => r.revealed).length,
+    };
+    track("practice_completed", completedProps(ctxFor(), counts));
+    if (isMistakeRevision(mode)) track("mistake_revision_completed", { ...completedProps(ctxFor(), counts), source: session });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   if (gated) {
     const all = Object.values(results);

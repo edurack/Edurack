@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link, notFound, isNotFound } from "@tanstack/react-router";
 import { pageHead, noindexHead, breadcrumbJsonLd, SITE_URL } from "@/lib/seo";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconLoader2 as Loader2, IconArrowLeft as ArrowLeft, IconRosetteDiscountCheck as BadgeCheck, IconTrophy as Trophy, IconBuilding as Building2, IconBookmark as BookMarked, IconStar as Star, IconStack2 as Layers3, IconChevronRight as ChevronRight, IconTag as Tag, IconClipboardList as ClipboardList, IconAward as Award, IconTarget as Target } from "@tabler/icons-react";
 import { UserX, Timer } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { useAuth } from "@/lib/auth-context";
@@ -10,6 +10,7 @@ import { getPublicMentorFullProfile } from "@/server-functions/batch-hub";
 import { listPublicMentorSessions } from "@/server-functions/public-sessions";
 import { SessionCard } from "@/components/sessions/session-card";
 import { listPublicSoldTestsForMentor } from "@/server-functions/catalog";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/mentor-profile/$mentorId")({
   // Runs on the server for the first request, so crawlers and link
@@ -160,6 +161,8 @@ function MentorProfilePage() {
   const [batches, setBatches] = useState<Batch[]>((initial?.batches as Batch[] | undefined) ?? []);
   const [soldTests, setSoldTests] = useState<SoldTestEntry[] | null>(null);
   const [notFound, setNotFound] = useState(false);
+  // The fetch effect below re-runs when auth resolves, so the view is sent from a ref-guarded spot: once per mentor per visit.
+  const viewedMentor = useRef<string | null>(null);
 
   // ---------------------------------------------------------------------
   // PERF: fetch immediately, don't wait on `loading` (Firebase Auth
@@ -183,6 +186,11 @@ function MentorProfilePage() {
         setMentor(m);
         setBatches(b);
         setSoldTests(st as SoldTestEntry[]);
+        if (viewedMentor.current !== mentorId) {
+          viewedMentor.current = mentorId;
+          // Ids and counts only: nothing about the visitor, and nothing about the mentor beyond what the public page shows.
+          track("mentor_profile_viewed", { mentor_id: mentorId, batch_count: b.length, signed_in: Boolean(user) });
+        }
       } catch {
         // If listPublicSoldTestsForMentor still requires auth on the
         // backend, don't let that break the whole page for guests —

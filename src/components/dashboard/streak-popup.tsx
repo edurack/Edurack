@@ -12,6 +12,8 @@ import { getTodaySummary, listPyqSession } from "@/server-functions/practice-ext
 import { submitPyqAnswer } from "@/server-functions/pyq-practice";
 import type { OptionKey, PyqCheckResult, PyqQuestion, TodaySummary } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
+import { track, trackOnce } from "@/lib/analytics";
+import { answeredProps, practiceProps } from "@/lib/practice-events";
 
 const OPTS: OptionKey[] = ["A", "B", "C", "D"];
 /** Fired after an answer is saved from the popup, so PyqHero can refetch and light the flame. */
@@ -70,6 +72,10 @@ export function StreakPopup() {
       const answer = q.type === "mcq" ? { option: pick ?? undefined } : { value: Number(num) };
       const out = await submitPyqAnswer({ data: { token, questionId: q.id, answer } });
       setResult(out);
+      // This answer bypasses the PYQ practice screen, so it is tracked here: it's an answered question AND today's daily question.
+      const ctx = { mode: "daily" as const, exam: today?.exam, subject: q.subject, chapter: q.chapter, source: "daily_popup" };
+      track("question_answered", answeredProps(ctx, { questionId: q.id, questionType: q.type, isCorrect: out.isCorrect }));
+      trackOnce(`daily:${user.uid}`, "daily_question_completed", { ...practiceProps(ctx), is_correct: out.isCorrect }, "day");
       // The dashboard hero (flame, week strip, progress ring) lives outside this dialog: tell it to refresh.
       window.dispatchEvent(new Event(PRACTICE_ANSWERED_EVENT));
     } catch (e) {

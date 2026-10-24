@@ -35,7 +35,7 @@ function snooze(uid: string) {
 
 type Basic = { fullName: string; mobile: string; city: string };
 
-export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | null; onSaved: (next: Basic) => void }) {
+export function CompleteProfilePopup({ profile, onSaved, hold = false }: { profile: Basic | null; onSaved: (next: Basic) => void; /** Don't show yet (e.g. the student hasn't answered a question): they get asked on a later visit. */ hold?: boolean }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -49,7 +49,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
 
   // Decide once, after the profile has loaded, whether to show.
   useEffect(() => {
-    if (!user || !profile || !incomplete || done || isSnoozed(user.uid)) return;
+    if (!user || !profile || !incomplete || done || hold || isSnoozed(user.uid)) return;
     const t = window.setTimeout(() => {
       // Don't pile onto another dialog (e.g. the streak popup) — try again on the next visit.
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
@@ -61,7 +61,7 @@ export function CompleteProfilePopup({ profile, onSaved }: { profile: Basic | nu
     }, SHOW_DELAY_MS);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, !!profile, incomplete]);
+  }, [user?.uid, !!profile, incomplete, hold]);
 
   function close() {
     setOpen(false);
