@@ -1,11 +1,5 @@
 import { IconClock as Clock, IconUser as User } from "@tabler/icons-react";
-
-const subjects = [
-  { name: "Physics", active: false },
-  { name: "Chemistry", active: false },
-  { name: "Botany", active: true },
-  { name: "Zoology", active: false },
-];
+import { EXAM_DEMOS, type DemoExam } from "./exam-demos";
 
 const palette = [
   { n: 1, s: "answered" },
@@ -34,7 +28,9 @@ const statusColor: Record<string, string> = {
   "not-visited": "bg-white text-slate-700 border border-slate-300",
 };
 
-export function CbtSimulator() {
+export function CbtSimulator({ exam = "neet" }: { exam?: DemoExam }) {
+  const demo = EXAM_DEMOS[exam];
+  const subjects = demo.sections.map((name, i) => ({ name, active: i === demo.activeSection }));
   return (
     <div className="clay mx-auto w-full max-w-6xl p-3 sm:p-5 md:p-7">
       <div className="overflow-hidden rounded-2xl bg-white shadow-inner ring-1 ring-slate-200">
@@ -47,7 +43,7 @@ export function CbtSimulator() {
               className="h-10 w-auto object-contain sm:h-12" 
               onError={(e)=>{(e.currentTarget as HTMLImageElement).style.display='none'}} 
             />
-            <div className="text-sm font-semibold text-slate-800 sm:text-base">NEET (UG) — Mock Test 07</div>
+            <div className="text-sm font-semibold text-slate-800 sm:text-base">{demo.mockTitle}</div>
           </div>
           <div className="flex items-center gap-3 text-xs sm:text-sm">
             <div className="flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-slate-700">
@@ -84,15 +80,15 @@ export function CbtSimulator() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
               <span>Question No. 5</span>
               <div className="flex gap-3">
-                <span>Marks: <b className="text-green-600">+4</b></span>
-                <span>Negative: <b className="text-red-600">-1</b></span>
+                <span>Marks: <b className="text-green-600">+{demo.marks.plus}</b></span>
+                <span>Negative: <b className="text-red-600">-{demo.marks.minus}</b></span>
               </div>
             </div>
             <h4 className="mb-4 text-base font-semibold text-slate-800 sm:text-lg">
-              Which of the following plant tissues is responsible for secondary growth in dicot stems?
+              {demo.question}
             </h4>
             <div className="space-y-2.5">
-              {["Vascular cambium", "Cork cambium", "Both A and B", "Apical meristem"].map((opt, i) => (
+              {demo.options.map((opt, i) => (
                 <label
                   key={i}
                   className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-100"

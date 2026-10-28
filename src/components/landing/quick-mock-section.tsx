@@ -1,4 +1,4 @@
-// Homepage: "Got 30 Minutes? Test Your NEET Preparation." Promotes the existing NEET Quick Mock (the timed 20-PYQ drill).
+// Homepage: "Got 30 Minutes? Test Your Preparation." Promotes the existing Quick Mock (the timed 20-PYQ drill, which serves the student's own exam).
 // Signed-in students go straight to it; visitors sign up first and land on it right after (the auth page's redirect).
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -38,9 +38,9 @@ export function QuickMockSection() {
     <section ref={ref} id="quick-mock" aria-labelledby="quick-mock-heading" className="border-y border-border bg-secondary/50 py-14 sm:py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary">NEET Quick Mock</p>
-          <h2 id="quick-mock-heading" className="font-display mt-3 text-balance text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Got 30 Minutes? Test Your NEET Preparation.</h2>
-          <p className="mt-3 text-balance text-base text-muted-foreground sm:text-lg">Take a free 20-question NEET Quick Mock with timed practice, instant scoring and detailed solutions.</p>
+          <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary">Quick Mock</p>
+          <h2 id="quick-mock-heading" className="font-display mt-3 text-balance text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Got 30 Minutes? Test Your Preparation.</h2>
+          <p className="mt-3 text-balance text-base text-muted-foreground sm:text-lg">Take a free 20-question Quick Mock for your exam (NEET or JEE) with timed practice, instant scoring and detailed solutions.</p>
 
           <ul className="mt-6 flex flex-wrap items-center justify-center gap-2.5" aria-label="Quick Mock format">
             {facts.map((f) => (

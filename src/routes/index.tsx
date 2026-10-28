@@ -43,6 +43,7 @@ import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-s
 import { LandingProSection } from "@/components/landing-pro-section";
 import { FreeResourcesSection } from "@/components/landing/free-resources-section";
 import { QuickMockSection } from "@/components/landing/quick-mock-section";
+import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf, type DemoExam } from "@/components/landing/exam-demos";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
 // (exam-navigation UI, question palette, timers, etc). It was being bundled
@@ -74,17 +75,17 @@ export const Route = createFileRoute("/")({
   // WebSite nodes __root.tsx already sets for every page.
   head: () =>
     pageHead({
-      title: "NEET PYQs 2020-2026: Chapter-wise CBT Practice | Edurack",
+      title: "NEET, JEE & IPMAT CBT Practice + Mentors | Edurack",
       rawTitle: true,
       path: "/",
       description:
-        "Practice every NEET UG previous year question from 2020 to 2026, chapter-wise and topic-wise, in real CBT mode with detailed solutions. Free.",
+        "Exam-format CBT mocks and previous year questions with detailed solutions for NEET, JEE and IPMAT, plus mentors who cleared the exam. Free to start.",
       jsonLd: {
         "@context": "https://schema.org",
         "@type": "WebPage",
         "@id": "https://www.edurack.in/#webpage",
         url: "https://www.edurack.in/",
-        name: "NEET PYQs 2020-2026: Chapter-wise CBT Practice | Edurack",
+        name: "NEET, JEE & IPMAT CBT Practice + Mentors | Edurack",
         isPartOf: { "@id": "https://www.edurack.in/#website" },
         about: { "@id": "https://www.edurack.in/#organization" },
         mainEntity: { "@id": "https://www.edurack.in/#organization" },
@@ -141,7 +142,7 @@ const exams: { key: ExamKey; label: string; full: string }[] = [
 const heroTrustPoints = [
   { icon: ShieldCheck, text: "Exam-accurate CBT interface" },
   { icon: Users, text: "Mentors who've actually cleared these exams" },
-  { icon: Globe, text: "Built for NEET · JEE · CUET · IPMAT" },
+  { icon: Globe, text: "Built for NEET · JEE · IPMAT" },
 ];
 
 // ---------------------------------------------
@@ -303,7 +304,7 @@ function Index() {
           "sameAs": ["https://www.linkedin.com/in/archita-priyadarshinee-behuria-a01323335/"]
         }
       ],
-      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, CUET, and IPMAT aspirants. Launched 10 September 2026.",
+      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, and IPMAT aspirants. Launched 10 September 2026.",
       "sameAs": [
         "https://www.edurack.in",
         "https://www.linkedin.com/company/edurack",
@@ -348,6 +349,7 @@ function Index() {
         <Header />
         <main>
           <HeroMotion ctaRef={ctaRef} />
+          <ExamsSection />
           <QuickMockSection />
           <LandingFreeSessionsSection />
           <LoopSection />
@@ -515,17 +517,64 @@ function LoopSection() {
   );
 }
 
+// ── Live exams + roadmap ───────────────────────────────────────────────────
+const examCards: { key: "neet" | "jee" | "ipmat"; full: string; blurb: string; links: { label: string; to: string }[] }[] = [
+  { key: "neet", full: "NEET (UG)", blurb: "Previous year questions, chapter weightage and rank tools for medical aspirants.", links: [{ label: "Chapter weightage", to: "/neet/chapter-wise-weightage" }, { label: "Rank predictor", to: "/tools/neet-rank-predictor" }] },
+  { key: "jee", full: "JEE Main & Advanced", blurb: "Chapter-wise practice with the JEE Main 2027 hub, weightage and paper analysis.", links: [{ label: "JEE Main 2027 hub", to: "/jee-main-2027" }, { label: "Chapter weightage", to: "/jee/chapter-wise-weightage" }] },
+  { key: "ipmat", full: "IPMAT (IIM)", blurb: "Quant and verbal practice in a real CBT interface, with free planners and material.", links: [{ label: "Free resources", to: "/free-resources" }] },
+];
+
+function ExamsSection() {
+  return (
+    <section id="exams" aria-labelledby="exams-heading" className="py-16 sm:py-24">
+      <div className={WRAP}>
+        <Rise className="max-w-2xl">
+          <h2 id="exams-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+            <span className="block font-light">Your exam,</span>
+            <span className="block font-extrabold">one platform.</span>
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">NEET, JEE and IPMAT are live. CUET is coming soon, with government and state entrance exams to follow.</p>
+        </Rise>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {examCards.map((c, i) => (
+            <Rise key={c.key} delay={i * 0.07} className="min-w-0">
+              <div className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
+                <h3 className="font-display text-2xl font-extrabold">{c.full}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{c.blurb}</p>
+                <Link to="/pyq" search={{ exam: c.key }} className="mt-5 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
+                  Practise {EXAM_DEMOS[c.key].label} <ArrowRight className="h-4 w-4" />
+                </Link>
+                <ul className="mt-auto flex flex-wrap gap-x-4 pt-2 text-sm">
+                  {c.links.map((l) => (
+                    <li key={l.label}><Link to={l.to} className="inline-flex min-h-9 items-center text-foreground/70 hover:text-foreground">{l.label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+            </Rise>
+          ))}
+          <Rise delay={0.21} className="min-w-0">
+            <div className="flex h-full flex-col rounded-3xl border border-dashed border-border p-6">
+              <span className="w-fit rounded-full bg-primary/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-primary">Coming soon</span>
+              <h3 className="mt-3 font-display text-2xl font-extrabold">CUET and more</h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">CUET (UG) is next. We're expanding through 2027 into government and state entrance exams.</p>
+              <Link to="/contact" className="mt-auto inline-flex min-h-11 items-center gap-1.5 pt-5 text-sm font-bold text-foreground">Tell us which exam you need <ArrowRight className="h-4 w-4" /></Link>
+            </div>
+          </Rise>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ── Simulator + sample report ──────────────────────────────────────────────
 function CbtSimulatorFallback() {
   return <div className="flex h-[420px] items-center justify-center rounded-2xl border border-border text-sm text-muted-foreground">Loading the CBT simulator…</div>;
 }
 
 function SimulatorSection() {
-  const rows = [
-    { s: "Physics", t: "Needs attention", c: "text-rose-600 dark:text-rose-400", w: 46 },
-    { s: "Chemistry", t: "Strong", c: "text-emerald-600 dark:text-emerald-400", w: 78 },
-    { s: "Biology", t: "Moderate", c: "text-amber-600 dark:text-amber-400", w: 61 },
-  ];
+  const [exam, setExam] = useState<DemoExam>("neet");
+  const demo = EXAM_DEMOS[exam];
+  const rows = demo.report.map((r) => ({ s: r.s, t: toneOf(r.v).word, c: toneOf(r.v).text, w: r.v }));
   return (
     <section id="simulator" className="py-20 sm:py-28">
       <div className={WRAP}>
@@ -534,7 +583,12 @@ function SimulatorSection() {
           <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Question palette, section controls, flags and timers, laid out like the real paper. Try the interface right here.</p>
         </Rise>
         <Rise delay={0.1} className="mt-10">
-          <Suspense fallback={<CbtSimulatorFallback />}><CbtSimulator /></Suspense>
+          <div role="group" aria-label="Preview the simulator for your exam" className="mb-4 flex flex-wrap gap-2">
+            {DEMO_EXAM_KEYS.map((k) => (
+              <button key={k} type="button" onClick={() => setExam(k)} aria-pressed={exam === k} className={`min-h-11 rounded-full border px-4 text-sm font-bold transition-colors ${exam === k ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/80 hover:border-foreground"}`}>{EXAM_DEMOS[k].label}</button>
+            ))}
+          </div>
+          <Suspense fallback={<CbtSimulatorFallback />}><CbtSimulator exam={exam} /></Suspense>
         </Rise>
 
         <div className="mt-16 grid gap-10 lg:grid-cols-2 lg:items-center">
@@ -549,7 +603,7 @@ function SimulatorSection() {
           <Rise delay={0.1}>
             <div className="rounded-3xl border border-border bg-card p-6 sm:p-8">
               <p className="text-xs font-semibold text-muted-foreground">Sample performance report</p>
-              <div className="mt-2 font-display text-5xl font-extrabold">400<span className="text-xl font-medium text-muted-foreground"> / 720</span></div>
+              <div className="mt-2 font-display text-5xl font-extrabold">{demo.score}<span className="text-xl font-medium text-muted-foreground"> / {demo.total}</span></div>
               <div className="mt-6 space-y-4">
                 {rows.map((r, i) => (
                   <div key={r.s}>
@@ -560,7 +614,7 @@ function SimulatorSection() {
                   </div>
                 ))}
               </div>
-              <p className="mt-6 border-t border-border pt-4 text-sm text-muted-foreground">Focus next: <b className="text-foreground">Physics → Mechanics</b>, <b className="text-foreground">Biology → Plant Physiology</b></p>
+              <p className="mt-6 border-t border-border pt-4 text-sm text-muted-foreground">Focus next: {demo.focus.map((f, i) => <span key={f}>{i > 0 && ", "}<b className="text-foreground">{f}</b></span>)}</p>
             </div>
           </Rise>
         </div>
@@ -643,7 +697,7 @@ const featureList = [
   { icon: LayoutDashboard, t: "Progress tracking", d: "See your preparation across tests and topics.", span: "" },
   { icon: CalendarCheck, t: "Mentor marketplace", d: "Batches and sessions from mentors who cleared it, including free sessions.", span: "lg:col-span-2" },
 ];
-const alsoOn = ["Lecture library", "Free mentor sessions", "Certificate verification", "Support tickets", "NEET · JEE · CUET · IPMAT"];
+const alsoOn = ["Lecture library", "Free mentor sessions", "Certificate verification", "Support tickets", "NEET · JEE · IPMAT"];
 
 function FeaturesSection() {
   return (
@@ -685,7 +739,7 @@ function BlogShowcase() {
         <Rise className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <Title light="Strategy and stories," bold="not just a product." />
-            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Exam strategy, mentor stories and platform updates for NEET, JEE, CUET and IPMAT aspirants.</p>
+            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Exam strategy, mentor stories and platform updates for NEET, JEE and IPMAT aspirants.</p>
           </div>
           <Link to="/blog" preload="viewport" className={`${GHOST_BTN} shrink-0`}>Read the blog <ArrowRight className="h-4 w-4" /></Link>
         </Rise>
@@ -761,7 +815,7 @@ function FinalCta() {
     <section className="py-20 sm:py-28">
       <Rise className={`${WRAP} text-center`}>
         <h2 className="font-display text-5xl leading-[1.02] tracking-tight sm:text-7xl"><span className="block font-light">Stop guessing.</span><span className="block font-extrabold">Start fixing.</span></h2>
-        <p className="mx-auto mt-5 max-w-md text-lg text-muted-foreground">Practise every NEET PYQ free, then see exactly where your marks go.</p>
+        <p className="mx-auto mt-5 max-w-md text-lg text-muted-foreground">Practise free, then see exactly where your marks go, whichever exam you're preparing for.</p>
         <div className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
           <Link to="/simulator/live" className={PREMIUM_BTN}>Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
           <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>Create free account</Link>
@@ -788,7 +842,7 @@ function Footer() {
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2"><img src="/edurack-logo.webp" alt="EDURACK" width={160} height={160} className="h-10 w-auto object-contain" /><span className="font-display text-xl font-extrabold">edurack</span></Link>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.</p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE and IPMAT aspirants.</p>
             <p className="mt-2 max-w-xs text-sm text-white/40">Founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee. {LAUNCH_DATE_LABEL}.</p>
             <div className="mt-5 flex gap-2">
               {socialLinks.map((s) => (

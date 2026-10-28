@@ -16,6 +16,7 @@ import {
   IconUsers as Users,
   IconVideo as Video,
 } from "@tabler/icons-react";
+import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf, type DemoExam, type ExamDemo } from "./exam-demos";
 
 // Shared premium primary button (sapphire, soft sheen). Exported so the header
 // and mobile dock use the exact same look as the hero CTA.
@@ -38,7 +39,7 @@ const paletteTone: Record<string, string> = {
   v: "bg-secondary text-muted-foreground",
 };
 
-function MockScene() {
+function MockScene({ demo }: { demo: ExamDemo }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => (t < PALETTE.length ? t + 1 : t)), 230);
@@ -47,7 +48,7 @@ function MockScene() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs font-semibold">
-        <span className="text-foreground">NEET (UG) · Mock 07</span>
+        <span className="text-foreground">{demo.short} · Mock 07</span>
         <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 font-mono">
           <Clock className="h-3.5 w-3.5" /> 02:47:12
         </span>
@@ -78,17 +79,13 @@ function MockScene() {
   );
 }
 
-function AnalysisScene() {
-  const rows = [
-    { s: "Physics", v: 46, c: "bg-rose-500", t: "Needs attention" },
-    { s: "Chemistry", v: 78, c: "bg-emerald-500", t: "Strong" },
-    { s: "Biology", v: 61, c: "bg-amber-500", t: "Moderate" },
-  ];
+function AnalysisScene({ demo }: { demo: ExamDemo }) {
+  const rows = demo.report.map((r) => ({ s: r.s, v: r.v, c: toneOf(r.v).bar, t: toneOf(r.v).word }));
   return (
     <div className="space-y-4">
       <div>
         <div className="font-display text-3xl font-extrabold text-foreground">
-          400<span className="text-base font-semibold text-muted-foreground"> / 720</span>
+          {demo.score}<span className="text-base font-semibold text-muted-foreground"> / {demo.total}</span>
         </div>
         <p className="text-xs text-muted-foreground">The score is only the start</p>
       </div>
@@ -112,8 +109,8 @@ function AnalysisScene() {
   );
 }
 
-function FixScene() {
-  const items = ["Physics → Mechanics", "Biology → Plant Physiology"];
+function FixScene({ demo }: { demo: ExamDemo }) {
+  const items = demo.focus;
   return (
     <div className="space-y-3">
       <p className="text-xs font-semibold text-muted-foreground">Fix these two first</p>
@@ -146,7 +143,8 @@ function FixScene() {
   );
 }
 
-function PhoneDemo() {
+function PhoneDemo({ exam }: { exam: DemoExam }) {
+  const demo = EXAM_DEMOS[exam];
   const [i, setI] = useState(0);
   const reduce = useReducedMotion();
   useEffect(() => {
@@ -154,7 +152,7 @@ function PhoneDemo() {
     const id = setInterval(() => setI((n) => (n + 1) % SCENES.length), 4600);
     return () => clearInterval(id);
   }, [reduce]);
-  const scene = [<MockScene key="m" />, <AnalysisScene key="a" />, <FixScene key="f" />][i];
+  const scene = [<MockScene key={`m-${exam}`} demo={demo} />, <AnalysisScene key={`a-${exam}`} demo={demo} />, <FixScene key={`f-${exam}`} demo={demo} />][i];
 
   return (
     <div className="w-[260px] rounded-[2.2rem] border border-border bg-card p-3 shadow-sm sm:w-[290px]">
@@ -243,6 +241,7 @@ const rise = (i: number) => ({
 
 export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement | null> }): ReactNode {
   const root = useRef<HTMLElement>(null);
+  const [exam, setExam] = useState<DemoExam>("neet");
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: root, offset: ["start start", "end start"] });
   const yGlow = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 120]);
@@ -259,36 +258,55 @@ export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_.95fr]">
         <div>
           <motion.p {...rise(0)} className="inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-foreground/80">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET aspirants
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET · JEE · IPMAT aspirants
           </motion.p>
           <motion.h1 {...rise(1)} className="mt-5 font-display text-[2.4rem] leading-[1.06] tracking-tight text-foreground sm:text-6xl">
-            <span className="block font-light">Every NEET PYQ, 2020 to 2026.</span>
-            <span className="block font-extrabold">Solved in real CBT mode.</span>
+            <span className="block font-light">NEET, JEE, IPMAT.</span>
+            <span className="block font-extrabold">Practise it like exam day.</span>
           </motion.h1>
           <motion.p {...rise(2)} className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Practise subject-wise, chapter-wise and topic-wise, with a detailed solution for every
-            question. Free.
+            Exam-format CBT mocks, previous year questions with step-by-step solutions, and mentors who
+            cleared the same exam. Free to start.
           </motion.p>
 
-          <motion.div {...rise(3)} ref={ctaRef} className="mt-7 flex flex-col gap-3 sm:flex-row">
-            <Link to="/pyq" search={{ exam: "neet" }} className={`${PREMIUM_BTN} sm:min-w-[240px]`}>
-              <Play className="h-4 w-4" /> Start free PYQ practice
+          <motion.div {...rise(3)} role="group" aria-label="Choose your exam" className="mt-6 flex flex-wrap gap-2">
+            {DEMO_EXAM_KEYS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setExam(k)}
+                aria-pressed={exam === k}
+                className={`min-h-11 rounded-full border px-4 text-sm font-bold transition-colors ${
+                  exam === k ? "border-primary bg-primary text-primary-foreground" : "border-border text-foreground/80 hover:border-foreground"
+                }`}
+              >
+                {EXAM_DEMOS[k].label}
+              </button>
+            ))}
+            <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-dashed border-border px-4 text-sm font-semibold text-muted-foreground">
+              CUET <span className="text-[11px] font-bold uppercase tracking-wide text-primary">Soon</span>
+            </span>
+          </motion.div>
+
+          <motion.div {...rise(4)} ref={ctaRef} className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <Link to="/pyq" search={{ exam }} className={`${PREMIUM_BTN} sm:min-w-[240px]`}>
+              <Play className="h-4 w-4" /> Start free {EXAM_DEMOS[exam].label} practice
             </Link>
             <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>
               Create free account <ArrowRight className="h-4 w-4" />
             </Link>
           </motion.div>
-          <motion.p {...rise(4)} className="mt-4 text-sm text-muted-foreground">
+          <motion.p {...rise(5)} className="mt-4 text-sm text-muted-foreground">
             Try your first 5 questions without logging in. A free account saves your progress and unlocks the rest.{" "}
             <Link to="/auth" search={{ tab: "signin" }} className="inline-flex min-h-11 items-center font-bold text-primary underline-offset-4 hover:underline">
               Log in
             </Link>
           </motion.p>
 
-          <motion.ul {...rise(5)} className="mt-6 grid max-w-xl gap-2.5 text-sm text-foreground/80 sm:grid-cols-3">
+          <motion.ul {...rise(6)} className="mt-6 grid max-w-xl gap-2.5 text-sm text-foreground/80 sm:grid-cols-3">
             {[
-              "2020-2026 papers, every question",
-              "Chapter and topic wise, so you practise what you're weak at",
+              "Previous year questions, chapter and topic wise",
+              "A real CBT interface, built to feel like exam day",
               "Step-by-step solutions, not just answer keys",
             ].map((t) => (
               <li key={t} className="flex items-start gap-2">
@@ -306,7 +324,7 @@ export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement
             transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
             style={{ y: yPhone }}
           >
-            <PhoneDemo />
+            <PhoneDemo exam={exam} />
           </motion.div>
           <motion.div
             initial={{ opacity: 0, x: -24 }}
