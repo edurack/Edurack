@@ -1,5 +1,5 @@
 import { createFileRoute, Link, Await } from "@tanstack/react-router";
-import { pageHead } from "@/lib/seo";
+import { pageHead, SITE_URL } from "@/lib/seo";
 import { Suspense, lazy, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import {
   IconMenu2 as Menu,
@@ -43,7 +43,12 @@ import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-s
 import { LandingProSection } from "@/components/landing-pro-section";
 import { FreeResourcesSection } from "@/components/landing/free-resources-section";
 import { QuickMockSection } from "@/components/landing/quick-mock-section";
-import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf, type DemoExam } from "@/components/landing/exam-demos";
+import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf } from "@/components/landing/exam-demos";
+import { LANDING_FAQS, LANDING_LAST_UPDATED } from "@/components/landing/landing-faq";
+import { usePreferredExam } from "@/components/landing/use-preferred-exam";
+import { useAuth } from "@/lib/auth-context";
+import { track, trackOnce } from "@/lib/analytics";
+import { IconPlus as Plus } from "@tabler/icons-react";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
 // (exam-navigation UI, question palette, timers, etc). It was being bundled
@@ -80,16 +85,7 @@ export const Route = createFileRoute("/")({
       path: "/",
       description:
         "Exam-format CBT mocks and previous year questions with detailed solutions for NEET and JEE, plus mentors who cleared the exam. Free to start.",
-      jsonLd: {
-        "@context": "https://schema.org",
-        "@type": "WebPage",
-        "@id": "https://www.edurack.in/#webpage",
-        url: "https://www.edurack.in/",
-        name: "NEET & JEE CBT Practice + Mentors | Edurack",
-        isPartOf: { "@id": "https://www.edurack.in/#website" },
-        about: { "@id": "https://www.edurack.in/#organization" },
-        mainEntity: { "@id": "https://www.edurack.in/#organization" },
-      },
+      jsonLd: landingJsonLd(),
     }),
   loader: () => {
     return {
@@ -112,6 +108,65 @@ export const Route = createFileRoute("/")({
 // structured data all agree with each other.
 // ---------------------------------------------
 const LAUNCH_DATE_LABEL = "Launched 10 September 2026";
+
+// ---------------------------------------------
+// Structured data, rendered into the server HTML (so crawlers and AI answer engines that don't run
+// JavaScript still see it). The Organization/WebSite nodes live in __root.tsx; the Organization node
+// here shares its @id and only ADDS the founder/founding details, so there is one Edurack entity.
+// ---------------------------------------------
+const LANDING_FOUNDERS = [
+  { name: "Vishal Sharma", linkedin: "https://www.linkedin.com/in/vishal-sharma-a59bb2370/" },
+  { name: "Tarun Yadav", linkedin: "https://www.linkedin.com/in/tarun-yadav-37094337b/" },
+  { name: "Archita Priyadarshinee", linkedin: "https://www.linkedin.com/in/archita-priyadarshinee-behuria-a01323335/" },
+];
+
+function landingJsonLd() {
+  const org = { "@id": `${SITE_URL}/#organization` };
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": `${SITE_URL}/#webpage`,
+      url: `${SITE_URL}/`,
+      name: "NEET & JEE CBT Practice + Mentors | Edurack",
+      inLanguage: "en-IN",
+      datePublished: "2026-09-10",
+      dateModified: LANDING_LAST_UPDATED,
+      isPartOf: { "@id": `${SITE_URL}/#website` },
+      about: org,
+      mainEntity: org,
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "@id": `${SITE_URL}/#organization`,
+      alternateName: "EDURACK.IN",
+      foundingDate: "2026-09-10",
+      founder: LANDING_FOUNDERS.map((f) => ({ "@type": "Person", name: f.name, jobTitle: "Co-Founder", sameAs: [f.linkedin] })),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "@id": `${SITE_URL}/#cbt-simulator`,
+      name: "Edurack CBT Simulator",
+      url: `${SITE_URL}/simulator/live`,
+      description: "A free computer-based-test interface built to match the NTA exam screen, for NEET and JEE practice.",
+      applicationCategory: "EducationalApplication",
+      operatingSystem: "Any (web browser)",
+      inLanguage: "en-IN",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
+      publisher: org,
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "@id": `${SITE_URL}/#faq`,
+      isPartOf: { "@id": `${SITE_URL}/#webpage` },
+      mainEntity: LANDING_FAQS.map((f) => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })),
+    },
+  ];
+}
 
 // ---------------------------------------------
 // Shared CTA styling — a stronger gradient pill used for the header's
@@ -273,54 +328,9 @@ const socialLinks = [
 
 function Index() {
   const ctaRef = useRef<HTMLDivElement>(null);
-  // Inject Organization Schema & Favicon tags dynamically
+  // Favicon links. (The Organization JSON-LD used to be injected here, client-side only; it is now
+  // server-rendered from landingJsonLd() so crawlers that skip JavaScript can read it.)
   useEffect(() => {
-    // 1. Organization JSON-LD Schema
-    const schemaData = {
-      "@context": "https://schema.org",
-      "@type": "EducationalOrganization",
-      "name": "Edurack Web",
-      "alternateName": "EDURACK.IN",
-      "url": "https://www.edurack.in",
-      "logo": "https://www.edurack.in/edurack-logo.webp",
-      "foundingDate": "2026-09-10",
-      "founder": [
-        {
-          "@type": "Person",
-          "name": "Vishal Sharma",
-          "jobTitle": "Co-Founder",
-          "sameAs": ["https://www.linkedin.com/in/vishal-sharma-a59bb2370/"]
-        },
-         {
-          "@type": "Person",
-          "name": "Tarun Yadav",
-          "jobTitle": "Co-Founder",
-          "sameAs": ["https://www.linkedin.com/in/tarun-yadav-37094337b/"]
-        },
-        {
-          "@type": "Person",
-          "name": "Archita Priyadarshinee",
-          "jobTitle": "Co-Founder",
-          "sameAs": ["https://www.linkedin.com/in/archita-priyadarshinee-behuria-a01323335/"]
-        }
-      ],
-      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET and JEE aspirants. Launched 10 September 2026.",
-      "sameAs": [
-        "https://www.edurack.in",
-        "https://www.linkedin.com/company/edurack",
-        "https://threads.net/@edurack.in",
-        "https://youtube.com/@edurack",
-        "https://instagram.com/edurack.in",
-        "https://x.com/edurack_",
-        "https://www.reddit.com/user/Edurack/"
-      ]
-    };
-
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.text = JSON.stringify(schemaData);
-    document.head.appendChild(script);
-
     // 2. Dynamic Favicon Link Injection
     const faviconIco = document.createElement("link");
     faviconIco.rel = "icon";
@@ -337,10 +347,30 @@ function Index() {
 
     // Cleanup when component unmounts
     return () => {
-      document.head.removeChild(script);
       document.head.removeChild(faviconIco);
       document.head.removeChild(faviconPng);
     };
+  }, []);
+
+  // How far down the page people get (25/50/75/100%), once each per visit. This is the number to watch
+  // when changing the page: it shows which section loses visitors.
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        if (max <= 0) return;
+        const pct = (window.scrollY / max) * 100;
+        for (const mark of [25, 50, 75, 100]) {
+          if (pct >= (mark === 100 ? 98 : mark)) trackOnce(`landing-scroll-${mark}`, "landing_scroll_depth", { depth: mark });
+        }
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
@@ -349,6 +379,7 @@ function Index() {
         <Header />
         <main>
           <HeroMotion ctaRef={ctaRef} />
+          <AnswerSection />
           <ExamsSection />
           <QuickMockSection />
           <LandingFreeSessionsSection />
@@ -359,6 +390,7 @@ function Index() {
           <LandingProSection />
           <BlogShowcase />
           <FreeResourcesSection />
+          <FaqSection />
           <MentorBanner />
           <CareersStrip />
           <FinalCta />
@@ -410,6 +442,7 @@ function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
 
 function Header() {
   const [open, setOpen] = useState(false);
+  const { user } = useAuth(); // null until Firebase resolves, so the server HTML and first paint match
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className={`${WRAP} flex h-16 items-center justify-between gap-2`}>
@@ -421,20 +454,28 @@ function Header() {
           {shownNav.map((l) => <NavItem key={l.label} link={l} />)}
         </nav>
         <div className="flex shrink-0 items-center gap-1">
-          <Link
-            to="/auth"
-            search={{ tab: "signin" }}
-            className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-sm font-bold text-foreground/80 hover:text-foreground max-[360px]:hidden sm:px-3.5"
-          >
-            Log in
-          </Link>
-          <Link
-            to="/auth"
-            search={{ tab: "signup" }}
-            className={`${PREMIUM_BTN} !min-h-11 !shrink-0 whitespace-nowrap !px-4 text-sm sm:!px-5`}
-          >
-            Sign up
-          </Link>
+          {user ? (
+            <Link to="/dashboard" className={`${PREMIUM_BTN} !min-h-11 !shrink-0 whitespace-nowrap !px-4 text-sm sm:!px-5`}>
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                to="/auth"
+                search={{ tab: "signin" }}
+                className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-sm font-bold text-foreground/80 hover:text-foreground max-[360px]:hidden sm:px-3.5"
+              >
+                Log in
+              </Link>
+              <Link
+                to="/auth"
+                search={{ tab: "signup" }}
+                className={`${PREMIUM_BTN} !min-h-11 !shrink-0 whitespace-nowrap !px-4 text-sm sm:!px-5`}
+              >
+                Sign up
+              </Link>
+            </>
+          )}
           <button className="grid h-11 w-11 shrink-0 place-items-center rounded-full active:scale-90 lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -451,6 +492,7 @@ function Header() {
 
 function MobileDock({ ctaRef }: { ctaRef: RefObject<HTMLDivElement | null> }) {
   const [show, setShow] = useState(false);
+  const { user } = useAuth();
   useEffect(() => {
     const node = ctaRef.current;
     if (!node) return;
@@ -463,10 +505,14 @@ function MobileDock({ ctaRef }: { ctaRef: RefObject<HTMLDivElement | null> }) {
       className={`fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 px-3 pt-2 backdrop-blur-xl transition-transform duration-300 md:hidden ${show ? "translate-y-0" : "translate-y-full"}`}
       style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
     >
-      <div className="grid grid-cols-[1fr_1.5fr] gap-2">
-        <Link to="/auth" search={{ tab: "signin" }} className={GHOST_BTN}>Log in</Link>
-        <Link to="/auth" search={{ tab: "signup" }} className={PREMIUM_BTN}>Start free</Link>
-      </div>
+      {user ? (
+        <Link to="/dashboard" className={PREMIUM_BTN}>Go to your dashboard</Link>
+      ) : (
+        <div className="grid grid-cols-[1fr_1.5fr] gap-2">
+          <Link to="/auth" search={{ tab: "signin" }} className={GHOST_BTN}>Log in</Link>
+          <Link to="/auth" search={{ tab: "signup" }} className={PREMIUM_BTN}>Start free</Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -510,6 +556,86 @@ function LoopSection() {
               <h3 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{s.k}</h3>
               <p className="mt-2 max-w-md text-base leading-relaxed text-white/60">{s.d}</p>
             </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Answer-first block: what Edurack is, in plain words (read by people, search snippets and AI answers) ──
+const atAGlance: { k: string; v: ReactNode }[] = [
+  { k: "Live now", v: "NEET and JEE (CUET and IPMAT coming soon)" },
+  { k: "Start free", v: <Link to="/simulator/live" className="font-semibold text-primary hover:underline">CBT demo, no sign-up needed</Link> },
+  { k: "Practise", v: <Link to="/pyq" search={{ exam: "neet" }} className="font-semibold text-primary hover:underline">Previous year questions, chapter and topic wise</Link> },
+  { k: "Mentors", v: <Link to="/mentorship-sessions" className="font-semibold text-primary hover:underline">Independent mentors who verify their rank and credentials</Link> },
+  { k: "Launched", v: "10 September 2026" },
+];
+
+function AnswerSection() {
+  return (
+    <section id="what-is-edurack" aria-labelledby="what-is-edurack-heading" className="py-14 sm:py-20">
+      <div className={`${WRAP} grid gap-8 lg:grid-cols-[1.1fr_.9fr] lg:items-start`}>
+        <Rise className="min-w-0">
+          <h2 id="what-is-edurack-heading" className="font-display text-3xl leading-[1.1] tracking-tight text-foreground sm:text-4xl">
+            <span className="font-light">What is </span>
+            <span className="font-extrabold">Edurack?</span>
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-foreground/80">
+            Edurack is an exam-preparation platform for Indian aspirants. It combines a CBT simulator built to match the real NTA exam screen,
+            chapter-wise previous year questions with step-by-step solutions, and mentors who have cleared the exam. NEET and JEE are live
+            today; CUET and IPMAT are coming soon.
+          </p>
+          <Link to="/about" className="mt-4 inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
+            More about Edurack <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Rise>
+        <Rise delay={0.08} className="min-w-0">
+          <dl className="grid gap-px overflow-hidden rounded-3xl border border-border bg-border text-sm">
+            {atAGlance.map((r) => (
+              <div key={r.k} className="flex gap-4 bg-card p-4">
+                <dt className="w-24 shrink-0 font-bold text-muted-foreground">{r.k}</dt>
+                <dd className="min-w-0 text-foreground">{r.v}</dd>
+              </div>
+            ))}
+          </dl>
+        </Rise>
+      </div>
+    </section>
+  );
+}
+
+// ── FAQ: native <details>, so every answer is in the HTML for crawlers and works without JavaScript ──
+function FaqSection() {
+  return (
+    <section id="faq" aria-labelledby="faq-heading" className="py-16 sm:py-24">
+      <div className={`${WRAP} grid gap-10 lg:grid-cols-[.8fr_1.2fr]`}>
+        <Rise className="min-w-0 lg:sticky lg:top-28 lg:self-start">
+          <h2 id="faq-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+            <span className="block font-light">Questions,</span>
+            <span className="block font-extrabold">answered.</span>
+          </h2>
+          <p className="mt-4 text-muted-foreground">Straight answers before you sign up.</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row lg:flex-col">
+            <Link to="/simulator/live" className={PREMIUM_BTN}>Try the free CBT demo <ArrowRight className="h-4 w-4" /></Link>
+            <Link to="/faq" className={GHOST_BTN}>All FAQs</Link>
+          </div>
+        </Rise>
+        <div className="min-w-0 divide-y divide-border rounded-3xl border border-border bg-card">
+          {LANDING_FAQS.map((f, i) => (
+            <details
+              key={f.q}
+              className="group p-5 sm:p-6"
+              onToggle={(e) => {
+                if ((e.currentTarget as HTMLDetailsElement).open) track("landing_faq_opened", { index: i });
+              }}
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+                <h3 className="text-base font-bold text-foreground">{f.q}</h3>
+                <Plus className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-45" />
+              </summary>
+              <p className="mt-3 leading-relaxed text-muted-foreground">{f.a}</p>
+            </details>
           ))}
         </div>
       </div>
@@ -571,7 +697,7 @@ function CbtSimulatorFallback() {
 }
 
 function SimulatorSection() {
-  const [exam, setExam] = useState<DemoExam>("neet");
+  const [exam, setExam] = usePreferredExam("simulator");
   const demo = EXAM_DEMOS[exam];
   const rows = demo.report.map((r) => ({ s: r.s, t: toneOf(r.v).word, c: toneOf(r.v).text, w: r.v }));
   return (
@@ -810,14 +936,24 @@ function CareersStrip() {
 }
 
 function FinalCta() {
+  const { user } = useAuth();
   return (
     <section className="py-20 sm:py-28">
       <Rise className={`${WRAP} text-center`}>
         <h2 className="font-display text-5xl leading-[1.02] tracking-tight sm:text-7xl"><span className="block font-light">Stop guessing.</span><span className="block font-extrabold">Start fixing.</span></h2>
         <p className="mx-auto mt-5 max-w-md text-lg text-muted-foreground">Practise free, then see exactly where your marks go, whichever exam you're preparing for.</p>
         <div className="mx-auto mt-8 flex max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
-          <Link to="/simulator/live" className={PREMIUM_BTN}>Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
-          <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>Create free account</Link>
+          {user ? (
+            <>
+              <Link to="/dashboard" className={PREMIUM_BTN}>Go to your dashboard <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/simulator/live" className={GHOST_BTN}>Try the CBT demo</Link>
+            </>
+          ) : (
+            <>
+              <Link to="/simulator/live" className={PREMIUM_BTN}>Try the CBT demo <ArrowRight className="h-4 w-4" /></Link>
+              <Link to="/auth" search={{ tab: "signup" }} className={GHOST_BTN}>Create free account</Link>
+            </>
+          )}
         </div>
       </Rise>
     </section>

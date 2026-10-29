@@ -895,11 +895,21 @@ function currentClassFor(track: TrackChoice): string {
   return track === "11th" ? "Class 11" : "Class 12";
 }
 
+// The exam they picked on the landing page (see use-preferred-exam.ts), so onboarding starts with it selected.
+function storedLandingExam(): ExamChoice | null {
+  try {
+    const v = localStorage.getItem("edurack-landing-exam");
+    return v === "jee" || v === "neet" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 function OnboardingCard({ onComplete }: { onComplete: () => void }) {
   // Fixed for the life of this card: completeLogin set it just before this stage opened.
   const [mode] = useState(onboardingMode);
   const mobileOnly = mode === "mobile-only";
-  const [exam, setExam] = useState<ExamChoice | null>(null);
+  const [exam, setExam] = useState<ExamChoice | null>(storedLandingExam);
   const [track, setTrack] = useState<TrackChoice | null>(null);
   const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);

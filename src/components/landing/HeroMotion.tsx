@@ -17,6 +17,7 @@ import {
   IconVideo as Video,
 } from "@tabler/icons-react";
 import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf, type DemoExam, type ExamDemo } from "./exam-demos";
+import { usePreferredExam } from "./use-preferred-exam";
 
 // Shared premium primary button (sapphire, soft sheen). Exported so the header
 // and mobile dock use the exact same look as the hero CTA.
@@ -241,7 +242,7 @@ const rise = (i: number) => ({
 
 export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement | null> }): ReactNode {
   const root = useRef<HTMLElement>(null);
-  const [exam, setExam] = useState<DemoExam>("neet");
+  const [exam, setExam] = usePreferredExam("hero");
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: root, offset: ["start start", "end start"] });
   const yGlow = useTransform(scrollYProgress, [0, 1], [0, reduce ? 0 : 120]);

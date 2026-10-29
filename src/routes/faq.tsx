@@ -12,7 +12,7 @@ import { SiteHeader, SiteFooter, WRAP, Rise, Title } from "@/components/landing/
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What exactly is Edurack?",
-    a: "Edurack is a marketplace for exam preparation: a free CBT mock-test engine built to match the real NTA exam interface, plus mentor-led test series and mentorship batches for NEET, JEE, CUET and IPMAT. You can practice on the simulator without paying anything, and pay only for the specific batches or test series you choose.",
+    a: "Edurack is a marketplace for exam preparation: a free CBT mock-test engine built to match the real NTA exam interface, plus mentor-led test series and mentorship batches for NEET and JEE, with CUET and IPMAT coming soon. You can practice on the simulator without paying anything, and pay only for the specific batches or test series you choose.",
   },
   {
     q: "Is Edurack the same as EduRack or Edurack Technologies?",
@@ -20,7 +20,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "Is Edurack only for NEET?",
-    a: "No. Edurack covers NEET, JEE, CUET and IPMAT today, on the same CBT engine and the same mentorship marketplace. Some of our earliest content leans NEET- and JEE-heavy simply because that's what we've published first — the platform itself isn't built around any single exam.",
+    a: "No. Edurack covers NEET and JEE today, with CUET and IPMAT coming soon and more exams, including government and state entrance exams, planned through 2027. They all run on the same CBT engine and the same mentorship marketplace; the platform isn't built around any single exam.",
   },
   {
     q: "How is the mock test different from other test series apps?",
@@ -62,7 +62,7 @@ export const Route = createFileRoute("/faq")({
       title: "Frequently Asked Questions",
       path: "/faq",
       description:
-        "Common questions about Edurack's CBT mock tests, mentor verification, pricing and refunds — for NEET, JEE, CUET and IPMAT.",
+        "Common questions about Edurack's CBT mock tests, mentor verification, pricing and refunds — for NEET and JEE.",
       jsonLd: [
         {
           "@context": "https://schema.org",
