@@ -2,6 +2,7 @@
 // the custom drill builder. Limits are enforced on the server (startPyqDrill); this screen only explains
 // them and takes the student to checkout. While no plan is published nothing is limited and the builder is open to all.
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
@@ -12,6 +13,7 @@ import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS
 import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
 import { quickMockCopy, quickMockName, quickMockStatus, type QuickMockSource } from "@/lib/quick-mock";
 import type { Difficulty, PyqTree } from "@/lib/pyq-types";
+import type { ExamKey } from "@/lib/admin-types";
 
 type LauncherUser = { getIdToken: () => Promise<string>; email?: string | null };
 export type StartOptions = { custom?: CustomDrillInput; subject?: string };
@@ -75,6 +77,23 @@ function UpgradePanel({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Funnel step between "saw a Pro prompt" and "started checkout": how many students actually see the plans, and from where.
+  const canShowPlans = canBuy && plans.length > 0;
+  useEffect(() => {
+    if (canShowPlans) trackOnce(`pro-panel-viewed:${source ?? "direct"}`, "pro_panel_viewed", { source: source ?? "direct", plans: plans.length });
+  }, [canShowPlans, plans.length, source]);
+
+  // Many students are under 18 and a parent pays: let them send the plans, prices and what's included in one tap.
+  function shareWithParent() {
+    track("pro_share_parent_clicked", { source: source ?? "direct" });
+    const text = "I want to get Edurack Pro to keep practising for my exam. Here are the plans, prices and what's included: https://www.edurack.in/pro?utm_source=share_parent";
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      navigator.share({ title: "Edurack Pro", text }).catch(() => undefined);
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    }
+  }
 
   async function buy(plan: ProPlanPublic) {
     if (busy) return;
@@ -174,6 +193,11 @@ function UpgradePanel({
             </div>
           ))}
         </div>
+      )}
+      {canShowPlans && (
+        <button type="button" onClick={shareWithParent} className="mt-4 text-xs font-semibold text-white/70 underline underline-offset-2 hover:text-white">
+          Need a parent's go-ahead? Share the plans with them
+        </button>
       )}
       {err && <p role="alert" className="mt-3 text-xs font-semibold text-rose-300">{err}</p>}
     </section>
@@ -288,7 +312,7 @@ function CustomDrillBuilder({ user, exam, starting, onStart }: { user: LauncherU
   );
 }
 
-export function DrillLauncher({ user, exam, source, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
+export function DrillLauncher({ user, exam, source, preset, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; /** A weak chapter sent from a test result. */ preset?: { chapter: string; subject?: string }; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
   const [access, setAccess] = useState<DrillAccess | null>(null);
   const [showBuilder, setShowBuilder] = useState(false);
   // The Pro plans are one tap away, not the first thing on the page: the free Quick Mock is the point of this screen.
@@ -323,13 +347,57 @@ export function DrillLauncher({ user, exam, source, starting, error, onStart }: 
   );
   const mockCopy = quickMockCopy(mockStatus);
   const proOnlyMock = mockStatus.kind === "pro_only";
-  const proOpen = showPro || proOnlyMock; // when the free plan has no Quick Mock at all, the plans are the only way forward
+  // A student who arrives from a test result for a chapter the free plan can't drill sees the plans straight away:
+  // that is the moment they know what Pro would do for them. Otherwise the plans stay one tap away.
+  const presetLocked = !!preset && !!access && !canBuild;
+  const proOpen = showPro || proOnlyMock || presetLocked; // when the free plan has no Quick Mock at all, the plans are the only way forward
+  useEffect(() => {
+    if (preset && access) trackOnce("result-drill-preset-shown", "result_drill_preset_shown", { can_build: canBuild, source: source ?? "direct" });
+  }, [preset, access, canBuild, source]);
 
   const limitedFree = access ? access.gatingOn && !hasFeature(access, "unlimitedDrills") : false;
   const builderIsPro = access ? access.gatingOn && access.proOnly.customDrillBuilder : false;
 
   return (
     <div className="space-y-4">
+      {preset && access && (
+        <div className="clay p-5 sm:p-6" data-testid="preset-drill-card">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-foreground/50">Your weak chapter</p>
+          <h2 className="font-display mt-1 text-xl font-bold text-foreground">{preset.chapter}</h2>
+          <p className="mt-1 text-sm text-foreground/60">
+            {preset.subject ? `${preset.subject} · ` : ""}
+            {DRILL_QUESTIONS} previous year questions on exactly this chapter, timed.
+          </p>
+          {canBuild ? (
+            <button
+              type="button"
+              disabled={starting}
+              onClick={() => {
+                track("result_drill_started", { source: source ?? "direct" });
+                onStart({ subject: preset.subject, custom: { chapter: preset.chapter, count: DRILL_QUESTIONS } });
+              }}
+              className="clay-btn mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {starting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Start chapter drill
+            </button>
+          ) : (
+            <>
+              <p className="mt-3 rounded-xl bg-[var(--sky-soft)] px-3.5 py-3 text-sm font-semibold text-foreground/80">
+                A timed drill on one chapter is part of Edurack Pro. The plans are just below.
+              </p>
+              <Link
+                to="/pyq"
+                search={{ subject: preset.subject, chapter: preset.chapter, practice: true, exam: exam as ExamKey | undefined }}
+                className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--sky-deep)] hover:underline"
+              >
+                Or practise this chapter free, untimed
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="clay p-5 sm:p-6">
         <div className="flex items-start gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
@@ -413,7 +481,7 @@ export function DrillLauncher({ user, exam, source, starting, error, onStart }: 
           proOnly={access.proOnly}
           owned={access.features}
           canBuy={missing}
-          headline={access.isPro ? "You're on Edurack Pro" : blocked || limitMessage ? "Keep going with Edurack Pro" : missing ? "Practise without limits" : "What Edurack Pro adds"}
+          headline={access.isPro ? "You're on Edurack Pro" : presetLocked ? "Drill your weak chapters" : blocked || limitMessage ? "Keep going with Edurack Pro" : missing ? "Practise without limits" : "What Edurack Pro adds"}
           badge={access.isPro ? (access.proUntil ? `Active until ${dateLabel(access.proUntil)}` : "Active") : locked ? "Free plan" : "Free for everyone right now"}
           badgeTone={access.isPro ? "green" : "muted"}
         />

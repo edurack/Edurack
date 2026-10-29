@@ -21,7 +21,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
 
 /** Every feature Pro can switch on. The admin screen and the student upgrade card are generated from this list. */
 export const PRO_FEATURES = {
-  unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on NEET Quick Mocks (timed PYQ drills)." },
+  unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on Quick Mocks (timed PYQ drills)." },
   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
 } as const;
 export type ProFeatureKey = keyof typeof PRO_FEATURES;

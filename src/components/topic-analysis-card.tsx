@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { AlertTriangle, ChevronDown, Lightbulb, Play, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, ChevronDown, Lightbulb, Play, Sparkles, Target, Timer } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { track } from "@/lib/analytics";
 import { getTopicAnalysis } from "@/server-functions/test-results";
 import { getWeakPyqSummary } from "@/server-functions/pyq-practice";
 import { weakKey } from "@/lib/pyq-weak";
@@ -184,6 +185,18 @@ function AnalysisBody({
               </li>
             ))}
           </ol>
+          {/* The moment a student knows exactly where marks went: offer the timed drill on the worst chapter. */}
+          {data.focus[0] && (
+            <Link
+              to="/pyq-drill"
+              search={{ exam: weak?.exam ?? undefined, chapter: data.focus[0].chapter, subject: data.focus[0].subject, src: "test_result" }}
+              onClick={() => track("result_drill_cta_clicked", { rank: 1 })}
+              className="clay-btn mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white sm:w-auto"
+            >
+              <Timer className="h-4 w-4" aria-hidden />
+              Take a timed drill on {data.focus[0].chapter}
+            </Link>
+          )}
         </div>
       ) : (
         <div className="clay-inset mt-4 rounded-2xl px-4 py-4 text-sm text-foreground/70">

@@ -18,19 +18,20 @@ import { cleanQuickMockSource, type QuickMockSource } from "@/lib/quick-mock";
 // the server's clock, and a finished drill reopens its result.
 // ?src= says which entry point sent the student here (homepage, dashboard, sidebar, ...) so Quick Mock analytics can
 // tell the placements apart. It is only ever used as an analytics label.
-type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource };
+// ?chapter= (+ ?subject=) is a weak chapter sent from a test result: the launcher offers a timed drill on it.
+type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource; chapter?: string; subject?: string };
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
 
 export const Route = createFileRoute("/pyq-drill")({
-  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src) }),
-  head: () => noindexHead("NEET Quick Mock"),
+  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src), chapter: str(search.chapter), subject: str(search.subject) }),
+  head: () => noindexHead("Quick Mock"),
   component: DrillPage,
 });
 
 function DrillPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { exam, drillId, src } = Route.useSearch();
+  const { exam, drillId, src, chapter, subject } = Route.useSearch();
 
   const [state, setState] = useState<DrillState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +40,12 @@ function DrillPage() {
   const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Not signed in: sign in (or up), then come straight back here with the same ?src= and ?exam=.
-    if (!loading && !user) navigate({ to: "/auth", search: { tab: "signin", redirect: `/pyq-drill${src || exam ? `?${new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}) }).toString()}` : ""}` } });
-  }, [loading, user, navigate, src, exam]);
+    // Not signed in: sign in (or up), then come straight back here with the same ?src=, ?exam= and chapter.
+    if (!loading && !user) {
+      const qs = new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}), ...(chapter ? { chapter } : {}), ...(subject ? { subject } : {}) }).toString();
+      navigate({ to: "/auth", search: { tab: "signin", redirect: `/pyq-drill${qs ? `?${qs}` : ""}` } });
+    }
+  }, [loading, user, navigate, src, exam, chapter, subject]);
 
   // Load (or resume) the drill named in the URL.
   useEffect(() => {
@@ -161,7 +165,7 @@ function DrillPage() {
               <ChevronLeft className="h-4 w-4" aria-hidden />
               PYQs
             </button>
-            <DrillLauncher user={user} exam={exam} source={src} starting={starting} error={startError} onStart={start} />
+            <DrillLauncher user={user} exam={exam} source={src} preset={chapter ? { chapter, subject } : undefined} starting={starting} error={startError} onStart={start} />
           </div>
         )}
       </main>
