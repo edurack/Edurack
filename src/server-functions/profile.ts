@@ -66,6 +66,8 @@ export const saveProfile = createServerFn({ method: "POST" })
   .validator((data: { token: string; profile: OnboardingProfileInput }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);
+    // A real Indian mobile number is required to finish sign-up (the client enforces it too).
+    if (!/^[6-9]\d{9}$/.test(data.profile.mobile ?? "")) throw new Error("Enter a valid 10-digit mobile number.");
     const db = await getDb();
     await db.collection("profiles").updateOne(
       { uid: decoded.uid },
@@ -91,6 +93,7 @@ export const updateBasicInfo = createServerFn({ method: "POST" })
   .validator((data: { token: string; field: "fullName" | "mobile" | "city"; value: string }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);
+    if (data.field === "mobile" && !/^[6-9]\d{9}$/.test(data.value)) throw new Error("Enter a valid 10-digit mobile number.");
     const db = await getDb();
     await db.collection("profiles").updateOne(
       { uid: decoded.uid },

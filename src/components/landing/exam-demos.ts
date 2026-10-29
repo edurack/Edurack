@@ -2,9 +2,9 @@
 // the embedded CBT simulator and the sample performance report all read from here,
 // so switching exam changes every demo consistently. Not real student data.
 export type DemoExam = "neet" | "jee" | "cuet" | "ipmat";
-// Exams that are live today (hero chips, simulator tabs). CUET demo data is kept ready for its launch:
-// add "cuet" here, and drop its "coming soon" markers on the homepage, when it goes live.
-export const DEMO_EXAM_KEYS: DemoExam[] = ["neet", "jee", "ipmat"];
+// Exams that are live today (hero chips, simulator tabs). CUET and IPMAT demo data is kept ready for launch:
+// add the key here, and drop its "coming soon" markers on the homepage, when it goes live.
+export const DEMO_EXAM_KEYS: DemoExam[] = ["neet", "jee"];
 
 export type ExamDemo = {
   label: string;

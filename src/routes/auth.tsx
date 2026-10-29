@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconLock as Lock, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
+import { IconArrowLeft as ArrowLeft, IconArrowRight as ArrowRight, IconCheck as Check, IconEye as Eye, IconKey as KeyRound, IconLoader2 as Loader2, IconMail as Mail, IconPhone as Phone, IconLock as Lock, IconSparkles as Sparkles, IconShieldCheck as ShieldCheck } from "@tabler/icons-react";
 import { EyeOff } from "lucide-react"; // TODO: no Tabler mapping found yet
 import type { User as FirebaseUser } from "firebase/auth";
 import { auth, firebaseSignIn, firebaseSignUp, googleAuth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
-import { ensureUserRecord, getProfile, needsOnboarding, saveProfile } from "@/server-functions/profile";
+import { ensureUserRecord, getProfile, needsOnboarding, saveProfile, updateBasicInfo } from "@/server-functions/profile";
+import { isRealMobile } from "@/lib/profile-completeness";
 import { recordSession } from "@/server-functions/sessions";
 import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
@@ -56,6 +57,21 @@ type OnboardingProfile = {
   cuetDomainSubjects: string[];
 };
 
+// Which screen the "onboarding" stage shows. completeLogin sets it just before that stage opens:
+// "full" = a new account (exam + track + mobile), "mobile-only" = a returning student who finished
+// setup earlier but never gave a real mobile number (older accounts hold the 0000000000 placeholder).
+let onboardingMode: "full" | "mobile-only" = "full";
+
+// Indian mobile numbers: 10 digits starting 6-9. Same rule the server enforces.
+const VALID_MOBILE = /^[6-9]\d{9}$/;
+// Accepts what people paste ("+91 98765 43210", "09876543210") and keeps just the 10 digits.
+function normalizeMobile(v: string): string {
+  let d = v.replace(/\D/g, "");
+  if (d.length > 10 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length > 10 && d.startsWith("0")) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
 // Runs after ANY successful sign-in or sign-up (email/password or Google):
 // 1. Ensures a MongoDB profile document exists (with empty onboarding fields
 //    if it's brand new).
@@ -75,8 +91,12 @@ async function completeLogin(user: FirebaseUser, provider: "password" | "google.
   const { profile } = await getProfile({ data: { token } });
   const incomplete = needsOnboarding(profile);
   // needs_onboarding = true is a brand-new account (or one that never finished setup).
-  track("login_completed", { provider, needs_onboarding: incomplete });
-  return { needsOnboarding: incomplete };
+  // Every student must have a real mobile number on file so we can reach them. If it is missing, the
+  // onboarding stage opens even for a student who already finished setup (mobile-only screen).
+  const needsMobile = !isRealMobile(profile?.mobile);
+  onboardingMode = incomplete ? "full" : "mobile-only";
+  track("login_completed", { provider, needs_onboarding: incomplete, needs_mobile: needsMobile });
+  return { needsOnboarding: incomplete || needsMobile };
 }
 
 function AuthPage() {
@@ -855,10 +875,11 @@ function EmailVerificationCard({
   );
 }
 
-// ─── Onboarding — single screen, zero keyboard input ───────────────────────
-// Two taps (exam + track) and the user is in. Everything else the backend
-// needs is auto-filled with safe defaults on submit; real phone numbers and
-// other details are collected later, right before premium tests.
+// ─── Onboarding — two taps and a mobile number ─────────────────────────────
+// Exam + track are two taps; the mobile number is the only typed field and is required, so
+// the team can reach every student. Everything else the backend needs is auto-filled with
+// safe defaults on submit (name, city and the rest are collected later from the dashboard).
+// Returning students who never gave a real number see just the mobile field ("mobile-only").
 type ExamChoice = "jee" | "neet";
 type TrackChoice = "11th" | "12th" | "Dropper";
 
@@ -875,18 +896,27 @@ function currentClassFor(track: TrackChoice): string {
 }
 
 function OnboardingCard({ onComplete }: { onComplete: () => void }) {
+  // Fixed for the life of this card: completeLogin set it just before this stage opened.
+  const [mode] = useState(onboardingMode);
+  const mobileOnly = mode === "mobile-only";
   const [exam, setExam] = useState<ExamChoice | null>(null);
   const [track, setTrack] = useState<TrackChoice | null>(null);
+  const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = exam !== null && track !== null && !loading;
+  const mobileOk = VALID_MOBILE.test(mobile);
+  const canSubmit = mobileOk && (mobileOnly || (exam !== null && track !== null)) && !loading;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (loading) return;
-    if (!exam || !track) {
+    if (!mobileOnly && (!exam || !track)) {
       setError("Pick your exam and your current status to continue.");
+      return;
+    }
+    if (!mobileOk) {
+      setError("Enter a valid 10-digit mobile number.");
       return;
     }
 
@@ -900,20 +930,26 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     try {
       const token = await user.getIdToken();
-      const profile: OnboardingProfile = {
-        fullName: user.displayName?.trim() || "Student",
-        mobile: "0000000000", // placeholder — collected before premium tests
-        city: "Not Specified",
-        currentClass: currentClassFor(track),
-        board: "CBSE",
-        targetExam: exam,
-        track,
-        cuetDomainSubjects: [],
-      };
-      await saveProfile({ data: { token, profile } });
+      if (mobileOnly) {
+        // Patches only the mobile field, so the exam, track and name they already set are untouched.
+        await updateBasicInfo({ data: { token, field: "mobile", value: mobile } });
+      } else {
+        if (!exam || !track) return;
+        const profile: OnboardingProfile = {
+          fullName: user.displayName?.trim() || "Student",
+          mobile,
+          city: "Not Specified",
+          currentClass: currentClassFor(track),
+          board: "CBSE",
+          targetExam: exam,
+          track,
+          cuetDomainSubjects: [],
+        };
+        await saveProfile({ data: { token, profile } });
+      }
       onComplete();
     } catch {
-      setError("Could not save your profile. Try again.");
+      setError("Could not save your details. Try again.");
     } finally {
       setLoading(false);
     }
@@ -927,52 +963,83 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
           Almost there
         </div>
         <h2 className="font-display text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Set up your prep
+          {mobileOnly ? "Add your mobile number" : "Set up your prep"}
         </h2>
         <p className="mt-1 text-sm text-foreground/60">
-          Just two taps and your dashboard is ready.
+          {mobileOnly ? "One last step and your dashboard is ready." : "Two taps and your mobile number, then your dashboard is ready."}
         </p>
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 space-y-6 duration-300">
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
-            I'm preparing for
-          </legend>
-          <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Target exam">
-            {EXAM_OPTIONS.map((opt) => (
-              <ExamCard
-                key={opt.value}
-                active={exam === opt.value}
-                onClick={() => {
-                  setExam(opt.value);
-                  setError(null);
-                }}
-                title={opt.title}
-                subtitle={opt.subtitle}
-              />
-            ))}
-          </div>
-        </fieldset>
+        {!mobileOnly && (
+          <>
+            <fieldset className="space-y-3">
+              <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+                I'm preparing for
+              </legend>
+              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Target exam">
+                {EXAM_OPTIONS.map((opt) => (
+                  <ExamCard
+                    key={opt.value}
+                    active={exam === opt.value}
+                    onClick={() => {
+                      setExam(opt.value);
+                      setError(null);
+                    }}
+                    title={opt.title}
+                    subtitle={opt.subtitle}
+                  />
+                ))}
+              </div>
+            </fieldset>
 
-        <fieldset className="space-y-3">
-          <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
-            I am a
-          </legend>
-          <div className="clay-inset grid grid-cols-3 gap-2 p-2" role="radiogroup" aria-label="Current status">
-            {TRACK_OPTIONS.map((t) => (
-              <TrackChip
-                key={t}
-                active={track === t}
-                onClick={() => {
-                  setTrack(t);
-                  setError(null);
-                }}
-                label={t}
-              />
-            ))}
+            <fieldset className="space-y-3">
+              <legend className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+                I am a
+              </legend>
+              <div className="clay-inset grid grid-cols-3 gap-2 p-2" role="radiogroup" aria-label="Current status">
+                {TRACK_OPTIONS.map((t) => (
+                  <TrackChip
+                    key={t}
+                    active={track === t}
+                    onClick={() => {
+                      setTrack(t);
+                      setError(null);
+                    }}
+                    label={t}
+                  />
+                ))}
+              </div>
+            </fieldset>
+          </>
+        )}
+
+        <div className="space-y-2">
+          <label htmlFor="onboarding-mobile" className="block text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+            Mobile number
+          </label>
+          <div className="clay-inset flex items-center gap-3 px-4 py-3 transition-shadow duration-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+            <Phone className="h-4 w-4 text-foreground/50" />
+            <span className="text-sm font-semibold text-foreground/60">+91</span>
+            <input
+              id="onboarding-mobile"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel-national"
+              placeholder="10-digit mobile number"
+              value={mobile}
+              onChange={(e) => {
+                setMobile(normalizeMobile(e.target.value));
+                setError(null);
+              }}
+              aria-invalid={mobile.length > 0 && !mobileOk}
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+            />
           </div>
-        </fieldset>
+          <p className="text-xs text-foreground/50">
+            We'll use it to reach you about your prep, mentor sessions and Edurack updates.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -993,7 +1060,7 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <>
-            <span>Enter Dashboard</span>
+            <span>{mobileOnly ? "Continue" : "Enter Dashboard"}</span>
             <ArrowRight className="h-4 w-4" />
           </>
         )}

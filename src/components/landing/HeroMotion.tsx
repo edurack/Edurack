@@ -258,10 +258,10 @@ export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr_.95fr]">
         <div>
           <motion.p {...rise(0)} className="inline-flex items-center gap-2 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-foreground/80">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET · JEE · IPMAT aspirants
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> For NEET · JEE aspirants
           </motion.p>
           <motion.h1 {...rise(1)} className="mt-5 font-display text-[2.4rem] leading-[1.06] tracking-tight text-foreground sm:text-6xl">
-            <span className="block font-light">NEET, JEE, IPMAT.</span>
+            <span className="block font-light">NEET and JEE.</span>
             <span className="block font-extrabold">Practise it like exam day.</span>
           </motion.h1>
           <motion.p {...rise(2)} className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg">
@@ -283,9 +283,11 @@ export function HeroMotion({ ctaRef }: { ctaRef?: React.RefObject<HTMLDivElement
                 {EXAM_DEMOS[k].label}
               </button>
             ))}
-            <span className="inline-flex min-h-11 items-center gap-2 rounded-full border border-dashed border-border px-4 text-sm font-semibold text-muted-foreground">
-              CUET <span className="text-[11px] font-bold uppercase tracking-wide text-primary">Soon</span>
-            </span>
+            {["CUET", "IPMAT"].map((n) => (
+              <span key={n} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-dashed border-border px-4 text-sm font-semibold text-muted-foreground">
+                {n} <span className="text-[11px] font-bold uppercase tracking-wide text-primary">Soon</span>
+              </span>
+            ))}
           </motion.div>
 
           <motion.div {...rise(4)} ref={ctaRef} className="mt-4 flex flex-col gap-3 sm:flex-row">

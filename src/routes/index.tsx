@@ -75,17 +75,17 @@ export const Route = createFileRoute("/")({
   // WebSite nodes __root.tsx already sets for every page.
   head: () =>
     pageHead({
-      title: "NEET, JEE & IPMAT CBT Practice + Mentors | Edurack",
+      title: "NEET & JEE CBT Practice + Mentors | Edurack",
       rawTitle: true,
       path: "/",
       description:
-        "Exam-format CBT mocks and previous year questions with detailed solutions for NEET, JEE and IPMAT, plus mentors who cleared the exam. Free to start.",
+        "Exam-format CBT mocks and previous year questions with detailed solutions for NEET and JEE, plus mentors who cleared the exam. Free to start.",
       jsonLd: {
         "@context": "https://schema.org",
         "@type": "WebPage",
         "@id": "https://www.edurack.in/#webpage",
         url: "https://www.edurack.in/",
-        name: "NEET, JEE & IPMAT CBT Practice + Mentors | Edurack",
+        name: "NEET & JEE CBT Practice + Mentors | Edurack",
         isPartOf: { "@id": "https://www.edurack.in/#website" },
         about: { "@id": "https://www.edurack.in/#organization" },
         mainEntity: { "@id": "https://www.edurack.in/#organization" },
@@ -142,7 +142,7 @@ const exams: { key: ExamKey; label: string; full: string }[] = [
 const heroTrustPoints = [
   { icon: ShieldCheck, text: "Exam-accurate CBT interface" },
   { icon: Users, text: "Mentors who've actually cleared these exams" },
-  { icon: Globe, text: "Built for NEET · JEE · IPMAT" },
+  { icon: Globe, text: "Built for NEET · JEE" },
 ];
 
 // ---------------------------------------------
@@ -304,7 +304,7 @@ function Index() {
           "sameAs": ["https://www.linkedin.com/in/archita-priyadarshinee-behuria-a01323335/"]
         }
       ],
-      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET, JEE, and IPMAT aspirants. Launched 10 September 2026.",
+      "description": "Edurack (edurack.in) is an independent web application founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee, delivering CBT simulators and mentor marketplaces for NEET and JEE aspirants. Launched 10 September 2026.",
       "sameAs": [
         "https://www.edurack.in",
         "https://www.linkedin.com/company/edurack",
@@ -518,10 +518,9 @@ function LoopSection() {
 }
 
 // ── Live exams + roadmap ───────────────────────────────────────────────────
-const examCards: { key: "neet" | "jee" | "ipmat"; full: string; blurb: string; links: { label: string; to: string }[] }[] = [
+const examCards: { key: "neet" | "jee"; full: string; blurb: string; links: { label: string; to: string }[] }[] = [
   { key: "neet", full: "NEET (UG)", blurb: "Previous year questions, chapter weightage and rank tools for medical aspirants.", links: [{ label: "Chapter weightage", to: "/neet/chapter-wise-weightage" }, { label: "Rank predictor", to: "/tools/neet-rank-predictor" }] },
   { key: "jee", full: "JEE Main & Advanced", blurb: "Chapter-wise practice with the JEE Main 2027 hub, weightage and paper analysis.", links: [{ label: "JEE Main 2027 hub", to: "/jee-main-2027" }, { label: "Chapter weightage", to: "/jee/chapter-wise-weightage" }] },
-  { key: "ipmat", full: "IPMAT (IIM)", blurb: "Quant and verbal practice in a real CBT interface, with free planners and material.", links: [{ label: "Free resources", to: "/free-resources" }] },
 ];
 
 function ExamsSection() {
@@ -533,9 +532,9 @@ function ExamsSection() {
             <span className="block font-light">Your exam,</span>
             <span className="block font-extrabold">one platform.</span>
           </h2>
-          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">NEET, JEE and IPMAT are live. CUET is coming soon, with government and state entrance exams to follow.</p>
+          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">NEET and JEE are live. CUET and IPMAT are coming soon, with government and state entrance exams to follow.</p>
         </Rise>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {examCards.map((c, i) => (
             <Rise key={c.key} delay={i * 0.07} className="min-w-0">
               <div className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
@@ -552,11 +551,11 @@ function ExamsSection() {
               </div>
             </Rise>
           ))}
-          <Rise delay={0.21} className="min-w-0">
+          <Rise delay={0.14} className="min-w-0">
             <div className="flex h-full flex-col rounded-3xl border border-dashed border-border p-6">
               <span className="w-fit rounded-full bg-primary/10 px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-primary">Coming soon</span>
-              <h3 className="mt-3 font-display text-2xl font-extrabold">CUET and more</h3>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">CUET (UG) is next. We're expanding through 2027 into government and state entrance exams.</p>
+              <h3 className="mt-3 font-display text-2xl font-extrabold">CUET, IPMAT and more</h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">CUET (UG) and IPMAT are next. We're expanding through 2027 into government and state entrance exams.</p>
               <Link to="/contact" className="mt-auto inline-flex min-h-11 items-center gap-1.5 pt-5 text-sm font-bold text-foreground">Tell us which exam you need <ArrowRight className="h-4 w-4" /></Link>
             </div>
           </Rise>
@@ -697,7 +696,7 @@ const featureList = [
   { icon: LayoutDashboard, t: "Progress tracking", d: "See your preparation across tests and topics.", span: "" },
   { icon: CalendarCheck, t: "Mentor marketplace", d: "Batches and sessions from mentors who cleared it, including free sessions.", span: "lg:col-span-2" },
 ];
-const alsoOn = ["Lecture library", "Free mentor sessions", "Certificate verification", "Support tickets", "NEET · JEE · IPMAT"];
+const alsoOn = ["Lecture library", "Free mentor sessions", "Certificate verification", "Support tickets", "NEET · JEE"];
 
 function FeaturesSection() {
   return (
@@ -739,7 +738,7 @@ function BlogShowcase() {
         <Rise className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
             <Title light="Strategy and stories," bold="not just a product." />
-            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Exam strategy, mentor stories and platform updates for NEET, JEE and IPMAT aspirants.</p>
+            <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Exam strategy, mentor stories and platform updates for NEET and JEE aspirants.</p>
           </div>
           <Link to="/blog" preload="viewport" className={`${GHOST_BTN} shrink-0`}>Read the blog <ArrowRight className="h-4 w-4" /></Link>
         </Rise>
@@ -842,7 +841,7 @@ function Footer() {
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_1fr]">
           <div>
             <Link to="/" className="flex items-center gap-2"><img src="/edurack-logo.webp" alt="EDURACK" width={160} height={160} className="h-10 w-auto object-contain" /><span className="font-display text-xl font-extrabold">edurack</span></Link>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET, JEE and IPMAT aspirants.</p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60"><strong className="text-white">edurack.in</strong> is an independent platform for exam-format CBT practice and mentorship for NEET and JEE aspirants.</p>
             <p className="mt-2 max-w-xs text-sm text-white/40">Founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee. {LAUNCH_DATE_LABEL}.</p>
             <div className="mt-5 flex gap-2">
               {socialLinks.map((s) => (
