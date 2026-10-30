@@ -274,7 +274,7 @@ export function SiteFooter() {
             </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
               <strong className="text-white">edurack.in</strong> is an independent platform for
-              exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.
+              exam-format CBT practice and mentorship for NEET and JEE aspirants.
             </p>
             <p className="mt-2 max-w-xs text-sm text-white/40">
               Founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee. {LAUNCH_DATE_LABEL}.

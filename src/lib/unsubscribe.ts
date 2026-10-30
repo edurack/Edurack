@@ -3,7 +3,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { SITE_URL } from "@/lib/growth-emails";
 
-export type OptOutKind = "streak" | "marketing";
+export type OptOutKind = "streak" | "marketing" | "nudges";
 
 function secret(): string {
   const s = process.env.UNSUBSCRIBE_SECRET ?? process.env.CRON_SECRET;
@@ -18,7 +18,7 @@ export function unsubscribeUrl(uid: string, kind: OptOutKind): string {
 }
 
 export function verifyUnsubscribe(uid: string, kind: string, token: string): kind is OptOutKind {
-  if (kind !== "streak" && kind !== "marketing") return false;
+  if (kind !== "streak" && kind !== "marketing" && kind !== "nudges") return false;
   const a = Buffer.from(sign(uid, kind));
   const b = Buffer.from(token);
   return a.length === b.length && timingSafeEqual(a, b);

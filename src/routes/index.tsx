@@ -48,6 +48,7 @@ import { LANDING_FAQS, LANDING_LAST_UPDATED } from "@/components/landing/landing
 import { usePreferredExam } from "@/components/landing/use-preferred-exam";
 import { useAuth } from "@/lib/auth-context";
 import { track, trackOnce } from "@/lib/analytics";
+import { captureReferralFromUrl } from "@/lib/referral-client";
 import { IconPlus as Plus } from "@tabler/icons-react";
 
 // FIX: CbtSimulator is a heavy, below-the-fold interactive component
@@ -350,6 +351,11 @@ function Index() {
       document.head.removeChild(faviconIco);
       document.head.removeChild(faviconPng);
     };
+  }, []);
+
+  // A friend's invite link (/?ref=CODE): remember the code until they sign up.
+  useEffect(() => {
+    captureReferralFromUrl();
   }, []);
 
   // How far down the page people get (25/50/75/100%), once each per visit. This is the number to watch

@@ -4,10 +4,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
+import { Check, ChevronDown, Lock, RotateCcw, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
 import { track, trackOnce } from "@/lib/analytics";
 import { getPyqTree } from "@/server-functions/pyq-practice";
+import { getMistakeCount } from "@/server-functions/practice-extras";
+import { InviteCard } from "@/components/referral/invite-card";
 import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
 import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
@@ -338,6 +340,24 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
   const left = access ? drillsLeft(access) : Infinity;
   const blocked = left === 0;
   const canBuild = access ? hasFeature(access, "customDrillBuilder") : false;
+  const canRevise = access ? hasFeature(access, "mistakeRevision") : false;
+  // How many questions they got wrong: shown to everyone, because seeing "37 mistakes to revise" is what makes the feature concrete.
+  const [mistakes, setMistakes] = useState<number | null>(null);
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const r = await getMistakeCount({ data: { token, exam } });
+        if (!off) setMistakes(r.count);
+      } catch {
+        /* the card simply stays hidden */
+      }
+    })();
+    return () => {
+      off = true;
+    };
+  }, [user, exam]);
   const locked = access ? access.gatingOn && !access.isPro : false;
   // Something Pro-only is still out of reach for this student (free plan, or a plan that doesn't include everything).
   const missing = access ? access.gatingOn && PRO_FEATURE_KEYS.some((k) => access.proOnly[k] && !access.features.includes(k)) : false;
@@ -428,6 +448,11 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
           <Fact value="New first" label="unseen questions lead" />
         </div>
         <p className="mt-3 text-xs text-foreground/55">A refresh won't reset the clock, skipping costs nothing, and every wrong answer goes to your notebook.</p>
+        {access?.bonusUntil && new Date(access.bonusUntil).getTime() > Date.now() && (
+          <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            Friend bonus: +1 free Quick Mock a day until {new Date(access.bonusUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}.
+          </p>
+        )}
 
         {access && limitedFree && (
           <div className="mt-4">
@@ -453,6 +478,51 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
           {mockStatus.kind === "resume" ? "Resume Quick Mock" : blocked ? "Come back tomorrow for your next one" : proOnlyMock ? "Part of Edurack Pro" : "Start Quick Mock"}
         </button>
       </div>
+
+      {access && mistakes !== null && mistakes >= 5 && (
+        <div className="clay p-5 sm:p-6" data-testid="mistake-revision-card">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
+              <RotateCcw className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                Revise your mistakes {access.gatingOn && access.proOnly.mistakeRevision && <ProTag />}
+              </h2>
+              <p className="mt-0.5 text-xs text-foreground/60">
+                You have {mistakes} question{mistakes === 1 ? "" : "s"} you got wrong. This builds a timed drill from the oldest ones first, so the mistakes you made longest ago come back before you forget them.
+              </p>
+            </div>
+          </div>
+          {canRevise ? (
+            <button
+              type="button"
+              disabled={starting}
+              onClick={() => {
+                track("mistake_revision_started", { source: source ?? "direct" });
+                onStart({ custom: { mistakes: true, count: DRILL_QUESTIONS } });
+              }}
+              className="clay-btn mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {starting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Start revision drill
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setShowPro(true);
+                trackOnce(`mistake-revision-upgrade:${source ?? "direct"}`, "mistake_revision_upgrade_clicked", { source: source ?? "direct", mistakes });
+              }}
+              className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-border px-6 text-sm font-bold text-foreground hover:bg-foreground/5"
+            >
+              <Sparkles className="h-4 w-4" aria-hidden /> Revise with Edurack Pro
+            </button>
+          )}
+        </div>
+      )}
+
+      {access && !access.isPro && access.gatingOn && access.freeLimit > 0 && <InviteCard user={user} source="quick_mock" />}
 
       {access && !proOpen && (
         <div className="text-center">

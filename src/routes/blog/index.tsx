@@ -27,9 +27,9 @@ export const Route = createFileRoute("/blog/")({
   // variants are filtered views of the same list, not separate pages.
   head: () =>
     pageHead({
-      title: "Exam Prep Blog: NEET, JEE, CUET & IPMAT",
+      title: "Exam Prep Blog: NEET & JEE",
       description:
-        "Study strategy, exam analysis, mentor stories and platform updates for NEET, JEE, CUET and IPMAT aspirants, from the Edurack team.",
+        "Study strategy, exam analysis, mentor stories and platform updates for NEET and JEE aspirants, from the Edurack team.",
       path: "/blog",
     }),
   component: BlogIndexPage,

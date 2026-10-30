@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth-context";
 import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { ensureUserRecord, getProfile, needsOnboarding, saveProfile, updateBasicInfo } from "@/server-functions/profile";
 import { isRealMobile } from "@/lib/profile-completeness";
+import { claimReferral } from "@/server-functions/referrals";
+import { captureReferralFromUrl, takeStoredReferral } from "@/lib/referral-client";
 import { recordSession } from "@/server-functions/sessions";
 import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
@@ -23,9 +25,9 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in · Edurack" },
-      { name: "description", content: "Sign in or create your Edurack account to access the NEET, JEE, CUET & IPMAT CBT engines, smart dashboards and mentor ecosystem." },
+      { name: "description", content: "Sign in or create your Edurack account to access the NEET & JEE CBT engines, smart dashboards and mentor ecosystem." },
       { property: "og:title", content: "Sign in · Edurack" },
-      { property: "og:description", content: "Access your NEET, JEE, CUET & IPMAT prep dashboard on Edurack." },
+      { property: "og:description", content: "Access your NEET & JEE prep dashboard on Edurack." },
       // Intentional: this is an auth/login page, not organic-search content.
       // Keep noindex here — only remove noindex from public-facing pages
       // (home, landing, exam-info pages), not from /auth, /dashboard, etc.
@@ -104,6 +106,9 @@ function AuthPage() {
   const { tab: initialTab, redirect: redirectTo } = Route.useSearch();
   const [tab, setTab] = useState<Tab>(initialTab ?? "signin");
   const [stage, setStage] = useState<Stage>("checking");
+  useEffect(() => {
+    captureReferralFromUrl(); // ?ref=CODE from a friend's link, kept until sign-up finishes
+  }, []);
   const [pendingEmail, setPendingEmail] = useState("");
   const navigate = useNavigate();
   const router = useRouter();
@@ -214,7 +219,7 @@ function AuthPage() {
             <span className="block font-extrabold">Fix what costs you marks.</span>
           </h2>
           <ul className="mt-8 space-y-3 text-white/70">
-            <li>Exam-format mocks for NEET, JEE, CUET and IPMAT</li>
+            <li>Exam-format mocks for NEET and JEE</li>
             <li>Accuracy, speed and concept gaps after every test</li>
             <li>Mentors who have cleared the same exam</li>
           </ul>
@@ -912,6 +917,8 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
   const [exam, setExam] = useState<ExamChoice | null>(storedLandingExam);
   const [track, setTrack] = useState<TrackChoice | null>(null);
   const [mobile, setMobile] = useState("");
+  // Optional, separate from the contact notice: offers and updates on WhatsApp/SMS. Off unless they tick it.
+  const [marketing, setMarketing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -942,7 +949,7 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
       const token = await user.getIdToken();
       if (mobileOnly) {
         // Patches only the mobile field, so the exam, track and name they already set are untouched.
-        await updateBasicInfo({ data: { token, field: "mobile", value: mobile } });
+        await updateBasicInfo({ data: { token, field: "mobile", value: mobile, consent: { marketing } } });
       } else {
         if (!exam || !track) return;
         const profile: OnboardingProfile = {
@@ -955,7 +962,16 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
           track,
           cuetDomainSubjects: [],
         };
-        await saveProfile({ data: { token, profile } });
+        await saveProfile({ data: { token, profile, consent: { marketing } } });
+        // They arrived through a friend's link: record it (the bonus itself comes after their first finished Quick Mock).
+        const ref = takeStoredReferral();
+        if (ref) {
+          try {
+            await claimReferral({ data: { token, code: ref } });
+          } catch {
+            /* a referral is a bonus, never a blocker */
+          }
+        }
       }
       onComplete();
     } catch {
@@ -1046,9 +1062,23 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
               className="w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
             />
           </div>
-          <p className="text-xs text-foreground/50">
-            We'll use it to reach you about your prep, mentor sessions and Edurack updates.
+          <p className="text-xs leading-relaxed text-foreground/55">
+            By continuing, you agree that Edurack may contact you on this number about your account, sessions and prep, by call, SMS or
+            WhatsApp. See our{" "}
+            <Link to="/legal/privacy" target="_blank" className="font-semibold underline underline-offset-2">
+              Privacy Policy
+            </Link>
+            .
           </p>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-xs text-foreground/70">
+            <input
+              type="checkbox"
+              checked={marketing}
+              onChange={(e) => setMarketing(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--sky-deep)]"
+            />
+            <span>Also send me offers, test reminders and updates on WhatsApp and SMS (optional). You can turn this off any time in your profile.</span>
+          </label>
         </div>
       </div>
 

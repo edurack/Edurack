@@ -20,17 +20,17 @@ import {
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Sign in to Edurack · NEET, JEE, CUET & IPMAT Prep" },
+      { title: "Sign in to Edurack · NEET & JEE Prep" },
       {
         name: "description",
         content:
-          "Sign in to Edurack to continue your NEET, JEE, CUET & IPMAT exam prep — CBT-style mock tests, smart dashboards and a dedicated mentor ecosystem.",
+          "Sign in to Edurack to continue your NEET & JEE exam prep — CBT-style mock tests, smart dashboards and a dedicated mentor ecosystem.",
       },
       { property: "og:title", content: "Sign in to Edurack" },
       {
         property: "og:description",
         content:
-          "Log in or create your free Edurack account for NEET, JEE, CUET & IPMAT preparation.",
+          "Log in or create your free Edurack account for NEET & JEE preparation.",
       },
       // Intentionally indexable — this is the crawlable counterpart to
       // the noindex'd /auth flow. Do not add a noindex tag here.
@@ -54,7 +54,7 @@ function LoginLandingPage() {
           <span className="block font-extrabold">Pick up where you left off.</span>
         </h1>
         <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-          Continue your NEET, JEE, CUET &amp; IPMAT preparation with CBT-style mock tests, a performance
+          Continue your NEET &amp; JEE preparation with CBT-style mock tests, a performance
           dashboard, and access to your mentor, all in one account.
         </p>
 
@@ -68,7 +68,7 @@ function LoginLandingPage() {
         </div>
 
         <div className="mt-14 grid gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-3">
-          <FeatureCard icon={<Brain className="h-5 w-5" />} title="CBT mock tests" description="A test engine built to match the real NEET, JEE, CUET and IPMAT exam interface." />
+          <FeatureCard icon={<Brain className="h-5 w-5" />} title="CBT mock tests" description="A test engine built to match the real NEET and JEE exam interface." />
           <FeatureCard icon={<ChartBar className="h-5 w-5" />} title="Smart dashboard" description="Chapter-wise accuracy, speed and weak areas after every test, updated automatically." />
           <FeatureCard icon={<UsersGroup className="h-5 w-5" />} title="Mentor ecosystem" description="Get matched with a mentor who reviews your progress and helps plan what to study next." />
         </div>

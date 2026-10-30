@@ -50,7 +50,7 @@ export const Route = createFileRoute("/mentorship-sessions")({
       title: "Mentorship Sessions with NEET & JEE Rankers",
       path: SESSIONS_HUB_PATH,
       description:
-        "Book live 1:1 and group mentorship sessions with students who cracked NEET, JEE, CUET and IPMAT. Pick a time, see the price up front, and get the exact strategy that worked for them.",
+        "Book live 1:1 and group mentorship sessions with students who cracked NEET and JEE. Pick a time, see the price up front, and get the exact strategy that worked for them.",
       jsonLd: [
         {
           "@context": "https://schema.org",
@@ -107,7 +107,7 @@ function MentorshipSessionsPage() {
                 <span className="block font-extrabold">people who cracked the exam.</span>
               </h1>
               <p className="mt-4 text-muted-foreground">
-                Book a live 1:1 or group session with a mentor who has already cleared NEET, JEE, CUET or IPMAT. Ask about your study plan, your weak subjects or how to handle the last
+                Book a live 1:1 or group session with a mentor who has already cleared NEET or JEE. Ask about your study plan, your weak subjects or how to handle the last
                 90 days, and get advice from someone who has just been through it. Every mentor's rank and college is verified and shown on their profile.
               </p>
             </div>

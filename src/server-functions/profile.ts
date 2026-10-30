@@ -27,6 +27,20 @@ const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
   cuetDomainSubjects: [],
 };
 
+// Contact consent saved with the mobile number, as evidence of what the student agreed to and when:
+//  - service: they were told we may contact them about their account, sessions and prep (shown next to the field);
+//  - marketing: the separate, optional box for offers and updates on WhatsApp/SMS (off unless they ticked it);
+//  - at / source / policyVersion: when, from which screen, and which version of the privacy policy text they saw.
+// Bump PRIVACY_POLICY_VERSION whenever src/routes/legal/privacy.tsx changes in a way that affects consent.
+const PRIVACY_POLICY_VERSION = "2026-10-29";
+const consentRecord = (marketing: boolean, source: "onboarding" | "login_prompt") => ({
+  service: true,
+  marketing,
+  at: new Date(),
+  source,
+  policyVersion: PRIVACY_POLICY_VERSION,
+});
+
 // Called right after ANY successful sign-in or sign-up (email/password or
 // Google) so a MongoDB document always exists for the user, with empty
 // onboarding fields if they haven't filled them in yet. Uses $setOnInsert
@@ -63,7 +77,7 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
   });
 
 export const saveProfile = createServerFn({ method: "POST" })
-  .validator((data: { token: string; profile: OnboardingProfileInput }) => data)
+  .validator((data: { token: string; profile: OnboardingProfileInput; consent?: { marketing: boolean } }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);
     // A real Indian mobile number is required to finish sign-up (the client enforces it too).
@@ -76,6 +90,7 @@ export const saveProfile = createServerFn({ method: "POST" })
           ...data.profile,
           uid: decoded.uid,
           email: decoded.email ?? null,
+          mobileConsent: consentRecord(data.consent?.marketing === true, "onboarding"),
           updatedAt: new Date(),
         },
         $setOnInsert: { createdAt: new Date() },
@@ -90,15 +105,29 @@ export const saveProfile = createServerFn({ method: "POST" })
 // mobile/city without touching academic fields, avoiding any risk of
 // clobbering currentClass/board/track with stale client-side state.
 export const updateBasicInfo = createServerFn({ method: "POST" })
-  .validator((data: { token: string; field: "fullName" | "mobile" | "city"; value: string }) => data)
+  .validator((data: { token: string; field: "fullName" | "mobile" | "city"; value: string; consent?: { marketing: boolean } }) => data)
   .handler(async ({ data }) => {
     const decoded = await adminAuth.verifyIdToken(data.token);
     if (data.field === "mobile" && !/^[6-9]\d{9}$/.test(data.value)) throw new Error("Enter a valid 10-digit mobile number.");
     const db = await getDb();
+    const set: Record<string, unknown> = { [data.field]: data.value, updatedAt: new Date() };
+    // The login prompt for a missing mobile number sends the consent choice along with the number.
+    if (data.field === "mobile" && data.consent) set.mobileConsent = consentRecord(data.consent.marketing === true, "login_prompt");
+    await db.collection("profiles").updateOne({ uid: decoded.uid }, { $set: set }, { upsert: true });
+    return { ok: true };
+  });
+
+// The Profile page switch for offers and updates on WhatsApp/SMS. Turning it off takes effect immediately; the
+// choice and its time are kept so there is a record of when it changed.
+export const setMarketingOptIn = createServerFn({ method: "POST" })
+  .validator((data: { token: string; optIn: boolean }) => data)
+  .handler(async ({ data }) => {
+    const decoded = await adminAuth.verifyIdToken(data.token);
+    const db = await getDb();
+    const now = new Date();
     await db.collection("profiles").updateOne(
       { uid: decoded.uid },
-      { $set: { [data.field]: data.value, updatedAt: new Date() } },
-      { upsert: true },
+      { $set: { "mobileConsent.marketing": data.optIn === true, "mobileConsent.marketingUpdatedAt": now, updatedAt: now } },
     );
     return { ok: true };
   });

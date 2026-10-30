@@ -21,7 +21,7 @@ export const Route = createFileRoute("/about")({
       title: "About Edurack",
       path: "/about",
       description:
-        "Edurack is a mock-test and mentorship marketplace for NEET, JEE, CUET and IPMAT — built on an exact CBT replica engine and mentors verified for real exam rank.",
+        "Edurack is a mock-test and mentorship marketplace for NEET and JEE (CUET and IPMAT coming soon) — built on an exact CBT replica engine and mentors verified for real exam rank.",
       jsonLd: [
         {
           "@context": "https://schema.org",

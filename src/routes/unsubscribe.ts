@@ -13,7 +13,7 @@ const page = (title: string, inner: string, status = 200) =>
     { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 
-const LABEL = { streak: "streak reminder", marketing: "Edurack update" } as const;
+const LABEL = { streak: "streak reminder", marketing: "Edurack update", nudges: "practice nudge" } as const;
 
 export const Route = createFileRoute("/unsubscribe")({
   server: {

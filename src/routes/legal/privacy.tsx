@@ -4,132 +4,105 @@ import { IconFileText as FileText } from "@tabler/icons-react";
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 
 export const Route = createFileRoute("/legal/privacy")({
-  head: () => pageHead({"title": "Privacy Policy", "path": "/legal/privacy", "description": "How Edurack collects, uses and protects your personal information when you use our platform."}),
-  component: TermsPage,
+  head: () => pageHead({"title": "Privacy Policy", "path": "/legal/privacy", "description": "How Edurack collects, uses and protects your personal information, including your mobile number, when you use our platform."}),
+  component: PrivacyPage,
 });
 
-function TermsPage() {
+// Keep this page in step with PRIVACY_POLICY_VERSION in src/server-functions/profile.ts: bump both when the text changes in a way that affects consent.
+function PrivacyPage() {
   return (
     <LegalLayout
       icon={FileText}
       eyebrow="Legal"
-      title="Terms of Service"
-      lastUpdated="September 10, 2026"
+      title="Privacy Policy"
+      lastUpdated="October 29, 2026"
     >
-      <LegalSection title="1. The EDURACK Marketplace">
+      <LegalSection title="1. Who we are">
         <p>
-          EDURACK operates an open marketplace connecting students with independent
-          mentors — AIIMS and top-tier college rankers who create and run their own
-          mentorship batches. EDURACK is the platform that hosts, discovers, and
-          processes payment for these batches; it is not the instructor of record for
-          any individual batch.
+          Edurack (edurack.in) runs a mock-test and mentorship marketplace for exam aspirants. This policy explains what personal information
+          we collect, why we collect it, who we share it with, and the choices you have. You can reach us about any of it at contact@edurack.in.
         </p>
       </LegalSection>
 
-      <LegalSection title="2. Mentor Verification & Credentials">
+      <LegalSection title="2. Information we collect">
         <p>
-          Every mentor on EDURACK is required to warrant that the academic
-          credentials, exam ranks, and institutional affiliations advertised on
-          their profile are authentic and verifiable. Falsified credentials are a
-          serious violation of our mentor agreements and result in the mentor's
-          immediate removal from the platform. If you believe a mentor's advertised
-          credentials are inaccurate, please report it to our team.
+          <strong>Account details:</strong> your name, email address, mobile number, city, class, board, target exam and, if you add it, the year you plan to
+          sit the exam. You sign in with Google or with an email and password.
+        </p>
+        <p>
+          <strong>Practice and learning data:</strong> the tests, drills and questions you attempt, your answers and scores, your notebook, your streaks and
+          the analysis built from them.
+        </p>
+        <p>
+          <strong>Purchases:</strong> what you buy, the amount and a payment reference. Payments are processed by Razorpay; we receive confirmation and
+          payment identifiers, not your full card or UPI credentials.
+        </p>
+        <p>
+          <strong>Device and usage data:</strong> a device identifier used to manage your sessions, and product analytics about how the site is used. On some
+          pages we also use screen-session recordings to find and fix problems. We switch recordings off on sign-in, profile, purchase and similar screens.
         </p>
       </LegalSection>
 
-      <LegalSection title="3. Mentors Set Their Own Rates">
+      <LegalSection title="3. How we use it">
         <p>
-          Every mentor independently sets the pricing tier, batch structure, and
-          content roadmap for their mentorship space. EDURACK does not fix, cap, or
-          negotiate mentor pricing on a mentor's behalf. Students should review a
-          batch's listed price, inclusions, and mentor credentials before purchasing.
+          To create and run your account, deliver tests, practice and mentor sessions, show you your analysis, process payments and refunds, answer your
+          support requests, keep the platform secure, prevent misuse, improve the product, and meet our legal obligations.
         </p>
       </LegalSection>
 
-      <LegalSection title="4. Content Ownership">
+      <LegalSection title="4. Your mobile number">
         <p>
-          Mentors retain full ownership of the syllabus material, planners, videos,
-          and other resources they upload to their mentorship space. EDURACK is
-          granted a limited license to host and deliver this content to enrolled
-          students for the duration of their access period, and does not claim
-          ownership over mentor-created intellectual property.
+          We ask for your mobile number when you sign up so that we can reach you. When you give it, we tell you we may contact you on it about your account,
+          your sessions, your purchases and your prep, by call, SMS or WhatsApp. That is the only use you agree to by continuing.
+        </p>
+        <p>
+          Offers, test reminders and updates on WhatsApp and SMS are separate and optional: they are sent only if you tick the box that offers them, and you
+          can turn them off at any time on your Profile page. We keep a record of when you gave or changed your choice and which version of this policy you saw.
+          We do not sell your mobile number.
         </p>
       </LegalSection>
 
-      <LegalSection title="5. Platform Fee">
+      <LegalSection title="5. Who we share information with">
         <p>
-          EDURACK charges a transaction-based platform fee on each successful
-          purchase, currently 15% of net revenue on direct mentor-space and cohort
-          batches, and 25% of net revenue on co-branded premium test series. This
-          fee funds payment processing, hosting, discovery, and support
-          infrastructure. It is deducted from the mentor's payout and does not
-          change the price a student sees or pays at checkout.
+          We use service providers to run Edurack: Google Firebase for sign-in, MongoDB for our database, Razorpay for payments, PostHog for product analytics
+          and Resend for sending email. They process information on our behalf and only for those purposes. If you buy a batch or book a session, the mentor
+          receives the details needed to deliver it. We may also disclose information where the law requires it, or to protect the safety of our users.
+          We do not sell your personal information.
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Independent Contractor Relationship">
+      <LegalSection title="6. Students under 18">
         <p>
-          Mentors operate on EDURACK as independent contractors, not as EDURACK
-          employees or agents. A mentorship batch is purchased on the strength of
-          the individual mentor's brand, credentials, and offering — not as direct
-          instruction from EDURACK. Primary responsibility for batch delivery,
-          content quality, and communication with enrolled students rests with the
-          mentor.
+          Many Edurack users are school students, including some under 18. We ask students under 18 to use Edurack with a parent or guardian's knowledge.
+          We are updating how we handle children's data to meet India's Digital Personal Data Protection Act, 2023 and the Rules made under it as they come into force.
         </p>
       </LegalSection>
 
-      <LegalSection title="7. Student Access & Conduct">
+      <LegalSection title="7. How long we keep information">
         <p>
-          Access to a mentorship batch or CBT mock test series is granted per the
-          terms listed on that specific product page. Sharing login credentials,
-          reselling access, or redistributing mentor content outside the platform is
-          not permitted and may result in access being revoked without refund.
-        </p>
-        <p>
-          Mentors are contractually prohibited from soliciting students to transact
-          off-platform or move to unapproved private groups. If a mentor asks you to
-          pay or communicate outside EDURACK, please report it to our team.
+          We keep your account and practice data while your account is active. We keep payment and tax records for as long as the law requires. You can ask us to
+          delete your account and the personal information we hold about you by writing to contact@edurack.in, and we will do so unless we must keep something by law.
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Child Safety Commitment">
+      <LegalSection title="8. Your choices and rights">
         <p>
-          EDURACK requires every mentor to maintain professional conduct at all
-          times and strictly prohibits unsolicited personal contact with minor
-          students. In compliance with the POCSO Act, 2012, any suspected or actual
-          offense against a minor is escalated immediately, the mentor's access is
-          suspended pending investigation, and the matter is reported to law
-          enforcement as required by law.
+          You can see and correct your name, mobile number and city on your Profile page. You can ask us for a copy of your information, ask us to correct or erase it,
+          withdraw a consent you gave, or make a complaint, by writing to contact@edurack.in. We will respond as quickly as we can.
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Limitation of Liability">
+      <LegalSection title="9. Security">
         <p>
-          EDURACK is not liable for indirect, incidental, or consequential damages
-          arising from server downtime, third-party payment gateway failures, or
-          internet connectivity issues outside its control. EDURACK's role is
-          limited to providing the technology platform; mentors are independently
-          responsible for the content and delivery of their mentorship batches.
+          We use reasonable technical and organisational measures to protect your information, including encrypted connections and token-based sign-in. No system is completely
+          secure, so please keep your password private and tell us straight away if you think your account has been misused.
         </p>
       </LegalSection>
 
-      <LegalSection title="10. Dispute Resolution & Governing Law">
+      <LegalSection title="10. Changes to this policy">
         <p>
-          These Terms are governed by the laws of India. Any dispute will first be
-          addressed through good-faith discussion between the parties. If unresolved
-          within fifteen days, the dispute shall be referred to binding arbitration
-          under the Arbitration and Conciliation Act, 1996, seated in New Delhi,
-          India, with courts in New Delhi having exclusive jurisdiction over any
-          related matters.
-        </p>
-      </LegalSection>
-
-      <LegalSection title="11. Changes to These Terms">
-        <p>
-          EDURACK may update these terms as the platform evolves. Material changes
-          will be reflected by an updated "Last updated" date on this page.
-          Continued use of EDURACK after changes take effect constitutes acceptance
-          of the revised terms.
+          We may update this policy as Edurack grows or the law changes. The "Last updated" date above shows when it last changed. If a change affects how we use your
+          mobile number, we will ask for your choice again.
         </p>
       </LegalSection>
     </LegalLayout>

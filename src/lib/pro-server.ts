@@ -8,6 +8,7 @@
 //                Buying while Pro is active stacks: the new period starts when the current one ends.
 //                Pro is active while any grant has endsAt in the future.
 import type { Db } from "@/lib/pyq-server";
+import { getReferralBonus } from "@/lib/referral-server";
 import { PRO_FEATURE_KEYS, cleanPlanFeatures, cleanProSettings, istDayRange, type DrillAccess, type ProFeatureKey, type ProPlanPublic, type ProSettings } from "@/lib/pro";
 
 const DAY_MS = 86_400_000;
@@ -76,14 +77,22 @@ async function runningDrill(db: Db, uid: string, now: Date): Promise<DrillAccess
 }
 
 export async function getDrillAccess(db: Db, uid: string, now = new Date()): Promise<DrillAccess> {
-  const [plans, settings, ent, running] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now), runningDrill(db, uid, now).catch(() => null)]);
+  const [plans, settings, ent, running, bonus] = await Promise.all([
+    listActivePlans(db),
+    getProSettings(db),
+    proEntitlements(db, uid, now),
+    runningDrill(db, uid, now).catch(() => null),
+    getReferralBonus(db, uid, now).catch(() => ({ perDay: 0, until: null as Date | null })),
+  ]);
   return {
     running,
     gatingOn: plans.length > 0,
     isPro: ent.until !== null,
     proUntil: ent.until ? ent.until.toISOString() : null,
     usedToday: await countDrillsToday(db, uid, now),
-    freeLimit: settings.freeDrillsPerDay,
+    // A referral bonus adds free Quick Mocks a day on top of the free plan (but not when the admin made Quick Mock Pro-only: 0 stays 0).
+    freeLimit: settings.freeDrillsPerDay > 0 ? settings.freeDrillsPerDay + bonus.perDay : 0,
+    bonusUntil: bonus.until ? bonus.until.toISOString() : null,
     plans,
     features: ent.features,
     proOnly: settings.proOnly,

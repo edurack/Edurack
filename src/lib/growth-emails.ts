@@ -74,6 +74,54 @@ export function streakReminderEmailHtml(params: StreakReminderParams): string {
   return emailLayout({ previewText: `Your ${streakDays}-day streak ends at midnight — one question keeps it alive.`, bodyHtml: body });
 }
 
+// ─── Practice nudges (sent by server-functions/lifecycle-emails.ts) ─────────
+export type FirstDrillParams = { name: string; examLabel: string; drillUrl: string; unsubscribeUrl: string };
+
+export function firstDrillSubject(p: Pick<FirstDrillParams, "name" | "examLabel">): string {
+  return `${p.name}, your first ${p.examLabel} Quick Mock takes about 20 minutes`;
+}
+
+export function firstDrillEmailHtml(params: FirstDrillParams): string {
+  const { name, examLabel } = params;
+  const body = `
+    ${badge("Your first step", C.sky)}
+    ${h1(`${esc(name)}, try one ${esc(examLabel)} Quick Mock`)}
+    ${p(`A Quick Mock is <strong>20 previous year questions</strong>, timed, scored the moment you finish, with a solution for every question. It is the fastest way to see where you stand.`)}
+    ${emailButton(params.drillUrl, "Start my first Quick Mock")}
+    ${p(`<span style="color:${C.muted};font-size:13px;">It takes about 20 minutes. You can leave a question and come back to it, just like in the real exam.</span>`)}
+    ${unsubscribeFooter(params.unsubscribeUrl, "because you recently created an Edurack account")}
+  `;
+  return emailLayout({ previewText: `20 questions, timed, with a solution for each. A good first step for ${examLabel}.`, bodyHtml: body });
+}
+
+export type WeakChapterParams = {
+  name: string;
+  chapter: string;
+  subject: string;
+  answered: number;
+  correct: number;
+  practiceUrl: string;
+  drillUrl: string;
+  unsubscribeUrl: string;
+};
+
+export function weakChapterSubject(p: Pick<WeakChapterParams, "name" | "chapter">): string {
+  return `${p.name}, ${p.chapter} cost you marks yesterday`;
+}
+
+export function weakChapterEmailHtml(params: WeakChapterParams): string {
+  const { name, chapter, subject, answered, correct } = params;
+  const body = `
+    ${badge("Your weak spot", C.lemon)}
+    ${h1(`${esc(chapter)} needs another look`)}
+    ${p(`${esc(name)}, yesterday you got <strong>${correct} of ${answered}</strong> right in <strong>${esc(chapter)}</strong> (${esc(subject)}). One more focused round now is worth more than a new chapter.`)}
+    ${emailButton(params.practiceUrl, "Practise this chapter")}
+    ${p(`<span style="font-size:14px;">Want it timed like the exam? <a href="${esc(params.drillUrl)}" style="color:${C.text};font-weight:700;">Take a 20-question drill on ${esc(chapter)}</a>.</span>`)}
+    ${unsubscribeFooter(params.unsubscribeUrl, "because you practise on Edurack")}
+  `;
+  return emailLayout({ previewText: `${correct} of ${answered} right yesterday. A focused round will move the needle.`, bodyHtml: body });
+}
+
 // ─── One-tap outreach ──────────────────────────────────────────────────────
 export type OutreachAsset = { label: string; url: string };
 

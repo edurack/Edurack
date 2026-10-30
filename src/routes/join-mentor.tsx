@@ -8,7 +8,7 @@ import { submitCreatorApplication } from "@/server-functions/mentor-applications
 import { SiteHeader, SiteFooter, WRAP, INK, Rise } from "@/components/landing/site-chrome";
 
 export const Route = createFileRoute("/join-mentor")({
-  head: () => pageHead({"title": "Become a Mentor", "path": "/join-mentor", "description": "Apply to mentor NEET, JEE, CUET and IPMAT aspirants on Edurack. Sell test series and mentorship batches, run live sessions and build your own student community."}),
+  head: () => pageHead({"title": "Become a Mentor", "path": "/join-mentor", "description": "Apply to mentor NEET and JEE aspirants on Edurack, and be among the first mentors for CUET and IPMAT. Sell test series and mentorship batches, run live sessions and build your own student community."}),
   component: JoinMentorPage,
 });
 
@@ -258,7 +258,7 @@ function JoinMentorPage() {
                 <span className="block font-extrabold">as a mentor.</span>
               </h1>
               <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
-                EDURACK is live now, helping NEET, JEE, CUET, and IPMAT aspirants prep smarter. Tell us
+                EDURACK is live now, helping NEET and JEE aspirants prep smarter, with CUET and IPMAT coming soon. Tell us
                 about your background and the batch you'd like to run — our team reviews every
                 application before your mentor space goes live.
               </p>

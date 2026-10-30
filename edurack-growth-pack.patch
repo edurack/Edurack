@@ -1,0 +1,1882 @@
+diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
+index 36183d4..2ca0fac 100644
+--- a/src/components/landing/site-chrome.tsx
++++ b/src/components/landing/site-chrome.tsx
+@@ -274,7 +274,7 @@ export function SiteFooter() {
+             </Link>
+             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/60">
+               <strong className="text-white">edurack.in</strong> is an independent platform for
+-              exam-format CBT practice and mentorship for NEET, JEE, CUET and IPMAT aspirants.
++              exam-format CBT practice and mentorship for NEET and JEE aspirants.
+             </p>
+             <p className="mt-2 max-w-xs text-sm text-white/40">
+               Founded by Vishal Sharma, Tarun Yadav and Archita Priyadarshinee. {LAUNCH_DATE_LABEL}.
+diff --git a/src/components/pyq/drill-launcher.tsx b/src/components/pyq/drill-launcher.tsx
+index 1b132b7..20aa699 100644
+--- a/src/components/pyq/drill-launcher.tsx
++++ b/src/components/pyq/drill-launcher.tsx
+@@ -4,10 +4,12 @@
+ import { useCallback, useEffect, useState } from "react";
+ import { Link } from "@tanstack/react-router";
+ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
+-import { Check, ChevronDown, Lock, Sparkles, Timer } from "lucide-react";
++import { Check, ChevronDown, Lock, RotateCcw, Sparkles, Timer } from "lucide-react";
+ import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
+ import { track, trackOnce } from "@/lib/analytics";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
++import { getMistakeCount } from "@/server-functions/practice-extras";
++import { InviteCard } from "@/components/referral/invite-card";
+ import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
+ import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+ import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
+@@ -338,6 +340,24 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
+   const left = access ? drillsLeft(access) : Infinity;
+   const blocked = left === 0;
+   const canBuild = access ? hasFeature(access, "customDrillBuilder") : false;
++  const canRevise = access ? hasFeature(access, "mistakeRevision") : false;
++  // How many questions they got wrong: shown to everyone, because seeing "37 mistakes to revise" is what makes the feature concrete.
++  const [mistakes, setMistakes] = useState<number | null>(null);
++  useEffect(() => {
++    let off = false;
++    (async () => {
++      try {
++        const token = await user.getIdToken();
++        const r = await getMistakeCount({ data: { token, exam } });
++        if (!off) setMistakes(r.count);
++      } catch {
++        /* the card simply stays hidden */
++      }
++    })();
++    return () => {
++      off = true;
++    };
++  }, [user, exam]);
+   const locked = access ? access.gatingOn && !access.isPro : false;
+   // Something Pro-only is still out of reach for this student (free plan, or a plan that doesn't include everything).
+   const missing = access ? access.gatingOn && PRO_FEATURE_KEYS.some((k) => access.proOnly[k] && !access.features.includes(k)) : false;
+@@ -428,6 +448,11 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
+           <Fact value="New first" label="unseen questions lead" />
+         </div>
+         <p className="mt-3 text-xs text-foreground/55">A refresh won't reset the clock, skipping costs nothing, and every wrong answer goes to your notebook.</p>
++        {access?.bonusUntil && new Date(access.bonusUntil).getTime() > Date.now() && (
++          <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
++            Friend bonus: +1 free Quick Mock a day until {new Date(access.bonusUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}.
++          </p>
++        )}
+ 
+         {access && limitedFree && (
+           <div className="mt-4">
+@@ -454,6 +479,51 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
+         </button>
+       </div>
+ 
++      {access && mistakes !== null && mistakes >= 5 && (
++        <div className="clay p-5 sm:p-6" data-testid="mistake-revision-card">
++          <div className="flex items-start gap-3">
++            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
++              <RotateCcw className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
++            </span>
++            <div className="min-w-0 flex-1">
++              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
++                Revise your mistakes {access.gatingOn && access.proOnly.mistakeRevision && <ProTag />}
++              </h2>
++              <p className="mt-0.5 text-xs text-foreground/60">
++                You have {mistakes} question{mistakes === 1 ? "" : "s"} you got wrong. This builds a timed drill from the oldest ones first, so the mistakes you made longest ago come back before you forget them.
++              </p>
++            </div>
++          </div>
++          {canRevise ? (
++            <button
++              type="button"
++              disabled={starting}
++              onClick={() => {
++                track("mistake_revision_started", { source: source ?? "direct" });
++                onStart({ custom: { mistakes: true, count: DRILL_QUESTIONS } });
++              }}
++              className="clay-btn mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-60"
++            >
++              {starting && <Loader2 className="h-4 w-4 animate-spin" />}
++              Start revision drill
++            </button>
++          ) : (
++            <button
++              type="button"
++              onClick={() => {
++                setShowPro(true);
++                trackOnce(`mistake-revision-upgrade:${source ?? "direct"}`, "mistake_revision_upgrade_clicked", { source: source ?? "direct", mistakes });
++              }}
++              className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-border px-6 text-sm font-bold text-foreground hover:bg-foreground/5"
++            >
++              <Sparkles className="h-4 w-4" aria-hidden /> Revise with Edurack Pro
++            </button>
++          )}
++        </div>
++      )}
++
++      {access && !access.isPro && access.gatingOn && access.freeLimit > 0 && <InviteCard user={user} source="quick_mock" />}
++
+       {access && !proOpen && (
+         <div className="text-center">
+           <button
+diff --git a/src/components/referral/invite-card.tsx b/src/components/referral/invite-card.tsx
+new file mode 100644
+index 0000000..5c4834b
+--- /dev/null
++++ b/src/components/referral/invite-card.tsx
+@@ -0,0 +1,86 @@
++// "Invite a friend": share the student's link; when the friend finishes their first Quick Mock, both get
++// +1 free Quick Mock a day for 7 days (rules in lib/referral.ts).
++import { useEffect, useState } from "react";
++import { Check, Copy, Gift, Share2 } from "lucide-react";
++import { getMyReferral } from "@/server-functions/referrals";
++import { REFERRAL_BONUS_DAYS, referralLink, type ReferralSummary } from "@/lib/referral";
++import { track, trackOnce } from "@/lib/analytics";
++
++const dateLabel = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
++
++export function InviteCard({ user, source }: { user: { getIdToken: () => Promise<string> }; source: string }) {
++  const [info, setInfo] = useState<ReferralSummary | null>(null);
++  const [copied, setCopied] = useState(false);
++
++  useEffect(() => {
++    let off = false;
++    (async () => {
++      try {
++        const token = await user.getIdToken();
++        const r = await getMyReferral({ data: { token } });
++        if (off) return;
++        setInfo(r);
++        if (r.code) trackOnce(`referral-card:${source}`, "referral_card_viewed", { source });
++      } catch {
++        /* no card if it can't load */
++      }
++    })();
++    return () => {
++      off = true;
++    };
++  }, [user, source]);
++
++  if (!info?.code) return null;
++  const link = referralLink(info.code);
++  const message = `I practise for my exam on Edurack: timed PYQ Quick Mocks with a solution for every question. Join with my link and we both get a free extra Quick Mock a day for a week: ${link}`;
++
++  async function share() {
++    track("referral_share_clicked", { source, channel: typeof navigator !== "undefined" && typeof navigator.share === "function" ? "share_sheet" : "whatsapp" });
++    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
++      navigator.share({ title: "Edurack", text: message }).catch(() => undefined);
++    } else {
++      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
++    }
++  }
++  async function copy() {
++    track("referral_share_clicked", { source, channel: "copy" });
++    try {
++      await navigator.clipboard.writeText(link);
++      setCopied(true);
++      setTimeout(() => setCopied(false), 2000);
++    } catch {
++      /* clipboard blocked: the share button still works */
++    }
++  }
++
++  return (
++    <div className="clay p-5 sm:p-6" data-testid="invite-card">
++      <div className="flex items-start gap-3">
++        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
++          <Gift className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
++        </span>
++        <div className="min-w-0 flex-1">
++          <h2 className="text-sm font-bold text-foreground">Invite a friend, both get an extra Quick Mock</h2>
++          <p className="mt-0.5 text-xs text-foreground/60">
++            When your friend joins with your link and finishes their first Quick Mock, you both get +1 free Quick Mock a day for {REFERRAL_BONUS_DAYS} days.
++          </p>
++        </div>
++      </div>
++      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
++        <button type="button" onClick={share} className="clay-btn inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-white">
++          <Share2 className="h-4 w-4" aria-hidden /> Share your link
++        </button>
++        <button type="button" onClick={copy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-border px-5 text-sm font-bold text-foreground hover:bg-foreground/5">
++          {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
++          {copied ? "Link copied" : "Copy link"}
++        </button>
++      </div>
++      {(info.rewarded > 0 || info.bonusUntil) && (
++        <p className="mt-3 text-xs font-semibold text-foreground/70">
++          {info.rewarded > 0 ? `${info.rewarded} friend${info.rewarded === 1 ? "" : "s"} joined and finished a Quick Mock. ` : ""}
++          {info.bonusUntil ? `Your bonus Quick Mock runs until ${dateLabel(info.bonusUntil)}.` : ""}
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/tools/jee-tools.tsx b/src/components/tools/jee-tools.tsx
+new file mode 100644
+index 0000000..5dc8db8
+--- /dev/null
++++ b/src/components/tools/jee-tools.tsx
+@@ -0,0 +1,122 @@
++// JEE Main percentile <-> rank calculator. All maths is client-side (lib/jee-main-percentile.ts); nothing is sent anywhere.
++import { useMemo, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { JEE_MAIN_2026_APPEARED, MARKS_BANDS, percentileFromRank, rankFromPercentile } from "@/lib/jee-main-percentile";
++import { formatRank } from "@/lib/neet-rank-data";
++import { Field, ShareButton, inputCls } from "@/components/tools/tool-shell";
++import { cn } from "@/lib/utils";
++
++type Mode = "percentile" | "rank";
++
++export function JeePercentileCalculator() {
++  const [mode, setMode] = useState<Mode>("percentile");
++  const [raw, setRaw] = useState("99");
++  const [candidatesRaw, setCandidatesRaw] = useState(String(JEE_MAIN_2026_APPEARED));
++
++  const candidates = Number(candidatesRaw.replace(/,/g, ""));
++  const candidatesOk = Number.isFinite(candidates) && candidates >= 1000 && candidates <= 5_000_000;
++  const n = Number(raw.replace(/,/g, ""));
++  const valid = raw.trim() !== "" && Number.isFinite(n) && candidatesOk && (mode === "percentile" ? n > 0 && n <= 100 : n >= 1 && n <= candidates);
++
++  const result = useMemo(() => {
++    if (!valid) return null;
++    if (mode === "percentile") return { percentile: n, rank: rankFromPercentile(n, candidates) };
++    const rank = Math.round(n);
++    return { percentile: percentileFromRank(rank, candidates), rank };
++  }, [valid, mode, n, candidates]);
++
++  const tab = (m: Mode, label: string) => (
++    <button
++      type="button"
++      onClick={() => {
++        setMode(m);
++        setRaw(m === "percentile" ? "99" : "15000");
++      }}
++      className={cn("min-h-10 rounded-full px-4 text-sm font-bold", mode === m ? "bg-foreground text-background" : "text-foreground/70")}
++    >
++      {label}
++    </button>
++  );
++
++  return (
++    <div>
++      <div className="clay rounded-3xl p-5 sm:p-6">
++        <div className="inline-flex rounded-full border border-border p-1">
++          {tab("percentile", "I know my percentile")}
++          {tab("rank", "I know my rank")}
++        </div>
++        <div className="mt-4 grid gap-4 sm:grid-cols-2">
++          <Field label={mode === "percentile" ? "NTA percentile (0 to 100)" : "All-India rank (AIR)"}>
++            <input inputMode="decimal" value={raw} onChange={(e) => setRaw(e.target.value)} className={inputCls} />
++          </Field>
++          <Field label="Candidates who appeared" hint="JEE Main 2026 default: 15,38,474 unique candidates across both sessions.">
++            <input inputMode="numeric" value={candidatesRaw} onChange={(e) => setCandidatesRaw(e.target.value)} className={inputCls} />
++          </Field>
++        </div>
++      </div>
++
++      {result && (
++        <div className="mt-5" aria-live="polite">
++          <div className="ink-section rounded-3xl p-6">
++            <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">{mode === "percentile" ? "Your expected JEE Main rank" : "Your JEE Main percentile"}</p>
++            {mode === "percentile" ? (
++              <p className="font-display mt-2 text-5xl font-extrabold">AIR ~{formatRank(result.rank)}</p>
++            ) : (
++              <p className="font-display mt-2 text-5xl font-extrabold">{result.percentile}<span className="text-2xl text-white/60">%ile</span></p>
++            )}
++            <p className="mt-2 text-sm text-white/65">
++              {mode === "percentile"
++                ? `A ${result.percentile} percentile means about ${formatRank(Math.max(0, candidates - result.rank))} of ${formatRank(candidates)} candidates scored at or below you.`
++                : `AIR ${formatRank(result.rank)} out of ${formatRank(candidates)} candidates works out to about the ${result.percentile} percentile.`}
++            </p>
++            <ShareButton
++              className="mt-4 !border-white/25 !text-white"
++              text={mode === "percentile" ? `My JEE Main estimate on Edurack: ${result.percentile} percentile is about AIR ${formatRank(result.rank)}.` : `My JEE Main estimate on Edurack: AIR ${formatRank(result.rank)} is about the ${result.percentile} percentile.`}
++            />
++          </div>
++          <p className="mt-4 text-xs leading-relaxed text-foreground/50">
++            Rank is roughly (100 − percentile) × candidates ÷ 100. NTA builds the final list from your better score across both sessions and applies tie-breaking, so your real rank can differ a little. Category ranks are different from AIR.
++          </p>
++        </div>
++      )}
++
++      <section className="mt-10">
++        <h2 className="font-display text-xl font-bold text-foreground">Marks, percentile and rank at a glance</h2>
++        <p className="mt-1 text-sm text-foreground/65">NTA does not publish marks versus percentile, because percentile is normalised shift by shift. These raw-mark ranges are what each percentile took across the April 2026 shifts.</p>
++        <div className="clay-inset mt-3 overflow-x-auto rounded-2xl">
++          <table className="w-full min-w-[420px] text-left text-sm">
++            <thead>
++              <tr className="text-[11px] font-bold uppercase tracking-wide text-foreground/50">
++                <th className="px-4 py-3">Percentile</th>
++                <th className="px-4 py-3">Raw marks (out of 300)</th>
++                <th className="px-4 py-3">About AIR</th>
++              </tr>
++            </thead>
++            <tbody>
++              {MARKS_BANDS.map((b) => (
++                <tr key={b.percentile} className="border-t border-border">
++                  <td className="px-4 py-3 font-bold text-foreground">{b.percentile}</td>
++                  <td className="px-4 py-3 text-foreground/80">{b.marks}</td>
++                  <td className="px-4 py-3 text-foreground/80">{formatRank(rankFromPercentile(b.percentile, JEE_MAIN_2026_APPEARED))}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </div>
++        <p className="mt-2 text-xs leading-relaxed text-foreground/50">
++          Compiled from shift-wise reports published by Careers360, Vedantu and Cracku after the April 2026 session. Tougher shifts need fewer raw marks. Ranks use 15,38,474 candidates.
++        </p>
++      </section>
++
++      <div className="ink-section mt-8 flex flex-col items-start gap-4 rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
++        <div>
++          <p className="font-display text-lg font-extrabold">Move your percentile up with daily JEE PYQs</p>
++          <p className="mt-1 text-sm text-white/65">Free JEE previous year questions with solutions, chapter by chapter.</p>
++        </div>
++        <Link to="/pyq" search={{ exam: "jee" } as never} className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-[#ffffff] px-6 text-sm font-extrabold text-[#141b2b]">
++          Practise JEE PYQs
++        </Link>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/tools/tool-shell.tsx b/src/components/tools/tool-shell.tsx
+index 1a67e1e..356bfce 100644
+--- a/src/components/tools/tool-shell.tsx
++++ b/src/components/tools/tool-shell.tsx
+@@ -9,6 +9,7 @@ export const TOOLS = [
+   { to: "/tools/neet-rank-predictor", name: "NEET Rank Predictor", blurb: "Marks to expected AIR, using the last three years of NTA data.", emoji: "🎯" },
+   { to: "/tools/neet-percentile-calculator", name: "NEET Percentile Calculator", blurb: "Turn your marks or rank into a percentile.", emoji: "📊" },
+   { to: "/tools/neet-target-score-planner", name: "NEET Target Score Planner", blurb: "How many questions to attempt, and how accurately, for your target.", emoji: "🧭" },
++  { to: "/tools/jee-main-percentile-calculator", name: "JEE Main Percentile to Rank", blurb: "Turn your NTA percentile into an expected AIR, and back.", emoji: "🧮" },
+ ] as const;
+ 
+ export const inputCls =
+@@ -78,7 +79,7 @@ export function ToolShell({ title, intro, faqs, current, children }: { title: st
+         </section>
+ 
+         <section className="mt-12">
+-          <h2 className="mb-3 font-display text-xl font-bold text-foreground">More free NEET tools</h2>
++          <h2 className="mb-3 font-display text-xl font-bold text-foreground">More free tools</h2>
+           <div className="grid gap-3 sm:grid-cols-2">
+             {TOOLS.filter((t) => t.to !== current).map((t) => (
+               <Link key={t.to} to={t.to} className="clay flex items-start gap-3 rounded-3xl p-4 transition hover:-translate-y-0.5">
+diff --git a/src/lib/dashboard-core.ts b/src/lib/dashboard-core.ts
+index a265b14..1532999 100644
+--- a/src/lib/dashboard-core.ts
++++ b/src/lib/dashboard-core.ts
+@@ -50,6 +50,8 @@ export async function loadProfile(db: Db, uid: string) {
+     email: (doc.email as string | null) ?? null,
+     fullName: (doc.fullName as string) ?? "",
+     mobile: (doc.mobile as string) ?? "",
++    // Whether they ticked the optional "offers and updates on WhatsApp/SMS" box (see mobileConsent in server-functions/profile.ts).
++    marketingOptIn: (doc.mobileConsent as { marketing?: boolean } | undefined)?.marketing === true,
+     city: (doc.city as string) ?? "",
+     currentClass: (doc.currentClass as string) ?? "",
+     board: (doc.board as string) ?? "",
+diff --git a/src/lib/growth-emails.ts b/src/lib/growth-emails.ts
+index 3d8e848..815fded 100644
+--- a/src/lib/growth-emails.ts
++++ b/src/lib/growth-emails.ts
+@@ -74,6 +74,54 @@ export function streakReminderEmailHtml(params: StreakReminderParams): string {
+   return emailLayout({ previewText: `Your ${streakDays}-day streak ends at midnight — one question keeps it alive.`, bodyHtml: body });
+ }
+ 
++// ─── Practice nudges (sent by server-functions/lifecycle-emails.ts) ─────────
++export type FirstDrillParams = { name: string; examLabel: string; drillUrl: string; unsubscribeUrl: string };
++
++export function firstDrillSubject(p: Pick<FirstDrillParams, "name" | "examLabel">): string {
++  return `${p.name}, your first ${p.examLabel} Quick Mock takes about 20 minutes`;
++}
++
++export function firstDrillEmailHtml(params: FirstDrillParams): string {
++  const { name, examLabel } = params;
++  const body = `
++    ${badge("Your first step", C.sky)}
++    ${h1(`${esc(name)}, try one ${esc(examLabel)} Quick Mock`)}
++    ${p(`A Quick Mock is <strong>20 previous year questions</strong>, timed, scored the moment you finish, with a solution for every question. It is the fastest way to see where you stand.`)}
++    ${emailButton(params.drillUrl, "Start my first Quick Mock")}
++    ${p(`<span style="color:${C.muted};font-size:13px;">It takes about 20 minutes. You can leave a question and come back to it, just like in the real exam.</span>`)}
++    ${unsubscribeFooter(params.unsubscribeUrl, "because you recently created an Edurack account")}
++  `;
++  return emailLayout({ previewText: `20 questions, timed, with a solution for each. A good first step for ${examLabel}.`, bodyHtml: body });
++}
++
++export type WeakChapterParams = {
++  name: string;
++  chapter: string;
++  subject: string;
++  answered: number;
++  correct: number;
++  practiceUrl: string;
++  drillUrl: string;
++  unsubscribeUrl: string;
++};
++
++export function weakChapterSubject(p: Pick<WeakChapterParams, "name" | "chapter">): string {
++  return `${p.name}, ${p.chapter} cost you marks yesterday`;
++}
++
++export function weakChapterEmailHtml(params: WeakChapterParams): string {
++  const { name, chapter, subject, answered, correct } = params;
++  const body = `
++    ${badge("Your weak spot", C.lemon)}
++    ${h1(`${esc(chapter)} needs another look`)}
++    ${p(`${esc(name)}, yesterday you got <strong>${correct} of ${answered}</strong> right in <strong>${esc(chapter)}</strong> (${esc(subject)}). One more focused round now is worth more than a new chapter.`)}
++    ${emailButton(params.practiceUrl, "Practise this chapter")}
++    ${p(`<span style="font-size:14px;">Want it timed like the exam? <a href="${esc(params.drillUrl)}" style="color:${C.text};font-weight:700;">Take a 20-question drill on ${esc(chapter)}</a>.</span>`)}
++    ${unsubscribeFooter(params.unsubscribeUrl, "because you practise on Edurack")}
++  `;
++  return emailLayout({ previewText: `${correct} of ${answered} right yesterday. A focused round will move the needle.`, bodyHtml: body });
++}
++
+ // ─── One-tap outreach ──────────────────────────────────────────────────────
+ export type OutreachAsset = { label: string; url: string };
+ 
+diff --git a/src/lib/jee-main-percentile.ts b/src/lib/jee-main-percentile.ts
+new file mode 100644
+index 0000000..3eeac08
+--- /dev/null
++++ b/src/lib/jee-main-percentile.ts
+@@ -0,0 +1,59 @@
++// JEE Main percentile <-> rank maths for the free JEE tool (pure data + maths, safe on client and server).
++//
++// NTA defines the percentile as the share of candidates in a session who scored equal to or less than you, and builds
++// the final rank list from each candidate's better NTA score across both sessions. So a rough All-India Rank is
++//   rank ~ (100 - percentile) x candidates / 100.
++// Candidate count: NTA sources reported 15,38,474 unique candidates appeared across both sessions of JEE Main 2026.
++// NTA does NOT publish a marks-vs-percentile table (percentile is normalised shift by shift), so the marks bands
++// below are only the range seen across the April 2026 shifts, compiled from shift-wise reports by Careers360, Vedantu
++// and Cracku. Re-check them when a new session's reports come out.
++import type { Faq } from "@/lib/neet-blueprint-copy";
++
++export const JEE_MAIN_2026_APPEARED = 1_538_474;
++
++/** Raw marks (out of 300) that earned each percentile across the April 2026 shifts: hardest shift to easiest shift. */
++export const MARKS_BANDS: { percentile: number; marks: string }[] = [
++  { percentile: 99, marks: "about 150 to 195" },
++  { percentile: 98, marks: "about 130 to 175" },
++  { percentile: 95, marks: "about 95 to 140" },
++  { percentile: 90, marks: "about 60 to 110" },
++];
++
++/** Rough All-India Rank for an NTA percentile and a candidate count. */
++export function rankFromPercentile(percentile: number, candidates: number): number {
++  if (percentile >= 100) return 1;
++  return Math.max(1, Math.round(((100 - percentile) * candidates) / 100));
++}
++
++/** NTA percentile for a rank: the share of candidates at or below that rank's position. */
++export function percentileFromRank(rank: number, candidates: number): number {
++  const p = ((candidates - rank + 1) / candidates) * 100;
++  return Math.max(0, Math.min(100, Math.round(p * 10000) / 10000));
++}
++
++export const JEE_PERCENTILE_FAQ: Faq[] = [
++  {
++    q: "How is the JEE Main rank calculated from the percentile?",
++    a: "NTA's percentile is the share of candidates in your session who scored equal to or less than you. A rough All-India Rank is (100 minus your percentile) times the number of candidates, divided by 100. NTA builds the final rank list from each candidate's better NTA score across both sessions and applies tie-breaking rules, so your real rank can differ a little from this estimate.",
++  },
++  {
++    q: "How many candidates does the calculator use?",
++    a: "By default it uses 15,38,474, the number of unique candidates NTA sources reported as appearing across both sessions of JEE Main 2026. You can change the number to see how the estimate moves.",
++  },
++  {
++    q: "Does NTA publish marks versus percentile?",
++    a: "No. Percentile is normalised shift by shift, so the same raw marks can give different percentiles in different shifts. The table on this page shows the range of raw marks that earned each percentile across the April 2026 shifts, compiled from shift-wise reports published by coaching and education sites, not by NTA.",
++  },
++  {
++    q: "How many marks are needed for the 99th percentile in JEE Main?",
++    a: "In the April 2026 session it took roughly 150 to 195 marks out of 300, depending on the shift. Tougher shifts needed fewer raw marks. Use it as a guide, not a promise, because the cut-off moves with every paper.",
++  },
++  {
++    q: "Is this my exact All-India Rank?",
++    a: "No. It is an estimate. Your actual rank depends on the final rank list, tie-breaking and your better score across both sessions, and category ranks are different from the All-India Rank.",
++  },
++  {
++    q: "How many candidates become eligible for JEE Advanced?",
++    a: "The top 2.5 lakh candidates across all categories, by JEE Main rank, become eligible to appear for JEE Advanced. NTA publishes the category-wise cut-offs along with the result.",
++  },
++];
+diff --git a/src/lib/pro-server.ts b/src/lib/pro-server.ts
+index bee8bc2..d88286c 100644
+--- a/src/lib/pro-server.ts
++++ b/src/lib/pro-server.ts
+@@ -8,6 +8,7 @@
+ //                Buying while Pro is active stacks: the new period starts when the current one ends.
+ //                Pro is active while any grant has endsAt in the future.
+ import type { Db } from "@/lib/pyq-server";
++import { getReferralBonus } from "@/lib/referral-server";
+ import { PRO_FEATURE_KEYS, cleanPlanFeatures, cleanProSettings, istDayRange, type DrillAccess, type ProFeatureKey, type ProPlanPublic, type ProSettings } from "@/lib/pro";
+ 
+ const DAY_MS = 86_400_000;
+@@ -76,14 +77,22 @@ async function runningDrill(db: Db, uid: string, now: Date): Promise<DrillAccess
+ }
+ 
+ export async function getDrillAccess(db: Db, uid: string, now = new Date()): Promise<DrillAccess> {
+-  const [plans, settings, ent, running] = await Promise.all([listActivePlans(db), getProSettings(db), proEntitlements(db, uid, now), runningDrill(db, uid, now).catch(() => null)]);
++  const [plans, settings, ent, running, bonus] = await Promise.all([
++    listActivePlans(db),
++    getProSettings(db),
++    proEntitlements(db, uid, now),
++    runningDrill(db, uid, now).catch(() => null),
++    getReferralBonus(db, uid, now).catch(() => ({ perDay: 0, until: null as Date | null })),
++  ]);
+   return {
+     running,
+     gatingOn: plans.length > 0,
+     isPro: ent.until !== null,
+     proUntil: ent.until ? ent.until.toISOString() : null,
+     usedToday: await countDrillsToday(db, uid, now),
+-    freeLimit: settings.freeDrillsPerDay,
++    // A referral bonus adds free Quick Mocks a day on top of the free plan (but not when the admin made Quick Mock Pro-only: 0 stays 0).
++    freeLimit: settings.freeDrillsPerDay > 0 ? settings.freeDrillsPerDay + bonus.perDay : 0,
++    bonusUntil: bonus.until ? bonus.until.toISOString() : null,
+     plans,
+     features: ent.features,
+     proOnly: settings.proOnly,
+diff --git a/src/lib/pro.ts b/src/lib/pro.ts
+index edfcca1..d3b353d 100644
+--- a/src/lib/pro.ts
++++ b/src/lib/pro.ts
+@@ -23,6 +23,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
+ export const PRO_FEATURES = {
+   unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on Quick Mocks (timed PYQ drills)." },
+   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
++  mistakeRevision: { label: "Revise your mistakes", description: "A timed drill built from the questions you got wrong, oldest first, so old mistakes come back before you forget them." },
+ } as const;
+ export type ProFeatureKey = keyof typeof PRO_FEATURES;
+ export const PRO_FEATURE_KEYS = Object.keys(PRO_FEATURES) as ProFeatureKey[];
+@@ -68,11 +69,14 @@ export type DrillAccess = {
+   features: ProFeatureKey[];
+   /** Which features need Pro right now (admin setting). */
+   proOnly: Record<ProFeatureKey, boolean>;
++  /** ISO date a friend-referral bonus (+1 free Quick Mock a day) runs until, when active. */
++  bonusUntil?: string | null;
+   /** A Quick Mock this student started and hasn't submitted yet. The server resumes it instead of using up another one. */
+   running?: { drillId: string; remainingSec: number } | null;
+ };
+ 
+-export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number };
++/** `mistakes` = a revision drill made from the student's wrong answers (the mistakeRevision feature); it ignores the other filters. */
++export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number; mistakes?: boolean };
+ 
+ const DIFFICULTIES: Difficulty[] = ["Easy", "Medium", "Hard"];
+ const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+@@ -93,6 +97,7 @@ export function cleanCustomDrill(raw: unknown): CustomDrillInput | null {
+   }
+   const count = Number(r.count);
+   if ((CUSTOM_DRILL_COUNTS as readonly number[]).includes(count)) out.count = count;
++  if (r.mistakes === true) return { mistakes: true, ...(out.count ? { count: out.count } : {}) };
+   return Object.keys(out).length ? out : null;
+ }
+ 
+diff --git a/src/lib/quick-mock.ts b/src/lib/quick-mock.ts
+index 9b74a65..3ef6e82 100644
+--- a/src/lib/quick-mock.ts
++++ b/src/lib/quick-mock.ts
+@@ -6,7 +6,7 @@
+ export const QUICK_MOCK_PATH = "/pyq-drill" as const;
+ 
+ /** Where a student found the Quick Mock. Sent with quick_mock_cta_* and quick_mock_started. */
+-export const QUICK_MOCK_SOURCES = ["homepage", "dashboard", "sidebar", "subject_practice", "practice_results", "pyq_landing", "pyq_browse", "test_result"] as const;
++export const QUICK_MOCK_SOURCES = ["homepage", "dashboard", "sidebar", "subject_practice", "practice_results", "pyq_landing", "pyq_browse", "test_result", "email"] as const;
+ export type QuickMockSource = (typeof QUICK_MOCK_SOURCES)[number];
+ 
+ /** Whatever was in the URL, reduced to a known source (anything else is undefined, reported as "direct"). */
+diff --git a/src/lib/referral-client.ts b/src/lib/referral-client.ts
+new file mode 100644
+index 0000000..7a19386
+--- /dev/null
++++ b/src/lib/referral-client.ts
+@@ -0,0 +1,25 @@
++// Browser side of referrals: remember the ?ref= code a friend arrived with until they finish sign-up.
++import { isValidReferralCode } from "@/lib/referral";
++
++const KEY = "edurack-ref";
++
++/** Call on the landing page and the sign-in page: stores a valid ?ref=CODE from the URL. */
++export function captureReferralFromUrl(): void {
++  try {
++    const code = new URLSearchParams(window.location.search).get("ref")?.trim().toUpperCase();
++    if (code && isValidReferralCode(code)) localStorage.setItem(KEY, code);
++  } catch {
++    /* storage unavailable: the referral is a bonus, never a blocker */
++  }
++}
++
++/** The stored code, once: it is removed so it is only ever claimed one time. */
++export function takeStoredReferral(): string | null {
++  try {
++    const v = localStorage.getItem(KEY);
++    if (v) localStorage.removeItem(KEY);
++    return v && isValidReferralCode(v) ? v : null;
++  } catch {
++    return null;
++  }
++}
+diff --git a/src/lib/referral-server.ts b/src/lib/referral-server.ts
+new file mode 100644
+index 0000000..8c41dd1
+--- /dev/null
++++ b/src/lib/referral-server.ts
+@@ -0,0 +1,117 @@
++// SERVER-ONLY. Student referrals (rules in lib/referral.ts).
++//
++//   profiles.referralCode / referredBy / referralBonusUntil : a student's own code, who invited them, and when their
++//                                                              +1 free Quick Mock a day runs until.
++//   referrals { referrerUid, refereeUid (unique), code, refereeMobile, status, createdAt, rewardedAt }
++//        status: pending -> rewarding -> rewarded | rejected   (a status change is claimed atomically, so a reward is paid once)
++import { randomInt } from "node:crypto";
++import type { Db } from "@/lib/pyq-server";
++import { REFERRAL_BONUS_PER_DAY, REFERRAL_MAX_REWARDS, extendBonusUntil, isValidReferralCode, type ReferralSummary } from "@/lib/referral";
++
++const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
++const PLACEHOLDER_MOBILE = "0000000000"; // what older accounts hold when they never gave a number
++let indexed = false;
++
++async function ensureReferralIndexes(db: Db) {
++  if (indexed) return;
++  indexed = true;
++  try {
++    await db.collection("profiles").createIndex({ referralCode: 1 }, { unique: true, partialFilterExpression: { referralCode: { $type: "string" } } });
++    await db.collection("referrals").createIndex({ refereeUid: 1 }, { unique: true });
++    await db.collection("referrals").createIndex({ referrerUid: 1, status: 1 });
++  } catch (err) {
++    console.error("[referral] couldn't create indexes:", err);
++  }
++}
++
++const newCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
++
++/** The student's own invite code, created on first use. Null if they have no profile yet. */
++export async function getOrCreateReferralCode(db: Db, uid: string): Promise<string | null> {
++  await ensureReferralIndexes(db);
++  const profile = await db.collection("profiles").findOne({ uid }, { projection: { referralCode: 1 } });
++  if (!profile) return null;
++  if (typeof profile.referralCode === "string" && profile.referralCode) return profile.referralCode;
++  for (let i = 0; i < 8; i++) {
++    const code = newCode();
++    try {
++      const res = await db.collection("profiles").updateOne({ uid, referralCode: { $exists: false } }, { $set: { referralCode: code } });
++      if (res.matchedCount === 0) {
++        const again = await db.collection("profiles").findOne({ uid }, { projection: { referralCode: 1 } });
++        return typeof again?.referralCode === "string" ? again.referralCode : null;
++      }
++      return code;
++    } catch (err) {
++      if ((err as { code?: number }).code === 11000) continue; // that code is taken: draw another
++      throw err;
++    }
++  }
++  return null;
++}
++
++export async function getReferralSummary(db: Db, uid: string): Promise<ReferralSummary> {
++  const code = await getOrCreateReferralCode(db, uid);
++  const [invited, rewarded, profile] = await Promise.all([
++    db.collection("referrals").countDocuments({ referrerUid: uid }),
++    db.collection("referrals").countDocuments({ referrerUid: uid, status: "rewarded" }),
++    db.collection("profiles").findOne({ uid }, { projection: { referralBonusUntil: 1 } }),
++  ]);
++  const until = profile?.referralBonusUntil instanceof Date ? profile.referralBonusUntil : null;
++  return { code, invited, rewarded, bonusUntil: until && until.getTime() > Date.now() ? until.toISOString() : null };
++}
++
++/** The extra free Quick Mocks a day this student has right now from referrals. */
++export async function getReferralBonus(db: Db, uid: string, now = new Date()): Promise<{ perDay: number; until: Date | null }> {
++  const profile = await db.collection("profiles").findOne({ uid }, { projection: { referralBonusUntil: 1 } });
++  const until = profile?.referralBonusUntil instanceof Date ? profile.referralBonusUntil : null;
++  return until && until.getTime() > now.getTime() ? { perDay: REFERRAL_BONUS_PER_DAY, until } : { perDay: 0, until: null };
++}
++
++/** A new student used someone's link. Only recorded (as "pending") for a genuinely new account; the reward comes later. */
++export async function claimReferral(db: Db, refereeUid: string, rawCode: unknown): Promise<{ applied: boolean; reason?: string }> {
++  const code = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
++  if (!isValidReferralCode(code)) return { applied: false, reason: "invalid" };
++  await ensureReferralIndexes(db);
++  const referee = await db.collection("profiles").findOne({ uid: refereeUid }, { projection: { createdAt: 1, mobile: 1, referredBy: 1 } });
++  if (!referee || referee.referredBy) return { applied: false, reason: "not_eligible" };
++  const created = referee.createdAt instanceof Date ? referee.createdAt.getTime() : 0;
++  if (Date.now() - created > 3 * 86_400_000) return { applied: false, reason: "not_new" }; // only brand-new accounts can be referred
++  const referrer = await db.collection("profiles").findOne({ referralCode: code }, { projection: { uid: 1, mobile: 1 } });
++  if (!referrer || referrer.uid === refereeUid) return { applied: false, reason: "unknown_code" };
++  if (referrer.mobile && referrer.mobile !== PLACEHOLDER_MOBILE && referrer.mobile === referee.mobile) return { applied: false, reason: "same_mobile" };
++  try {
++    await db.collection("referrals").insertOne({ referrerUid: referrer.uid, refereeUid, code, refereeMobile: referee.mobile ?? "", status: "pending", createdAt: new Date() });
++  } catch (err) {
++    if ((err as { code?: number }).code === 11000) return { applied: false, reason: "already_claimed" };
++    throw err;
++  }
++  await db.collection("profiles").updateOne({ uid: refereeUid }, { $set: { referredBy: referrer.uid } });
++  return { applied: true };
++}
++
++async function addBonus(db: Db, uid: string, now: Date) {
++  const profile = await db.collection("profiles").findOne({ uid }, { projection: { referralBonusUntil: 1 } });
++  const current = profile?.referralBonusUntil instanceof Date ? profile.referralBonusUntil : null;
++  await db.collection("profiles").updateOne({ uid }, { $set: { referralBonusUntil: extendBonusUntil(current, now) } });
++}
++
++/** Called when a student finishes a Quick Mock. If they came through a friend's link and this is their first, both get the bonus. */
++export async function rewardReferralFor(db: Db, refereeUid: string, now = new Date()): Promise<void> {
++  const ref = await db.collection("referrals").findOne({ refereeUid, status: "pending" });
++  if (!ref) return;
++  // Claim it atomically so two quick submits can't pay twice.
++  const claim = await db.collection("referrals").updateOne({ _id: ref._id, status: "pending" }, { $set: { status: "rewarding", updatedAt: now } });
++  if (claim.modifiedCount !== 1) return;
++
++  const mobile = String(ref.refereeMobile ?? "");
++  const duplicate = mobile && mobile !== PLACEHOLDER_MOBILE ? await db.collection("referrals").findOne({ refereeMobile: mobile, status: "rewarded", refereeUid: { $ne: refereeUid } }) : null;
++  if (duplicate) {
++    await db.collection("referrals").updateOne({ _id: ref._id }, { $set: { status: "rejected", reason: "duplicate_mobile", updatedAt: now } });
++    return;
++  }
++
++  await addBonus(db, refereeUid, now); // the friend always gets theirs
++  const referrerRewards = await db.collection("referrals").countDocuments({ referrerUid: ref.referrerUid, status: "rewarded" });
++  if (referrerRewards < REFERRAL_MAX_REWARDS) await addBonus(db, ref.referrerUid as string, now);
++  await db.collection("referrals").updateOne({ _id: ref._id }, { $set: { status: "rewarded", rewardedAt: now, updatedAt: now } });
++}
+diff --git a/src/lib/referral.ts b/src/lib/referral.ts
+new file mode 100644
+index 0000000..d27aee6
+--- /dev/null
++++ b/src/lib/referral.ts
+@@ -0,0 +1,27 @@
++// Student-to-student referrals: the rules shared by the server and the UI (pure: no I/O).
++//
++// A student shares their link (/?ref=CODE). When the friend signs up with it and FINISHES THEIR FIRST QUICK MOCK, both get
++// REFERRAL_BONUS_PER_DAY extra free Quick Mock a day for REFERRAL_BONUS_DAYS days. Rewards stack, up to REFERRAL_MAX_BONUS_DAYS
++// ahead, and a student can earn the reward for at most REFERRAL_MAX_REWARDS friends. Waiting for the first finished Quick Mock
++// (not just sign-up) is what keeps fake accounts from earning it.
++import { SITE_URL } from "@/lib/seo";
++
++export const REFERRAL_BONUS_DAYS = 7;
++export const REFERRAL_BONUS_PER_DAY = 1;
++export const REFERRAL_MAX_BONUS_DAYS = 60;
++export const REFERRAL_MAX_REWARDS = 10;
++
++/** 6 characters, no 0/O/1/I so a code can be read out loud. */
++const CODE = /^[23456789A-HJ-NP-Z]{6}$/;
++export const isValidReferralCode = (v: unknown): v is string => typeof v === "string" && CODE.test(v);
++
++export const referralLink = (code: string) => `${SITE_URL}/?ref=${code}`;
++
++/** The new end of the bonus window after one more reward: 7 days on top of what is left, never more than 60 days from now. */
++export function extendBonusUntil(current: Date | null, now: Date): Date {
++  const day = 86_400_000;
++  const base = current && current.getTime() > now.getTime() ? current : now;
++  return new Date(Math.min(base.getTime() + REFERRAL_BONUS_DAYS * day, now.getTime() + REFERRAL_MAX_BONUS_DAYS * day));
++}
++
++export type ReferralSummary = { code: string | null; invited: number; rewarded: number; bonusUntil: string | null };
+diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
+index 0be4ac8..03d3a7a 100644
+--- a/src/lib/sitemap-core.ts
++++ b/src/lib/sitemap-core.ts
+@@ -189,6 +189,7 @@ export function seoEntries(): string[] {
+     urlEntry(`${SITE_URL}/tools/neet-rank-predictor`, SEO_LASTMOD, 0.9, "monthly"),
+     urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
+     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
++    urlEntry(`${SITE_URL}/tools/jee-main-percentile-calculator`, "2026-10-29", 0.9, "monthly"),
+     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
+     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
+     // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.
+diff --git a/src/lib/unsubscribe.ts b/src/lib/unsubscribe.ts
+index cf0f6da..788211e 100644
+--- a/src/lib/unsubscribe.ts
++++ b/src/lib/unsubscribe.ts
+@@ -3,7 +3,7 @@
+ import { createHmac, timingSafeEqual } from "node:crypto";
+ import { SITE_URL } from "@/lib/growth-emails";
+ 
+-export type OptOutKind = "streak" | "marketing";
++export type OptOutKind = "streak" | "marketing" | "nudges";
+ 
+ function secret(): string {
+   const s = process.env.UNSUBSCRIBE_SECRET ?? process.env.CRON_SECRET;
+@@ -18,7 +18,7 @@ export function unsubscribeUrl(uid: string, kind: OptOutKind): string {
+ }
+ 
+ export function verifyUnsubscribe(uid: string, kind: string, token: string): kind is OptOutKind {
+-  if (kind !== "streak" && kind !== "marketing") return false;
++  if (kind !== "streak" && kind !== "marketing" && kind !== "nudges") return false;
+   const a = Buffer.from(sign(uid, kind));
+   const b = Buffer.from(token);
+   return a.length === b.length && timingSafeEqual(a, b);
+diff --git a/src/routes/about.tsx b/src/routes/about.tsx
+index abd5379..7868912 100644
+--- a/src/routes/about.tsx
++++ b/src/routes/about.tsx
+@@ -21,7 +21,7 @@ export const Route = createFileRoute("/about")({
+       title: "About Edurack",
+       path: "/about",
+       description:
+-        "Edurack is a mock-test and mentorship marketplace for NEET, JEE, CUET and IPMAT — built on an exact CBT replica engine and mentors verified for real exam rank.",
++        "Edurack is a mock-test and mentorship marketplace for NEET and JEE (CUET and IPMAT coming soon) — built on an exact CBT replica engine and mentors verified for real exam rank.",
+       jsonLd: [
+         {
+           "@context": "https://schema.org",
+diff --git a/src/routes/auth.tsx b/src/routes/auth.tsx
+index db40e0c..36f875a 100644
+--- a/src/routes/auth.tsx
++++ b/src/routes/auth.tsx
+@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth-context";
+ import { getDeviceId, getDeviceLabel } from "@/lib/device";
+ import { ensureUserRecord, getProfile, needsOnboarding, saveProfile, updateBasicInfo } from "@/server-functions/profile";
+ import { isRealMobile } from "@/lib/profile-completeness";
++import { claimReferral } from "@/server-functions/referrals";
++import { captureReferralFromUrl, takeStoredReferral } from "@/lib/referral-client";
+ import { recordSession } from "@/server-functions/sessions";
+ import { trackEvent } from "@/lib/funnel-events";
+ import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
+@@ -23,9 +25,9 @@ export const Route = createFileRoute("/auth")({
+   head: () => ({
+     meta: [
+       { title: "Sign in · Edurack" },
+-      { name: "description", content: "Sign in or create your Edurack account to access the NEET, JEE, CUET & IPMAT CBT engines, smart dashboards and mentor ecosystem." },
++      { name: "description", content: "Sign in or create your Edurack account to access the NEET & JEE CBT engines, smart dashboards and mentor ecosystem." },
+       { property: "og:title", content: "Sign in · Edurack" },
+-      { property: "og:description", content: "Access your NEET, JEE, CUET & IPMAT prep dashboard on Edurack." },
++      { property: "og:description", content: "Access your NEET & JEE prep dashboard on Edurack." },
+       // Intentional: this is an auth/login page, not organic-search content.
+       // Keep noindex here — only remove noindex from public-facing pages
+       // (home, landing, exam-info pages), not from /auth, /dashboard, etc.
+@@ -104,6 +106,9 @@ function AuthPage() {
+   const { tab: initialTab, redirect: redirectTo } = Route.useSearch();
+   const [tab, setTab] = useState<Tab>(initialTab ?? "signin");
+   const [stage, setStage] = useState<Stage>("checking");
++  useEffect(() => {
++    captureReferralFromUrl(); // ?ref=CODE from a friend's link, kept until sign-up finishes
++  }, []);
+   const [pendingEmail, setPendingEmail] = useState("");
+   const navigate = useNavigate();
+   const router = useRouter();
+@@ -214,7 +219,7 @@ function AuthPage() {
+             <span className="block font-extrabold">Fix what costs you marks.</span>
+           </h2>
+           <ul className="mt-8 space-y-3 text-white/70">
+-            <li>Exam-format mocks for NEET, JEE, CUET and IPMAT</li>
++            <li>Exam-format mocks for NEET and JEE</li>
+             <li>Accuracy, speed and concept gaps after every test</li>
+             <li>Mentors who have cleared the same exam</li>
+           </ul>
+@@ -912,6 +917,8 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
+   const [exam, setExam] = useState<ExamChoice | null>(storedLandingExam);
+   const [track, setTrack] = useState<TrackChoice | null>(null);
+   const [mobile, setMobile] = useState("");
++  // Optional, separate from the contact notice: offers and updates on WhatsApp/SMS. Off unless they tick it.
++  const [marketing, setMarketing] = useState(false);
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState<string | null>(null);
+ 
+@@ -942,7 +949,7 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
+       const token = await user.getIdToken();
+       if (mobileOnly) {
+         // Patches only the mobile field, so the exam, track and name they already set are untouched.
+-        await updateBasicInfo({ data: { token, field: "mobile", value: mobile } });
++        await updateBasicInfo({ data: { token, field: "mobile", value: mobile, consent: { marketing } } });
+       } else {
+         if (!exam || !track) return;
+         const profile: OnboardingProfile = {
+@@ -955,7 +962,16 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
+           track,
+           cuetDomainSubjects: [],
+         };
+-        await saveProfile({ data: { token, profile } });
++        await saveProfile({ data: { token, profile, consent: { marketing } } });
++        // They arrived through a friend's link: record it (the bonus itself comes after their first finished Quick Mock).
++        const ref = takeStoredReferral();
++        if (ref) {
++          try {
++            await claimReferral({ data: { token, code: ref } });
++          } catch {
++            /* a referral is a bonus, never a blocker */
++          }
++        }
+       }
+       onComplete();
+     } catch {
+@@ -1046,9 +1062,23 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
+               className="w-full bg-transparent text-sm text-foreground placeholder:text-foreground/40 focus:outline-none"
+             />
+           </div>
+-          <p className="text-xs text-foreground/50">
+-            We'll use it to reach you about your prep, mentor sessions and Edurack updates.
++          <p className="text-xs leading-relaxed text-foreground/55">
++            By continuing, you agree that Edurack may contact you on this number about your account, sessions and prep, by call, SMS or
++            WhatsApp. See our{" "}
++            <Link to="/legal/privacy" target="_blank" className="font-semibold underline underline-offset-2">
++              Privacy Policy
++            </Link>
++            .
+           </p>
++          <label className="flex min-h-11 cursor-pointer items-start gap-3 text-xs text-foreground/70">
++            <input
++              type="checkbox"
++              checked={marketing}
++              onChange={(e) => setMarketing(e.target.checked)}
++              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--sky-deep)]"
++            />
++            <span>Also send me offers, test reminders and updates on WhatsApp and SMS (optional). You can turn this off any time in your profile.</span>
++          </label>
+         </div>
+       </div>
+ 
+diff --git a/src/routes/blog/index.tsx b/src/routes/blog/index.tsx
+index a1b5ca4..eda3f55 100644
+--- a/src/routes/blog/index.tsx
++++ b/src/routes/blog/index.tsx
+@@ -27,9 +27,9 @@ export const Route = createFileRoute("/blog/")({
+   // variants are filtered views of the same list, not separate pages.
+   head: () =>
+     pageHead({
+-      title: "Exam Prep Blog: NEET, JEE, CUET & IPMAT",
++      title: "Exam Prep Blog: NEET & JEE",
+       description:
+-        "Study strategy, exam analysis, mentor stories and platform updates for NEET, JEE, CUET and IPMAT aspirants, from the Edurack team.",
++        "Study strategy, exam analysis, mentor stories and platform updates for NEET and JEE aspirants, from the Edurack team.",
+       path: "/blog",
+     }),
+   component: BlogIndexPage,
+diff --git a/src/routes/cron.lifecycle-emails.ts b/src/routes/cron.lifecycle-emails.ts
+new file mode 100644
+index 0000000..eb2231f
+--- /dev/null
++++ b/src/routes/cron.lifecycle-emails.ts
+@@ -0,0 +1,26 @@
++// GET /cron/lifecycle-emails?key=<CRON_SECRET>   (add &dry=1 to preview without sending)
++// Point the same scheduler as /cron/streak-reminders at it, every 10 minutes. It only sends between 17:00 and 21:00 IST.
++// Like the streak route this FAILS CLOSED: with no CRON_SECRET configured it refuses to run, because it emails students.
++import { createFileRoute } from "@tanstack/react-router";
++import { sendLifecycleEmails } from "@/server-functions/lifecycle-emails";
++
++export const Route = createFileRoute("/cron/lifecycle-emails")({
++  server: {
++    handlers: {
++      GET: async ({ request }) => {
++        const secret = process.env.CRON_SECRET;
++        if (!secret) return new Response("CRON_SECRET is not configured", { status: 503 });
++        const url = new URL(request.url);
++        const ok = url.searchParams.get("key") === secret || request.headers.get("authorization") === `Bearer ${secret}`;
++        if (!ok) return new Response("Unauthorized", { status: 401 });
++        try {
++          const result = await sendLifecycleEmails(new Date(), { dryRun: url.searchParams.get("dry") === "1" });
++          return new Response(JSON.stringify(result, null, 2), { status: 200, headers: { "Content-Type": "application/json" } });
++        } catch (err) {
++          console.error("[cron.lifecycle-emails] failed:", err);
++          return new Response("Sweep failed", { status: 500 });
++        }
++      },
++    },
++  },
++});
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index cf9e1a5..b595a53 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -48,6 +48,7 @@ import { LANDING_FAQS, LANDING_LAST_UPDATED } from "@/components/landing/landing
+ import { usePreferredExam } from "@/components/landing/use-preferred-exam";
+ import { useAuth } from "@/lib/auth-context";
+ import { track, trackOnce } from "@/lib/analytics";
++import { captureReferralFromUrl } from "@/lib/referral-client";
+ import { IconPlus as Plus } from "@tabler/icons-react";
+ 
+ // FIX: CbtSimulator is a heavy, below-the-fold interactive component
+@@ -352,6 +353,11 @@ function Index() {
+     };
+   }, []);
+ 
++  // A friend's invite link (/?ref=CODE): remember the code until they sign up.
++  useEffect(() => {
++    captureReferralFromUrl();
++  }, []);
++
+   // How far down the page people get (25/50/75/100%), once each per visit. This is the number to watch
+   // when changing the page: it shows which section loses visitors.
+   useEffect(() => {
+diff --git a/src/routes/join-mentor.tsx b/src/routes/join-mentor.tsx
+index 96a77d2..8e4c5de 100644
+--- a/src/routes/join-mentor.tsx
++++ b/src/routes/join-mentor.tsx
+@@ -8,7 +8,7 @@ import { submitCreatorApplication } from "@/server-functions/mentor-applications
+ import { SiteHeader, SiteFooter, WRAP, INK, Rise } from "@/components/landing/site-chrome";
+ 
+ export const Route = createFileRoute("/join-mentor")({
+-  head: () => pageHead({"title": "Become a Mentor", "path": "/join-mentor", "description": "Apply to mentor NEET, JEE, CUET and IPMAT aspirants on Edurack. Sell test series and mentorship batches, run live sessions and build your own student community."}),
++  head: () => pageHead({"title": "Become a Mentor", "path": "/join-mentor", "description": "Apply to mentor NEET and JEE aspirants on Edurack, and be among the first mentors for CUET and IPMAT. Sell test series and mentorship batches, run live sessions and build your own student community."}),
+   component: JoinMentorPage,
+ });
+ 
+@@ -258,7 +258,7 @@ function JoinMentorPage() {
+                 <span className="block font-extrabold">as a mentor.</span>
+               </h1>
+               <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+-                EDURACK is live now, helping NEET, JEE, CUET, and IPMAT aspirants prep smarter. Tell us
++                EDURACK is live now, helping NEET and JEE aspirants prep smarter, with CUET and IPMAT coming soon. Tell us
+                 about your background and the batch you'd like to run — our team reviews every
+                 application before your mentor space goes live.
+               </p>
+diff --git a/src/routes/legal/privacy.tsx b/src/routes/legal/privacy.tsx
+index 24333dc..9b58820 100644
+--- a/src/routes/legal/privacy.tsx
++++ b/src/routes/legal/privacy.tsx
+@@ -4,134 +4,107 @@ import { IconFileText as FileText } from "@tabler/icons-react";
+ import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
+ 
+ export const Route = createFileRoute("/legal/privacy")({
+-  head: () => pageHead({"title": "Privacy Policy", "path": "/legal/privacy", "description": "How Edurack collects, uses and protects your personal information when you use our platform."}),
+-  component: TermsPage,
++  head: () => pageHead({"title": "Privacy Policy", "path": "/legal/privacy", "description": "How Edurack collects, uses and protects your personal information, including your mobile number, when you use our platform."}),
++  component: PrivacyPage,
+ });
+ 
+-function TermsPage() {
++// Keep this page in step with PRIVACY_POLICY_VERSION in src/server-functions/profile.ts: bump both when the text changes in a way that affects consent.
++function PrivacyPage() {
+   return (
+     <LegalLayout
+       icon={FileText}
+       eyebrow="Legal"
+-      title="Terms of Service"
+-      lastUpdated="September 10, 2026"
++      title="Privacy Policy"
++      lastUpdated="October 29, 2026"
+     >
+-      <LegalSection title="1. The EDURACK Marketplace">
++      <LegalSection title="1. Who we are">
+         <p>
+-          EDURACK operates an open marketplace connecting students with independent
+-          mentors — AIIMS and top-tier college rankers who create and run their own
+-          mentorship batches. EDURACK is the platform that hosts, discovers, and
+-          processes payment for these batches; it is not the instructor of record for
+-          any individual batch.
++          Edurack (edurack.in) runs a mock-test and mentorship marketplace for exam aspirants. This policy explains what personal information
++          we collect, why we collect it, who we share it with, and the choices you have. You can reach us about any of it at contact@edurack.in.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="2. Mentor Verification & Credentials">
++      <LegalSection title="2. Information we collect">
+         <p>
+-          Every mentor on EDURACK is required to warrant that the academic
+-          credentials, exam ranks, and institutional affiliations advertised on
+-          their profile are authentic and verifiable. Falsified credentials are a
+-          serious violation of our mentor agreements and result in the mentor's
+-          immediate removal from the platform. If you believe a mentor's advertised
+-          credentials are inaccurate, please report it to our team.
++          <strong>Account details:</strong> your name, email address, mobile number, city, class, board, target exam and, if you add it, the year you plan to
++          sit the exam. You sign in with Google or with an email and password.
+         </p>
+-      </LegalSection>
+-
+-      <LegalSection title="3. Mentors Set Their Own Rates">
+         <p>
+-          Every mentor independently sets the pricing tier, batch structure, and
+-          content roadmap for their mentorship space. EDURACK does not fix, cap, or
+-          negotiate mentor pricing on a mentor's behalf. Students should review a
+-          batch's listed price, inclusions, and mentor credentials before purchasing.
++          <strong>Practice and learning data:</strong> the tests, drills and questions you attempt, your answers and scores, your notebook, your streaks and
++          the analysis built from them.
++        </p>
++        <p>
++          <strong>Purchases:</strong> what you buy, the amount and a payment reference. Payments are processed by Razorpay; we receive confirmation and
++          payment identifiers, not your full card or UPI credentials.
+         </p>
+-      </LegalSection>
+-
+-      <LegalSection title="4. Content Ownership">
+         <p>
+-          Mentors retain full ownership of the syllabus material, planners, videos,
+-          and other resources they upload to their mentorship space. EDURACK is
+-          granted a limited license to host and deliver this content to enrolled
+-          students for the duration of their access period, and does not claim
+-          ownership over mentor-created intellectual property.
++          <strong>Device and usage data:</strong> a device identifier used to manage your sessions, and product analytics about how the site is used. On some
++          pages we also use screen-session recordings to find and fix problems. We switch recordings off on sign-in, profile, purchase and similar screens.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="5. Platform Fee">
++      <LegalSection title="3. How we use it">
+         <p>
+-          EDURACK charges a transaction-based platform fee on each successful
+-          purchase, currently 15% of net revenue on direct mentor-space and cohort
+-          batches, and 25% of net revenue on co-branded premium test series. This
+-          fee funds payment processing, hosting, discovery, and support
+-          infrastructure. It is deducted from the mentor's payout and does not
+-          change the price a student sees or pays at checkout.
++          To create and run your account, deliver tests, practice and mentor sessions, show you your analysis, process payments and refunds, answer your
++          support requests, keep the platform secure, prevent misuse, improve the product, and meet our legal obligations.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="6. Independent Contractor Relationship">
++      <LegalSection title="4. Your mobile number">
++        <p>
++          We ask for your mobile number when you sign up so that we can reach you. When you give it, we tell you we may contact you on it about your account,
++          your sessions, your purchases and your prep, by call, SMS or WhatsApp. That is the only use you agree to by continuing.
++        </p>
+         <p>
+-          Mentors operate on EDURACK as independent contractors, not as EDURACK
+-          employees or agents. A mentorship batch is purchased on the strength of
+-          the individual mentor's brand, credentials, and offering — not as direct
+-          instruction from EDURACK. Primary responsibility for batch delivery,
+-          content quality, and communication with enrolled students rests with the
+-          mentor.
++          Offers, test reminders and updates on WhatsApp and SMS are separate and optional: they are sent only if you tick the box that offers them, and you
++          can turn them off at any time on your Profile page. We keep a record of when you gave or changed your choice and which version of this policy you saw.
++          We do not sell your mobile number.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="7. Student Access & Conduct">
++      <LegalSection title="5. Who we share information with">
+         <p>
+-          Access to a mentorship batch or CBT mock test series is granted per the
+-          terms listed on that specific product page. Sharing login credentials,
+-          reselling access, or redistributing mentor content outside the platform is
+-          not permitted and may result in access being revoked without refund.
++          We use service providers to run Edurack: Google Firebase for sign-in, MongoDB for our database, Razorpay for payments, PostHog for product analytics
++          and Resend for sending email. They process information on our behalf and only for those purposes. If you buy a batch or book a session, the mentor
++          receives the details needed to deliver it. We may also disclose information where the law requires it, or to protect the safety of our users.
++          We do not sell your personal information.
+         </p>
++      </LegalSection>
++
++      <LegalSection title="6. Students under 18">
+         <p>
+-          Mentors are contractually prohibited from soliciting students to transact
+-          off-platform or move to unapproved private groups. If a mentor asks you to
+-          pay or communicate outside EDURACK, please report it to our team.
++          Many Edurack users are school students, including some under 18. We ask students under 18 to use Edurack with a parent or guardian's knowledge.
++          We are updating how we handle children's data to meet India's Digital Personal Data Protection Act, 2023 and the Rules made under it as they come into force.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="8. Child Safety Commitment">
++      <LegalSection title="7. How long we keep information">
+         <p>
+-          EDURACK requires every mentor to maintain professional conduct at all
+-          times and strictly prohibits unsolicited personal contact with minor
+-          students. In compliance with the POCSO Act, 2012, any suspected or actual
+-          offense against a minor is escalated immediately, the mentor's access is
+-          suspended pending investigation, and the matter is reported to law
+-          enforcement as required by law.
++          We keep your account and practice data while your account is active. We keep payment and tax records for as long as the law requires. You can ask us to
++          delete your account and the personal information we hold about you by writing to contact@edurack.in, and we will do so unless we must keep something by law.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="9. Limitation of Liability">
++      <LegalSection title="8. Your choices and rights">
+         <p>
+-          EDURACK is not liable for indirect, incidental, or consequential damages
+-          arising from server downtime, third-party payment gateway failures, or
+-          internet connectivity issues outside its control. EDURACK's role is
+-          limited to providing the technology platform; mentors are independently
+-          responsible for the content and delivery of their mentorship batches.
++          You can see and correct your name, mobile number and city on your Profile page. You can ask us for a copy of your information, ask us to correct or erase it,
++          withdraw a consent you gave, or make a complaint, by writing to contact@edurack.in. We will respond as quickly as we can.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="10. Dispute Resolution & Governing Law">
++      <LegalSection title="9. Security">
+         <p>
+-          These Terms are governed by the laws of India. Any dispute will first be
+-          addressed through good-faith discussion between the parties. If unresolved
+-          within fifteen days, the dispute shall be referred to binding arbitration
+-          under the Arbitration and Conciliation Act, 1996, seated in New Delhi,
+-          India, with courts in New Delhi having exclusive jurisdiction over any
+-          related matters.
++          We use reasonable technical and organisational measures to protect your information, including encrypted connections and token-based sign-in. No system is completely
++          secure, so please keep your password private and tell us straight away if you think your account has been misused.
+         </p>
+       </LegalSection>
+ 
+-      <LegalSection title="11. Changes to These Terms">
++      <LegalSection title="10. Changes to this policy">
+         <p>
+-          EDURACK may update these terms as the platform evolves. Material changes
+-          will be reflected by an updated "Last updated" date on this page.
+-          Continued use of EDURACK after changes take effect constitutes acceptance
+-          of the revised terms.
++          We may update this policy as Edurack grows or the law changes. The "Last updated" date above shows when it last changed. If a change affects how we use your
++          mobile number, we will ask for your choice again.
+         </p>
+       </LegalSection>
+     </LegalLayout>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/routes/llms[.]txt.ts b/src/routes/llms[.]txt.ts
+index 97795c6..54b7c4a 100644
+--- a/src/routes/llms[.]txt.ts
++++ b/src/routes/llms[.]txt.ts
+@@ -44,6 +44,7 @@ ${SITE_NAME} is the platform operator, not the instructor of record for any indi
+ - NEET chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/neet/chapter-wise-weightage
+ - JEE Main chapter-wise weightage (hub; subject and chapter pages sit below it): ${SITE_URL}/jee/chapter-wise-weightage
+ - JEE Main 2026 syllabus (unit-wise, Paper 1, 2A and 2B), year-wise paper analysis, high-weightage chapters, chapter trends and removed chapters: ${SITE_URL}/jee/syllabus , ${SITE_URL}/jee/paper-analysis , ${SITE_URL}/jee/high-weightage-chapters , ${SITE_URL}/jee/chapter-trends , ${SITE_URL}/jee/removed-chapters
++- Free tools (NEET rank predictor, NEET percentile calculator, NEET target score planner, JEE Main percentile-to-rank calculator): ${SITE_URL}/tools
+ - FAQ: ${SITE_URL}/faq
+ - Help & Support: ${SITE_URL}/help
+ - Become a mentor: ${SITE_URL}/join-mentor
+diff --git a/src/routes/login.tsx b/src/routes/login.tsx
+index aaab530..40c34c0 100644
+--- a/src/routes/login.tsx
++++ b/src/routes/login.tsx
+@@ -20,17 +20,17 @@ import {
+ export const Route = createFileRoute("/login")({
+   head: () => ({
+     meta: [
+-      { title: "Sign in to Edurack · NEET, JEE, CUET & IPMAT Prep" },
++      { title: "Sign in to Edurack · NEET & JEE Prep" },
+       {
+         name: "description",
+         content:
+-          "Sign in to Edurack to continue your NEET, JEE, CUET & IPMAT exam prep — CBT-style mock tests, smart dashboards and a dedicated mentor ecosystem.",
++          "Sign in to Edurack to continue your NEET & JEE exam prep — CBT-style mock tests, smart dashboards and a dedicated mentor ecosystem.",
+       },
+       { property: "og:title", content: "Sign in to Edurack" },
+       {
+         property: "og:description",
+         content:
+-          "Log in or create your free Edurack account for NEET, JEE, CUET & IPMAT preparation.",
++          "Log in or create your free Edurack account for NEET & JEE preparation.",
+       },
+       // Intentionally indexable — this is the crawlable counterpart to
+       // the noindex'd /auth flow. Do not add a noindex tag here.
+@@ -54,7 +54,7 @@ function LoginLandingPage() {
+           <span className="block font-extrabold">Pick up where you left off.</span>
+         </h1>
+         <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+-          Continue your NEET, JEE, CUET &amp; IPMAT preparation with CBT-style mock tests, a performance
++          Continue your NEET &amp; JEE preparation with CBT-style mock tests, a performance
+           dashboard, and access to your mentor, all in one account.
+         </p>
+ 
+@@ -68,7 +68,7 @@ function LoginLandingPage() {
+         </div>
+ 
+         <div className="mt-14 grid gap-px overflow-hidden rounded-3xl border border-border bg-border sm:grid-cols-3">
+-          <FeatureCard icon={<Brain className="h-5 w-5" />} title="CBT mock tests" description="A test engine built to match the real NEET, JEE, CUET and IPMAT exam interface." />
++          <FeatureCard icon={<Brain className="h-5 w-5" />} title="CBT mock tests" description="A test engine built to match the real NEET and JEE exam interface." />
+           <FeatureCard icon={<ChartBar className="h-5 w-5" />} title="Smart dashboard" description="Chapter-wise accuracy, speed and weak areas after every test, updated automatically." />
+           <FeatureCard icon={<UsersGroup className="h-5 w-5" />} title="Mentor ecosystem" description="Get matched with a mentor who reviews your progress and helps plan what to study next." />
+         </div>
+diff --git a/src/routes/mentorship-sessions.tsx b/src/routes/mentorship-sessions.tsx
+index c82ad14..5ba056e 100644
+--- a/src/routes/mentorship-sessions.tsx
++++ b/src/routes/mentorship-sessions.tsx
+@@ -50,7 +50,7 @@ export const Route = createFileRoute("/mentorship-sessions")({
+       title: "Mentorship Sessions with NEET & JEE Rankers",
+       path: SESSIONS_HUB_PATH,
+       description:
+-        "Book live 1:1 and group mentorship sessions with students who cracked NEET, JEE, CUET and IPMAT. Pick a time, see the price up front, and get the exact strategy that worked for them.",
++        "Book live 1:1 and group mentorship sessions with students who cracked NEET and JEE. Pick a time, see the price up front, and get the exact strategy that worked for them.",
+       jsonLd: [
+         {
+           "@context": "https://schema.org",
+@@ -107,7 +107,7 @@ function MentorshipSessionsPage() {
+                 <span className="block font-extrabold">people who cracked the exam.</span>
+               </h1>
+               <p className="mt-4 text-muted-foreground">
+-                Book a live 1:1 or group session with a mentor who has already cleared NEET, JEE, CUET or IPMAT. Ask about your study plan, your weak subjects or how to handle the last
++                Book a live 1:1 or group session with a mentor who has already cleared NEET or JEE. Ask about your study plan, your weak subjects or how to handle the last
+                 90 days, and get advice from someone who has just been through it. Every mentor's rank and college is verified and shown on their profile.
+               </p>
+             </div>
+diff --git a/src/routes/profile.tsx b/src/routes/profile.tsx
+index e82a5b3..6914201 100644
+--- a/src/routes/profile.tsx
++++ b/src/routes/profile.tsx
+@@ -22,10 +22,11 @@ import { Smartphone, ShieldAlert, Target, BarChart3 } from "lucide-react"; // TO
+ import { useAuth } from "@/lib/auth-context";
+ import { getDeviceId } from "@/lib/device";
+ import { listSessions, forgetDevice, revokeAllSessions } from "@/server-functions/sessions";
+-import { getProfile, updateBasicInfo, updateAcademicInfo } from "@/server-functions/profile";
++import { getProfile, updateBasicInfo, updateAcademicInfo, setMarketingOptIn } from "@/server-functions/profile";
+ import { getMyPurchases, getMyBatchPerformance, listMyAllTickets } from "@/server-functions/student-data";
+ import { listMyBookedSessions } from "@/server-functions/student-sessions";
+ import { AppHeader } from "@/components/app-header";
++import { InviteCard } from "@/components/referral/invite-card";
+ import { signOutUser } from "@/lib/firebase";
+ 
+ export const Route = createFileRoute("/profile")({
+@@ -46,6 +47,8 @@ type Track = "Dropper" | "11th" | "12th" | "";
+ type FullProfile = {
+   fullName: string;
+   mobile: string;
++  /** Opted in to offers and updates on WhatsApp/SMS. */
++  marketingOptIn?: boolean;
+   city: string;
+   currentClass: string;
+   board: string;
+@@ -194,6 +197,7 @@ function ProfilePage() {
+         setProfile({
+           fullName: p.fullName,
+           mobile: p.mobile,
++          marketingOptIn: p.marketingOptIn === true,
+           city: p.city,
+           currentClass: p.currentClass,
+           board: p.board,
+@@ -219,6 +223,17 @@ function ProfilePage() {
+     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
+   }
+ 
++  // Optimistic: flip the switch at once, put it back if the server says no.
++  async function handleMarketingToggle(optIn: boolean) {
++    if (!user) return;
++    setProfile((prev) => (prev ? { ...prev, marketingOptIn: optIn } : prev));
++    try {
++      await setMarketingOptIn({ data: { token: await user.getIdToken(), optIn } });
++    } catch {
++      setProfile((prev) => (prev ? { ...prev, marketingOptIn: !optIn } : prev));
++    }
++  }
++
+   async function handleAcademicSave(field: "currentClass" | "board" | "track", value: string) {
+     if (!user || !profile) return;
+     const token = await user.getIdToken();
+@@ -328,6 +343,23 @@ function ProfilePage() {
+                 onSave={(v) => handleFieldSave("city", v)}
+               />
+             </div>
++            <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 text-sm text-foreground/80">
++              <input
++                type="checkbox"
++                checked={profile?.marketingOptIn === true}
++                onChange={(e) => void handleMarketingToggle(e.target.checked)}
++                className="mt-0.5 h-4 w-4 shrink-0"
++              />
++              <span>
++                <span className="block font-semibold text-foreground">Offers and updates on WhatsApp and SMS</span>
++                <span className="block text-xs text-foreground/60">
++                  Test reminders, new batches and offers. We will still contact you about your account, sessions and purchases. Turn it off any time.
++                </span>
++              </span>
++            </label>
++            <div className="mt-4">
++              <InviteCard user={user} source="profile" />
++            </div>
+           </div>
+         </div>
+ 
+diff --git a/src/routes/tools.index.tsx b/src/routes/tools.index.tsx
+index c076e2c..b05adeb 100644
+--- a/src/routes/tools.index.tsx
++++ b/src/routes/tools.index.tsx
+@@ -8,12 +8,12 @@ import { TOOLS } from "@/components/tools/tool-shell";
+ export const Route = createFileRoute("/tools/")({
+   head: () =>
+     pageHead({
+-      title: "Free NEET Tools: Rank, Percentile, Planner",
+-      description: "Free NEET tools: rank predictor, percentile calculator and target score planner, built on real NEET UG 2023-2025 data.",
++      title: "Free NEET & JEE Tools: Rank, Percentile, Planner",
++      description: "Free NEET and JEE tools: NEET rank predictor, percentile calculator, target score planner and a JEE Main percentile-to-rank calculator.",
+       path: "/tools",
+       jsonLd: [
+         breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Free tools", path: "/tools" }]),
+-        itemListJsonLd("Free NEET tools", TOOLS.map((t) => ({ name: t.name, url: `${SITE_URL}${t.to}` }))),
++        itemListJsonLd("Free NEET and JEE tools", TOOLS.map((t) => ({ name: t.name, url: `${SITE_URL}${t.to}` }))),
+       ],
+     }),
+   component: ToolsHub,
+@@ -24,8 +24,8 @@ function ToolsHub() {
+     <>
+       <SiteHeader backLabel="Back to home" />
+       <main className="mx-auto max-w-4xl px-4 py-10 sm:py-14">
+-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free NEET tools</h1>
+-        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-foreground/75">Quick calculators for NEET aspirants, built on real marks-vs-rank data from the last three papers. No login needed.</p>
++        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free NEET and JEE tools</h1>
++        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-foreground/75">Quick calculators for NEET and JEE aspirants. The NEET tools use real marks-vs-rank data from the last three papers. No login needed.</p>
+         <div className="mt-7 grid gap-4 sm:grid-cols-2">
+           {TOOLS.map((t) => (
+             <Link key={t.to} to={t.to} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">
+diff --git a/src/routes/tools.jee-main-percentile-calculator.tsx b/src/routes/tools.jee-main-percentile-calculator.tsx
+new file mode 100644
+index 0000000..170ca73
+--- /dev/null
++++ b/src/routes/tools.jee-main-percentile-calculator.tsx
+@@ -0,0 +1,44 @@
++// src/routes/tools.jee-main-percentile-calculator.tsx  →  /tools/jee-main-percentile-calculator
++import { createFileRoute } from "@tanstack/react-router";
++import { breadcrumbJsonLd, pageHead } from "@/lib/seo";
++import { faqPageJsonLd } from "@/lib/neet-blueprint-copy";
++import { webAppJsonLd } from "@/lib/tools-copy";
++import { JEE_PERCENTILE_FAQ } from "@/lib/jee-main-percentile";
++import { ToolShell } from "@/components/tools/tool-shell";
++import { JeePercentileCalculator } from "@/components/tools/jee-tools";
++
++const PATH = "/tools/jee-main-percentile-calculator";
++const TITLE = "JEE Main Percentile to Rank Calculator 2026";
++const DESC = "Turn your JEE Main NTA percentile into an expected All-India Rank, or a rank into a percentile, using the 15.38 lakh candidates of 2026. Free.";
++
++export const Route = createFileRoute("/tools/jee-main-percentile-calculator")({
++  head: () =>
++    pageHead({
++      title: TITLE,
++      description: DESC,
++      path: PATH,
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "Free tools", path: "/tools" },
++          { name: TITLE, path: PATH },
++        ]),
++        webAppJsonLd(TITLE, DESC, PATH),
++        faqPageJsonLd(JEE_PERCENTILE_FAQ),
++      ],
++    }),
++  component: Page,
++});
++
++function Page() {
++  return (
++    <ToolShell
++      title={TITLE}
++      intro="Enter your NTA percentile to see your expected All-India Rank, or enter a rank to see the percentile. It uses the 15.38 lakh candidates who appeared in JEE Main 2026, and you can change that number."
++      faqs={JEE_PERCENTILE_FAQ}
++      current={PATH}
++    >
++      <JeePercentileCalculator />
++    </ToolShell>
++  );
++}
+diff --git a/src/routes/unsubscribe.ts b/src/routes/unsubscribe.ts
+index b0a95d4..7cd459f 100644
+--- a/src/routes/unsubscribe.ts
++++ b/src/routes/unsubscribe.ts
+@@ -13,7 +13,7 @@ const page = (title: string, inner: string, status = 200) =>
+     { status, headers: { "Content-Type": "text/html; charset=utf-8" } },
+   );
+ 
+-const LABEL = { streak: "streak reminder", marketing: "Edurack update" } as const;
++const LABEL = { streak: "streak reminder", marketing: "Edurack update", nudges: "practice nudge" } as const;
+ 
+ export const Route = createFileRoute("/unsubscribe")({
+   server: {
+diff --git a/src/server-functions/lifecycle-emails.ts b/src/server-functions/lifecycle-emails.ts
+new file mode 100644
+index 0000000..775dfce
+--- /dev/null
++++ b/src/server-functions/lifecycle-emails.ts
+@@ -0,0 +1,213 @@
++// SERVER-ONLY. Two practice nudges, sent by an external scheduler hitting /cron/lifecycle-emails every ~10 minutes:
++//
++//   first_drill   : a student who finished sign-up 20 to 72 hours ago and has not answered a single question yet gets one
++//                   "try your first Quick Mock" email.
++//   weak_chapter  : a student who practised yesterday and did badly in one chapter (4+ questions, half or fewer right) and has
++//                   not practised yet today gets "this chapter cost you marks", with a free practice link and a timed-drill link.
++//
++// Guard rails (this sends real email to students, many of them minors):
++//   - only 17:00 to 21:00 IST, and never in quiet hours;
++//   - at most one lifecycle email per student per 2 days, and weak_chapter at most once every 3 days;
++//   - skips anyone who unsubscribed from nudges, bounced or reported spam, or whose exam is not live yet (NEET and JEE only);
++//   - a unique (uid, kind, key) index makes duplicate or overlapping cron ticks harmless, because the slot is claimed BEFORE sending;
++//   - every email carries a signed unsubscribe link (kind "nudges").
++import { getDb } from "@/lib/mongo";
++import { sendMail } from "@/lib/mailer";
++import { addDays, istDayKey } from "@/lib/practice-schedule";
++import { isQuietHour } from "@/lib/email-policy";
++import { istMinuteOfDay } from "@/lib/streak-reminder-rules";
++import { suppressedSet } from "@/lib/email-guard";
++import { unsubscribeUrl } from "@/lib/unsubscribe";
++import { firstDrillEmailHtml, firstDrillSubject, firstName, SITE_URL, weakChapterEmailHtml, weakChapterSubject } from "@/lib/growth-emails";
++
++type Db = Awaited<ReturnType<typeof getDb>>;
++
++const LIVE_EXAMS = new Set(["neet", "jee"]); // keep in step with the exams that are live on the platform
++const WINDOW_START_MIN = 17 * 60;
++const WINDOW_END_MIN = 21 * 60;
++const MAX_PER_RUN = 150;
++const MIN_QUESTIONS = 4;
++const MAX_ACCURACY = 0.5;
++
++let indexesReady = false;
++async function ensureIndexes(db: Db) {
++  if (indexesReady) return;
++  try {
++    await db.collection("lifecycleEmailLog").createIndex({ uid: 1, kind: 1, key: 1 }, { unique: true });
++    await db.collection("lifecycleEmailLog").createIndex({ uid: 1, sentAt: -1 });
++  } catch {
++    /* best-effort */
++  }
++  indexesReady = true;
++}
++
++const istDayStart = (day: string) => new Date(`${day}T00:00:00+05:30`);
++const titleCase = (key: string) => key.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim().replace(/\b\w/g, (m) => m.toUpperCase());
++
++export type LifecycleSweepResult = {
++  window: "open" | "closed";
++  firstDrill: { candidates: number; sent: number; skipped: number; failed: number };
++  weakChapter: { candidates: number; sent: number; skipped: number; failed: number };
++  dryRun: boolean;
++  preview?: unknown[];
++};
++
++export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun?: boolean } = {}): Promise<LifecycleSweepResult> {
++  const result: LifecycleSweepResult = {
++    window: "closed",
++    firstDrill: { candidates: 0, sent: 0, skipped: 0, failed: 0 },
++    weakChapter: { candidates: 0, sent: 0, skipped: 0, failed: 0 },
++    dryRun: Boolean(opts.dryRun),
++    preview: opts.dryRun ? [] : undefined,
++  };
++  const minute = istMinuteOfDay(now);
++  if (isQuietHour(now) || minute < WINDOW_START_MIN || minute >= WINDOW_END_MIN) return result;
++  result.window = "open";
++
++  const db = await getDb();
++  await ensureIndexes(db);
++  const today = istDayKey(now);
++  const yesterday = addDays(today, -1);
++  let budget = MAX_PER_RUN;
++
++  /** Sends one email, claiming the (uid, kind, key) slot first. Returns true if it was sent. */
++  async function deliver(kind: "first_drill" | "weak_chapter", key: string, uid: string, to: string, subject: string, html: string, bucket: "firstDrill" | "weakChapter") {
++    try {
++      await db.collection("lifecycleEmailLog").insertOne({ uid, kind, key, status: "sending", sentAt: now });
++    } catch (err: any) {
++      if (err?.code === 11000) {
++        result[bucket].skipped++;
++        return false;
++      }
++      throw err;
++    }
++    try {
++      await sendMail({ to, subject, html });
++      await db.collection("lifecycleEmailLog").updateOne({ uid, kind, key }, { $set: { status: "sent", sentAt: new Date() } });
++      result[bucket].sent++;
++      budget--;
++      await new Promise((r) => setTimeout(r, 550)); // Resend default limit is about 2 requests a second
++      return true;
++    } catch (err) {
++      console.error(`[lifecycle-emails] ${kind} send failed uid=${uid}:`, err);
++      await db.collection("lifecycleEmailLog").updateOne({ uid, kind, key }, { $set: { status: "failed", error: String(err) } });
++      result[bucket].failed++;
++      return false;
++    }
++  }
++
++  /** Students who got a lifecycle email in the last 2 days (any kind), or a weak_chapter email in the last 3 days. */
++  async function recentlyNudged(uids: string[]): Promise<{ any: Set<string>; weak: Set<string> }> {
++    if (uids.length === 0) return { any: new Set(), weak: new Set() };
++    const rows = await db
++      .collection("lifecycleEmailLog")
++      .find({ uid: { $in: uids }, status: { $in: ["sending", "sent"] }, sentAt: { $gte: new Date(now.getTime() - 3 * 86_400_000) } }, { projection: { uid: 1, kind: 1, sentAt: 1 } })
++      .toArray();
++    const twoDays = now.getTime() - 2 * 86_400_000;
++    const any = new Set<string>();
++    const weak = new Set<string>();
++    for (const r of rows) {
++      const at = r.sentAt instanceof Date ? r.sentAt.getTime() : 0;
++      if (at >= twoDays) any.add(r.uid as string);
++      if (r.kind === "weak_chapter") weak.add(r.uid as string);
++    }
++    return { any, weak };
++  }
++
++  // ── 1. First-drill nudge ────────────────────────────────────────────────
++  const fresh = await db
++    .collection("profiles")
++    .find(
++      {
++        createdAt: { $gte: new Date(now.getTime() - 72 * 3_600_000), $lte: new Date(now.getTime() - 20 * 3_600_000) },
++        email: { $type: "string", $ne: "" },
++        "emailOptOut.nudges": { $ne: true },
++        targetExam: { $ne: "" },
++      },
++      { projection: { uid: 1, fullName: 1, email: 1, targetExam: 1 } },
++    )
++    .limit(500)
++    .toArray();
++  const freshLive = fresh.filter((p) => LIVE_EXAMS.has(String(p.targetExam).toLowerCase()));
++  if (freshLive.length > 0) {
++    const uids = freshLive.map((p) => p.uid as string);
++    const practised = new Set((await db.collection("practiceProgress").distinct("uid", { uid: { $in: uids } })) as string[]);
++    const blocked = await suppressedSet(db, freshLive.map((p) => String(p.email)));
++    const recent = await recentlyNudged(uids);
++    for (const p of freshLive) {
++      const uid = p.uid as string;
++      if (budget <= 0) break;
++      if (practised.has(uid) || recent.any.has(uid) || blocked.has(String(p.email).trim().toLowerCase())) continue;
++      result.firstDrill.candidates++;
++      const exam = String(p.targetExam).toLowerCase();
++      const name = firstName(p.fullName as string);
++      const examLabel = exam.toUpperCase();
++      const drillUrl = `${SITE_URL}/pyq-drill?${new URLSearchParams({ exam, src: "email" }).toString()}`;
++      if (opts.dryRun) {
++        result.preview!.push({ kind: "first_drill", uid, email: p.email, exam });
++        continue;
++      }
++      await deliver("first_drill", "once", uid, p.email as string, firstDrillSubject({ name, examLabel }), firstDrillEmailHtml({ name, examLabel, drillUrl, unsubscribeUrl: unsubscribeUrl(uid, "nudges") }), "firstDrill");
++    }
++  }
++
++  // ── 2. Weak-chapter follow-up ───────────────────────────────────────────
++  if (budget > 0) {
++    const rows = await db
++      .collection("practiceProgress")
++      .aggregate([
++        { $match: { attempts: { $gt: 0 }, updatedAt: { $gte: istDayStart(yesterday), $lt: istDayStart(today) } } },
++        { $group: { _id: { uid: "$uid", subject: "$subject", chapterKey: "$chapterKey" }, answered: { $sum: 1 }, correct: { $sum: { $cond: [{ $eq: ["$correct", true] }, 1, 0] } } } },
++        { $match: { answered: { $gte: MIN_QUESTIONS } } },
++        { $addFields: { accuracy: { $divide: ["$correct", "$answered"] } } },
++        { $match: { accuracy: { $lte: MAX_ACCURACY } } },
++        { $sort: { accuracy: 1, answered: -1 } },
++        { $limit: 3000 },
++      ])
++      .toArray();
++    // Worst chapter per student (rows are already sorted worst first).
++    const worst = new Map<string, { subject: string; chapterKey: string; answered: number; correct: number }>();
++    for (const r of rows) {
++      const uid = r._id.uid as string;
++      if (!worst.has(uid)) worst.set(uid, { subject: String(r._id.subject ?? ""), chapterKey: String(r._id.chapterKey ?? ""), answered: r.answered as number, correct: r.correct as number });
++    }
++    const uids = [...worst.keys()];
++    if (uids.length > 0) {
++      const activeToday = new Set((await db.collection("practiceProgress").distinct("uid", { uid: { $in: uids }, updatedAt: { $gte: istDayStart(today) } })) as string[]);
++      const profiles = await db
++        .collection("profiles")
++        .find({ uid: { $in: uids }, email: { $type: "string", $ne: "" }, "emailOptOut.nudges": { $ne: true } }, { projection: { uid: 1, fullName: 1, email: 1, targetExam: 1 } })
++        .toArray();
++      const blocked = await suppressedSet(db, profiles.map((p) => String(p.email)));
++      const recent = await recentlyNudged(uids);
++      for (const p of profiles) {
++        const uid = p.uid as string;
++        if (budget <= 0) break;
++        const exam = String(p.targetExam ?? "").toLowerCase();
++        const w = worst.get(uid);
++        if (!w || !w.chapterKey || !w.subject || !LIVE_EXAMS.has(exam)) continue;
++        if (activeToday.has(uid) || recent.any.has(uid) || recent.weak.has(uid) || blocked.has(String(p.email).trim().toLowerCase())) continue;
++        result.weakChapter.candidates++;
++        const name = firstName(p.fullName as string);
++        const chapter = titleCase(w.chapterKey);
++        const qs = (extra: Record<string, string>) => new URLSearchParams({ exam, subject: w.subject, chapter, ...extra }).toString();
++        const practiceUrl = `${SITE_URL}/pyq?${qs({ practice: "true" })}`;
++        const drillUrl = `${SITE_URL}/pyq-drill?${qs({ src: "email" })}`;
++        if (opts.dryRun) {
++          result.preview!.push({ kind: "weak_chapter", uid, email: p.email, chapter, subject: w.subject, answered: w.answered, correct: w.correct });
++          continue;
++        }
++        await deliver(
++          "weak_chapter",
++          today,
++          uid,
++          p.email as string,
++          weakChapterSubject({ name, chapter }),
++          weakChapterEmailHtml({ name, chapter, subject: w.subject, answered: w.answered, correct: w.correct, practiceUrl, drillUrl, unsubscribeUrl: unsubscribeUrl(uid, "nudges") }),
++          "weakChapter",
++        );
++      }
++    }
++  }
++  return result;
++}
+diff --git a/src/server-functions/practice-extras.ts b/src/server-functions/practice-extras.ts
+index 4ab3ecc..af97862 100644
+--- a/src/server-functions/practice-extras.ts
++++ b/src/server-functions/practice-extras.ts
+@@ -266,6 +266,31 @@ async function drillSetFor(db: Db, uid: string, drill: Record<string, unknown>,
+   };
+ }
+ 
++/** The ids of questions the student answered wrong (or revealed), oldest first. */
++async function mistakeQuestionIds(db: Db, uid: string): Promise<string[]> {
++  const wrong = await db
++    .collection("practiceProgress")
++    .find({ uid, attempts: { $gt: 0 }, correct: { $ne: true } }, { projection: { questionId: 1 } })
++    .sort({ updatedAt: 1 })
++    .limit(1000)
++    .toArray();
++  return wrong.map((w) => String(w.questionId)).filter((i) => OID.test(i));
++}
++
++/** How many PYQs of their exam they could revise right now: shown on the launcher so students see what Pro would build. */
++export const getMistakeCount = createServerFn({ method: "POST" })
++  .validator((data: { token: string; exam?: string }) => data)
++  .handler(async ({ data }): Promise<{ count: number }> => {
++    const decoded = await requireSignedIn(data.token);
++    const db = await getDb();
++    const ids = await mistakeQuestionIds(db, decoded.uid);
++    if (ids.length === 0) return { count: 0 };
++    const { ObjectId } = await import("mongodb");
++    const exam = await resolveExam(db, decoded.uid, data.exam);
++    const count = await db.collection("questions").countDocuments({ ...(await pyqMatch(db, exam)), _id: { $in: ids.map((i) => new ObjectId(i)) } });
++    return { count };
++  });
++
+ export const startPyqDrill = createServerFn({ method: "POST" })
+   .validator((data: { token: string; exam?: string; subject?: string; custom?: unknown }) => data)
+   .handler(async ({ data }): Promise<DrillSet> => {
+@@ -285,7 +310,8 @@ export const startPyqDrill = createServerFn({ method: "POST" })
+     // marked Pro-only (unlimited drills, the custom builder, ...) need a plan that includes them. Nothing is
+     // limited until the team publishes a plan (so there's always something to buy).
+     const custom = cleanCustomDrill(data.custom);
+-    const wantsCustom = isCustomDrill(custom);
++    const wantsMistakes = custom?.mistakes === true; // a revision drill from their wrong answers (its own Pro feature)
++    const wantsCustom = !wantsMistakes && isCustomDrill(custom);
+     const { getDrillAccess } = await import("@/lib/pro-server");
+     const access = await getDrillAccess(db, uid, now);
+     const blocked = drillBlockReason({
+@@ -295,8 +321,9 @@ export const startPyqDrill = createServerFn({ method: "POST" })
+       canCustom: hasFeature(access, "customDrillBuilder"),
+       unlimited: hasFeature(access, "unlimitedDrills"),
+     });
++    if (wantsMistakes && !hasFeature(access, "mistakeRevision")) throw new Error(`${DRILL_LIMIT_PREFIX}: Revising your mistakes is part of Edurack Pro.`);
+     if (blocked === "custom") throw new Error(`${DRILL_LIMIT_PREFIX}: Building your own drill is part of Edurack Pro.`);
+-    if (blocked === "limit") {
++    if (blocked === "limit" && !wantsMistakes) {
+       throw new Error(
+         access.freeLimit === 0
+           ? `${DRILL_LIMIT_PREFIX}: Timed drills are part of Edurack Pro.`
+@@ -307,6 +334,13 @@ export const startPyqDrill = createServerFn({ method: "POST" })
+     const exam = await resolveExam(db, uid, data.exam);
+     const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)) };
+     if (data.subject) match.subject = data.subject;
++    // A revision drill draws only from the questions they got wrong, oldest mistake first.
++    const mistakeIds = wantsMistakes ? await mistakeQuestionIds(db, uid) : null;
++    if (mistakeIds) {
++      const { ObjectId } = await import("mongodb");
++      match._id = { $in: mistakeIds.map((i) => new ObjectId(i)) };
++    }
++    const mistakeRank = mistakeIds ? new Map(mistakeIds.map((id, i) => [id, i] as const)) : null;
+     if (custom) {
+       const and: Record<string, unknown>[] = [];
+       if (custom.chapter) and.push({ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), custom.chapter.toLowerCase()] } });
+@@ -329,9 +363,13 @@ export const startPyqDrill = createServerFn({ method: "POST" })
+       return !p || !(Number(p.attempts) > 0) ? 0 : p.correct === true ? 2 : 1;
+     };
+     const ranked = [0, 1, 2].flatMap((t) => shuffle(pool.filter((p) => tier(String(p._id)) === t))).map((p) => ({ id: String(p._id), subject: p.subject as string }));
+-    const picked = data.subject || custom?.chapter ? ranked.slice(0, target) : balancedPick(ranked, target);
++    const picked = mistakeRank
++      ? [...ranked].sort((a, b) => (mistakeRank.get(a.id) ?? 0) - (mistakeRank.get(b.id) ?? 0)).slice(0, target)
++      : data.subject || custom?.chapter
++        ? ranked.slice(0, target)
++        : balancedPick(ranked, target);
+     if (picked.length < MIN_DRILL_QUESTIONS) {
+-      throw new Error(wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
++      throw new Error(wantsMistakes ? `You need at least ${MIN_DRILL_QUESTIONS} questions in your notebook to revise. Practise a few more first.` : wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
+     }
+ 
+     const questionIds = shuffle(picked).map((p) => p.id);
+@@ -434,6 +472,13 @@ export const submitPyqDrill = createServerFn({ method: "POST" })
+     const timeTakenSec = Math.min(drill.durationSec as number, Math.max(0, Math.round((now.getTime() - (drill.startedAt as Date).getTime()) / 1000)));
+     const result = { ...scored, timeTakenSec };
+     await db.collection("pyqDrills").updateOne({ _id: drill._id, submittedAt: null }, { $set: { submittedAt: now, answers: clean, result } });
++    // A friend's first finished Quick Mock is what unlocks the referral bonus for both students. Best-effort: it never blocks the result.
++    try {
++      const { rewardReferralFor } = await import("@/lib/referral-server");
++      await rewardReferralFor(db, uid, now);
++    } catch (err) {
++      console.error("[referral] reward failed:", err);
++    }
+     return drillResultFor(db, uid, { ...drill, submittedAt: now, result });
+   });
+ 
+diff --git a/src/server-functions/profile.ts b/src/server-functions/profile.ts
+index 982650a..1fab2ed 100644
+--- a/src/server-functions/profile.ts
++++ b/src/server-functions/profile.ts
+@@ -27,6 +27,20 @@ const EMPTY_ONBOARDING_FIELDS: OnboardingProfileInput = {
+   cuetDomainSubjects: [],
+ };
+ 
++// Contact consent saved with the mobile number, as evidence of what the student agreed to and when:
++//  - service: they were told we may contact them about their account, sessions and prep (shown next to the field);
++//  - marketing: the separate, optional box for offers and updates on WhatsApp/SMS (off unless they ticked it);
++//  - at / source / policyVersion: when, from which screen, and which version of the privacy policy text they saw.
++// Bump PRIVACY_POLICY_VERSION whenever src/routes/legal/privacy.tsx changes in a way that affects consent.
++const PRIVACY_POLICY_VERSION = "2026-10-29";
++const consentRecord = (marketing: boolean, source: "onboarding" | "login_prompt") => ({
++  service: true,
++  marketing,
++  at: new Date(),
++  source,
++  policyVersion: PRIVACY_POLICY_VERSION,
++});
++
+ // Called right after ANY successful sign-in or sign-up (email/password or
+ // Google) so a MongoDB document always exists for the user, with empty
+ // onboarding fields if they haven't filled them in yet. Uses $setOnInsert
+@@ -63,7 +77,7 @@ export const ensureUserRecord = createServerFn({ method: "POST" })
+   });
+ 
+ export const saveProfile = createServerFn({ method: "POST" })
+-  .validator((data: { token: string; profile: OnboardingProfileInput }) => data)
++  .validator((data: { token: string; profile: OnboardingProfileInput; consent?: { marketing: boolean } }) => data)
+   .handler(async ({ data }) => {
+     const decoded = await adminAuth.verifyIdToken(data.token);
+     // A real Indian mobile number is required to finish sign-up (the client enforces it too).
+@@ -76,6 +90,7 @@ export const saveProfile = createServerFn({ method: "POST" })
+           ...data.profile,
+           uid: decoded.uid,
+           email: decoded.email ?? null,
++          mobileConsent: consentRecord(data.consent?.marketing === true, "onboarding"),
+           updatedAt: new Date(),
+         },
+         $setOnInsert: { createdAt: new Date() },
+@@ -90,15 +105,29 @@ export const saveProfile = createServerFn({ method: "POST" })
+ // mobile/city without touching academic fields, avoiding any risk of
+ // clobbering currentClass/board/track with stale client-side state.
+ export const updateBasicInfo = createServerFn({ method: "POST" })
+-  .validator((data: { token: string; field: "fullName" | "mobile" | "city"; value: string }) => data)
++  .validator((data: { token: string; field: "fullName" | "mobile" | "city"; value: string; consent?: { marketing: boolean } }) => data)
+   .handler(async ({ data }) => {
+     const decoded = await adminAuth.verifyIdToken(data.token);
+     if (data.field === "mobile" && !/^[6-9]\d{9}$/.test(data.value)) throw new Error("Enter a valid 10-digit mobile number.");
+     const db = await getDb();
++    const set: Record<string, unknown> = { [data.field]: data.value, updatedAt: new Date() };
++    // The login prompt for a missing mobile number sends the consent choice along with the number.
++    if (data.field === "mobile" && data.consent) set.mobileConsent = consentRecord(data.consent.marketing === true, "login_prompt");
++    await db.collection("profiles").updateOne({ uid: decoded.uid }, { $set: set }, { upsert: true });
++    return { ok: true };
++  });
++
++// The Profile page switch for offers and updates on WhatsApp/SMS. Turning it off takes effect immediately; the
++// choice and its time are kept so there is a record of when it changed.
++export const setMarketingOptIn = createServerFn({ method: "POST" })
++  .validator((data: { token: string; optIn: boolean }) => data)
++  .handler(async ({ data }) => {
++    const decoded = await adminAuth.verifyIdToken(data.token);
++    const db = await getDb();
++    const now = new Date();
+     await db.collection("profiles").updateOne(
+       { uid: decoded.uid },
+-      { $set: { [data.field]: data.value, updatedAt: new Date() } },
+-      { upsert: true },
++      { $set: { "mobileConsent.marketing": data.optIn === true, "mobileConsent.marketingUpdatedAt": now, updatedAt: now } },
+     );
+     return { ok: true };
+   });
+diff --git a/src/server-functions/referrals.ts b/src/server-functions/referrals.ts
+new file mode 100644
+index 0000000..d497628
+--- /dev/null
++++ b/src/server-functions/referrals.ts
+@@ -0,0 +1,22 @@
++import { createServerFn } from "@tanstack/react-start";
++import { adminAuth } from "@/lib/firebase-admin";
++import { getDb } from "@/lib/mongo";
++import { claimReferral as claim, getReferralSummary } from "@/lib/referral-server";
++import type { ReferralSummary } from "@/lib/referral";
++
++/** The signed-in student's invite code, how many friends joined and when their bonus runs until. */
++export const getMyReferral = createServerFn({ method: "POST" })
++  .validator((data: { token: string }) => data)
++  .handler(async ({ data }): Promise<ReferralSummary> => {
++    const decoded = await adminAuth.verifyIdToken(data.token);
++    return getReferralSummary(await getDb(), decoded.uid);
++  });
++
++/** Called once, right after a new student finishes sign-up with a friend's link. Never throws for a bad code: a referral is a bonus, not a requirement. */
++export const claimReferral = createServerFn({ method: "POST" })
++  .validator((data: { token: string; code: string }) => data)
++  .handler(async ({ data }): Promise<{ applied: boolean }> => {
++    const decoded = await adminAuth.verifyIdToken(data.token);
++    const res = await claim(await getDb(), decoded.uid, data.code);
++    return { applied: res.applied };
++  });

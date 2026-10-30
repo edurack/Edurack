@@ -266,6 +266,31 @@ async function drillSetFor(db: Db, uid: string, drill: Record<string, unknown>, 
   };
 }
 
+/** The ids of questions the student answered wrong (or revealed), oldest first. */
+async function mistakeQuestionIds(db: Db, uid: string): Promise<string[]> {
+  const wrong = await db
+    .collection("practiceProgress")
+    .find({ uid, attempts: { $gt: 0 }, correct: { $ne: true } }, { projection: { questionId: 1 } })
+    .sort({ updatedAt: 1 })
+    .limit(1000)
+    .toArray();
+  return wrong.map((w) => String(w.questionId)).filter((i) => OID.test(i));
+}
+
+/** How many PYQs of their exam they could revise right now: shown on the launcher so students see what Pro would build. */
+export const getMistakeCount = createServerFn({ method: "POST" })
+  .validator((data: { token: string; exam?: string }) => data)
+  .handler(async ({ data }): Promise<{ count: number }> => {
+    const decoded = await requireSignedIn(data.token);
+    const db = await getDb();
+    const ids = await mistakeQuestionIds(db, decoded.uid);
+    if (ids.length === 0) return { count: 0 };
+    const { ObjectId } = await import("mongodb");
+    const exam = await resolveExam(db, decoded.uid, data.exam);
+    const count = await db.collection("questions").countDocuments({ ...(await pyqMatch(db, exam)), _id: { $in: ids.map((i) => new ObjectId(i)) } });
+    return { count };
+  });
+
 export const startPyqDrill = createServerFn({ method: "POST" })
   .validator((data: { token: string; exam?: string; subject?: string; custom?: unknown }) => data)
   .handler(async ({ data }): Promise<DrillSet> => {
@@ -285,7 +310,8 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     // marked Pro-only (unlimited drills, the custom builder, ...) need a plan that includes them. Nothing is
     // limited until the team publishes a plan (so there's always something to buy).
     const custom = cleanCustomDrill(data.custom);
-    const wantsCustom = isCustomDrill(custom);
+    const wantsMistakes = custom?.mistakes === true; // a revision drill from their wrong answers (its own Pro feature)
+    const wantsCustom = !wantsMistakes && isCustomDrill(custom);
     const { getDrillAccess } = await import("@/lib/pro-server");
     const access = await getDrillAccess(db, uid, now);
     const blocked = drillBlockReason({
@@ -295,8 +321,9 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       canCustom: hasFeature(access, "customDrillBuilder"),
       unlimited: hasFeature(access, "unlimitedDrills"),
     });
+    if (wantsMistakes && !hasFeature(access, "mistakeRevision")) throw new Error(`${DRILL_LIMIT_PREFIX}: Revising your mistakes is part of Edurack Pro.`);
     if (blocked === "custom") throw new Error(`${DRILL_LIMIT_PREFIX}: Building your own drill is part of Edurack Pro.`);
-    if (blocked === "limit") {
+    if (blocked === "limit" && !wantsMistakes) {
       throw new Error(
         access.freeLimit === 0
           ? `${DRILL_LIMIT_PREFIX}: Timed drills are part of Edurack Pro.`
@@ -307,6 +334,13 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     const exam = await resolveExam(db, uid, data.exam);
     const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)) };
     if (data.subject) match.subject = data.subject;
+    // A revision drill draws only from the questions they got wrong, oldest mistake first.
+    const mistakeIds = wantsMistakes ? await mistakeQuestionIds(db, uid) : null;
+    if (mistakeIds) {
+      const { ObjectId } = await import("mongodb");
+      match._id = { $in: mistakeIds.map((i) => new ObjectId(i)) };
+    }
+    const mistakeRank = mistakeIds ? new Map(mistakeIds.map((id, i) => [id, i] as const)) : null;
     if (custom) {
       const and: Record<string, unknown>[] = [];
       if (custom.chapter) and.push({ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), custom.chapter.toLowerCase()] } });
@@ -329,9 +363,13 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       return !p || !(Number(p.attempts) > 0) ? 0 : p.correct === true ? 2 : 1;
     };
     const ranked = [0, 1, 2].flatMap((t) => shuffle(pool.filter((p) => tier(String(p._id)) === t))).map((p) => ({ id: String(p._id), subject: p.subject as string }));
-    const picked = data.subject || custom?.chapter ? ranked.slice(0, target) : balancedPick(ranked, target);
+    const picked = mistakeRank
+      ? [...ranked].sort((a, b) => (mistakeRank.get(a.id) ?? 0) - (mistakeRank.get(b.id) ?? 0)).slice(0, target)
+      : data.subject || custom?.chapter
+        ? ranked.slice(0, target)
+        : balancedPick(ranked, target);
     if (picked.length < MIN_DRILL_QUESTIONS) {
-      throw new Error(wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
+      throw new Error(wantsMistakes ? `You need at least ${MIN_DRILL_QUESTIONS} questions in your notebook to revise. Practise a few more first.` : wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
     }
 
     const questionIds = shuffle(picked).map((p) => p.id);
@@ -434,6 +472,13 @@ export const submitPyqDrill = createServerFn({ method: "POST" })
     const timeTakenSec = Math.min(drill.durationSec as number, Math.max(0, Math.round((now.getTime() - (drill.startedAt as Date).getTime()) / 1000)));
     const result = { ...scored, timeTakenSec };
     await db.collection("pyqDrills").updateOne({ _id: drill._id, submittedAt: null }, { $set: { submittedAt: now, answers: clean, result } });
+    // A friend's first finished Quick Mock is what unlocks the referral bonus for both students. Best-effort: it never blocks the result.
+    try {
+      const { rewardReferralFor } = await import("@/lib/referral-server");
+      await rewardReferralFor(db, uid, now);
+    } catch (err) {
+      console.error("[referral] reward failed:", err);
+    }
     return drillResultFor(db, uid, { ...drill, submittedAt: now, result });
   });
 

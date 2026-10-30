@@ -22,10 +22,11 @@ import { Smartphone, ShieldAlert, Target, BarChart3 } from "lucide-react"; // TO
 import { useAuth } from "@/lib/auth-context";
 import { getDeviceId } from "@/lib/device";
 import { listSessions, forgetDevice, revokeAllSessions } from "@/server-functions/sessions";
-import { getProfile, updateBasicInfo, updateAcademicInfo } from "@/server-functions/profile";
+import { getProfile, updateBasicInfo, updateAcademicInfo, setMarketingOptIn } from "@/server-functions/profile";
 import { getMyPurchases, getMyBatchPerformance, listMyAllTickets } from "@/server-functions/student-data";
 import { listMyBookedSessions } from "@/server-functions/student-sessions";
 import { AppHeader } from "@/components/app-header";
+import { InviteCard } from "@/components/referral/invite-card";
 import { signOutUser } from "@/lib/firebase";
 
 export const Route = createFileRoute("/profile")({
@@ -46,6 +47,8 @@ type Track = "Dropper" | "11th" | "12th" | "";
 type FullProfile = {
   fullName: string;
   mobile: string;
+  /** Opted in to offers and updates on WhatsApp/SMS. */
+  marketingOptIn?: boolean;
   city: string;
   currentClass: string;
   board: string;
@@ -194,6 +197,7 @@ function ProfilePage() {
         setProfile({
           fullName: p.fullName,
           mobile: p.mobile,
+          marketingOptIn: p.marketingOptIn === true,
           city: p.city,
           currentClass: p.currentClass,
           board: p.board,
@@ -217,6 +221,17 @@ function ProfilePage() {
     const token = await user.getIdToken();
     await updateBasicInfo({ data: { token, field, value } });
     setProfile((prev) => (prev ? { ...prev, [field]: value } : prev));
+  }
+
+  // Optimistic: flip the switch at once, put it back if the server says no.
+  async function handleMarketingToggle(optIn: boolean) {
+    if (!user) return;
+    setProfile((prev) => (prev ? { ...prev, marketingOptIn: optIn } : prev));
+    try {
+      await setMarketingOptIn({ data: { token: await user.getIdToken(), optIn } });
+    } catch {
+      setProfile((prev) => (prev ? { ...prev, marketingOptIn: !optIn } : prev));
+    }
   }
 
   async function handleAcademicSave(field: "currentClass" | "board" | "track", value: string) {
@@ -327,6 +342,23 @@ function ProfilePage() {
                 value={profile?.city ?? ""}
                 onSave={(v) => handleFieldSave("city", v)}
               />
+            </div>
+            <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border border-border p-3 text-sm text-foreground/80">
+              <input
+                type="checkbox"
+                checked={profile?.marketingOptIn === true}
+                onChange={(e) => void handleMarketingToggle(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                <span className="block font-semibold text-foreground">Offers and updates on WhatsApp and SMS</span>
+                <span className="block text-xs text-foreground/60">
+                  Test reminders, new batches and offers. We will still contact you about your account, sessions and purchases. Turn it off any time.
+                </span>
+              </span>
+            </label>
+            <div className="mt-4">
+              <InviteCard user={user} source="profile" />
             </div>
           </div>
         </div>

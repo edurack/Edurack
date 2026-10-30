@@ -50,6 +50,8 @@ export async function loadProfile(db: Db, uid: string) {
     email: (doc.email as string | null) ?? null,
     fullName: (doc.fullName as string) ?? "",
     mobile: (doc.mobile as string) ?? "",
+    // Whether they ticked the optional "offers and updates on WhatsApp/SMS" box (see mobileConsent in server-functions/profile.ts).
+    marketingOptIn: (doc.mobileConsent as { marketing?: boolean } | undefined)?.marketing === true,
     city: (doc.city as string) ?? "",
     currentClass: (doc.currentClass as string) ?? "",
     board: (doc.board as string) ?? "",

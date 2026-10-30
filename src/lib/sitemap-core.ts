@@ -189,6 +189,7 @@ export function seoEntries(): string[] {
     urlEntry(`${SITE_URL}/tools/neet-rank-predictor`, SEO_LASTMOD, 0.9, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
+    urlEntry(`${SITE_URL}/tools/jee-main-percentile-calculator`, "2026-10-29", 0.9, "monthly"),
     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
     // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.

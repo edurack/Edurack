@@ -9,6 +9,7 @@ export const TOOLS = [
   { to: "/tools/neet-rank-predictor", name: "NEET Rank Predictor", blurb: "Marks to expected AIR, using the last three years of NTA data.", emoji: "🎯" },
   { to: "/tools/neet-percentile-calculator", name: "NEET Percentile Calculator", blurb: "Turn your marks or rank into a percentile.", emoji: "📊" },
   { to: "/tools/neet-target-score-planner", name: "NEET Target Score Planner", blurb: "How many questions to attempt, and how accurately, for your target.", emoji: "🧭" },
+  { to: "/tools/jee-main-percentile-calculator", name: "JEE Main Percentile to Rank", blurb: "Turn your NTA percentile into an expected AIR, and back.", emoji: "🧮" },
 ] as const;
 
 export const inputCls =
@@ -78,7 +79,7 @@ export function ToolShell({ title, intro, faqs, current, children }: { title: st
         </section>
 
         <section className="mt-12">
-          <h2 className="mb-3 font-display text-xl font-bold text-foreground">More free NEET tools</h2>
+          <h2 className="mb-3 font-display text-xl font-bold text-foreground">More free tools</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {TOOLS.filter((t) => t.to !== current).map((t) => (
               <Link key={t.to} to={t.to} className="clay flex items-start gap-3 rounded-3xl p-4 transition hover:-translate-y-0.5">

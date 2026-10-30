@@ -8,12 +8,12 @@ import { TOOLS } from "@/components/tools/tool-shell";
 export const Route = createFileRoute("/tools/")({
   head: () =>
     pageHead({
-      title: "Free NEET Tools: Rank, Percentile, Planner",
-      description: "Free NEET tools: rank predictor, percentile calculator and target score planner, built on real NEET UG 2023-2025 data.",
+      title: "Free NEET & JEE Tools: Rank, Percentile, Planner",
+      description: "Free NEET and JEE tools: NEET rank predictor, percentile calculator, target score planner and a JEE Main percentile-to-rank calculator.",
       path: "/tools",
       jsonLd: [
         breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Free tools", path: "/tools" }]),
-        itemListJsonLd("Free NEET tools", TOOLS.map((t) => ({ name: t.name, url: `${SITE_URL}${t.to}` }))),
+        itemListJsonLd("Free NEET and JEE tools", TOOLS.map((t) => ({ name: t.name, url: `${SITE_URL}${t.to}` }))),
       ],
     }),
   component: ToolsHub,
@@ -24,8 +24,8 @@ function ToolsHub() {
     <>
       <SiteHeader backLabel="Back to home" />
       <main className="mx-auto max-w-4xl px-4 py-10 sm:py-14">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free NEET tools</h1>
-        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-foreground/75">Quick calculators for NEET aspirants, built on real marks-vs-rank data from the last three papers. No login needed.</p>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Free NEET and JEE tools</h1>
+        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-foreground/75">Quick calculators for NEET and JEE aspirants. The NEET tools use real marks-vs-rank data from the last three papers. No login needed.</p>
         <div className="mt-7 grid gap-4 sm:grid-cols-2">
           {TOOLS.map((t) => (
             <Link key={t.to} to={t.to} className="clay block rounded-3xl p-5 transition hover:-translate-y-0.5">

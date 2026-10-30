@@ -6,7 +6,7 @@
 export const QUICK_MOCK_PATH = "/pyq-drill" as const;
 
 /** Where a student found the Quick Mock. Sent with quick_mock_cta_* and quick_mock_started. */
-export const QUICK_MOCK_SOURCES = ["homepage", "dashboard", "sidebar", "subject_practice", "practice_results", "pyq_landing", "pyq_browse", "test_result"] as const;
+export const QUICK_MOCK_SOURCES = ["homepage", "dashboard", "sidebar", "subject_practice", "practice_results", "pyq_landing", "pyq_browse", "test_result", "email"] as const;
 export type QuickMockSource = (typeof QUICK_MOCK_SOURCES)[number];
 
 /** Whatever was in the URL, reduced to a known source (anything else is undefined, reported as "direct"). */

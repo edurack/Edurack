@@ -23,6 +23,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
 export const PRO_FEATURES = {
   unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on Quick Mocks (timed PYQ drills)." },
   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
+  mistakeRevision: { label: "Revise your mistakes", description: "A timed drill built from the questions you got wrong, oldest first, so old mistakes come back before you forget them." },
 } as const;
 export type ProFeatureKey = keyof typeof PRO_FEATURES;
 export const PRO_FEATURE_KEYS = Object.keys(PRO_FEATURES) as ProFeatureKey[];
@@ -68,11 +69,14 @@ export type DrillAccess = {
   features: ProFeatureKey[];
   /** Which features need Pro right now (admin setting). */
   proOnly: Record<ProFeatureKey, boolean>;
+  /** ISO date a friend-referral bonus (+1 free Quick Mock a day) runs until, when active. */
+  bonusUntil?: string | null;
   /** A Quick Mock this student started and hasn't submitted yet. The server resumes it instead of using up another one. */
   running?: { drillId: string; remainingSec: number } | null;
 };
 
-export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number };
+/** `mistakes` = a revision drill made from the student's wrong answers (the mistakeRevision feature); it ignores the other filters. */
+export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number; mistakes?: boolean };
 
 const DIFFICULTIES: Difficulty[] = ["Easy", "Medium", "Hard"];
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
@@ -93,6 +97,7 @@ export function cleanCustomDrill(raw: unknown): CustomDrillInput | null {
   }
   const count = Number(r.count);
   if ((CUSTOM_DRILL_COUNTS as readonly number[]).includes(count)) out.count = count;
+  if (r.mistakes === true) return { mistakes: true, ...(out.count ? { count: out.count } : {}) };
   return Object.keys(out).length ? out : null;
 }
 
