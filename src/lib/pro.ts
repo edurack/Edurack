@@ -24,6 +24,7 @@ export const PRO_FEATURES = {
   unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on Quick Mocks (timed PYQ drills)." },
   customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
   mistakeRevision: { label: "Revise your mistakes", description: "A timed drill built from the questions you got wrong, oldest first, so old mistakes come back before you forget them." },
+  timeAnalysis: { label: "Time and marks analysis", description: "See which wrong answers were rushed guesses and where you spend long on questions that still go wrong, in every Quick Mock and test." },
 } as const;
 export type ProFeatureKey = keyof typeof PRO_FEATURES;
 export const PRO_FEATURE_KEYS = Object.keys(PRO_FEATURES) as ProFeatureKey[];

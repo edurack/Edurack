@@ -94,10 +94,10 @@ function DrillPage() {
   }
 
   const submit = useCallback(
-    async (answers: Record<string, DrillAnswer>) => {
+    async (answers: Record<string, DrillAnswer>, times?: Record<string, number>) => {
       if (!user || !drillId) return;
       const token = await user.getIdToken();
-      const result = await submitPyqDrill({ data: { token, drillId, answers } });
+      const result = await submitPyqDrill({ data: { token, drillId, answers, times } });
       setState({ status: "done", result });
       // submit() can run twice (the auto-submit at 0:00 racing the button); the key makes it count once.
       if (trackOnce(`drill-done:${drillId}`, "drill_submitted")) {

@@ -9,6 +9,8 @@ import { AppHeader } from "@/components/app-header";
 import { SubjectBreakdownAccordion, MentorRecommendations } from "@/components/subject-performance";
 import { QuestionReview, type ReviewQuestion } from "@/components/test-question-review";
 import { TopicAnalysisCard } from "@/components/topic-analysis-card";
+import { TimeAnalysisCard } from "@/components/time/time-analysis-card";
+import type { TimeAnalysis, TimeTeaser } from "@/lib/time-analysis";
 
 export const Route = createFileRoute("/test-result/$attemptId")({
   head: () => noindexHead("Test Result"),
@@ -61,6 +63,7 @@ function TestResultPage() {
     totalParticipants: number;
   } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [timing, setTiming] = useState<{ analysis: TimeAnalysis | null; teaser: TimeTeaser | null } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -71,7 +74,8 @@ function TestResultPage() {
     (async () => {
       try {
         const token = await user.getIdToken();
-        const { attempt: a, review: r } = await getTestAttempt({ data: { token, attemptId } });
+        const { attempt: a, review: r, timeAnalysis, timeTeaser } = await getTestAttempt({ data: { token, attemptId } });
+        setTiming({ analysis: timeAnalysis, teaser: timeTeaser });
         setAttempt(a);
         setReview(r);
         const lb = await getLeaderboard({ data: { token, testId: a.testId } });
@@ -128,6 +132,7 @@ function TestResultPage() {
             attempt={attempt}
             review={review}
             leaderboard={leaderboard}
+            timing={timing}
           />
         )}
       </main>
@@ -139,9 +144,11 @@ function TestResultContent({
   attempt,
   review,
   leaderboard,
+  timing,
 }: {
   attempt: Attempt;
   review: ReviewQuestion[] | null;
+  timing: { analysis: TimeAnalysis | null; teaser: TimeTeaser | null } | null;
   leaderboard: {
     top: LeaderboardEntry[];
     yourRank: { rank: number; score: number; totalMarks: number } | null;
@@ -224,6 +231,13 @@ function TestResultContent({
 
       {/* On-demand topic/chapter analysis */}
       <TopicAnalysisCard attemptId={attempt.id} />
+
+      {/* Where the time went (full for Pro, a teaser otherwise; absent for attempts made before timing was recorded) */}
+      {timing && (timing.analysis || timing.teaser) && (
+        <div className="mb-6">
+          <TimeAnalysisCard analysis={timing.analysis} teaser={timing.teaser} source="test" />
+        </div>
+      )}
 
       {/* Subject-wise breakdown — expandable per subject, with accuracy and
           an estimated percentile alongside the marks. */}

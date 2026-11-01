@@ -122,6 +122,25 @@ export function weakChapterEmailHtml(params: WeakChapterParams): string {
   return emailLayout({ previewText: `${correct} of ${answered} right yesterday. A focused round will move the needle.`, bodyHtml: body });
 }
 
+export type RevisionDueParams = { name: string; count: number; notebookUrl: string; drillUrl: string; unsubscribeUrl: string };
+
+export function revisionDueSubject(p: Pick<RevisionDueParams, "name" | "count">): string {
+  return `${p.name}, ${p.count} questions are due for revision`;
+}
+
+export function revisionDueEmailHtml(params: RevisionDueParams): string {
+  const { name, count } = params;
+  const body = `
+    ${badge("Revision due", C.sky)}
+    ${h1(`${count} mistakes are ready for another look`)}
+    ${p(`${esc(name)}, these are questions you got wrong 1, 3, 7 or 14 days ago. Going back to a mistake after a day, a few days, a week and two weeks helps it stick.`)}
+    ${emailButton(params.notebookUrl, "Open my notebook")}
+    ${p(`<span style="font-size:14px;">Want it timed like the exam? <a href="${esc(params.drillUrl)}" style="color:${C.text};font-weight:700;">Open the revision drill</a>.</span>`)}
+    ${unsubscribeFooter(params.unsubscribeUrl, "because you practise on Edurack")}
+  `;
+  return emailLayout({ previewText: `${count} questions you got wrong are due for another look.`, bodyHtml: body });
+}
+
 // ─── One-tap outreach ──────────────────────────────────────────────────────
 export type OutreachAsset = { label: string; url: string };
 

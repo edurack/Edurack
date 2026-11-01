@@ -9,7 +9,8 @@ import { getDeviceId, getDeviceLabel } from "@/lib/device";
 import { ensureUserRecord, getProfile, needsOnboarding, saveProfile, updateBasicInfo } from "@/server-functions/profile";
 import { isRealMobile } from "@/lib/profile-completeness";
 import { claimReferral } from "@/server-functions/referrals";
-import { captureReferralFromUrl, takeStoredReferral } from "@/lib/referral-client";
+import { captureReferralFromUrl, peekStoredReferral, takeStoredReferral } from "@/lib/referral-client";
+import { isValidReferralCode, normalizeReferralCode } from "@/lib/referral";
 import { recordSession } from "@/server-functions/sessions";
 import { trackEvent } from "@/lib/funnel-events";
 import { sendEmailVerificationOtp, verifyEmailVerificationOtp } from "@/server-functions/email-verification";
@@ -919,6 +920,9 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
   const [mobile, setMobile] = useState("");
   // Optional, separate from the contact notice: offers and updates on WhatsApp/SMS. Off unless they tick it.
   const [marketing, setMarketing] = useState(false);
+  // A friend's invite code: prefilled from their link, or typed here if the link was opened in a different browser.
+  const [inviteCode, setInviteCode] = useState(() => peekStoredReferral() ?? "");
+  const [showInvite, setShowInvite] = useState(() => peekStoredReferral() !== null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -964,7 +968,8 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
         };
         await saveProfile({ data: { token, profile, consent: { marketing } } });
         // They arrived through a friend's link: record it (the bonus itself comes after their first finished Quick Mock).
-        const ref = takeStoredReferral();
+        const stored = takeStoredReferral();
+        const ref = isValidReferralCode(inviteCode) ? inviteCode : stored;
         if (ref) {
           try {
             await claimReferral({ data: { token, code: ref } });
@@ -1081,6 +1086,31 @@ function OnboardingCard({ onComplete }: { onComplete: () => void }) {
           </label>
         </div>
       </div>
+
+      {!mobileOnly && (
+        <div className="space-y-2">
+          {showInvite ? (
+            <>
+              <label htmlFor="onboarding-invite" className="block text-xs font-semibold uppercase tracking-[0.2em] text-foreground/50">
+                Friend's invite code (optional)
+              </label>
+              <input
+                id="onboarding-invite"
+                value={inviteCode}
+                onChange={(e) => setInviteCode(normalizeReferralCode(e.target.value))}
+                placeholder="6-character code"
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="clay-inset w-full px-4 py-3 text-sm tracking-widest text-foreground placeholder:tracking-normal placeholder:text-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </>
+          ) : (
+            <button type="button" onClick={() => setShowInvite(true)} className="min-h-11 text-xs font-semibold text-foreground/60 underline underline-offset-2">
+              Have a friend's invite code?
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <p

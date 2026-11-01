@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TimeAnalysisCard } from "@/components/time/time-analysis-card";
+import { ChallengeShare } from "@/components/challenge/challenge-share";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { ChevronDown, ChevronLeft, ChevronRight, Timer } from "lucide-react";
 import { SmartContent } from "@/lib/smart-content";
@@ -39,7 +41,7 @@ export function DrillRunner({
   onSubmit,
 }: {
   set: DrillSet;
-  onSubmit: (answers: Record<string, DrillAnswer>) => Promise<void>;
+  onSubmit: (answers: Record<string, DrillAnswer>, times?: Record<string, number>) => Promise<void>;
 }) {
   const [answers, setAnswers] = useState<Record<string, DrillAnswer>>(() => loadAnswers(set.drillId));
   const [typed, setTyped] = useState<Record<string, string>>({});
@@ -55,20 +57,37 @@ export function DrillRunner({
   const answersRef = useRef(answers);
   answersRef.current = answers;
 
+  // How long each question was on screen (seconds). Time spent in another tab is not counted. Sent with the answers so
+  // the result can show where the time went (lib/time-analysis.ts).
+  const timesRef = useRef<Record<string, number>>({});
+  const segRef = useRef<{ id: string; start: number } | null>(null);
+  const idxRef = useRef(0);
+  const flushTimer = useCallback(() => {
+    const seg = segRef.current;
+    if (!seg) return;
+    const now = Date.now();
+    timesRef.current[seg.id] = (timesRef.current[seg.id] ?? 0) + (now - seg.start);
+    segRef.current = { id: seg.id, start: now };
+  }, []);
+  const collectTimes = useCallback(() => {
+    flushTimer();
+    return Object.fromEntries(Object.entries(timesRef.current).map(([id, ms]) => [id, Math.round(ms / 1000)]));
+  }, [flushTimer]);
+
   const submit = useCallback(async () => {
     if (submitted.current) return;
     submitted.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(answersRef.current);
+      await onSubmit(answersRef.current, collectTimes());
     } catch (e) {
       submitted.current = false; // let them retry
       setError(e instanceof Error ? e.message : "Couldn't submit. Check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
-  }, [onSubmit]);
+  }, [onSubmit, collectTimes]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -83,6 +102,31 @@ export function DrillRunner({
   }, [submit]);
 
   const q = set.questions[idx];
+  idxRef.current = idx;
+
+  // Start timing whichever question is showing; moving on (or leaving) banks the time.
+  useEffect(() => {
+    const id = set.questions[idx]?.id;
+    if (!id) return;
+    segRef.current = { id, start: Date.now() };
+    return () => {
+      flushTimer();
+      segRef.current = null;
+    };
+  }, [idx, set.questions, flushTimer]);
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        flushTimer();
+        segRef.current = null;
+      } else if (!submitted.current) {
+        const id = set.questions[idxRef.current]?.id;
+        if (id) segRef.current = { id, start: Date.now() };
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [flushTimer, set.questions]);
   const answeredCount = useMemo(() => set.questions.filter((x) => isAnswered(x, answers[x.id])).length, [set.questions, answers]);
   const low = left <= 300;
 
@@ -296,6 +340,12 @@ export function DrillResultView({ result, onBack }: { result: DrillResult; onBac
             Your {needRevision} wrong answer{needRevision === 1 ? " is" : "s are"} saved in your notebook — we'll bring {needRevision === 1 ? "it" : "them"} back in 2 days.
           </p>
         )}
+      </div>
+
+      <ChallengeShare drillId={result.drillId} challengeCode={result.challengeCode ?? null} score={result.score} maxScore={result.maxScore} />
+
+      <div className="mt-6">
+        <TimeAnalysisCard analysis={result.timeAnalysis ?? null} teaser={result.timeTeaser ?? null} source="drill" />
       </div>
 
       <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-foreground/50">Review</p>

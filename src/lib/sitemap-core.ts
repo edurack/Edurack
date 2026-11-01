@@ -4,6 +4,8 @@
 // Each child is generated on its own, so one failing query returns a 503 for
 // that file only (Google retries it) instead of caching a half-empty sitemap.
 import { SITE_URL } from "@/lib/seo";
+import { VERIFIED_ON } from "@/lib/exam-dates";
+import { RELEASES } from "@/lib/whats-new";
 import { getDb } from "@/lib/mongo";
 import { allBlueprintPaths, getSubjects } from "@/lib/neet-blueprint";
 import { allJeeSitePaths } from "@/lib/jee-site-paths";
@@ -190,6 +192,10 @@ export function seoEntries(): string[] {
     urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
     urlEntry(`${SITE_URL}/tools/jee-main-percentile-calculator`, "2026-10-29", 0.9, "monthly"),
+    urlEntry(`${SITE_URL}/tools/jee-main-countdown`, VERIFIED_ON, 0.9, "weekly"),
+    urlEntry(`${SITE_URL}/tools/neet-countdown`, VERIFIED_ON, 0.9, "weekly"),
+    urlEntry(`${SITE_URL}/whats-new`, RELEASES[0].date, 0.7, "weekly"),
+    ...RELEASES.map((r) => urlEntry(`${SITE_URL}/whats-new/${r.slug}`, r.date, 0.6, "yearly")),
     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
     // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.

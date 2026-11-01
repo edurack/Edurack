@@ -2,6 +2,7 @@
 import type { PyqSource } from "@/lib/pyq-label";
 import type { WeekDay } from "@/lib/practice-schedule";
 import type { ExamKey } from "@/lib/admin-types";
+import type { TimeAnalysis, TimeTeaser } from "@/lib/time-analysis";
 
 export type OptionKey = "A" | "B" | "C" | "D";
 export type PyqStatus = "new" | "correct" | "wrong" | "revealed";
@@ -120,6 +121,12 @@ export type DrillResult = {
   /** Answers + solutions, revealed only now that the drill is over. */
   review: { id: string; correctOption?: OptionKey; correctAnswer?: number; solution: string }[];
   questions: PyqQuestion[];
+  /** Per-question timing breakdown: only sent to students who have the Pro timeAnalysis feature. */
+  timeAnalysis?: TimeAnalysis | null;
+  /** For everyone else: just enough to show there is something to learn. */
+  timeTeaser?: TimeTeaser | null;
+  /** Set when this Quick Mock was a friend challenge (see lib/challenge.ts). */
+  challengeCode?: string | null;
 };
 export type DrillState = { status: "running"; set: DrillSet } | { status: "done"; result: DrillResult };
 

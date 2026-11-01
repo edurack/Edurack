@@ -1,5 +1,7 @@
 // SERVER-ONLY. Two practice nudges, sent by an external scheduler hitting /cron/lifecycle-emails every ~10 minutes:
 //
+//   revision_due  : a student with 5+ mistakes whose last attempt was exactly 1, 3, 7 or 14 days ago and who has not practised
+//                   yet today gets "N questions are due for revision", pointing at their notebook (free) and the revision drill.
 //   first_drill   : a student who finished sign-up 20 to 72 hours ago and has not answered a single question yet gets one
 //                   "try your first Quick Mock" email.
 //   weak_chapter  : a student who practised yesterday and did badly in one chapter (4+ questions, half or fewer right) and has
@@ -18,7 +20,8 @@ import { isQuietHour } from "@/lib/email-policy";
 import { istMinuteOfDay } from "@/lib/streak-reminder-rules";
 import { suppressedSet } from "@/lib/email-guard";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
-import { firstDrillEmailHtml, firstDrillSubject, firstName, SITE_URL, weakChapterEmailHtml, weakChapterSubject } from "@/lib/growth-emails";
+import { firstDrillEmailHtml, firstDrillSubject, firstName, revisionDueEmailHtml, revisionDueSubject, SITE_URL, weakChapterEmailHtml, weakChapterSubject } from "@/lib/growth-emails";
+import { MIN_DUE_MISTAKES, revisionDueDays } from "@/lib/revision-schedule";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
 
@@ -48,6 +51,7 @@ export type LifecycleSweepResult = {
   window: "open" | "closed";
   firstDrill: { candidates: number; sent: number; skipped: number; failed: number };
   weakChapter: { candidates: number; sent: number; skipped: number; failed: number };
+  revisionDue: { candidates: number; sent: number; skipped: number; failed: number };
   dryRun: boolean;
   preview?: unknown[];
 };
@@ -57,6 +61,7 @@ export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun
     window: "closed",
     firstDrill: { candidates: 0, sent: 0, skipped: 0, failed: 0 },
     weakChapter: { candidates: 0, sent: 0, skipped: 0, failed: 0 },
+    revisionDue: { candidates: 0, sent: 0, skipped: 0, failed: 0 },
     dryRun: Boolean(opts.dryRun),
     preview: opts.dryRun ? [] : undefined,
   };
@@ -71,7 +76,7 @@ export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun
   let budget = MAX_PER_RUN;
 
   /** Sends one email, claiming the (uid, kind, key) slot first. Returns true if it was sent. */
-  async function deliver(kind: "first_drill" | "weak_chapter", key: string, uid: string, to: string, subject: string, html: string, bucket: "firstDrill" | "weakChapter") {
+  async function deliver(kind: "first_drill" | "weak_chapter" | "revision_due", key: string, uid: string, to: string, subject: string, html: string, bucket: "firstDrill" | "weakChapter" | "revisionDue") {
     try {
       await db.collection("lifecycleEmailLog").insertOne({ uid, kind, key, status: "sending", sentAt: now });
     } catch (err: any) {
@@ -96,9 +101,9 @@ export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun
     }
   }
 
-  /** Students who got a lifecycle email in the last 2 days (any kind), or a weak_chapter email in the last 3 days. */
-  async function recentlyNudged(uids: string[]): Promise<{ any: Set<string>; weak: Set<string> }> {
-    if (uids.length === 0) return { any: new Set(), weak: new Set() };
+  /** Students who got a lifecycle email in the last 2 days (any kind), or a weak_chapter / revision_due email in the last 3 days. */
+  async function recentlyNudged(uids: string[]): Promise<{ any: Set<string>; weak: Set<string>; revision: Set<string> }> {
+    if (uids.length === 0) return { any: new Set(), weak: new Set(), revision: new Set() };
     const rows = await db
       .collection("lifecycleEmailLog")
       .find({ uid: { $in: uids }, status: { $in: ["sending", "sent"] }, sentAt: { $gte: new Date(now.getTime() - 3 * 86_400_000) } }, { projection: { uid: 1, kind: 1, sentAt: 1 } })
@@ -106,12 +111,14 @@ export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun
     const twoDays = now.getTime() - 2 * 86_400_000;
     const any = new Set<string>();
     const weak = new Set<string>();
+    const revision = new Set<string>();
     for (const r of rows) {
       const at = r.sentAt instanceof Date ? r.sentAt.getTime() : 0;
       if (at >= twoDays) any.add(r.uid as string);
       if (r.kind === "weak_chapter") weak.add(r.uid as string);
+      if (r.kind === "revision_due") revision.add(r.uid as string);
     }
-    return { any, weak };
+    return { any, weak, revision };
   }
 
   // ── 1. First-drill nudge ────────────────────────────────────────────────
@@ -206,6 +213,49 @@ export async function sendLifecycleEmails(now: Date = new Date(), opts: { dryRun
           weakChapterEmailHtml({ name, chapter, subject: w.subject, answered: w.answered, correct: w.correct, practiceUrl, drillUrl, unsubscribeUrl: unsubscribeUrl(uid, "nudges") }),
           "weakChapter",
         );
+      }
+    }
+  }
+
+  // ── 3. Revision due (spaced revision: mistakes from 1, 3, 7 and 14 days ago) ──
+  if (budget > 0) {
+    const dueDays = revisionDueDays(today);
+    const rows = await db
+      .collection("practiceProgress")
+      .aggregate([
+        { $match: { attempts: { $gt: 0 }, correct: { $ne: true }, $or: dueDays.map((d) => ({ updatedAt: { $gte: istDayStart(d), $lt: istDayStart(addDays(d, 1)) } })) } },
+        { $group: { _id: "$uid", due: { $sum: 1 } } },
+        { $match: { due: { $gte: MIN_DUE_MISTAKES } } },
+        { $sort: { due: -1 } },
+        { $limit: 3000 },
+      ])
+      .toArray();
+    const dueBy = new Map(rows.map((r) => [String(r._id), r.due as number]));
+    const uids = [...dueBy.keys()];
+    if (uids.length > 0) {
+      const activeToday = new Set((await db.collection("practiceProgress").distinct("uid", { uid: { $in: uids }, updatedAt: { $gte: istDayStart(today) } })) as string[]);
+      const profiles = await db
+        .collection("profiles")
+        .find({ uid: { $in: uids }, email: { $type: "string", $ne: "" }, "emailOptOut.nudges": { $ne: true } }, { projection: { uid: 1, fullName: 1, email: 1, targetExam: 1 } })
+        .toArray();
+      const blocked = await suppressedSet(db, profiles.map((p) => String(p.email)));
+      const recent = await recentlyNudged(uids);
+      for (const p of profiles) {
+        const uid = p.uid as string;
+        if (budget <= 0) break;
+        const exam = String(p.targetExam ?? "").toLowerCase();
+        if (!LIVE_EXAMS.has(exam)) continue;
+        if (activeToday.has(uid) || recent.any.has(uid) || recent.revision.has(uid) || blocked.has(String(p.email).trim().toLowerCase())) continue;
+        result.revisionDue.candidates++;
+        const count = dueBy.get(uid) ?? 0;
+        const name = firstName(p.fullName as string);
+        const notebookUrl = `${SITE_URL}/notebook`;
+        const drillUrl = `${SITE_URL}/pyq-drill?${new URLSearchParams({ exam, src: "email" }).toString()}`;
+        if (opts.dryRun) {
+          result.preview!.push({ kind: "revision_due", uid, email: p.email, due: count });
+          continue;
+        }
+        await deliver("revision_due", today, uid, p.email as string, revisionDueSubject({ name, count }), revisionDueEmailHtml({ name, count, notebookUrl, drillUrl, unsubscribeUrl: unsubscribeUrl(uid, "nudges") }), "revisionDue");
       }
     }
   }

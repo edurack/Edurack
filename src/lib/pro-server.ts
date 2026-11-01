@@ -65,7 +65,8 @@ export async function proUntil(db: Db, uid: string, now = new Date()): Promise<D
 /** Drills started today (India time), finished or not. Resuming a running drill doesn't start a new one. */
 export async function countDrillsToday(db: Db, uid: string, now = new Date()): Promise<number> {
   const { start, end } = istDayRange(now);
-  return db.collection("pyqDrills").countDocuments({ uid, startedAt: { $gte: start, $lt: end } });
+  // A friend challenge never counts against the free daily limit: joining one must not be blocked by it.
+  return db.collection("pyqDrills").countDocuments({ uid, startedAt: { $gte: start, $lt: end }, challengeCode: { $exists: false } });
 }
 
 /** The student's unfinished Quick Mock whose clock hasn't run out, if any (same rule startPyqDrill uses to resume). */

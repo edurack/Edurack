@@ -82,6 +82,16 @@ function exitFullscreenSafe() {
   (document.exitFullscreen?.bind(document) ?? doc.webkitExitFullscreen?.bind(doc))?.().catch(() => {});
 }
 
+// Seconds-per-question tracking: the question on screen is timed, and moving to another one (or submitting) banks the time.
+type TimerSegment = { id: string; start: number } | null;
+function bankSegment(seg: { current: TimerSegment }, times: { current: Record<string, number> }) {
+  const s = seg.current;
+  if (!s) return;
+  const now = Date.now();
+  times.current[s.id] = (times.current[s.id] ?? 0) + (now - s.start);
+  seg.current = { id: s.id, start: now };
+}
+
 function TestEnginePage() {
   const { testId } = Route.useParams();
   const { user, loading } = useAuth();
@@ -115,6 +125,8 @@ function TestEnginePage() {
 
   const startTimeRef = useRef<number>(Date.now());
   const submittedRef = useRef(false);
+  const timesRef = useRef<Record<string, number>>({}); // ms per question id
+  const segRef = useRef<TimerSegment>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
@@ -156,6 +168,27 @@ function TestEnginePage() {
   );
   const currentQuestion = subjectQuestions[currentIndex];
 
+  // Time the question on screen while the test is running (not while the tab is hidden).
+  const currentQuestionId = currentQuestion?.id;
+  useEffect(() => {
+    if (phase !== "active" || !currentQuestionId) return;
+    segRef.current = { id: currentQuestionId, start: Date.now() };
+    const onVisibility = () => {
+      if (document.hidden) {
+        bankSegment(segRef, timesRef);
+        segRef.current = null;
+      } else if (!submittedRef.current) {
+        segRef.current = { id: currentQuestionId, start: Date.now() };
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      bankSegment(segRef, timesRef);
+      segRef.current = null;
+    };
+  }, [phase, currentQuestionId]);
+
   const isFirstQuestionOverall =
     Boolean(test) && activeSubject === test!.subjects[0] && currentIndex === 0;
 
@@ -174,8 +207,10 @@ function TestEnginePage() {
     try {
       const token = await user.getIdToken();
       const timeTakenMinutes = Math.round((Date.now() - startTimeRef.current) / 60000);
+      bankSegment(segRef, timesRef);
+      const times = Object.fromEntries(Object.entries(timesRef.current).map(([id, ms]) => [id, Math.round(ms / 1000)]));
       const res = await submitTestAttempt({
-        data: { token, testId, answers, timeTakenMinutes },
+        data: { token, testId, answers, timeTakenMinutes, times },
       });
       track("test_submitted", { test_id: testId, minutes: timeTakenMinutes, auto_submitted: Boolean(autoSubmitReason) });
       // Results are shown on their own dedicated page, not inline here.

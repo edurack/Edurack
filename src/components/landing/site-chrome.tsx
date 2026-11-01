@@ -210,7 +210,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Paper analysis", to: "/neet/paper-analysis" },
       { label: "Most repeated topics", to: "/neet/most-repeated-topics" },
       { label: "Question of the day", to: "/neet/question-of-the-day" },
-      { label: "Free NEET tools", to: "/tools" },
+      { label: "Free NEET & JEE tools", to: "/tools" },
     ],
   },
   {
@@ -232,6 +232,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
     title: "Help",
     links: [
       { label: "FAQ", to: "/faq" },
+      { label: "What's new", to: "/whats-new" },
       { label: "Help centre", to: "/help" },
       { label: "Contact us", to: "/contact" },
       { label: "Verify certificate", to: "/verify" },

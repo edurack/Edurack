@@ -13,6 +13,16 @@ export function captureReferralFromUrl(): void {
   }
 }
 
+/** The stored code, left in place (to prefill the invite-code field before sign-up finishes). */
+export function peekStoredReferral(): string | null {
+  try {
+    const v = localStorage.getItem(KEY);
+    return v && isValidReferralCode(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The stored code, once: it is removed so it is only ever claimed one time. */
 export function takeStoredReferral(): string | null {
   try {

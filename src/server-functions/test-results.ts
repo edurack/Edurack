@@ -4,6 +4,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { analyzeTimes, teaserFrom, type TimeAnalysis, type TimedItem, type TimeTeaser } from "@/lib/time-analysis";
 import { getExcludedQuestions } from "@/lib/attempt-rules";
 import { loadAttemptRules, loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
 
@@ -42,6 +43,7 @@ export const getTestAttempt = createServerFn({ method: "POST" })
       isCorrect: boolean;
       marksAwarded: number;
       ignored?: boolean;
+      timeSec?: number;
     }[];
 
     // questionResults only stored the graded outcome, not the actual
@@ -90,7 +92,28 @@ export const getTestAttempt = createServerFn({ method: "POST" })
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => (a.subject === b.subject ? a.questionNo - b.questionNo : a.subject.localeCompare(b.subject)));
 
+    // Where the time went, when the attempt recorded per-question times. The full breakdown is a Pro feature.
+    const timed: TimedItem[] = questionResults
+      .filter((r) => !r.ignored)
+      .map((r) => ({
+        id: r.questionId,
+        subject: r.subject,
+        outcome: r.isCorrect ? ("correct" as const) : r.selectedOption !== null || (r.selectedAnswer !== null && r.selectedAnswer !== undefined) ? ("wrong" as const) : ("skipped" as const),
+        timeSec: r.timeSec ?? null,
+        penalty: r.marksAwarded < 0 ? Math.abs(r.marksAwarded) : 0,
+      }));
+    const analysis = analyzeTimes(timed);
+    let timeAnalysis: TimeAnalysis | null = null;
+    let timeTeaser: TimeTeaser | null = null;
+    if (analysis) {
+      const [{ getDrillAccess }, { hasFeature }] = await Promise.all([import("@/lib/pro-server"), import("@/lib/pro")]);
+      if (hasFeature(await getDrillAccess(db, decoded.uid), "timeAnalysis")) timeAnalysis = analysis;
+      else timeTeaser = teaserFrom(analysis);
+    }
+
     return {
+      timeAnalysis,
+      timeTeaser,
       attempt: {
         id: String(attempt._id),
         testId: attempt.testId as string,

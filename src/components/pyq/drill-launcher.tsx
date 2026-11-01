@@ -522,7 +522,7 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
         </div>
       )}
 
-      {access && !access.isPro && access.gatingOn && access.freeLimit > 0 && <InviteCard user={user} source="quick_mock" />}
+      {access && !access.isPro && access.gatingOn && <InviteCard user={user} source="quick_mock" />}
 
       {access && !proOpen && (
         <div className="text-center">

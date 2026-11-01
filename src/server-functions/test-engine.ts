@@ -12,6 +12,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { cleanTimes } from "@/lib/time-analysis";
 import { findRuleForQuestion, type AttemptRule } from "@/lib/attempt-rules";
 
 async function requireSignedIn(token: string) {
@@ -147,6 +148,8 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
       testId: string;
       answers: Record<string, "A" | "B" | "C" | "D" | number | undefined>;
       timeTakenMinutes: number;
+      /** Seconds spent on each question id (see lib/time-analysis.ts). Optional: older clients do not send it. */
+      times?: Record<string, number>;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -160,6 +163,7 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
     await verifyTestAccess(decoded.uid, source, test);
 
     const questionDocs = await db.collection("questions").find({ testId: data.testId }).toArray();
+    const times = cleanTimes(data.times, questionDocs.map((q) => String(q._id)));
 
     let correctCount = 0;
     let incorrectCount = 0;
@@ -179,6 +183,8 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
       // True when the student answered more than the "attempt any N" limit
       // allows and this answer fell outside the first N. Not graded.
       ignored?: boolean;
+      /** Seconds spent on this question, when the client reported it. */
+      timeSec?: number;
     }[] = [];
 
     const subjectTally = new Map<string, { correct: number; incorrect: number; unanswered: number; marks: number }>();
@@ -272,6 +278,7 @@ export const submitTestAttempt = createServerFn({ method: "POST" })
         isCorrect,
         marksAwarded,
         ...(ignored ? { ignored: true } : {}),
+        ...(times[questionId] ? { timeSec: times[questionId] } : {}),
       });
 
       // Ignored answers are not graded and never reach the tallies. Unanswered

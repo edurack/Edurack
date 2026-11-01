@@ -9,6 +9,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
+import { analyzeTimes, cleanTimes, teaserFrom, type TimeAnalysis, type TimedItem, type TimeTeaser } from "@/lib/time-analysis";
 import { createTtlCache } from "@/lib/simple-cache";
 import { loadAttemptTopicAnalysis } from "@/lib/attempt-topics";
 import { recordPracticeOutcomes } from "@/lib/practice-progress";
@@ -394,9 +395,29 @@ async function drillResultFor(db: Db, uid: string, drill: Record<string, unknown
   const byId = new Map(docs.map((d) => [String(d._id), d]));
   const order = docs.slice().sort((a, b) => ids.indexOf(String(a._id)) - ids.indexOf(String(b._id)));
   const stored = drill.result as Omit<DrillResult, "drillId" | "review" | "questions">;
+  // Where the time went (needs the per-question times saved at submit). The full breakdown is a Pro feature; everyone else gets a teaser.
+  const timesMap = (drill.times ?? {}) as Record<string, number>;
+  const timed: TimedItem[] = (stored.items ?? []).map((i) => ({
+    id: i.id,
+    subject: byId.get(i.id)?.subject as string | undefined,
+    outcome: i.outcome,
+    timeSec: timesMap[i.id] ?? null,
+    penalty: i.outcome === "wrong" && i.marks < 0 ? Math.abs(i.marks) : 0,
+  }));
+  const analysis = analyzeTimes(timed);
+  let timeAnalysis: TimeAnalysis | null = null;
+  let timeTeaser: TimeTeaser | null = null;
+  if (analysis) {
+    const { getDrillAccess } = await import("@/lib/pro-server");
+    if (hasFeature(await getDrillAccess(db, uid), "timeAnalysis")) timeAnalysis = analysis;
+    else timeTeaser = teaserFrom(analysis);
+  }
   return {
     drillId: String(drill._id),
     ...stored,
+    timeAnalysis,
+    timeTeaser,
+    challengeCode: typeof drill.challengeCode === "string" ? drill.challengeCode : null,
     review: ids
       .map((id) => byId.get(id))
       .filter((d): d is NonNullable<typeof d> => !!d)
@@ -432,7 +453,7 @@ export const getPyqDrill = createServerFn({ method: "POST" })
   });
 
 export const submitPyqDrill = createServerFn({ method: "POST" })
-  .validator((data: { token: string; drillId: string; answers: Record<string, DrillAnswer> }) => data)
+  .validator((data: { token: string; drillId: string; answers: Record<string, DrillAnswer>; times?: Record<string, number> }) => data)
   .handler(async ({ data }): Promise<DrillResult> => {
     const decoded = await requireSignedIn(data.token);
     const db = await getDb();
@@ -471,7 +492,7 @@ export const submitPyqDrill = createServerFn({ method: "POST" })
     const now = new Date();
     const timeTakenSec = Math.min(drill.durationSec as number, Math.max(0, Math.round((now.getTime() - (drill.startedAt as Date).getTime()) / 1000)));
     const result = { ...scored, timeTakenSec };
-    await db.collection("pyqDrills").updateOne({ _id: drill._id, submittedAt: null }, { $set: { submittedAt: now, answers: clean, result } });
+    await db.collection("pyqDrills").updateOne({ _id: drill._id, submittedAt: null }, { $set: { submittedAt: now, answers: clean, result, times: cleanTimes(data.times, ids) } });
     // A friend's first finished Quick Mock is what unlocks the referral bonus for both students. Best-effort: it never blocks the result.
     try {
       const { rewardReferralFor } = await import("@/lib/referral-server");
