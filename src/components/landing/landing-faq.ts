@@ -2,7 +2,7 @@
 // markup always matches what people can see. Keep answers short, factual and answer-first (they are
 // what search snippets and AI answer engines quote), and consistent with /faq and /llms.txt.
 // Like /faq, this makes no user-count or "trusted by" claims.
-export const LANDING_LAST_UPDATED = "2026-10-29"; // bump when the copy or exam status on the homepage changes
+export const LANDING_LAST_UPDATED = "2026-11-02"; // bump when the copy or exam status on the homepage changes
 
 export const LANDING_FAQS: { q: string; a: string }[] = [
   {

@@ -1,0 +1,307 @@
+diff --git a/src/components/landing/landing-faq.ts b/src/components/landing/landing-faq.ts
+index 1f62585..14d526d 100644
+--- a/src/components/landing/landing-faq.ts
++++ b/src/components/landing/landing-faq.ts
+@@ -2,7 +2,7 @@
+ // markup always matches what people can see. Keep answers short, factual and answer-first (they are
+ // what search snippets and AI answer engines quote), and consistent with /faq and /llms.txt.
+ // Like /faq, this makes no user-count or "trusted by" claims.
+-export const LANDING_LAST_UPDATED = "2026-10-29"; // bump when the copy or exam status on the homepage changes
++export const LANDING_LAST_UPDATED = "2026-11-02"; // bump when the copy or exam status on the homepage changes
+ 
+ export const LANDING_FAQS: { q: string; a: string }[] = [
+   {
+diff --git a/src/components/landing/site-chrome.tsx b/src/components/landing/site-chrome.tsx
+index 6ae892d..0de6913 100644
+--- a/src/components/landing/site-chrome.tsx
++++ b/src/components/landing/site-chrome.tsx
+@@ -210,6 +210,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
+       { label: "Paper analysis", to: "/neet/paper-analysis" },
+       { label: "Most repeated topics", to: "/neet/most-repeated-topics" },
+       { label: "Question of the day", to: "/neet/question-of-the-day" },
++      { label: "NEET 2027 countdown", to: "/tools/neet-countdown" },
+       { label: "Free NEET & JEE tools", to: "/tools" },
+     ],
+   },
+@@ -217,6 +218,8 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
+     title: "JEE guides",
+     links: [
+       { label: "JEE Main 2027 hub", to: "/jee-main-2027" },
++      { label: "JEE Main 2027 countdown", to: "/tools/jee-main-countdown" },
++      { label: "JEE rank calculator", to: "/tools/jee-main-percentile-calculator" },
+       { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
+       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
+       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },
+diff --git a/src/components/tools/tool-shell.tsx b/src/components/tools/tool-shell.tsx
+index de7a627..e3bca11 100644
+--- a/src/components/tools/tool-shell.tsx
++++ b/src/components/tools/tool-shell.tsx
+@@ -5,14 +5,8 @@ import { Check, Share2 } from "lucide-react";
+ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
+ import type { Faq } from "@/lib/neet-blueprint-copy";
+ 
+-export const TOOLS = [
+-  { to: "/tools/neet-rank-predictor", name: "NEET Rank Predictor", blurb: "Marks to expected AIR, using the last three years of NTA data.", emoji: "🎯" },
+-  { to: "/tools/neet-percentile-calculator", name: "NEET Percentile Calculator", blurb: "Turn your marks or rank into a percentile.", emoji: "📊" },
+-  { to: "/tools/neet-target-score-planner", name: "NEET Target Score Planner", blurb: "How many questions to attempt, and how accurately, for your target.", emoji: "🧭" },
+-  { to: "/tools/jee-main-percentile-calculator", name: "JEE Main Percentile to Rank", blurb: "Turn your NTA percentile into an expected AIR, and back.", emoji: "🧮" },
+-  { to: "/tools/jee-main-countdown", name: "JEE Main 2027 Countdown and Planner", blurb: "Days left with NTA-official dates, and a day-by-day study plan.", emoji: "⏳" },
+-  { to: "/tools/neet-countdown", name: "NEET UG 2027 Countdown and Planner", blurb: "Days left to a planning date, and a day-by-day study plan.", emoji: "🗓️" },
+-] as const;
++import { TOOLS } from "@/lib/tools-list";
++export { TOOLS };
+ 
+ export const inputCls =
+   "min-h-12 w-full rounded-2xl border border-border bg-background px-4 text-base font-semibold text-foreground focus:border-primary focus:outline-none";
+diff --git a/src/lib/sitemap-core.ts b/src/lib/sitemap-core.ts
+index 768dceb..df6520a 100644
+--- a/src/lib/sitemap-core.ts
++++ b/src/lib/sitemap-core.ts
+@@ -29,23 +29,29 @@ export const SITEMAP_CACHE = "public, s-maxage=3600, stale-while-revalidate=8640
+ // deploy (deploy-driven lastmod churn is what makes Google start ignoring
+ // the field for your whole site).
+ export const staticRoutes: { path: string; lastmod: string; priority: number; changefreq?: string }[] = [
+-  { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
++  { path: "/", lastmod: "2026-11-02", priority: 1.0, changefreq: "weekly" },
+   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
+   { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
+-  { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
+-  { path: "/pro", lastmod: "2026-10-22", priority: 0.7, changefreq: "weekly" },
++  { path: "/mentorship-sessions", lastmod: "2026-10-30", priority: 0.8, changefreq: "daily" },
++  { path: "/pro", lastmod: "2026-10-30", priority: 0.7, changefreq: "weekly" },
+   { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
+   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
+-  { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
++  { path: "/join-mentor", lastmod: "2026-10-30", priority: 0.7, changefreq: "monthly" },
+   { path: "/join-intern", lastmod: "2026-09-28", priority: 0.5, changefreq: "monthly" },
+-  { path: "/about", lastmod: "2026-09-28", priority: 0.6 },
+-  { path: "/faq", lastmod: "2026-09-28", priority: 0.6 },
++  { path: "/about", lastmod: "2026-10-30", priority: 0.6 },
++  { path: "/faq", lastmod: "2026-10-29", priority: 0.6 },
+   { path: "/verify", lastmod: "2026-09-28", priority: 0.3 },
+   { path: "/contact", lastmod: "2026-09-11", priority: 0.5 },
+-  { path: "/login", lastmod: "2026-09-11", priority: 0.2 },
++  { path: "/login", lastmod: "2026-10-30", priority: 0.2 },
+   { path: "/legal/terms", lastmod: "2026-09-11", priority: 0.3 },
+-  { path: "/legal/privacy", lastmod: "2026-09-11", priority: 0.3 },
++  { path: "/legal/privacy", lastmod: "2026-10-29", priority: 0.3 },
+   { path: "/legal/refund", lastmod: "2026-09-11", priority: 0.3 },
++  // Free tools and release notes that are not NEET-specific (the NEET tools are in seoEntries below).
++  { path: "/tools/jee-main-percentile-calculator", lastmod: "2026-10-30", priority: 0.9, changefreq: "monthly" },
++  { path: "/tools/jee-main-countdown", lastmod: VERIFIED_ON, priority: 0.9, changefreq: "weekly" },
++  { path: "/tools/neet-countdown", lastmod: VERIFIED_ON, priority: 0.9, changefreq: "weekly" },
++  { path: "/whats-new", lastmod: RELEASES[0].date, priority: 0.7, changefreq: "weekly" },
++  ...RELEASES.map((r) => ({ path: `/whats-new/${r.slug}`, lastmod: r.date, priority: 0.6, changefreq: "yearly" })),
+ ];
+ 
+ export function escapeXml(value: string): string {
+@@ -187,15 +193,10 @@ export async function jeeLandingEntries(): Promise<string[]> {
+ const SEO_LASTMOD = "2026-10-15";
+ export function seoEntries(): string[] {
+   return [
+-    urlEntry(`${SITE_URL}/tools`, SEO_LASTMOD, 0.8, "monthly"),
++    urlEntry(`${SITE_URL}/tools`, "2026-11-02", 0.8, "monthly"),
+     urlEntry(`${SITE_URL}/tools/neet-rank-predictor`, SEO_LASTMOD, 0.9, "monthly"),
+     urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
+     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
+-    urlEntry(`${SITE_URL}/tools/jee-main-percentile-calculator`, "2026-10-29", 0.9, "monthly"),
+-    urlEntry(`${SITE_URL}/tools/jee-main-countdown`, VERIFIED_ON, 0.9, "weekly"),
+-    urlEntry(`${SITE_URL}/tools/neet-countdown`, VERIFIED_ON, 0.9, "weekly"),
+-    urlEntry(`${SITE_URL}/whats-new`, RELEASES[0].date, 0.7, "weekly"),
+-    ...RELEASES.map((r) => urlEntry(`${SITE_URL}/whats-new/${r.slug}`, r.date, 0.6, "yearly")),
+     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
+     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
+     // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.
+diff --git a/src/lib/tools-list.ts b/src/lib/tools-list.ts
+new file mode 100644
+index 0000000..476f3c0
+--- /dev/null
++++ b/src/lib/tools-list.ts
+@@ -0,0 +1,10 @@
++// The free tools, in the order they are listed on the homepage, the /tools hub and under each tool. One place to add a tool.
++// (Kept in its own file so the homepage can list the tools without loading the tool pages' shell.)
++export const TOOLS = [
++  { to: "/tools/neet-rank-predictor", name: "NEET Rank Predictor", blurb: "Marks to expected AIR, using the last three years of NTA data.", emoji: "🎯" },
++  { to: "/tools/neet-percentile-calculator", name: "NEET Percentile Calculator", blurb: "Turn your marks or rank into a percentile.", emoji: "📊" },
++  { to: "/tools/neet-target-score-planner", name: "NEET Target Score Planner", blurb: "How many questions to attempt, and how accurately, for your target.", emoji: "🧭" },
++  { to: "/tools/jee-main-percentile-calculator", name: "JEE Main Percentile to Rank", blurb: "Turn your NTA percentile into an expected AIR, and back.", emoji: "🧮" },
++  { to: "/tools/jee-main-countdown", name: "JEE Main 2027 Countdown and Planner", blurb: "Days left with NTA-official dates, and a day-by-day study plan.", emoji: "⏳" },
++  { to: "/tools/neet-countdown", name: "NEET UG 2027 Countdown and Planner", blurb: "Days left to a planning date, and a day-by-day study plan.", emoji: "🗓️" },
++] as const;
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index b595a53..c798dd3 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -47,6 +47,9 @@ import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf } from "@/components/landing/exam-de
+ import { LANDING_FAQS, LANDING_LAST_UPDATED } from "@/components/landing/landing-faq";
+ import { usePreferredExam } from "@/components/landing/use-preferred-exam";
+ import { useAuth } from "@/lib/auth-context";
++import { TOOLS } from "@/lib/tools-list";
++import { JEE_MAIN_2027, NEET_UG_2027, daysBetween, todayIST } from "@/lib/exam-dates";
++import { RELEASES, formatReleaseDate } from "@/lib/whats-new";
+ import { track, trackOnce } from "@/lib/analytics";
+ import { captureReferralFromUrl } from "@/lib/referral-client";
+ import { IconPlus as Plus } from "@tabler/icons-react";
+@@ -136,6 +139,8 @@ function landingJsonLd() {
+       isPartOf: { "@id": `${SITE_URL}/#website` },
+       about: org,
+       mainEntity: org,
++      // The pages a crawler should treat as part of this site's core: tools, release notes and the FAQ.
++      significantLink: [`${SITE_URL}/tools`, `${SITE_URL}/tools/jee-main-percentile-calculator`, `${SITE_URL}/tools/jee-main-countdown`, `${SITE_URL}/tools/neet-countdown`, `${SITE_URL}/whats-new`, `${SITE_URL}/faq`],
+     },
+     {
+       "@context": "https://schema.org",
+@@ -271,6 +276,8 @@ const navLinks: NavLink[] = [
+   { label: "Mentor Sessions", type: "route", to: "/mentorship-sessions" },
+   { label: "Blog", type: "route", to: "/blog" },
+   { label: "Contact", type: "route", to: "/contact" },
++  { label: "Free Tools", type: "route", to: "/tools" },
++  { label: "What's New", type: "route", to: "/whats-new" },
+ ];
+ 
+ // ---------------------------------------------
+@@ -387,6 +394,7 @@ function Index() {
+           <HeroMotion ctaRef={ctaRef} />
+           <AnswerSection />
+           <ExamsSection />
++          <ToolsSection />
+           <QuickMockSection />
+           <LandingFreeSessionsSection />
+           <LoopSection />
+@@ -397,6 +405,7 @@ function Index() {
+           <BlogShowcase />
+           <FreeResourcesSection />
+           <FaqSection />
++          <WhatsNewSection />
+           <MentorBanner />
+           <CareersStrip />
+           <FinalCta />
+@@ -437,8 +446,11 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
+ 
+ const shownNav = navLinks.filter((l) => ["Mentors", "Features", "Join as Mentor", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
+ 
+-function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
+-  const cls = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground lg:px-3 xl:px-4";
++// Two more links that fit in the header from the xl breakpoint up; the mobile menu always shows them.
++const extraNav = navLinks.filter((l) => ["Free Tools", "What's New"].includes(l.label));
++
++function NavItem({ link, onClick, extraClass = "" }: { link: NavLink; onClick?: () => void; extraClass?: string }) {
++  const cls = `inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground lg:px-3 xl:px-4 ${extraClass}`;
+   return link.type === "route" ? (
+     <Link to={link.to} onClick={onClick} className={cls}>{link.label}</Link>
+   ) : (
+@@ -458,6 +470,7 @@ function Header() {
+         </Link>
+         <nav className="hidden items-center lg:flex">
+           {shownNav.map((l) => <NavItem key={l.label} link={l} />)}
++          {extraNav.map((l) => <NavItem key={l.label} link={l} extraClass="max-xl:hidden" />)}
+         </nav>
+         <div className="flex shrink-0 items-center gap-1">
+           {user ? (
+@@ -489,7 +502,7 @@ function Header() {
+       </div>
+       <div className={`overflow-hidden border-border transition-all duration-300 lg:hidden ${open ? "max-h-96 border-t" : "max-h-0"}`}>
+         <nav className={`${WRAP} flex flex-col py-2`}>
+-          {shownNav.map((l) => <NavItem key={l.label} link={l} onClick={() => setOpen(false)} />)}
++          {[...shownNav, ...extraNav].map((l) => <NavItem key={l.label} link={l} onClick={() => setOpen(false)} />)}
+         </nav>
+       </div>
+     </header>
+@@ -649,6 +662,97 @@ function FaqSection() {
+   );
+ }
+ 
++// ── Free tools: always one click from the homepage ──
++function ToolsSection() {
++  // Days to go, worked out from today's date in India. Rendered into the HTML, so it is fresh for crawlers and for people.
++  const today = todayIST();
++  const jeeDays = daysBetween(today, JEE_MAIN_2027.session1.first);
++  const neetDays = daysBetween(today, NEET_UG_2027.planningDate);
++  const chip = "inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground hover:border-primary";
++  return (
++    <section id="tools" aria-labelledby="tools-heading" className="py-14 sm:py-20">
++      <div className={WRAP}>
++        <Rise className="max-w-2xl">
++          <h2 id="tools-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
++            <span className="block font-light">Free tools</span>
++            <span className="block font-extrabold">for NEET and JEE.</span>
++          </h2>
++          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Rank and percentile calculators, exam countdowns and a study plan. No sign-up needed.</p>
++        </Rise>
++        <div className="mt-6 flex flex-wrap gap-3">
++          {jeeDays > 0 && (
++            <Link to="/tools/jee-main-countdown" className={chip}>
++              <span className="font-extrabold" suppressHydrationWarning>{jeeDays} days</span> to JEE Main 2027, Session 1
++            </Link>
++          )}
++          {neetDays > 0 && (
++            <Link to="/tools/neet-countdown" className={chip}>
++              <span className="font-extrabold" suppressHydrationWarning>{neetDays} days</span> to 2 May 2027
++              <span className="text-xs font-medium text-muted-foreground">NEET planning date, not official</span>
++            </Link>
++          )}
++        </div>
++        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++          {TOOLS.map((t, i) => (
++            <Rise key={t.to} delay={i * 0.05} className="min-w-0">
++              <Link to={t.to} className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
++                <span className="text-2xl" aria-hidden>
++                  {t.emoji}
++                </span>
++                <h3 className="font-display mt-3 text-lg font-extrabold text-foreground">{t.name}</h3>
++                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{t.blurb}</p>
++                <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-primary">
++                  Open <ArrowRight className="h-4 w-4" />
++                </span>
++              </Link>
++            </Rise>
++          ))}
++        </div>
++        <p className="mt-6">
++          <Link to="/tools" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
++            See all free tools <ArrowRight className="h-4 w-4" />
++          </Link>
++        </p>
++      </div>
++    </section>
++  );
++}
++
++// ── What's new: the latest three releases, each linking to its own page ──
++function WhatsNewSection() {
++  return (
++    <section id="whats-new" aria-labelledby="whats-new-heading" className="py-14 sm:py-20">
++      <div className={WRAP}>
++        <Rise className="flex flex-wrap items-end justify-between gap-4">
++          <h2 id="whats-new-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
++            <span className="block font-light">What's new</span>
++            <span className="block font-extrabold">on Edurack.</span>
++          </h2>
++          <Link to="/whats-new" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
++            All updates <ArrowRight className="h-4 w-4" />
++          </Link>
++        </Rise>
++        <div className="mt-8 grid gap-4 md:grid-cols-3">
++          {RELEASES.slice(0, 3).map((r, i) => (
++            <Rise key={r.slug} delay={i * 0.07} className="min-w-0">
++              <Link to="/whats-new/$slug" params={{ slug: r.slug }} className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
++                <time dateTime={r.date} className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
++                  {formatReleaseDate(r.date)}
++                </time>
++                <h3 className="font-display mt-2 text-lg font-extrabold text-foreground">{r.title}</h3>
++                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{r.summary}</p>
++                <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-primary">
++                  Read the details <ArrowRight className="h-4 w-4" />
++                </span>
++              </Link>
++            </Rise>
++          ))}
++        </div>
++      </div>
++    </section>
++  );
++}
++
+ // ── Live exams + roadmap ───────────────────────────────────────────────────
+ const examCards: { key: "neet" | "jee"; full: string; blurb: string; links: { label: string; to: string }[] }[] = [
+   { key: "neet", full: "NEET (UG)", blurb: "Previous year questions, chapter weightage and rank tools for medical aspirants.", links: [{ label: "Chapter weightage", to: "/neet/chapter-wise-weightage" }, { label: "Rank predictor", to: "/tools/neet-rank-predictor" }] },

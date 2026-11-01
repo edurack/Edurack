@@ -47,6 +47,9 @@ import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf } from "@/components/landing/exam-de
 import { LANDING_FAQS, LANDING_LAST_UPDATED } from "@/components/landing/landing-faq";
 import { usePreferredExam } from "@/components/landing/use-preferred-exam";
 import { useAuth } from "@/lib/auth-context";
+import { TOOLS } from "@/lib/tools-list";
+import { JEE_MAIN_2027, NEET_UG_2027, daysBetween, todayIST } from "@/lib/exam-dates";
+import { RELEASES, formatReleaseDate } from "@/lib/whats-new";
 import { track, trackOnce } from "@/lib/analytics";
 import { captureReferralFromUrl } from "@/lib/referral-client";
 import { IconPlus as Plus } from "@tabler/icons-react";
@@ -136,6 +139,8 @@ function landingJsonLd() {
       isPartOf: { "@id": `${SITE_URL}/#website` },
       about: org,
       mainEntity: org,
+      // The pages a crawler should treat as part of this site's core: tools, release notes and the FAQ.
+      significantLink: [`${SITE_URL}/tools`, `${SITE_URL}/tools/jee-main-percentile-calculator`, `${SITE_URL}/tools/jee-main-countdown`, `${SITE_URL}/tools/neet-countdown`, `${SITE_URL}/whats-new`, `${SITE_URL}/faq`],
     },
     {
       "@context": "https://schema.org",
@@ -271,6 +276,8 @@ const navLinks: NavLink[] = [
   { label: "Mentor Sessions", type: "route", to: "/mentorship-sessions" },
   { label: "Blog", type: "route", to: "/blog" },
   { label: "Contact", type: "route", to: "/contact" },
+  { label: "Free Tools", type: "route", to: "/tools" },
+  { label: "What's New", type: "route", to: "/whats-new" },
 ];
 
 // ---------------------------------------------
@@ -387,6 +394,7 @@ function Index() {
           <HeroMotion ctaRef={ctaRef} />
           <AnswerSection />
           <ExamsSection />
+          <ToolsSection />
           <QuickMockSection />
           <LandingFreeSessionsSection />
           <LoopSection />
@@ -397,6 +405,7 @@ function Index() {
           <BlogShowcase />
           <FreeResourcesSection />
           <FaqSection />
+          <WhatsNewSection />
           <MentorBanner />
           <CareersStrip />
           <FinalCta />
@@ -437,8 +446,11 @@ function Title({ light, bold, dark = false }: { light: string; bold: string; dar
 
 const shownNav = navLinks.filter((l) => ["Mentors", "Features", "Join as Mentor", "Mentor Sessions", "Blog", "Contact"].includes(l.label));
 
-function NavItem({ link, onClick }: { link: NavLink; onClick?: () => void }) {
-  const cls = "inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground lg:px-3 xl:px-4";
+// Two more links that fit in the header from the xl breakpoint up; the mobile menu always shows them.
+const extraNav = navLinks.filter((l) => ["Free Tools", "What's New"].includes(l.label));
+
+function NavItem({ link, onClick, extraClass = "" }: { link: NavLink; onClick?: () => void; extraClass?: string }) {
+  const cls = `inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm font-semibold text-foreground/70 transition-colors hover:text-foreground lg:px-3 xl:px-4 ${extraClass}`;
   return link.type === "route" ? (
     <Link to={link.to} onClick={onClick} className={cls}>{link.label}</Link>
   ) : (
@@ -458,6 +470,7 @@ function Header() {
         </Link>
         <nav className="hidden items-center lg:flex">
           {shownNav.map((l) => <NavItem key={l.label} link={l} />)}
+          {extraNav.map((l) => <NavItem key={l.label} link={l} extraClass="max-xl:hidden" />)}
         </nav>
         <div className="flex shrink-0 items-center gap-1">
           {user ? (
@@ -489,7 +502,7 @@ function Header() {
       </div>
       <div className={`overflow-hidden border-border transition-all duration-300 lg:hidden ${open ? "max-h-96 border-t" : "max-h-0"}`}>
         <nav className={`${WRAP} flex flex-col py-2`}>
-          {shownNav.map((l) => <NavItem key={l.label} link={l} onClick={() => setOpen(false)} />)}
+          {[...shownNav, ...extraNav].map((l) => <NavItem key={l.label} link={l} onClick={() => setOpen(false)} />)}
         </nav>
       </div>
     </header>
@@ -642,6 +655,97 @@ function FaqSection() {
               </summary>
               <p className="mt-3 leading-relaxed text-muted-foreground">{f.a}</p>
             </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ── Free tools: always one click from the homepage ──
+function ToolsSection() {
+  // Days to go, worked out from today's date in India. Rendered into the HTML, so it is fresh for crawlers and for people.
+  const today = todayIST();
+  const jeeDays = daysBetween(today, JEE_MAIN_2027.session1.first);
+  const neetDays = daysBetween(today, NEET_UG_2027.planningDate);
+  const chip = "inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-semibold text-foreground hover:border-primary";
+  return (
+    <section id="tools" aria-labelledby="tools-heading" className="py-14 sm:py-20">
+      <div className={WRAP}>
+        <Rise className="max-w-2xl">
+          <h2 id="tools-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+            <span className="block font-light">Free tools</span>
+            <span className="block font-extrabold">for NEET and JEE.</span>
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">Rank and percentile calculators, exam countdowns and a study plan. No sign-up needed.</p>
+        </Rise>
+        <div className="mt-6 flex flex-wrap gap-3">
+          {jeeDays > 0 && (
+            <Link to="/tools/jee-main-countdown" className={chip}>
+              <span className="font-extrabold" suppressHydrationWarning>{jeeDays} days</span> to JEE Main 2027, Session 1
+            </Link>
+          )}
+          {neetDays > 0 && (
+            <Link to="/tools/neet-countdown" className={chip}>
+              <span className="font-extrabold" suppressHydrationWarning>{neetDays} days</span> to 2 May 2027
+              <span className="text-xs font-medium text-muted-foreground">NEET planning date, not official</span>
+            </Link>
+          )}
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {TOOLS.map((t, i) => (
+            <Rise key={t.to} delay={i * 0.05} className="min-w-0">
+              <Link to={t.to} className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
+                <span className="text-2xl" aria-hidden>
+                  {t.emoji}
+                </span>
+                <h3 className="font-display mt-3 text-lg font-extrabold text-foreground">{t.name}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{t.blurb}</p>
+                <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-primary">
+                  Open <ArrowRight className="h-4 w-4" />
+                </span>
+              </Link>
+            </Rise>
+          ))}
+        </div>
+        <p className="mt-6">
+          <Link to="/tools" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
+            See all free tools <ArrowRight className="h-4 w-4" />
+          </Link>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ── What's new: the latest three releases, each linking to its own page ──
+function WhatsNewSection() {
+  return (
+    <section id="whats-new" aria-labelledby="whats-new-heading" className="py-14 sm:py-20">
+      <div className={WRAP}>
+        <Rise className="flex flex-wrap items-end justify-between gap-4">
+          <h2 id="whats-new-heading" className="font-display text-4xl leading-[1.05] tracking-tight text-foreground sm:text-5xl">
+            <span className="block font-light">What's new</span>
+            <span className="block font-extrabold">on Edurack.</span>
+          </h2>
+          <Link to="/whats-new" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-bold text-primary">
+            All updates <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Rise>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {RELEASES.slice(0, 3).map((r, i) => (
+            <Rise key={r.slug} delay={i * 0.07} className="min-w-0">
+              <Link to="/whats-new/$slug" params={{ slug: r.slug }} className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 transition-colors hover:border-primary">
+                <time dateTime={r.date} className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                  {formatReleaseDate(r.date)}
+                </time>
+                <h3 className="font-display mt-2 text-lg font-extrabold text-foreground">{r.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{r.summary}</p>
+                <span className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-bold text-primary">
+                  Read the details <ArrowRight className="h-4 w-4" />
+                </span>
+              </Link>
+            </Rise>
           ))}
         </div>
       </div>

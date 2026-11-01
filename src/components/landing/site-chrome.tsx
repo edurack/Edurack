@@ -210,6 +210,7 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
       { label: "Paper analysis", to: "/neet/paper-analysis" },
       { label: "Most repeated topics", to: "/neet/most-repeated-topics" },
       { label: "Question of the day", to: "/neet/question-of-the-day" },
+      { label: "NEET 2027 countdown", to: "/tools/neet-countdown" },
       { label: "Free NEET & JEE tools", to: "/tools" },
     ],
   },
@@ -217,6 +218,8 @@ const footerColumns: { title: string; links: FooterLink[] }[] = [
     title: "JEE guides",
     links: [
       { label: "JEE Main 2027 hub", to: "/jee-main-2027" },
+      { label: "JEE Main 2027 countdown", to: "/tools/jee-main-countdown" },
+      { label: "JEE rank calculator", to: "/tools/jee-main-percentile-calculator" },
       { label: "Chapter-wise weightage", to: "/jee/chapter-wise-weightage" },
       { label: "Physics weightage", to: "/jee/chapter-wise-weightage/physics" },
       { label: "Chemistry weightage", to: "/jee/chapter-wise-weightage/chemistry" },

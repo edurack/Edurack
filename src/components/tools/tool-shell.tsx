@@ -5,14 +5,8 @@ import { Check, Share2 } from "lucide-react";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import type { Faq } from "@/lib/neet-blueprint-copy";
 
-export const TOOLS = [
-  { to: "/tools/neet-rank-predictor", name: "NEET Rank Predictor", blurb: "Marks to expected AIR, using the last three years of NTA data.", emoji: "🎯" },
-  { to: "/tools/neet-percentile-calculator", name: "NEET Percentile Calculator", blurb: "Turn your marks or rank into a percentile.", emoji: "📊" },
-  { to: "/tools/neet-target-score-planner", name: "NEET Target Score Planner", blurb: "How many questions to attempt, and how accurately, for your target.", emoji: "🧭" },
-  { to: "/tools/jee-main-percentile-calculator", name: "JEE Main Percentile to Rank", blurb: "Turn your NTA percentile into an expected AIR, and back.", emoji: "🧮" },
-  { to: "/tools/jee-main-countdown", name: "JEE Main 2027 Countdown and Planner", blurb: "Days left with NTA-official dates, and a day-by-day study plan.", emoji: "⏳" },
-  { to: "/tools/neet-countdown", name: "NEET UG 2027 Countdown and Planner", blurb: "Days left to a planning date, and a day-by-day study plan.", emoji: "🗓️" },
-] as const;
+import { TOOLS } from "@/lib/tools-list";
+export { TOOLS };
 
 export const inputCls =
   "min-h-12 w-full rounded-2xl border border-border bg-background px-4 text-base font-semibold text-foreground focus:border-primary focus:outline-none";

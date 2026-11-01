@@ -29,23 +29,29 @@ export const SITEMAP_CACHE = "public, s-maxage=3600, stale-while-revalidate=8640
 // deploy (deploy-driven lastmod churn is what makes Google start ignoring
 // the field for your whole site).
 export const staticRoutes: { path: string; lastmod: string; priority: number; changefreq?: string }[] = [
-  { path: "/", lastmod: "2026-09-11", priority: 1.0, changefreq: "weekly" },
+  { path: "/", lastmod: "2026-11-02", priority: 1.0, changefreq: "weekly" },
   { path: "/blog", lastmod: "2026-09-25", priority: 0.7, changefreq: "daily" },
   { path: "/pyq", lastmod: "2026-10-11", priority: 0.9, changefreq: "weekly" },
-  { path: "/mentorship-sessions", lastmod: "2026-10-22", priority: 0.8, changefreq: "daily" },
-  { path: "/pro", lastmod: "2026-10-22", priority: 0.7, changefreq: "weekly" },
+  { path: "/mentorship-sessions", lastmod: "2026-10-30", priority: 0.8, changefreq: "daily" },
+  { path: "/pro", lastmod: "2026-10-30", priority: 0.7, changefreq: "weekly" },
   { path: "/free-resources", lastmod: "2026-10-15", priority: 0.8, changefreq: "weekly" },
   { path: "/simulator/live", lastmod: "2026-09-11", priority: 0.9, changefreq: "monthly" },
-  { path: "/join-mentor", lastmod: "2026-09-11", priority: 0.7, changefreq: "monthly" },
+  { path: "/join-mentor", lastmod: "2026-10-30", priority: 0.7, changefreq: "monthly" },
   { path: "/join-intern", lastmod: "2026-09-28", priority: 0.5, changefreq: "monthly" },
-  { path: "/about", lastmod: "2026-09-28", priority: 0.6 },
-  { path: "/faq", lastmod: "2026-09-28", priority: 0.6 },
+  { path: "/about", lastmod: "2026-10-30", priority: 0.6 },
+  { path: "/faq", lastmod: "2026-10-29", priority: 0.6 },
   { path: "/verify", lastmod: "2026-09-28", priority: 0.3 },
   { path: "/contact", lastmod: "2026-09-11", priority: 0.5 },
-  { path: "/login", lastmod: "2026-09-11", priority: 0.2 },
+  { path: "/login", lastmod: "2026-10-30", priority: 0.2 },
   { path: "/legal/terms", lastmod: "2026-09-11", priority: 0.3 },
-  { path: "/legal/privacy", lastmod: "2026-09-11", priority: 0.3 },
+  { path: "/legal/privacy", lastmod: "2026-10-29", priority: 0.3 },
   { path: "/legal/refund", lastmod: "2026-09-11", priority: 0.3 },
+  // Free tools and release notes that are not NEET-specific (the NEET tools are in seoEntries below).
+  { path: "/tools/jee-main-percentile-calculator", lastmod: "2026-10-30", priority: 0.9, changefreq: "monthly" },
+  { path: "/tools/jee-main-countdown", lastmod: VERIFIED_ON, priority: 0.9, changefreq: "weekly" },
+  { path: "/tools/neet-countdown", lastmod: VERIFIED_ON, priority: 0.9, changefreq: "weekly" },
+  { path: "/whats-new", lastmod: RELEASES[0].date, priority: 0.7, changefreq: "weekly" },
+  ...RELEASES.map((r) => ({ path: `/whats-new/${r.slug}`, lastmod: r.date, priority: 0.6, changefreq: "yearly" })),
 ];
 
 export function escapeXml(value: string): string {
@@ -187,15 +193,10 @@ export async function jeeLandingEntries(): Promise<string[]> {
 const SEO_LASTMOD = "2026-10-15";
 export function seoEntries(): string[] {
   return [
-    urlEntry(`${SITE_URL}/tools`, SEO_LASTMOD, 0.8, "monthly"),
+    urlEntry(`${SITE_URL}/tools`, "2026-11-02", 0.8, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-rank-predictor`, SEO_LASTMOD, 0.9, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-percentile-calculator`, SEO_LASTMOD, 0.9, "monthly"),
     urlEntry(`${SITE_URL}/tools/neet-target-score-planner`, SEO_LASTMOD, 0.8, "monthly"),
-    urlEntry(`${SITE_URL}/tools/jee-main-percentile-calculator`, "2026-10-29", 0.9, "monthly"),
-    urlEntry(`${SITE_URL}/tools/jee-main-countdown`, VERIFIED_ON, 0.9, "weekly"),
-    urlEntry(`${SITE_URL}/tools/neet-countdown`, VERIFIED_ON, 0.9, "weekly"),
-    urlEntry(`${SITE_URL}/whats-new`, RELEASES[0].date, 0.7, "weekly"),
-    ...RELEASES.map((r) => urlEntry(`${SITE_URL}/whats-new/${r.slug}`, r.date, 0.6, "yearly")),
     urlEntry(`${SITE_URL}${PAPER_BASE}`, SEO_LASTMOD, 0.8, "monthly"),
     ...PAPER_SLUGS.map((s) => urlEntry(`${SITE_URL}${paperPath(s)}`, SEO_LASTMOD, 0.7, "monthly")),
     // One page per (paper, subject) that had questions, e.g. /neet/paper-analysis/2024/physics.
