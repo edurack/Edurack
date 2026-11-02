@@ -50,7 +50,8 @@ export function LandingProSection() {
           <div className="mt-5 flex flex-wrap gap-2">
             {offer.plans.map((p) => (
               <span key={p.id} className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85">
-                {p.name} · {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
+                {p.name} · {p.listPrice !== undefined && p.listPrice > p.price && <s className="opacity-60">{rupees(p.listPrice)}</s>}{" "}
+                {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
               </span>
             ))}
           </div>

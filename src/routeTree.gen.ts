@@ -48,7 +48,10 @@ import { Route as ApiRazorpayWebhookRouteImport } from './routes/api.razorpay-we
 import { Route as ApiResendWebhookRouteImport } from './routes/api.resend-webhook'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
+import { Route as ChallengeCodeRouteImport } from './routes/challenge.$code'
 import { Route as CronBlogPublishRouteImport } from './routes/cron.blog-publish'
+import { Route as CronCheckoutRemindersRouteImport } from './routes/cron.checkout-reminders'
+import { Route as CronLifecycleEmailsRouteImport } from './routes/cron.lifecycle-emails'
 import { Route as CronOutreachRouteImport } from './routes/cron.outreach'
 import { Route as CronSessionRemindersRouteImport } from './routes/cron.session-reminders'
 import { Route as CronStreakRemindersRouteImport } from './routes/cron.streak-reminders'
@@ -72,6 +75,7 @@ import { Route as MentorSessionOfferingIdRouteImport } from './routes/mentor-ses
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as NeetMostRepeatedTopicsRouteImport } from './routes/neet.most-repeated-topics'
 import { Route as NeetQuestionOfTheDayRouteImport } from './routes/neet.question-of-the-day'
+import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as PromoterAuthRouteImport } from './routes/promoter.auth'
 import { Route as PromoterDashboardRouteImport } from './routes/promoter.dashboard'
 import { Route as QuestionIdRouteImport } from './routes/question.$id'
@@ -81,10 +85,16 @@ import { Route as TestAnalysisTestIdRouteImport } from './routes/test-analysis.$
 import { Route as TestResultAttemptIdRouteImport } from './routes/test-result.$attemptId'
 import { Route as TestTestIdRouteImport } from './routes/test.$testId'
 import { Route as ToolsIndexRouteImport } from './routes/tools.index'
+import { Route as ToolsJeeMainCountdownRouteImport } from './routes/tools.jee-main-countdown'
+import { Route as ToolsJeeMainPercentileCalculatorRouteImport } from './routes/tools.jee-main-percentile-calculator'
+import { Route as ToolsNeetCountdownRouteImport } from './routes/tools.neet-countdown'
 import { Route as ToolsNeetPercentileCalculatorRouteImport } from './routes/tools.neet-percentile-calculator'
 import { Route as ToolsNeetRankPredictorRouteImport } from './routes/tools.neet-rank-predictor'
 import { Route as ToolsNeetTargetScorePlannerRouteImport } from './routes/tools.neet-target-score-planner'
 import { Route as VerifyCertificateIdRouteImport } from './routes/verify.$certificateId'
+import { Route as WhatsNewIndexRouteImport } from './routes/whats-new/index'
+import { Route as WhatsNewSlugRouteImport } from './routes/whats-new/$slug'
+import { Route as WhatsNewFeedDotxmlRouteImport } from './routes/whats-new/feed[.]xml'
 import { Route as CourseKindIdRouteImport } from './routes/course.$kind.$id'
 import { Route as InternTrialCodeRouteImport } from './routes/intern/trial.$code'
 import { Route as JeeMain2027ResourcesIndexRouteImport } from './routes/jee-main-2027.resources.index'
@@ -301,9 +311,24 @@ const BlogSlugRoute = BlogSlugRouteImport.update({
   path: '/blog/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChallengeCodeRoute = ChallengeCodeRouteImport.update({
+  id: '/challenge/$code',
+  path: '/challenge/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CronBlogPublishRoute = CronBlogPublishRouteImport.update({
   id: '/cron/blog-publish',
   path: '/cron/blog-publish',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronCheckoutRemindersRoute = CronCheckoutRemindersRouteImport.update({
+  id: '/cron/checkout-reminders',
+  path: '/cron/checkout-reminders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CronLifecycleEmailsRoute = CronLifecycleEmailsRouteImport.update({
+  id: '/cron/lifecycle-emails',
+  path: '/cron/lifecycle-emails',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CronOutreachRoute = CronOutreachRouteImport.update({
@@ -423,6 +448,11 @@ const NeetQuestionOfTheDayRoute = NeetQuestionOfTheDayRouteImport.update({
   path: '/neet/question-of-the-day',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PayTokenRoute = PayTokenRouteImport.update({
+  id: '/pay/$token',
+  path: '/pay/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PromoterAuthRoute = PromoterAuthRouteImport.update({
   id: '/promoter/auth',
   path: '/promoter/auth',
@@ -468,6 +498,22 @@ const ToolsIndexRoute = ToolsIndexRouteImport.update({
   path: '/tools/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ToolsJeeMainCountdownRoute = ToolsJeeMainCountdownRouteImport.update({
+  id: '/tools/jee-main-countdown',
+  path: '/tools/jee-main-countdown',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ToolsJeeMainPercentileCalculatorRoute =
+  ToolsJeeMainPercentileCalculatorRouteImport.update({
+    id: '/tools/jee-main-percentile-calculator',
+    path: '/tools/jee-main-percentile-calculator',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ToolsNeetCountdownRoute = ToolsNeetCountdownRouteImport.update({
+  id: '/tools/neet-countdown',
+  path: '/tools/neet-countdown',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ToolsNeetPercentileCalculatorRoute =
   ToolsNeetPercentileCalculatorRouteImport.update({
     id: '/tools/neet-percentile-calculator',
@@ -489,6 +535,21 @@ const VerifyCertificateIdRoute = VerifyCertificateIdRouteImport.update({
   id: '/$certificateId',
   path: '/$certificateId',
   getParentRoute: () => VerifyRoute,
+} as any)
+const WhatsNewIndexRoute = WhatsNewIndexRouteImport.update({
+  id: '/whats-new/',
+  path: '/whats-new/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsNewSlugRoute = WhatsNewSlugRouteImport.update({
+  id: '/whats-new/$slug',
+  path: '/whats-new/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsNewFeedDotxmlRoute = WhatsNewFeedDotxmlRouteImport.update({
+  id: '/whats-new/feed.xml',
+  path: '/whats-new/feed.xml',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CourseKindIdRoute = CourseKindIdRouteImport.update({
   id: '/course/$kind/$id',
@@ -644,7 +705,10 @@ export interface FileRoutesByFullPath {
   '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/challenge/$code': typeof ChallengeCodeRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/checkout-reminders': typeof CronCheckoutRemindersRoute
+  '/cron/lifecycle-emails': typeof CronLifecycleEmailsRoute
   '/cron/outreach': typeof CronOutreachRoute
   '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
@@ -667,6 +731,7 @@ export interface FileRoutesByFullPath {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
   '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
+  '/pay/$token': typeof PayTokenRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -675,13 +740,19 @@ export interface FileRoutesByFullPath {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/jee-main-countdown': typeof ToolsJeeMainCountdownRoute
+  '/tools/jee-main-percentile-calculator': typeof ToolsJeeMainPercentileCalculatorRoute
+  '/tools/neet-countdown': typeof ToolsNeetCountdownRoute
   '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
   '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
   '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/whats-new/$slug': typeof WhatsNewSlugRoute
+  '/whats-new/feed.xml': typeof WhatsNewFeedDotxmlRoute
   '/blog/': typeof BlogIndexRoute
   '/jee-main-2027/': typeof JeeMain2027IndexRoute
   '/tools/': typeof ToolsIndexRoute
+  '/whats-new/': typeof WhatsNewIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
@@ -742,7 +813,10 @@ export interface FileRoutesByTo {
   '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/challenge/$code': typeof ChallengeCodeRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/checkout-reminders': typeof CronCheckoutRemindersRoute
+  '/cron/lifecycle-emails': typeof CronLifecycleEmailsRoute
   '/cron/outreach': typeof CronOutreachRoute
   '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
@@ -765,6 +839,7 @@ export interface FileRoutesByTo {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
   '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
+  '/pay/$token': typeof PayTokenRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -773,13 +848,19 @@ export interface FileRoutesByTo {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/jee-main-countdown': typeof ToolsJeeMainCountdownRoute
+  '/tools/jee-main-percentile-calculator': typeof ToolsJeeMainPercentileCalculatorRoute
+  '/tools/neet-countdown': typeof ToolsNeetCountdownRoute
   '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
   '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
   '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/whats-new/$slug': typeof WhatsNewSlugRoute
+  '/whats-new/feed.xml': typeof WhatsNewFeedDotxmlRoute
   '/blog': typeof BlogIndexRoute
   '/jee-main-2027': typeof JeeMain2027IndexRoute
   '/tools': typeof ToolsIndexRoute
+  '/whats-new': typeof WhatsNewIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
@@ -841,7 +922,10 @@ export interface FileRoutesById {
   '/api/razorpay-webhook': typeof ApiRazorpayWebhookRoute
   '/api/resend-webhook': typeof ApiResendWebhookRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/challenge/$code': typeof ChallengeCodeRoute
   '/cron/blog-publish': typeof CronBlogPublishRoute
+  '/cron/checkout-reminders': typeof CronCheckoutRemindersRoute
+  '/cron/lifecycle-emails': typeof CronLifecycleEmailsRoute
   '/cron/outreach': typeof CronOutreachRoute
   '/cron/session-reminders': typeof CronSessionRemindersRoute
   '/cron/streak-reminders': typeof CronStreakRemindersRoute
@@ -864,6 +948,7 @@ export interface FileRoutesById {
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/neet/most-repeated-topics': typeof NeetMostRepeatedTopicsRoute
   '/neet/question-of-the-day': typeof NeetQuestionOfTheDayRoute
+  '/pay/$token': typeof PayTokenRoute
   '/promoter/auth': typeof PromoterAuthRoute
   '/promoter/dashboard': typeof PromoterDashboardRoute
   '/question/$id': typeof QuestionIdRoute
@@ -872,13 +957,19 @@ export interface FileRoutesById {
   '/test-analysis/$testId': typeof TestAnalysisTestIdRoute
   '/test-result/$attemptId': typeof TestResultAttemptIdRoute
   '/test/$testId': typeof TestTestIdRoute
+  '/tools/jee-main-countdown': typeof ToolsJeeMainCountdownRoute
+  '/tools/jee-main-percentile-calculator': typeof ToolsJeeMainPercentileCalculatorRoute
+  '/tools/neet-countdown': typeof ToolsNeetCountdownRoute
   '/tools/neet-percentile-calculator': typeof ToolsNeetPercentileCalculatorRoute
   '/tools/neet-rank-predictor': typeof ToolsNeetRankPredictorRoute
   '/tools/neet-target-score-planner': typeof ToolsNeetTargetScorePlannerRoute
   '/verify/$certificateId': typeof VerifyCertificateIdRoute
+  '/whats-new/$slug': typeof WhatsNewSlugRoute
+  '/whats-new/feed.xml': typeof WhatsNewFeedDotxmlRoute
   '/blog/': typeof BlogIndexRoute
   '/jee-main-2027/': typeof JeeMain2027IndexRoute
   '/tools/': typeof ToolsIndexRoute
+  '/whats-new/': typeof WhatsNewIndexRoute
   '/course/$kind/$id': typeof CourseKindIdRoute
   '/intern/trial/$code': typeof InternTrialCodeRoute
   '/jee/syllabus/$subject': typeof JeeSyllabusSubjectRoute
@@ -941,7 +1032,10 @@ export interface FileRouteTypes {
     | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
+    | '/challenge/$code'
     | '/cron/blog-publish'
+    | '/cron/checkout-reminders'
+    | '/cron/lifecycle-emails'
     | '/cron/outreach'
     | '/cron/session-reminders'
     | '/cron/streak-reminders'
@@ -964,6 +1058,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/neet/most-repeated-topics'
     | '/neet/question-of-the-day'
+    | '/pay/$token'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -972,13 +1067,19 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/jee-main-countdown'
+    | '/tools/jee-main-percentile-calculator'
+    | '/tools/neet-countdown'
     | '/tools/neet-percentile-calculator'
     | '/tools/neet-rank-predictor'
     | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
+    | '/whats-new/$slug'
+    | '/whats-new/feed.xml'
     | '/blog/'
     | '/jee-main-2027/'
     | '/tools/'
+    | '/whats-new/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
@@ -1039,7 +1140,10 @@ export interface FileRouteTypes {
     | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
+    | '/challenge/$code'
     | '/cron/blog-publish'
+    | '/cron/checkout-reminders'
+    | '/cron/lifecycle-emails'
     | '/cron/outreach'
     | '/cron/session-reminders'
     | '/cron/streak-reminders'
@@ -1062,6 +1166,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/neet/most-repeated-topics'
     | '/neet/question-of-the-day'
+    | '/pay/$token'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -1070,13 +1175,19 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/jee-main-countdown'
+    | '/tools/jee-main-percentile-calculator'
+    | '/tools/neet-countdown'
     | '/tools/neet-percentile-calculator'
     | '/tools/neet-rank-predictor'
     | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
+    | '/whats-new/$slug'
+    | '/whats-new/feed.xml'
     | '/blog'
     | '/jee-main-2027'
     | '/tools'
+    | '/whats-new'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
@@ -1137,7 +1248,10 @@ export interface FileRouteTypes {
     | '/api/razorpay-webhook'
     | '/api/resend-webhook'
     | '/blog/$slug'
+    | '/challenge/$code'
     | '/cron/blog-publish'
+    | '/cron/checkout-reminders'
+    | '/cron/lifecycle-emails'
     | '/cron/outreach'
     | '/cron/session-reminders'
     | '/cron/streak-reminders'
@@ -1160,6 +1274,7 @@ export interface FileRouteTypes {
     | '/mentor/dashboard'
     | '/neet/most-repeated-topics'
     | '/neet/question-of-the-day'
+    | '/pay/$token'
     | '/promoter/auth'
     | '/promoter/dashboard'
     | '/question/$id'
@@ -1168,13 +1283,19 @@ export interface FileRouteTypes {
     | '/test-analysis/$testId'
     | '/test-result/$attemptId'
     | '/test/$testId'
+    | '/tools/jee-main-countdown'
+    | '/tools/jee-main-percentile-calculator'
+    | '/tools/neet-countdown'
     | '/tools/neet-percentile-calculator'
     | '/tools/neet-rank-predictor'
     | '/tools/neet-target-score-planner'
     | '/verify/$certificateId'
+    | '/whats-new/$slug'
+    | '/whats-new/feed.xml'
     | '/blog/'
     | '/jee-main-2027/'
     | '/tools/'
+    | '/whats-new/'
     | '/course/$kind/$id'
     | '/intern/trial/$code'
     | '/jee/syllabus/$subject'
@@ -1236,7 +1357,10 @@ export interface RootRouteChildren {
   ApiRazorpayWebhookRoute: typeof ApiRazorpayWebhookRoute
   ApiResendWebhookRoute: typeof ApiResendWebhookRoute
   BlogSlugRoute: typeof BlogSlugRoute
+  ChallengeCodeRoute: typeof ChallengeCodeRoute
   CronBlogPublishRoute: typeof CronBlogPublishRoute
+  CronCheckoutRemindersRoute: typeof CronCheckoutRemindersRoute
+  CronLifecycleEmailsRoute: typeof CronLifecycleEmailsRoute
   CronOutreachRoute: typeof CronOutreachRoute
   CronSessionRemindersRoute: typeof CronSessionRemindersRoute
   CronStreakRemindersRoute: typeof CronStreakRemindersRoute
@@ -1259,6 +1383,7 @@ export interface RootRouteChildren {
   MentorDashboardRoute: typeof MentorDashboardRoute
   NeetMostRepeatedTopicsRoute: typeof NeetMostRepeatedTopicsRoute
   NeetQuestionOfTheDayRoute: typeof NeetQuestionOfTheDayRoute
+  PayTokenRoute: typeof PayTokenRoute
   PromoterAuthRoute: typeof PromoterAuthRoute
   PromoterDashboardRoute: typeof PromoterDashboardRoute
   QuestionIdRoute: typeof QuestionIdRoute
@@ -1267,12 +1392,18 @@ export interface RootRouteChildren {
   TestAnalysisTestIdRoute: typeof TestAnalysisTestIdRoute
   TestResultAttemptIdRoute: typeof TestResultAttemptIdRoute
   TestTestIdRoute: typeof TestTestIdRoute
+  ToolsJeeMainCountdownRoute: typeof ToolsJeeMainCountdownRoute
+  ToolsJeeMainPercentileCalculatorRoute: typeof ToolsJeeMainPercentileCalculatorRoute
+  ToolsNeetCountdownRoute: typeof ToolsNeetCountdownRoute
   ToolsNeetPercentileCalculatorRoute: typeof ToolsNeetPercentileCalculatorRoute
   ToolsNeetRankPredictorRoute: typeof ToolsNeetRankPredictorRoute
   ToolsNeetTargetScorePlannerRoute: typeof ToolsNeetTargetScorePlannerRoute
+  WhatsNewSlugRoute: typeof WhatsNewSlugRoute
+  WhatsNewFeedDotxmlRoute: typeof WhatsNewFeedDotxmlRoute
   BlogIndexRoute: typeof BlogIndexRoute
   JeeMain2027IndexRoute: typeof JeeMain2027IndexRoute
   ToolsIndexRoute: typeof ToolsIndexRoute
+  WhatsNewIndexRoute: typeof WhatsNewIndexRoute
   CourseKindIdRoute: typeof CourseKindIdRoute
   InternTrialCodeRoute: typeof InternTrialCodeRoute
   JeeSyllabusSubjectRoute: typeof JeeSyllabusSubjectRoute
@@ -1570,11 +1701,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BlogSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/challenge/$code': {
+      id: '/challenge/$code'
+      path: '/challenge/$code'
+      fullPath: '/challenge/$code'
+      preLoaderRoute: typeof ChallengeCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cron/blog-publish': {
       id: '/cron/blog-publish'
       path: '/cron/blog-publish'
       fullPath: '/cron/blog-publish'
       preLoaderRoute: typeof CronBlogPublishRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/checkout-reminders': {
+      id: '/cron/checkout-reminders'
+      path: '/cron/checkout-reminders'
+      fullPath: '/cron/checkout-reminders'
+      preLoaderRoute: typeof CronCheckoutRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cron/lifecycle-emails': {
+      id: '/cron/lifecycle-emails'
+      path: '/cron/lifecycle-emails'
+      fullPath: '/cron/lifecycle-emails'
+      preLoaderRoute: typeof CronLifecycleEmailsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cron/outreach': {
@@ -1738,6 +1890,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NeetQuestionOfTheDayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pay/$token': {
+      id: '/pay/$token'
+      path: '/pay/$token'
+      fullPath: '/pay/$token'
+      preLoaderRoute: typeof PayTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/promoter/auth': {
       id: '/promoter/auth'
       path: '/promoter/auth'
@@ -1801,6 +1960,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ToolsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tools/jee-main-countdown': {
+      id: '/tools/jee-main-countdown'
+      path: '/tools/jee-main-countdown'
+      fullPath: '/tools/jee-main-countdown'
+      preLoaderRoute: typeof ToolsJeeMainCountdownRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tools/jee-main-percentile-calculator': {
+      id: '/tools/jee-main-percentile-calculator'
+      path: '/tools/jee-main-percentile-calculator'
+      fullPath: '/tools/jee-main-percentile-calculator'
+      preLoaderRoute: typeof ToolsJeeMainPercentileCalculatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tools/neet-countdown': {
+      id: '/tools/neet-countdown'
+      path: '/tools/neet-countdown'
+      fullPath: '/tools/neet-countdown'
+      preLoaderRoute: typeof ToolsNeetCountdownRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tools/neet-percentile-calculator': {
       id: '/tools/neet-percentile-calculator'
       path: '/tools/neet-percentile-calculator'
@@ -1828,6 +2008,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/verify/$certificateId'
       preLoaderRoute: typeof VerifyCertificateIdRouteImport
       parentRoute: typeof VerifyRoute
+    }
+    '/whats-new/': {
+      id: '/whats-new/'
+      path: '/whats-new'
+      fullPath: '/whats-new/'
+      preLoaderRoute: typeof WhatsNewIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whats-new/$slug': {
+      id: '/whats-new/$slug'
+      path: '/whats-new/$slug'
+      fullPath: '/whats-new/$slug'
+      preLoaderRoute: typeof WhatsNewSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whats-new/feed.xml': {
+      id: '/whats-new/feed.xml'
+      path: '/whats-new/feed.xml'
+      fullPath: '/whats-new/feed.xml'
+      preLoaderRoute: typeof WhatsNewFeedDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/course/$kind/$id': {
       id: '/course/$kind/$id'
@@ -2022,7 +2223,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRazorpayWebhookRoute: ApiRazorpayWebhookRoute,
   ApiResendWebhookRoute: ApiResendWebhookRoute,
   BlogSlugRoute: BlogSlugRoute,
+  ChallengeCodeRoute: ChallengeCodeRoute,
   CronBlogPublishRoute: CronBlogPublishRoute,
+  CronCheckoutRemindersRoute: CronCheckoutRemindersRoute,
+  CronLifecycleEmailsRoute: CronLifecycleEmailsRoute,
   CronOutreachRoute: CronOutreachRoute,
   CronSessionRemindersRoute: CronSessionRemindersRoute,
   CronStreakRemindersRoute: CronStreakRemindersRoute,
@@ -2045,6 +2249,7 @@ const rootRouteChildren: RootRouteChildren = {
   MentorDashboardRoute: MentorDashboardRoute,
   NeetMostRepeatedTopicsRoute: NeetMostRepeatedTopicsRoute,
   NeetQuestionOfTheDayRoute: NeetQuestionOfTheDayRoute,
+  PayTokenRoute: PayTokenRoute,
   PromoterAuthRoute: PromoterAuthRoute,
   PromoterDashboardRoute: PromoterDashboardRoute,
   QuestionIdRoute: QuestionIdRoute,
@@ -2053,12 +2258,18 @@ const rootRouteChildren: RootRouteChildren = {
   TestAnalysisTestIdRoute: TestAnalysisTestIdRoute,
   TestResultAttemptIdRoute: TestResultAttemptIdRoute,
   TestTestIdRoute: TestTestIdRoute,
+  ToolsJeeMainCountdownRoute: ToolsJeeMainCountdownRoute,
+  ToolsJeeMainPercentileCalculatorRoute: ToolsJeeMainPercentileCalculatorRoute,
+  ToolsNeetCountdownRoute: ToolsNeetCountdownRoute,
   ToolsNeetPercentileCalculatorRoute: ToolsNeetPercentileCalculatorRoute,
   ToolsNeetRankPredictorRoute: ToolsNeetRankPredictorRoute,
   ToolsNeetTargetScorePlannerRoute: ToolsNeetTargetScorePlannerRoute,
+  WhatsNewSlugRoute: WhatsNewSlugRoute,
+  WhatsNewFeedDotxmlRoute: WhatsNewFeedDotxmlRoute,
   BlogIndexRoute: BlogIndexRoute,
   JeeMain2027IndexRoute: JeeMain2027IndexRoute,
   ToolsIndexRoute: ToolsIndexRoute,
+  WhatsNewIndexRoute: WhatsNewIndexRoute,
   CourseKindIdRoute: CourseKindIdRoute,
   InternTrialCodeRoute: InternTrialCodeRoute,
   JeeSyllabusSubjectRoute: JeeSyllabusSubjectRoute,

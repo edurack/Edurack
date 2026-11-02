@@ -181,6 +181,12 @@ function UpgradePanel({
               </div>
               <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
                 <span className="font-display text-3xl font-bold text-white">{rupees(p.price)}</span>
+                {p.listPrice !== undefined && p.listPrice > p.price && (
+                  <>
+                    <span className="text-sm font-semibold text-white/45 line-through">{rupees(p.listPrice)}</span>
+                    <span className="rounded-full bg-amber-300/20 px-2 py-0.5 text-[10px] font-bold text-amber-200">Diwali {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
+                  </>
+                )}
                 <span className="text-xs text-white/55">for {p.durationDays} days</span>
               </p>
               {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-[11px] text-white/45">about {rupees(Math.round(perDay(p)))} a day</p>}

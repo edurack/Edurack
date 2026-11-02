@@ -13,6 +13,7 @@ Disallow: /intern/
 Disallow: /dashboard
 Disallow: /profile
 Disallow: /purchases
+Disallow: /pay/
 Disallow: /my-sessions
 Disallow: /tickets
 Disallow: /test/

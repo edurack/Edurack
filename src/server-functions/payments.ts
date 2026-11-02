@@ -25,6 +25,7 @@ import {
   lookupItemPriceAndTitle,
   lookupProPlan,
   recordPaidPurchase,
+  recordProCheckoutStarted,
   userAlreadyOwns,
   type ItemType,
 } from "@/lib/payment-core";
@@ -270,6 +271,11 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
           : {}),
       },
     });
+
+    // A student started paying for Pro: remember it, so one reminder email can follow if they stop (see checkout-reminders.ts).
+    if (data.itemType === "proPlan") {
+      await recordProCheckoutStarted({ uid: decoded.uid, planId: data.itemId, planName: proPlan?.name ?? title, orderId: order.id, amount: amountToCharge });
+    }
 
     return {
       orderId: order.id,

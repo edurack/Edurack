@@ -1,0 +1,18 @@
+import { useEffect, useState } from "react";
+import { splitCountdown, type Countdown } from "@/lib/diwali";
+import { useDiwaliSettings } from "./use-diwali-settings";
+
+/** Time left in the sale. null until mounted, so server HTML and first client paint match. */
+export function useDiwaliCountdown(): Countdown | null {
+  const { endsAt } = useDiwaliSettings();
+  const [left, setLeft] = useState<Countdown | null>(null);
+  useEffect(() => {
+    const tick = () => setLeft(splitCountdown(endsAt - Date.now()));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [endsAt]);
+  return left;
+}
+
+export const pad2 = (n: number) => String(n).padStart(2, "0");

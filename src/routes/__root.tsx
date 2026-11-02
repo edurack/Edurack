@@ -27,6 +27,9 @@ import "@fontsource/plus-jakarta-sans/700.css";
 import { AuthProvider } from "../lib/auth-context";
 import { AnalyticsProvider } from "../components/analytics-provider";
 import { reportError } from "../lib/analytics";
+import { DiwaliLayer } from "../components/diwali/diwali-layer";
+import { getDiwaliSettings } from "../server-functions/diwali";
+import { DEFAULT_DIWALI_SETTINGS } from "../lib/diwali";
 
 // ─── Site-wide SEO constants ────────────────────────────────────────────────
 // One place to change branding/copy. Nothing here is exam-specific on
@@ -146,6 +149,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // Is the Diwali sale switched on (Admin → Edurack Pro)? Loaded here so the festive UI is in the server-rendered HTML.
+  // Never blocks or breaks a page: if it can't be read, the sale counts as off and the site is normal.
+  loader: async () => {
+    try {
+      return { diwali: await getDiwaliSettings() };
+    } catch {
+      return { diwali: DEFAULT_DIWALI_SETTINGS };
+    }
+  },
+  staleTime: 30_000,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -226,9 +239,11 @@ function RootComponent() {
       <ThemeProvider>
         <AuthProvider>
           <AnalyticsProvider />
+          {/* Diwali 2026 festive layer. Renders nothing outside the sale window (see lib/diwali.ts). */}
+          <DiwaliLayer />
           <Outlet />
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );
-}
+}

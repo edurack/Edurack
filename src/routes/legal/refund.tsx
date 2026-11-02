@@ -4,7 +4,7 @@ import { RotateCcw } from "lucide-react"; // TODO: no Tabler mapping found yet
 import { LegalLayout, LegalSection } from "@/components/legal/LegalLayout";
 
 export const Route = createFileRoute("/legal/refund")({
-  head: () => pageHead({"title": "Refund & Cancellation Policy", "path": "/legal/refund", "description": "When purchases of Edurack test series, mentorship batches and sessions can be cancelled or refunded, and how to request one."}),
+  head: () => pageHead({"title": "Refund & Cancellation Policy", "path": "/legal/refund", "description": "When purchases of Edurack Pro plans, test series, mentorship batches and sessions can be cancelled or refunded, and how to request one."}),
   component: RefundPage,
 });
 
@@ -14,7 +14,7 @@ function RefundPage() {
       icon={RotateCcw}
       eyebrow="Legal"
       title="Refund Policy"
-      lastUpdated="September 10, 2026"
+      lastUpdated="November 2, 2026"
     >
       <LegalSection title="1. Custom-Priced Mentorship Programs">
         <p>
@@ -76,7 +76,34 @@ function RefundPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. How to Request a Refund">
+      <LegalSection title="6. Edurack Pro Plans">
+        <p>
+          Edurack Pro is a paid plan that unlocks extra practice features for a
+          fixed number of days, shown on the plan when you buy it. Pro plans do not
+          renew automatically, so you are never charged again unless you choose to
+          buy another plan.
+        </p>
+        <p>
+          A refund request made within 48 hours of purchase is eligible for a full
+          refund, minus any payment gateway charges already incurred. When a refund
+          is approved, Pro access for that purchase ends.
+        </p>
+        <p>
+          After 48 hours, Pro plans are generally not refundable. The exceptions are
+          being charged twice for the same plan, and a technical issue on EDURACK's
+          end that stops you from using the Pro features you paid for and that we
+          cannot fix. In those cases we will fix the problem, extend your plan, or
+          refund you.
+        </p>
+        <p>
+          If you were charged but Pro did not switch on, contact us with your
+          payment details and we will either activate it or refund the payment. If a
+          parent or guardian paid for your plan, the refund goes back to the payment
+          method they used.
+        </p>
+      </LegalSection>
+
+      <LegalSection title="7. How to Request a Refund">
         <p>
           Reach out to our team with your order details and the reason for your
           request. Approved refunds are credited back to your original payment

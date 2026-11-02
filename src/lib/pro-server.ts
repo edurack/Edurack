@@ -9,6 +9,8 @@
 //                Pro is active while any grant has endsAt in the future.
 import type { Db } from "@/lib/pyq-server";
 import { getReferralBonus } from "@/lib/referral-server";
+import { diwaliPrice, isDiwaliActive } from "@/lib/diwali";
+import { readDiwaliSettings } from "@/lib/diwali-server";
 import { PRO_FEATURE_KEYS, cleanPlanFeatures, cleanProSettings, istDayRange, type DrillAccess, type ProFeatureKey, type ProPlanPublic, type ProSettings } from "@/lib/pro";
 
 const DAY_MS = 86_400_000;
@@ -30,10 +32,23 @@ const validPlan = (p: Record<string, unknown>) =>
 
 /** Plans that can be bought right now, cheapest first. A plan with a bad price or duration is skipped, never half-sold. */
 export async function listActivePlans(db: Db): Promise<ProPlanPublic[]> {
-  const docs = await db.collection("proPlans").find({ active: true }).toArray();
+  const [docs, diwali] = await Promise.all([db.collection("proPlans").find({ active: true }).toArray(), readDiwaliSettings(db)]);
   return docs
     .filter(validPlan)
-    .map((d) => ({ id: String(d._id), name: String(d.name ?? "Edurack Pro"), price: d.price as number, durationDays: d.durationDays as number, blurb: String(d.blurb ?? ""), features: cleanPlanFeatures(d.features) }))
+    .map((d) => {
+      const listPrice = d.price as number;
+      // While the admin has the Diwali sale switched on, every plan is shown (and charged, see lookupProPlan) at the sale price.
+      const onSale = isDiwaliActive(diwali);
+      return {
+        id: String(d._id),
+        name: String(d.name ?? "Edurack Pro"),
+        price: diwaliPrice(listPrice, diwali),
+        ...(onSale ? { listPrice } : {}),
+        durationDays: d.durationDays as number,
+        blurb: String(d.blurb ?? ""),
+        features: cleanPlanFeatures(d.features),
+      };
+    })
     .sort((a, b) => a.price - b.price);
 }
 

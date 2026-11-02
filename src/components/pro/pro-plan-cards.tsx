@@ -99,6 +99,12 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
               </div>
               <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
                 <span className="font-display text-4xl font-extrabold tracking-tight">{rupees(p.price)}</span>
+                {p.listPrice !== undefined && p.listPrice > p.price && (
+                  <>
+                    <span className="text-base font-semibold text-muted-foreground line-through">{rupees(p.listPrice)}</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">Diwali {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
+                  </>
+                )}
                 <span className="text-sm text-muted-foreground">for {p.durationDays} days</span>
               </p>
               {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-xs text-muted-foreground">about {rupees(Math.round(perDay(p)))} a day</p>}

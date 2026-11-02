@@ -45,7 +45,7 @@ export const staticRoutes: { path: string; lastmod: string; priority: number; ch
   { path: "/login", lastmod: "2026-10-30", priority: 0.2 },
   { path: "/legal/terms", lastmod: "2026-09-11", priority: 0.3 },
   { path: "/legal/privacy", lastmod: "2026-10-29", priority: 0.3 },
-  { path: "/legal/refund", lastmod: "2026-09-11", priority: 0.3 },
+  { path: "/legal/refund", lastmod: "2026-11-02", priority: 0.3 },
   // Free tools and release notes that are not NEET-specific (the NEET tools are in seoEntries below).
   { path: "/tools/jee-main-percentile-calculator", lastmod: "2026-10-30", priority: 0.9, changefreq: "monthly" },
   { path: "/tools/jee-main-countdown", lastmod: VERIFIED_ON, priority: 0.9, changefreq: "weekly" },

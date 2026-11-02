@@ -1,0 +1,1392 @@
+diff --git a/src/components/admin/diwali-sale-card.tsx b/src/components/admin/diwali-sale-card.tsx
+new file mode 100644
+index 0000000..00ed64c
+--- /dev/null
++++ b/src/components/admin/diwali-sale-card.tsx
+@@ -0,0 +1,134 @@
++// src/components/admin/diwali-sale-card.tsx
++//
++// The Diwali sale switch, shown at the top of the "Edurack Pro" tab. ON: the Diwali look appears site-wide AND every
++// active Pro plan is charged at the discount (whatever its normal price). OFF: the site and prices are exactly normal.
++// It also switches itself off when the end time passes. Normal plan prices are still edited below, never the sale prices.
++import { useEffect, useState } from "react";
++import { useRouter } from "@tanstack/react-router";
++import { IconLoader2 as Loader2, IconFlame as Flame, IconAlertCircle as AlertCircle } from "@tabler/icons-react";
++import { getDiwaliSettings, saveDiwaliSettings } from "@/server-functions/diwali";
++import { DEFAULT_DIWALI_SETTINGS, MAX_DIWALI_DISCOUNT, MIN_DIWALI_DISCOUNT, diwaliEndLabel, isDiwaliActive, type DiwaliSettings } from "@/lib/diwali";
++
++type AdminUser = { getIdToken: () => Promise<string> };
++
++const IST_OFFSET_MS = 330 * 60_000;
++/** epoch ms → "YYYY-MM-DDTHH:mm" in India time, for <input type="datetime-local"> */
++const toIstInput = (ms: number) => new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 16);
++/** "YYYY-MM-DDTHH:mm" read as India time → epoch ms (NaN if empty) */
++const fromIstInput = (v: string) => Date.parse(`${v}:00+05:30`);
++
++export function DiwaliSaleCard({ adminUser }: { adminUser: AdminUser }) {
++  const router = useRouter();
++  const [saved, setSaved] = useState<DiwaliSettings | null>(null);
++  const [pct, setPct] = useState(String(DEFAULT_DIWALI_SETTINGS.discountPercent));
++  const [end, setEnd] = useState(toIstInput(DEFAULT_DIWALI_SETTINGS.endsAt));
++  const [busy, setBusy] = useState(false);
++  const [err, setErr] = useState<string | null>(null);
++
++  function adopt(s: DiwaliSettings) {
++    setSaved(s);
++    setPct(String(s.discountPercent));
++    setEnd(toIstInput(s.endsAt));
++  }
++
++  useEffect(() => {
++    getDiwaliSettings()
++      .then(adopt)
++      .catch(() => setErr("Couldn't load the Diwali sale status."));
++  }, []);
++
++  async function save(enabled: boolean) {
++    const discountPercent = Number(pct);
++    const endsAt = fromIstInput(end);
++    if (!Number.isInteger(discountPercent) || discountPercent < MIN_DIWALI_DISCOUNT || discountPercent > MAX_DIWALI_DISCOUNT) {
++      setErr(`Discount must be a whole number between ${MIN_DIWALI_DISCOUNT} and ${MAX_DIWALI_DISCOUNT}.`);
++      return;
++    }
++    if (!Number.isFinite(endsAt)) {
++      setErr("Pick an end date and time.");
++      return;
++    }
++    if (enabled && !saved?.enabled && !confirm(`Start the Diwali sale?\n\nEvery active Pro plan will be charged at ${discountPercent}% off until ${diwaliEndLabel(endsAt)} IST, and the Diwali look will show across the site.`)) return;
++    setBusy(true);
++    setErr(null);
++    try {
++      const { settings } = await saveDiwaliSettings({ data: { token: await adminUser.getIdToken(), settings: { enabled, discountPercent, endsAt } } });
++      adopt(settings);
++      void router.invalidate(); // refresh this tab's own view of the site too
++    } catch (e) {
++      setErr(e instanceof Error ? e.message : "Couldn't save. Try again.");
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  if (!saved && !err) {
++    return (
++      <div className="clay flex justify-center p-6">
++        <Loader2 className="h-5 w-5 animate-spin text-foreground/40" />
++      </div>
++    );
++  }
++
++  const live = isDiwaliActive(saved);
++  const expired = !!saved?.enabled && !live;
++  const dirty = !!saved && (Number(pct) !== saved.discountPercent || fromIstInput(end) !== saved.endsAt);
++
++  return (
++    <section className={`clay space-y-3 border p-4 ${live ? "border-amber-400/60" : "border-transparent"}`}>
++      <div className="flex items-start gap-3">
++        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${live ? "bg-amber-400 text-amber-950" : "bg-foreground/10 text-foreground/50"}`}>
++          <Flame className="h-5 w-5" aria-hidden />
++        </span>
++        <div className="min-w-0 flex-1">
++          <h3 className="text-sm font-bold text-foreground">
++            Diwali sale{" "}
++            <span className={`ml-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${live ? "bg-amber-100 text-amber-800" : "bg-foreground/10 text-foreground/60"}`}>{live ? "LIVE" : "OFF"}</span>
++          </h3>
++          <p className="text-xs text-foreground/60">
++            {live
++              ? `The Diwali look is showing site-wide and every active Pro plan is ${saved!.discountPercent}% off until ${diwaliEndLabel(saved!.endsAt)} IST.`
++              : expired
++                ? "The end time has passed, so the sale stopped by itself. The site is back to normal. Pick a new end time to run it again."
++                : "The site and all Pro prices are normal. Start the sale to show the Diwali look and discount every active Pro plan."}
++          </p>
++        </div>
++      </div>
++
++      <div className="flex flex-wrap items-end gap-3">
++        <label className="text-xs font-semibold text-foreground/70">
++          Discount %
++          <input type="number" min={MIN_DIWALI_DISCOUNT} max={MAX_DIWALI_DISCOUNT} value={pct} onChange={(e) => setPct(e.target.value)} className="mt-1 block w-24 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none" />
++        </label>
++        <label className="text-xs font-semibold text-foreground/70">
++          Sale ends (India time)
++          <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} className="mt-1 block rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none" />
++        </label>
++        {live ? (
++          <>
++            <button onClick={() => void save(true)} disabled={busy || !dirty} className="clay-btn rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-50">
++              {busy ? "Saving…" : "Save changes"}
++            </button>
++            <button onClick={() => void save(false)} disabled={busy} className="rounded-full border border-rose-300/60 px-5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50">
++              Stop sale
++            </button>
++          </>
++        ) : (
++          <button onClick={() => void save(true)} disabled={busy} className="clay-btn rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-50">
++            {busy ? "Starting…" : "Start Diwali sale"}
++          </button>
++        )}
++      </div>
++
++      <p className="text-[11px] text-foreground/50">
++        Keep the normal prices in the plans below; the discount is applied on top automatically, at checkout too. Visitors see a change within about 30 seconds.
++      </p>
++
++      {err && (
++        <p className="flex items-start gap-1.5 text-xs font-medium text-rose-600">
++          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {err}
++        </p>
++      )}
++    </section>
++  );
++}
+diff --git a/src/components/admin/pro-module.tsx b/src/components/admin/pro-module.tsx
+index a585708..628129c 100644
+--- a/src/components/admin/pro-module.tsx
++++ b/src/components/admin/pro-module.tsx
+@@ -17,6 +17,7 @@ import { getProAdmin, saveProSettings, saveProPlan, deleteProPlan, giftPro } fro
+ import type { ProAdminOverview, ProAdminPlan } from "@/server-functions/pro-admin";
+ import { MAX_FREE_DRILLS_PER_DAY, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
+ import type { ProFeatureKey, ProSettings } from "@/lib/pro";
++import { DiwaliSaleCard } from "@/components/admin/diwali-sale-card";
+ 
+ type AdminUser = { getIdToken: () => Promise<string> };
+ type PlanForm = { id: string | null; name: string; price: string; durationDays: string; blurb: string; features: ProFeatureKey[]; active: boolean };
+@@ -163,6 +164,8 @@ export function ProModule({ adminUser }: { adminUser: AdminUser }) {
+         </div>
+       )}
+ 
++      <DiwaliSaleCard adminUser={adminUser} />
++
+       <div className="flex flex-wrap gap-3">
+         <Tile label="Pro students now" value={data.stats.activeStudents} />
+         <Tile label="Periods sold or gifted" value={data.stats.totalSales} />
+diff --git a/src/components/diwali/diwali-countdown.tsx b/src/components/diwali/diwali-countdown.tsx
+new file mode 100644
+index 0000000..294ef7e
+--- /dev/null
++++ b/src/components/diwali/diwali-countdown.tsx
+@@ -0,0 +1,23 @@
++import { useDiwaliCountdown, pad2 } from "./use-countdown";
++import "./diwali-fonts";
++
++/** Four equal gilded tiles: Days · Hrs · Min · Sec. Stretches to the container so it fits any phone. */
++export function DiwaliCountdown({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
++  const left = useDiwaliCountdown();
++  const cells: [string, string][] = [
++    [left ? pad2(left.d) : "––", "Days"],
++    [left ? pad2(left.h) : "––", "Hrs"],
++    [left ? pad2(left.m) : "––", "Min"],
++    [left ? pad2(left.s) : "––", "Sec"],
++  ];
++  return (
++    <div role="timer" aria-label="Time left in the Diwali sale" className={`grid grid-cols-4 gap-2 sm:gap-3 ${className}`}>
++      {cells.map(([v, label]) => (
++        <div key={label} className={`dw-tile-box text-center ${compact ? "py-2.5" : "py-3.5 sm:py-4"}`}>
++          <div className={`dw-num dw-gold-text font-extrabold tabular-nums leading-none ${compact ? "text-2xl" : "text-3xl sm:text-4xl"}`}>{v}</div>
++          <div className="mt-1.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#e9c98a]/65">{label}</div>
++        </div>
++      ))}
++    </div>
++  );
++}
+diff --git a/src/components/diwali/diwali-decor.tsx b/src/components/diwali/diwali-decor.tsx
+new file mode 100644
+index 0000000..8766223
+--- /dev/null
++++ b/src/components/diwali/diwali-decor.tsx
+@@ -0,0 +1,107 @@
++import { useId, type CSSProperties } from "react";
++
++// Pure decoration: every element here is aria-hidden and pointer-events:none, so it can never block a click
++// or be read out by a screen reader. All motion is switched off for prefers-reduced-motion in styles.css.
++
++const BULB_COLORS = ["#ffb52e", "#ff7a1a", "#ffd978", "#ff5a2b", "#ffc94d"];
++const TILE_COUNT = 30; // 30 × 100px = 3000px of swags, clipped to the viewport
++
++/** A string of fairy lights hanging in swags along the very top edge of the screen. */
++export function DiwaliGarland() {
++  return (
++    <div aria-hidden="true" className="dw-garland">
++      <div className="dw-garland-row">
++        {Array.from({ length: TILE_COUNT }, (_, t) => (
++          <div className="dw-tile" key={t}>
++            {[
++              [25, 6.2],
++              [50, 8],
++              [75, 6.2],
++            ].map(([x, y], i) => {
++              const n = t * 3 + i;
++              return (
++                <span
++                  key={i}
++                  className="dw-bulb"
++                  style={{ left: x, top: y, "--c": BULB_COLORS[n % BULB_COLORS.length], "--d": `${(n * 0.37) % 2.6}s` } as CSSProperties}
++                />
++              );
++            })}
++          </div>
++        ))}
++      </div>
++    </div>
++  );
++}
++
++/** A small flickering diya. */
++export function Diya({ className = "" }: { className?: string }) {
++  // Unique gradient ids per instance: a gradient defined inside a display:none <svg> (the corner diyas are hidden
++  // on small screens) does not resolve for other <svg>s that share its id, which left the bowl unpainted.
++  const uid = useId().replace(/:/g, "");
++  const bowl = `dw-bowl-${uid}`;
++  const fl = `dw-fl-${uid}`;
++  return (
++    <svg aria-hidden="true" viewBox="0 0 80 64" className={className} focusable="false">
++      <defs>
++        <linearGradient id={bowl} x1="0" y1="0" x2="1" y2="1">
++          <stop offset="0" stopColor="#ffe9a8" />
++          <stop offset=".5" stopColor="#e0a43a" />
++          <stop offset="1" stopColor="#8d5513" />
++        </linearGradient>
++        <radialGradient id={fl} cx=".5" cy=".7" r=".6">
++          <stop offset="0" stopColor="#fffbe0" />
++          <stop offset=".45" stopColor="#ffc24a" />
++          <stop offset="1" stopColor="#ff6a14" />
++        </radialGradient>
++      </defs>
++      <ellipse className="dw-flame-halo" cx="40" cy="22" rx="26" ry="22" fill="#ff9a2e" opacity=".28" />
++      <path className="dw-flame" d="M40 4c6 8 9 13 6 19-1.6 3.2-4.4 4.6-6 4.6s-4.4-1.4-6-4.6c-3-6 0-11 6-19z" fill={`url(#${fl})`} />
++      <path d="M6 32h68c0 14-14 26-34 26S6 46 6 32z" fill={`url(#${bowl})`} />
++      <path d="M6 32h68" stroke="#fff1c2" strokeWidth="2" strokeLinecap="round" opacity=".7" />
++      <path d="M22 44c6 6 30 6 36 0" stroke="#7a4710" strokeWidth="1.4" fill="none" opacity=".5" strokeLinecap="round" />
++    </svg>
++  );
++}
++
++// x%, y%, size px, delay s. A handful of crisp four-point stars, not dust: they only live on the dark surfaces.
++const SPARKS: [number, number, number, number][] = [
++  [7, 16, 16, 0],
++  [90, 10, 12, 1.1],
++  [19, 74, 11, 0.5],
++  [78, 62, 18, 1.7],
++  [52, 28, 9, 2.2],
++  [95, 86, 12, 0.9],
++  [4, 52, 10, 2.8],
++];
++export function Sparkles({ count = SPARKS.length }: { count?: number }) {
++  return (
++    <div aria-hidden="true" className="dw-sparks">
++      {SPARKS.slice(0, count).map(([x, y, s, d], i) => (
++        <span key={i} className="dw-spark" style={{ left: `${x}%`, top: `${y}%`, width: s, height: s, animationDelay: `${d}s` }}>
++          <svg viewBox="0 0 24 24" width="100%" height="100%" focusable="false">
++            <path d="M12 0c.9 6.8 5.2 11.1 12 12-6.8.9-11.1 5.2-12 12-.9-6.8-5.2-11.1-12-12C6.8 11.1 11.1 6.8 12 0z" fill="#ffe9a8" />
++          </svg>
++        </span>
++      ))}
++    </div>
++  );
++}
++
++/** A gold marquee tape: "DIWALI SALE ✦ FLAT 50% OFF ✦ ALL PRO PLANS ✦" sliding past. */
++export function Tape({ percent, className = "" }: { percent: number; className?: string }) {
++  const unit = `Diwali sale ✦ Flat ${percent}% off ✦ All Pro plans ✦ `;
++  return (
++    <div aria-hidden="true" className={`dw-tape ${className}`}>
++      <div className="dw-tape-track">
++        {[0, 1].map((k) => (
++          <div className="dw-tape-set" key={k}>
++            {Array.from({ length: 6 }, (_, i) => (
++              <span key={i}>{unit}</span>
++            ))}
++          </div>
++        ))}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/diwali/diwali-fonts.ts b/src/components/diwali/diwali-fonts.ts
+new file mode 100644
+index 0000000..ce5e4e4
+--- /dev/null
++++ b/src/components/diwali/diwali-fonts.ts
+@@ -0,0 +1,8 @@
++// Diwali typography: Instrument Serif (a tall, elegant editorial serif; italic for "Diwali") paired with Bricolage
++// Grotesque 800 (already used by the site) for the giant numerals. Self-hosted via Fontsource like the rest of the
++// site; the browser only downloads a face when text actually uses it, so once the sale ends nothing is fetched.
++//
++// Requires (run once):  npm install @fontsource/instrument-serif
++import "@fontsource/instrument-serif/400.css";
++import "@fontsource/instrument-serif/400-italic.css";
++import "@fontsource/bricolage-grotesque/800.css";
+diff --git a/src/components/diwali/diwali-layer.tsx b/src/components/diwali/diwali-layer.tsx
+new file mode 100644
+index 0000000..498e2a0
+--- /dev/null
++++ b/src/components/diwali/diwali-layer.tsx
+@@ -0,0 +1,92 @@
++// The site-wide Diwali layer. Mounted ONCE in routes/__root.tsx, before <Outlet />.
++//
++//   • ticker bar     — in-flow, top of marketing pages only (promoAllowed)
++//   • lights + glow  — fixed overlays (garland, soft corner glow, diyas) on every page except exams/drills/portals (ambientAllowed)
++//   • popup          — once per session on marketing pages (popupAllowed)
++//   • data-diwali    — attribute on <html> that switches on the warm CSS touches at the bottom of styles.css
++//
++// It renders nothing unless the admin has switched the sale ON (Admin → Edurack Pro → Diwali sale) and the end time
++// is still ahead, and it switches itself off when that time passes, even on an open tab.
++import { useEffect, useState } from "react";
++import { Link, useRouterState } from "@tanstack/react-router";
++import { IconArrowRight as ArrowRight } from "@tabler/icons-react";
++import { DIWALI_SALE, ambientAllowed, isDiwaliActive, popupAllowed, promoAllowed } from "@/lib/diwali";
++import { track } from "@/lib/analytics";
++import { DiwaliGarland, Diya } from "./diwali-decor";
++import { DiwaliPopup } from "./diwali-popup";
++import { useDiwaliCountdown, pad2 } from "./use-countdown";
++import { useDiwaliSettings } from "./use-diwali-settings";
++import "./diwali-fonts";
++
++function DiwaliTicker({ percent }: { percent: number }) {
++  const left = useDiwaliCountdown();
++  return (
++    <div className="dw-ticker relative z-[46]" role="region" aria-label="Diwali sale">
++      <Link
++        to={DIWALI_SALE.ctaPath}
++        onClick={() => track("diwali_cta_click", { from: "ticker" })}
++        className="mx-auto flex min-h-[2.75rem] max-w-6xl items-center justify-center gap-x-3 px-3 pt-3.5 text-center text-[12.5px] font-semibold tracking-wide text-[#ffe9b4] sm:text-[13.5px]"
++      >
++        <span className="dw-serif hidden text-[1.6rem] italic leading-none text-[#ffd978] sm:inline">Happy Diwali</span>
++        <span className="hidden h-3 w-px bg-[#e8b04a]/40 sm:inline-block" aria-hidden="true" />
++        <span>
++          Flat <b className="dw-gold-text text-[1.05em] font-extrabold">{percent}% off</b> {DIWALI_SALE.productName}
++        </span>
++        {left && (
++          <span className="hidden tabular-nums text-[#e9c98a]/80 min-[460px]:inline">
++            · ends in {left.d > 0 ? `${left.d}d ` : ""}
++            {pad2(left.h)}h {pad2(left.m)}m
++          </span>
++        )}
++        <span className="inline-flex items-center gap-1 text-[#ffd978] underline decoration-[#e8b04a]/50 underline-offset-4">
++          Claim <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
++        </span>
++      </Link>
++    </div>
++  );
++}
++
++function DiwaliAmbient() {
++  return (
++    <>
++      <div aria-hidden="true" className="dw-glow" />
++      <DiwaliGarland />
++      <Diya className="dw-corner-diya left-3" />
++      <Diya className="dw-corner-diya right-3 -scale-x-100" />
++    </>
++  );
++}
++
++export function DiwaliLayer() {
++  const settings = useDiwaliSettings();
++  const path = useRouterState({ select: (s) => s.location.pathname });
++  const active = isDiwaliActive(settings);
++  const [mounted, setMounted] = useState(false);
++  const [, setTick] = useState(0);
++  useEffect(() => setMounted(true), []);
++
++  // Switch everything off the moment the sale ends, even if the tab stays open.
++  useEffect(() => {
++    if (!active) return;
++    const ms = settings.endsAt - Date.now();
++    const id = window.setTimeout(() => setTick((n) => n + 1), Math.min(ms, 2 ** 31 - 1));
++    return () => window.clearTimeout(id);
++  }, [active, settings.endsAt]);
++
++  const ambient = active && ambientAllowed(path);
++  useEffect(() => {
++    const root = document.documentElement;
++    if (ambient) root.setAttribute("data-diwali", "on");
++    else root.removeAttribute("data-diwali");
++    return () => root.removeAttribute("data-diwali");
++  }, [ambient]);
++
++  if (!active) return null;
++  return (
++    <>
++      {promoAllowed(path) && <DiwaliTicker percent={settings.discountPercent} />}
++      {mounted && ambient && <DiwaliAmbient />}
++      {mounted && popupAllowed(path) && <DiwaliPopup />}
++    </>
++  );
++}
+diff --git a/src/components/diwali/diwali-offer.tsx b/src/components/diwali/diwali-offer.tsx
+new file mode 100644
+index 0000000..2fd1453
+--- /dev/null
++++ b/src/components/diwali/diwali-offer.tsx
+@@ -0,0 +1,61 @@
++import { useEffect, useState } from "react";
++import { getPublicProOffer } from "@/server-functions/pro-public";
++import "./diwali-fonts";
++
++/** "Diwali" in a tall italic serif over a giant gold "50" with a stacked "% off". Decorative: the heading carries sr-only text. */
++export function OfferHeadline({ percent, size, center = false }: { percent: number; size: "section" | "popup"; center?: boolean }) {
++  const big = size === "section" ? "text-[clamp(7rem,40vw,16rem)]" : "text-[clamp(6.4rem,32vw,9rem)]";
++  const script = size === "section" ? "text-[clamp(3.6rem,17vw,8rem)]" : "text-[clamp(3.2rem,16vw,4.8rem)]";
++  const align = center ? "justify-center" : "justify-center lg:justify-start";
++  return (
++    <span aria-hidden="true" className="block select-none">
++      <span className={`dw-serif relative z-10 block italic leading-[0.85] text-[#ffe9b8] ${script}`}>Diwali</span>
++      <span className={`relative -mt-[0.1em] flex items-start ${align} ${big}`}>
++        <span className="dw-num dw-gold-text font-extrabold leading-[0.82] tracking-[-0.07em]">{percent}</span>
++        <span className="ml-[0.04em] mt-[0.06em] flex flex-col items-start">
++          <span className="dw-num dw-gold-text text-[0.42em] font-extrabold leading-[0.9]">%</span>
++          <span className="dw-serif -mt-[0.01em] text-[0.3em] italic leading-none text-[#fff3dc]">off</span>
++        </span>
++      </span>
++    </span>
++  );
++}
++
++type SalePlan = { price: number; listPrice?: number; days: number };
++let pending: Promise<SalePlan | null> | null = null;
++
++/** The cheapest live Pro plan with its sale price, shared by the section, popup and ticker (one request). Null until known or if nothing is for sale. */
++export function useDiwaliPlan(): SalePlan | null {
++  const [plan, setPlan] = useState<SalePlan | null>(null);
++  useEffect(() => {
++    let alive = true;
++    pending ??= getPublicProOffer()
++      .then((o) => {
++        const p = [...o.plans].sort((a, b) => a.price - b.price)[0];
++        return p ? { price: p.price, listPrice: p.listPrice, days: p.durationDays } : null;
++      })
++      .catch(() => null);
++    pending.then((p) => alive && setPlan(p));
++    return () => {
++      alive = false;
++    };
++  }, []);
++  return plan;
++}
++
++const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
++
++/** "Pro from ₹99 ₹199 · 30 days": real numbers from the live plans, so it can never disagree with checkout. Renders nothing until known. */
++export function PriceLine({ className = "" }: { className?: string }) {
++  const plan = useDiwaliPlan();
++  if (!plan) return null;
++  const off = plan.listPrice !== undefined && plan.listPrice > plan.price;
++  return (
++    <p className={`flex flex-wrap items-baseline gap-x-2 gap-y-0.5 ${className}`}>
++      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#e9c98a]/70">Pro from</span>
++      <span className="dw-num text-2xl font-extrabold text-[#fff3dc]">{rupees(plan.price)}</span>
++      {off && <span className="text-base font-semibold text-[#e9c98a]/55 line-through decoration-[#ff7a18]/80">{rupees(plan.listPrice!)}</span>}
++      <span className="text-xs text-[#e9c98a]/60">for {plan.days} days</span>
++    </p>
++  );
++}
+diff --git a/src/components/diwali/diwali-popup.tsx b/src/components/diwali/diwali-popup.tsx
+new file mode 100644
+index 0000000..41721f2
+--- /dev/null
++++ b/src/components/diwali/diwali-popup.tsx
+@@ -0,0 +1,112 @@
++// Diwali sale popup. Shown once per browser session, DIWALI_SALE.popupDelayMs after landing on a marketing page
++// (see popupAllowed in lib/diwali.ts for which pages). On phones it slides up as a bottom sheet; from the sm
++// breakpoint it is a centred card. Closing it or tapping the button keeps it away for the rest of the session.
++import { useEffect, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import * as DialogPrimitive from "@radix-ui/react-dialog";
++import { IconX as X, IconArrowRight as ArrowRight } from "@tabler/icons-react";
++import { DIWALI_SALE, diwaliEndLabel } from "@/lib/diwali";
++import { useDiwaliSettings } from "./use-diwali-settings";
++import { track } from "@/lib/analytics";
++import { DiwaliCountdown } from "./diwali-countdown";
++import { Diya, Sparkles, Tape } from "./diwali-decor";
++import { OfferHeadline, PriceLine } from "./diwali-offer";
++import "./diwali-fonts";
++
++const seen = () => {
++  try {
++    return sessionStorage.getItem(DIWALI_SALE.popupStorageKey) === "1";
++  } catch {
++    return false;
++  }
++};
++const markSeen = () => {
++  try {
++    sessionStorage.setItem(DIWALI_SALE.popupStorageKey, "1");
++  } catch {
++    /* storage blocked: it just won't be remembered */
++  }
++};
++
++export function DiwaliPopup() {
++  const settings = useDiwaliSettings();
++  const [open, setOpen] = useState(false);
++
++  useEffect(() => {
++    if (seen()) return;
++    const t = window.setTimeout(() => {
++      setOpen(true);
++      track("diwali_popup_view");
++    }, DIWALI_SALE.popupDelayMs);
++    return () => window.clearTimeout(t);
++  }, []);
++
++  function close() {
++    markSeen();
++    setOpen(false);
++  }
++
++  const pct = settings.discountPercent;
++
++  return (
++    <DialogPrimitive.Root open={open} onOpenChange={(next) => !next && close()}>
++      <DialogPrimitive.Portal>
++        <DialogPrimitive.Overlay className="dw-overlay fixed inset-0 z-[90]" />
++        <DialogPrimitive.Content
++          onOpenAutoFocus={(e) => {
++            // keep focus inside the dialog but off the close button, so it doesn't open with a focus ring on the ✕
++            e.preventDefault();
++            (e.currentTarget as HTMLElement).focus();
++          }}
++          className="dw-popup fixed inset-x-0 bottom-0 z-[91] mx-auto max-h-[94dvh] w-full max-w-[30rem] overflow-y-auto overscroll-contain rounded-t-[1.75rem] text-[#fff3dc] focus:outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:mx-0 sm:w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-[1.75rem]"
++        >
++          <div aria-hidden="true" className="dw-section-bg absolute inset-0 -z-10" />
++          <Sparkles count={5} />
++
++          <Tape percent={pct} />
++          <DialogPrimitive.Close
++            onClick={close}
++            aria-label="Close"
++            className="absolute right-3 top-12 z-10 grid h-10 w-10 place-items-center rounded-full border border-[#e8b04a]/35 bg-black/25 text-[#f6d77c] transition hover:bg-black/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ffd978]"
++          >
++            <X className="h-4 w-4" aria-hidden="true" />
++          </DialogPrimitive.Close>
++
++          <div className="relative px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8 text-center sm:px-8 sm:pb-8">
++            <DialogPrimitive.Title className="m-0">
++              <span className="sr-only">Diwali sale: flat {pct}% off {DIWALI_SALE.productName}</span>
++              <OfferHeadline percent={pct} size="popup" center />
++            </DialogPrimitive.Title>
++
++            <DialogPrimitive.Description className="mx-auto mt-4 max-w-[19rem] text-[15px] leading-relaxed text-[#f3dfb8]/80">
++              on every {DIWALI_SALE.productName} plan. Unlimited mocks, your own drills, smarter analysis.
++            </DialogPrimitive.Description>
++
++            <PriceLine className="mt-3 justify-center" />
++
++            <DiwaliCountdown compact className="mt-6" />
++
++            <Link
++              to={DIWALI_SALE.ctaPath}
++              onClick={() => {
++                track("diwali_cta_click", { from: "popup" });
++                close();
++              }}
++              className="dw-btn-gold mt-6 w-full"
++            >
++              Claim {pct}% off
++              <ArrowRight className="h-4 w-4" aria-hidden="true" />
++            </Link>
++            <button type="button" onClick={close} className="mt-2 min-h-11 px-4 text-sm font-medium text-[#e9c98a]/70 transition hover:text-[#ffe3a0]">
++              Maybe later
++            </button>
++            <p className="text-[11px] text-[#e9c98a]/45">Applied automatically at checkout · till {diwaliEndLabel(settings.endsAt)} IST</p>
++          </div>
++
++          <Diya className="pointer-events-none absolute bottom-3 left-4 hidden h-14 w-[4.5rem] opacity-90 sm:block" />
++          <Diya className="pointer-events-none absolute bottom-3 right-4 hidden h-14 w-[4.5rem] -scale-x-100 opacity-90 sm:block" />
++        </DialogPrimitive.Content>
++      </DialogPrimitive.Portal>
++    </DialogPrimitive.Root>
++  );
++}
+diff --git a/src/components/diwali/diwali-sale-section.tsx b/src/components/diwali/diwali-sale-section.tsx
+new file mode 100644
+index 0000000..1a21f76
+--- /dev/null
++++ b/src/components/diwali/diwali-sale-section.tsx
+@@ -0,0 +1,116 @@
++import { Link } from "@tanstack/react-router";
++import {
++  IconArrowRight as ArrowRight,
++  IconInfinity as Infinity,
++  IconAdjustmentsHorizontal as Sliders,
++  IconRepeat as Repeat,
++  IconStopwatch as Stopwatch,
++} from "@tabler/icons-react";
++import { motion } from "motion/react";
++import { DIWALI_SALE, diwaliEndLabel, isDiwaliActive } from "@/lib/diwali";
++import { useDiwaliSettings } from "./use-diwali-settings";
++import type { ProFeatureKey } from "@/lib/pro";
++import { track } from "@/lib/analytics";
++import { DiwaliCountdown } from "./diwali-countdown";
++import { Sparkles, Tape } from "./diwali-decor";
++import { OfferHeadline, PriceLine } from "./diwali-offer";
++import "./diwali-fonts";
++
++const EASE = [0.22, 1, 0.36, 1] as const;
++
++// Short, scannable versions of the Pro features for the tiles (the long descriptions live on /pro).
++const TILES: { key: ProFeatureKey; icon: typeof Infinity; title: string; body: string }[] = [
++  { key: "unlimitedDrills", icon: Infinity, title: "Unlimited mocks", body: "No daily cap on timed PYQ drills" },
++  { key: "customDrillBuilder", icon: Sliders, title: "Your own drill", body: "Chapter, difficulty, year, length" },
++  { key: "mistakeRevision", icon: Repeat, title: "Fix mistakes", body: "Old wrong answers come back" },
++  { key: "timeAnalysis", icon: Stopwatch, title: "Time analysis", body: "Spot rushed guesses fast" },
++];
++
++/**
++ * The homepage Diwali sale. Drop it between any two sections; it renders nothing outside the sale window,
++ * so it can stay in the page without ever showing up late. Built phone-first: one centred column that
++ * becomes a two-column layout from the lg breakpoint.
++ */
++export function DiwaliSaleSection() {
++  const settings = useDiwaliSettings();
++  if (!isDiwaliActive(settings)) return null;
++  const pct = settings.discountPercent;
++  const endLabel = diwaliEndLabel(settings.endsAt);
++
++  return (
++    <section id="diwali-sale" aria-labelledby="diwali-sale-heading" className="dw-section relative isolate overflow-hidden text-[#fff3dc]">
++      <div aria-hidden="true" className="dw-section-bg absolute inset-0 -z-10" />
++      <Sparkles />
++      <span aria-hidden="true" className="dw-bigword -z-10 hidden sm:block">Diwali</span>
++
++      <Tape percent={pct} />
++
++      <div className="mx-auto grid max-w-6xl gap-10 px-4 pb-16 pt-12 sm:px-6 sm:pb-24 sm:pt-20 lg:grid-cols-12 lg:items-center lg:gap-14">
++        {/* left: the offer */}
++        <div className="text-center lg:col-span-7 lg:text-left">
++          <motion.p
++            initial={{ opacity: 0, y: 12 }}
++            whileInView={{ opacity: 1, y: 0 }}
++            viewport={{ once: true, margin: "-40px" }}
++            transition={{ duration: 0.6, ease: EASE }}
++            className="dw-pill mb-6"
++          >
++            <span className="dw-kicker-dot" /> Festival of Lights · Ends {endLabel.split(",")[0]}
++          </motion.p>
++
++          <h2 id="diwali-sale-heading">
++            <span className="sr-only">Diwali sale: flat {pct}% off {DIWALI_SALE.productName}</span>
++            <motion.span
++              initial={{ opacity: 0, y: 40 }}
++              whileInView={{ opacity: 1, y: 0 }}
++              viewport={{ once: true, margin: "-40px" }}
++              transition={{ duration: 0.9, ease: EASE }}
++              className="block"
++            >
++              <OfferHeadline percent={pct} size="section" />
++            </motion.span>
++          </h2>
++
++          <p className="mx-auto mt-6 max-w-md text-base leading-relaxed text-[#f3dfb8]/80 lg:mx-0 lg:text-lg">
++            Light up your prep. {pct}% off on every {DIWALI_SALE.productName} plan, till Diwali ends.
++          </p>
++
++          <PriceLine className="mt-4 justify-center lg:justify-start" />
++
++          <DiwaliCountdown className="mx-auto mt-7 max-w-sm lg:mx-0" />
++
++          <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center lg:justify-start">
++            <Link to={DIWALI_SALE.ctaPath} onClick={() => track("diwali_cta_click", { from: "landing_section" })} className="dw-btn-gold">
++              Claim {pct}% off
++              <ArrowRight className="h-4 w-4" aria-hidden="true" />
++            </Link>
++            <Link to="/auth" search={{ tab: "signup" }} className="dw-btn-ghost">
++              Start free
++            </Link>
++          </div>
++          <p className="mt-4 text-xs text-[#e9c98a]/50">Applied automatically at checkout · valid till {endLabel} IST</p>
++        </div>
++
++        {/* right: bento of what the offer unlocks (2×2 on every screen) */}
++        <ul className="grid grid-cols-2 gap-3 sm:gap-4 lg:col-span-5">
++          {TILES.map(({ key, icon: Icon, title, body }, i) => (
++            <motion.li
++              key={key}
++              initial={{ opacity: 0, y: 26 }}
++              whileInView={{ opacity: 1, y: 0 }}
++              viewport={{ once: true, margin: "-30px" }}
++              transition={{ duration: 0.7, delay: i * 0.08, ease: EASE }}
++              className={`dw-glass flex flex-col p-4 sm:p-5 ${i % 2 === 1 ? "lg:translate-y-6" : ""}`}
++            >
++              <span className="dw-icon mb-4 grid h-10 w-10 place-items-center rounded-full">
++                <Icon className="h-5 w-5" stroke={1.8} aria-hidden="true" />
++              </span>
++              <b className="text-[15px] font-semibold leading-tight text-[#fff3dc]">{title}</b>
++              <span className="mt-1 text-xs leading-snug text-[#f3dfb8]/65 sm:text-[13px]">{body}</span>
++            </motion.li>
++          ))}
++        </ul>
++      </div>
++    </section>
++  );
++}
+diff --git a/src/components/diwali/use-countdown.ts b/src/components/diwali/use-countdown.ts
+new file mode 100644
+index 0000000..4db5e39
+--- /dev/null
++++ b/src/components/diwali/use-countdown.ts
+@@ -0,0 +1,18 @@
++import { useEffect, useState } from "react";
++import { splitCountdown, type Countdown } from "@/lib/diwali";
++import { useDiwaliSettings } from "./use-diwali-settings";
++
++/** Time left in the sale. null until mounted, so server HTML and first client paint match. */
++export function useDiwaliCountdown(): Countdown | null {
++  const { endsAt } = useDiwaliSettings();
++  const [left, setLeft] = useState<Countdown | null>(null);
++  useEffect(() => {
++    const tick = () => setLeft(splitCountdown(endsAt - Date.now()));
++    tick();
++    const id = window.setInterval(tick, 1000);
++    return () => window.clearInterval(id);
++  }, [endsAt]);
++  return left;
++}
++
++export const pad2 = (n: number) => String(n).padStart(2, "0");
+diff --git a/src/components/diwali/use-diwali-settings.ts b/src/components/diwali/use-diwali-settings.ts
+new file mode 100644
+index 0000000..be23c05
+--- /dev/null
++++ b/src/components/diwali/use-diwali-settings.ts
+@@ -0,0 +1,11 @@
++import { getRouteApi } from "@tanstack/react-router";
++import { DEFAULT_DIWALI_SETTINGS, type DiwaliSettings } from "@/lib/diwali";
++
++// The switch is loaded once by the root route (routes/__root.tsx loader), so it is in the server-rendered HTML:
++// the Diwali UI never pops in late. If it could not be loaded, the sale counts as OFF and the site is normal.
++const rootApi = getRouteApi("__root__");
++
++export function useDiwaliSettings(): DiwaliSettings {
++  const data = rootApi.useLoaderData() as { diwali?: DiwaliSettings } | undefined;
++  return data?.diwali ?? DEFAULT_DIWALI_SETTINGS;
++}
+diff --git a/src/components/landing-pro-section.tsx b/src/components/landing-pro-section.tsx
+index 9d60d0d..2076d44 100644
+--- a/src/components/landing-pro-section.tsx
++++ b/src/components/landing-pro-section.tsx
+@@ -50,7 +50,8 @@ export function LandingProSection() {
+           <div className="mt-5 flex flex-wrap gap-2">
+             {offer.plans.map((p) => (
+               <span key={p.id} className="rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white/85">
+-                {p.name} · {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
++                {p.name} · {p.listPrice !== undefined && p.listPrice > p.price && <s className="opacity-60">{rupees(p.listPrice)}</s>}{" "}
++                {rupees(p.price)} / {p.durationDays} days{p.id === best ? " · Best value" : ""}
+               </span>
+             ))}
+           </div>
+diff --git a/src/components/pro/pro-plan-cards.tsx b/src/components/pro/pro-plan-cards.tsx
+index e273df4..5751d13 100644
+--- a/src/components/pro/pro-plan-cards.tsx
++++ b/src/components/pro/pro-plan-cards.tsx
+@@ -100,6 +100,12 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
+               </div>
+               <p className="mt-3 flex flex-wrap items-baseline gap-x-1.5">
+                 <span className="font-display text-4xl font-extrabold tracking-tight">{rupees(p.price)}</span>
++                {p.listPrice !== undefined && p.listPrice > p.price && (
++                  <>
++                    <span className="text-base font-semibold text-muted-foreground line-through">{rupees(p.listPrice)}</span>
++                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">Diwali {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
++                  </>
++                )}
+                 <span className="text-sm text-muted-foreground">for {p.durationDays} days</span>
+               </p>
+               {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-xs text-muted-foreground">about {rupees(Math.round(perDay(p)))} a day</p>}
+diff --git a/src/components/pyq/drill-launcher.tsx b/src/components/pyq/drill-launcher.tsx
+index d8d4d2b..5a575bf 100644
+--- a/src/components/pyq/drill-launcher.tsx
++++ b/src/components/pyq/drill-launcher.tsx
+@@ -182,6 +182,12 @@ function UpgradePanel({
+               </div>
+               <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
+                 <span className="font-display text-3xl font-bold text-white">{rupees(p.price)}</span>
++                {p.listPrice !== undefined && p.listPrice > p.price && (
++                  <>
++                    <span className="text-sm font-semibold text-white/45 line-through">{rupees(p.listPrice)}</span>
++                    <span className="rounded-full bg-amber-300/20 px-2 py-0.5 text-[10px] font-bold text-amber-200">Diwali {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
++                  </>
++                )}
+                 <span className="text-xs text-white/55">for {p.durationDays} days</span>
+               </p>
+               {p.durationDays >= 7 && perDay(p) >= 1 && <p className="text-[11px] text-white/45">about {rupees(Math.round(perDay(p)))} a day</p>}
+diff --git a/src/lib/diwali-server.ts b/src/lib/diwali-server.ts
+new file mode 100644
+index 0000000..f2155b6
+--- /dev/null
++++ b/src/lib/diwali-server.ts
+@@ -0,0 +1,19 @@
++// Server-only storage for the Diwali sale switch: one document in `siteSettings` ({ key: "diwali" }).
++// Edited from the admin portal (server-functions/diwali.ts); read here by everything that sets a price.
++import type { Db } from "@/lib/pyq-server";
++import { cleanDiwaliSettings, type DiwaliSettings } from "@/lib/diwali";
++
++/** The current settings, straight from the database (no cache: checkout must never charge from a stale switch). Never throws: on any error the sale is OFF. */
++export async function readDiwaliSettings(db: Db): Promise<DiwaliSettings> {
++  try {
++    return cleanDiwaliSettings(await db.collection("siteSettings").findOne({ key: "diwali" }));
++  } catch {
++    return cleanDiwaliSettings(null);
++  }
++}
++
++export async function writeDiwaliSettings(db: Db, settings: DiwaliSettings): Promise<void> {
++  await db
++    .collection("siteSettings")
++    .updateOne({ key: "diwali" }, { $set: { key: "diwali", enabled: settings.enabled, discountPercent: settings.discountPercent, endsAt: new Date(settings.endsAt), updatedAt: new Date() } }, { upsert: true });
++}
+diff --git a/src/lib/diwali.ts b/src/lib/diwali.ts
+new file mode 100644
+index 0000000..4c46fea
+--- /dev/null
++++ b/src/lib/diwali.ts
+@@ -0,0 +1,106 @@
++// Diwali 2026 sale: pure helpers shared by the server and the browser.
++//
++// The sale is switched ON and OFF from the admin portal (Admin → Edurack Pro → "Diwali sale"). The switch,
++// the discount and the end time live in the database (collection `siteSettings`, key "diwali"); see
++// server-functions/diwali.ts. Everything festive reads them from there:
++//   OFF → the site looks and charges exactly as normal (no lights, ticker, section, popup or discount).
++//   ON  → the Diwali UI shows AND every active Pro plan is discounted automatically, whatever it costs.
++// It also stops by itself when the end time passes. Normal prices stay in Admin → Edurack Pro; never
++// enter sale prices there:
++//   • lookupProPlan() in lib/payment-core.ts   → what Razorpay charges (also used by parent pay links)
++//   • listActivePlans() in lib/pro-server.ts   → what /pro, the homepage and the drill page show
++// Both call diwaliPrice() below, so the price shown equals the price charged.
++//
++// To remove the theme for good after the festival: delete src/components/diwali/, src/lib/diwali*.ts,
++// src/server-functions/diwali.ts, src/components/admin/diwali-sale-card.tsx, and the few Diwali lines in
++// routes/__root.tsx, routes/index.tsx, lib/pro-server.ts, lib/payment-core.ts, the plan cards and the
++// "DIWALI THEME" block of styles.css. The base design is never modified, only layered over.
++
++/** What the admin can change. `endsAt` is epoch milliseconds so it serialises cleanly. */
++export type DiwaliSettings = { enabled: boolean; discountPercent: number; endsAt: number };
++
++export const MIN_DIWALI_DISCOUNT = 1;
++export const MAX_DIWALI_DISCOUNT = 90;
++/** Diwali (Lakshmi Puja) 2026 is on 8 November; the sale runs a couple of days past it unless the admin says otherwise. */
++export const DEFAULT_DIWALI_ENDS_AT = Date.parse("2026-11-10T23:59:59+05:30");
++/** Until an admin starts the sale, the site is exactly the normal site. */
++export const DEFAULT_DIWALI_SETTINGS: DiwaliSettings = { enabled: false, discountPercent: 50, endsAt: DEFAULT_DIWALI_ENDS_AT };
++
++/** Fixed parts of the campaign (not admin-editable). */
++export const DIWALI_SALE = {
++  /** Where every "claim" button goes. */
++  ctaPath: "/pro" as const,
++  /** Popup appears this long after landing on a marketing page, once per browser session. */
++  popupDelayMs: 3500,
++  popupStorageKey: "edurack-diwali-popup-2026",
++  productName: "Edurack Pro",
++} as const;
++
++/** Whatever was stored or sent, reduced to valid settings; anything missing or odd falls back to the default (sale off). */
++export function cleanDiwaliSettings(raw: unknown): DiwaliSettings {
++  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
++  const pct = Number(r.discountPercent);
++  const discountPercent = Number.isInteger(pct) && pct >= MIN_DIWALI_DISCOUNT && pct <= MAX_DIWALI_DISCOUNT ? pct : DEFAULT_DIWALI_SETTINGS.discountPercent;
++  const rawEnd = r.endsAt instanceof Date ? r.endsAt.getTime() : typeof r.endsAt === "number" ? r.endsAt : typeof r.endsAt === "string" ? Date.parse(r.endsAt) : NaN;
++  return { enabled: r.enabled === true, discountPercent, endsAt: Number.isFinite(rawEnd) ? rawEnd : DEFAULT_DIWALI_ENDS_AT };
++}
++
++/** Is the sale running right now? Needs the admin switch ON and the end time still ahead. */
++export const isDiwaliActive = (s: DiwaliSettings | null | undefined, now: number = Date.now()): boolean => !!s && s.enabled && now < s.endsAt;
++
++/** What a plan listed at `listPrice` (₹) costs right now: discounted while the sale is active, unchanged otherwise. Never below ₹1. */
++export function diwaliPrice(listPrice: number, s: DiwaliSettings | null | undefined, now: number = Date.now()): number {
++  if (!isDiwaliActive(s, now)) return listPrice;
++  return Math.max(1, Math.round((listPrice * (100 - s!.discountPercent)) / 100));
++}
++
++/** "10 Nov, 11:59 PM" in India time, stable on server and client. */
++export const diwaliEndLabel = (endsAt: number): string =>
++  new Date(endsAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
++
++export type Countdown = { d: number; h: number; m: number; s: number };
++export function splitCountdown(ms: number): Countdown {
++  const t = Math.max(0, Math.floor(ms / 1000));
++  return { d: Math.floor(t / 86400), h: Math.floor((t % 86400) / 3600), m: Math.floor((t % 3600) / 60), s: t % 60 };
++}
++
++const matches = (path: string, prefixes: readonly string[]) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
++
++/** Pages where the festive glow must NOT appear: timed exams, drills, lectures and staff/partner portals. */
++const NO_AMBIENT = [
++  "/test",
++  "/test-analysis",
++  "/test-result",
++  "/simulator",
++  "/pyq-drill",
++  "/lecture",
++  "/mentor-session",
++  "/mentor-onboarding",
++  "/mentor/dashboard",
++  "/admin",
++  "/intern",
++  "/promoter",
++  "/pay",
++  "/sold-test",
++] as const;
++export const ambientAllowed = (path: string) => !matches(path, NO_AMBIENT);
++
++/** Public marketing pages that get the ticker bar and popup (never a student mid-practice). */
++const PROMO_PAGES = [
++  "/",
++  "/pro",
++  "/about",
++  "/blog",
++  "/faq",
++  "/contact",
++  "/free-resources",
++  "/tools",
++  "/neet",
++  "/jee",
++  "/jee-main-2027",
++  "/mentorship-sessions",
++  "/pyq",
++] as const;
++export const promoAllowed = (path: string) => matches(path, PROMO_PAGES);
++/** The popup skips the sale page itself and the blog (which has its own free-test popup). */
++export const popupAllowed = (path: string) => promoAllowed(path) && path !== "/pro" && !matches(path, ["/blog"]);
+diff --git a/src/lib/payment-core.ts b/src/lib/payment-core.ts
+index 42b2e67..173f63b 100644
+--- a/src/lib/payment-core.ts
++++ b/src/lib/payment-core.ts
+@@ -14,6 +14,8 @@ import { sendMail } from "@/lib/mailer";
+ import { purchaseConfirmationEmailHtml, sessionBookingConfirmationEmailHtml, sessionBookingNotificationEmailHtml } from "@/lib/email-templates";
+ import { splitSessionPrice } from "@/lib/session-types";
+ import { refundRazorpayPayment } from "@/lib/razorpay-refund";
++import { diwaliPrice } from "@/lib/diwali";
++import { readDiwaliSettings } from "@/lib/diwali-server";
+ 
+ // "mentorTest" — a single paid test appended to a mentor's batch series,
+ // bought standalone (no batch purchase required). See testCores.price /
+@@ -67,7 +69,10 @@ export async function lookupProPlan(planId: string) {
+     throw new Error("This plan isn't available right now.");
+   }
+   const { cleanPlanFeatures } = await import("@/lib/pro");
+-  return { name: String(plan.name ?? "Edurack Pro"), price, durationDays: days as number, features: cleanPlanFeatures(plan.features) };
++  // `price` is what gets CHARGED: the plan's normal price, or the Diwali sale price while the admin has the sale switched on (lib/diwali.ts).
++  // Read fresh from the database (no cache) so checkout always follows the switch.
++  // Everything that takes money for a Pro plan (checkout and parent pay links) reads it from here.
++  return { name: String(plan.name ?? "Edurack Pro"), price: diwaliPrice(price, await readDiwaliSettings(db)), listPrice: price, durationDays: days as number, features: cleanPlanFeatures(plan.features) };
+ }
+ 
+ export async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {
+diff --git a/src/lib/pro-server.ts b/src/lib/pro-server.ts
+index 936f220..21bf87e 100644
+--- a/src/lib/pro-server.ts
++++ b/src/lib/pro-server.ts
+@@ -9,6 +9,8 @@
+ //                Pro is active while any grant has endsAt in the future.
+ import type { Db } from "@/lib/pyq-server";
+ import { getReferralBonus } from "@/lib/referral-server";
++import { diwaliPrice, isDiwaliActive } from "@/lib/diwali";
++import { readDiwaliSettings } from "@/lib/diwali-server";
+ import { PRO_FEATURE_KEYS, cleanPlanFeatures, cleanProSettings, istDayRange, type DrillAccess, type ProFeatureKey, type ProPlanPublic, type ProSettings } from "@/lib/pro";
+ 
+ const DAY_MS = 86_400_000;
+@@ -30,10 +32,23 @@ const validPlan = (p: Record<string, unknown>) =>
+ 
+ /** Plans that can be bought right now, cheapest first. A plan with a bad price or duration is skipped, never half-sold. */
+ export async function listActivePlans(db: Db): Promise<ProPlanPublic[]> {
+-  const docs = await db.collection("proPlans").find({ active: true }).toArray();
++  const [docs, diwali] = await Promise.all([db.collection("proPlans").find({ active: true }).toArray(), readDiwaliSettings(db)]);
+   return docs
+     .filter(validPlan)
+-    .map((d) => ({ id: String(d._id), name: String(d.name ?? "Edurack Pro"), price: d.price as number, durationDays: d.durationDays as number, blurb: String(d.blurb ?? ""), features: cleanPlanFeatures(d.features) }))
++    .map((d) => {
++      const listPrice = d.price as number;
++      // While the admin has the Diwali sale switched on, every plan is shown (and charged, see lookupProPlan) at the sale price.
++      const onSale = isDiwaliActive(diwali);
++      return {
++        id: String(d._id),
++        name: String(d.name ?? "Edurack Pro"),
++        price: diwaliPrice(listPrice, diwali),
++        ...(onSale ? { listPrice } : {}),
++        durationDays: d.durationDays as number,
++        blurb: String(d.blurb ?? ""),
++        features: cleanPlanFeatures(d.features),
++      };
++    })
+     .sort((a, b) => a.price - b.price);
+ }
+ 
+diff --git a/src/lib/pro.ts b/src/lib/pro.ts
+index fa82500..110dfff 100644
+--- a/src/lib/pro.ts
++++ b/src/lib/pro.ts
+@@ -55,7 +55,8 @@ export function cleanPlanFeatures(raw: unknown): ProFeatureKey[] {
+   return PRO_FEATURE_KEYS.filter((k) => raw.includes(k));
+ }
+ 
+-export type ProPlanPublic = { id: string; name: string; price: number; durationDays: number; blurb: string; features: ProFeatureKey[] };
++/** `price` is what is charged right now. `listPrice` is the normal price and is only set while a sale (Diwali) is discounting the plan. */
++export type ProPlanPublic = { id: string; name: string; price: number; listPrice?: number; durationDays: number; blurb: string; features: ProFeatureKey[] };
+ 
+ export type DrillAccess = {
+   /** False until the team publishes at least one plan; while false nothing is limited. */
+diff --git a/src/routes/__root.tsx b/src/routes/__root.tsx
+index 043518d..fba2f58 100644
+--- a/src/routes/__root.tsx
++++ b/src/routes/__root.tsx
+@@ -27,6 +27,9 @@ import "@fontsource/plus-jakarta-sans/700.css";
+ import { AuthProvider } from "../lib/auth-context";
+ import { AnalyticsProvider } from "../components/analytics-provider";
+ import { reportError } from "../lib/analytics";
++import { DiwaliLayer } from "../components/diwali/diwali-layer";
++import { getDiwaliSettings } from "../server-functions/diwali";
++import { DEFAULT_DIWALI_SETTINGS } from "../lib/diwali";
+ 
+ // ─── Site-wide SEO constants ────────────────────────────────────────────────
+ // One place to change branding/copy. Nothing here is exam-specific on
+@@ -146,6 +149,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+ }
+ 
+ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
++  // Is the Diwali sale switched on (Admin → Edurack Pro)? Loaded here so the festive UI is in the server-rendered HTML.
++  // Never blocks or breaks a page: if it can't be read, the sale counts as off and the site is normal.
++  loader: async () => {
++    try {
++      return { diwali: await getDiwaliSettings() };
++    } catch {
++      return { diwali: DEFAULT_DIWALI_SETTINGS };
++    }
++  },
++  staleTime: 30_000,
+   head: () => ({
+     meta: [
+       { charSet: "utf-8" },
+@@ -226,9 +239,11 @@ function RootComponent() {
+       <ThemeProvider>
+         <AuthProvider>
+           <AnalyticsProvider />
++          {/* Diwali 2026 festive layer. Renders nothing outside the sale window (see lib/diwali.ts). */}
++          <DiwaliLayer />
+           <Outlet />
+         </AuthProvider>
+       </ThemeProvider>
+     </QueryClientProvider>
+   );
+-}
+\ No newline at end of file
++}
+\ No newline at end of file
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index c798dd3..c0ead80 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -41,6 +41,7 @@ import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/rea
+ import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
+ import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
+ import { LandingProSection } from "@/components/landing-pro-section";
++import { DiwaliSaleSection } from "@/components/diwali/diwali-sale-section";
+ import { FreeResourcesSection } from "@/components/landing/free-resources-section";
+ import { QuickMockSection } from "@/components/landing/quick-mock-section";
+ import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf } from "@/components/landing/exam-demos";
+@@ -392,6 +393,7 @@ function Index() {
+         <Header />
+         <main>
+           <HeroMotion ctaRef={ctaRef} />
++          <DiwaliSaleSection />
+           <AnswerSection />
+           <ExamsSection />
+           <ToolsSection />
+@@ -1106,4 +1108,4 @@ function Footer() {
+       </div>
+     </footer>
+   );
+-}
+\ No newline at end of file
++}
+\ No newline at end of file
+diff --git a/src/server-functions/diwali.ts b/src/server-functions/diwali.ts
+new file mode 100644
+index 0000000..b15feb1
+--- /dev/null
++++ b/src/server-functions/diwali.ts
+@@ -0,0 +1,48 @@
++// src/server-functions/diwali.ts
++//
++// The Diwali sale switch. `getDiwaliSettings` is public (every page asks for it once; cached for a few seconds)
++// and `saveDiwaliSettings` is the admin-only on/off + discount + end-time editor shown in Admin → Edurack Pro.
++// Own private admin check, same convention as pro-admin.ts / blog-admin.ts (requireAdmin is never imported across files).
++import { createServerFn } from "@tanstack/react-start";
++import { adminAuth } from "@/lib/firebase-admin";
++import { getDb } from "@/lib/mongo";
++import { createTtlCache } from "@/lib/simple-cache";
++import { cleanDiwaliSettings, MAX_DIWALI_DISCOUNT, MIN_DIWALI_DISCOUNT, type DiwaliSettings } from "@/lib/diwali";
++
++async function requireAdmin(token: string) {
++  const decoded = await adminAuth.verifyIdToken(token);
++  if (decoded.admin !== true) {
++    throw new Error("Forbidden: admin access required");
++  }
++  return decoded;
++}
++
++// A few seconds is plenty: the switch changes rarely, and every page load must not hit the database.
++const cache = createTtlCache<DiwaliSettings>(15_000);
++
++export const getDiwaliSettings = createServerFn({ method: "GET" }).handler(async (): Promise<DiwaliSettings> => {
++  const hit = cache.get("s");
++  if (hit) return hit;
++  const { readDiwaliSettings } = await import("@/lib/diwali-server");
++  const settings = await readDiwaliSettings(await getDb());
++  cache.set("s", settings);
++  return settings;
++});
++
++export const saveDiwaliSettings = createServerFn({ method: "POST" })
++  .validator((data: { token: string; settings: DiwaliSettings }) => data)
++  .handler(async ({ data }): Promise<{ settings: DiwaliSettings }> => {
++    await requireAdmin(data.token);
++    const settings = cleanDiwaliSettings(data.settings);
++    const pct = Number(data.settings?.discountPercent);
++    if (!Number.isInteger(pct) || pct < MIN_DIWALI_DISCOUNT || pct > MAX_DIWALI_DISCOUNT) {
++      throw new Error(`Discount must be a whole number between ${MIN_DIWALI_DISCOUNT} and ${MAX_DIWALI_DISCOUNT}.`);
++    }
++    if (settings.enabled && settings.endsAt <= Date.now()) throw new Error("Pick an end time in the future to start the sale.");
++    const { logAdminAction } = await import("@/lib/team-core");
++    await logAdminAction(data.token, "saveDiwaliSettings", settings, "Diwali sale");
++    const { writeDiwaliSettings } = await import("@/lib/diwali-server");
++    await writeDiwaliSettings(await getDb(), settings);
++    cache.set("s", settings); // this server sees the change instantly; others within 15 seconds
++    return { settings };
++  });
+diff --git a/src/styles.css b/src/styles.css
+index 526a46c..fb69993 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -577,4 +577,231 @@ input:-webkit-autofill:active {
+ .clay-inset input::placeholder,
+ .clay-inset textarea::placeholder {
+   color: color-mix(in oklab, var(--color-foreground) 40%, transparent) !important;
+-}
+\ No newline at end of file
++}
++/* ════════════════════════════════════════════════════════════════════
++   DIWALI THEME  (remove this whole block + src/components/diwali/ after the festival)
++   Layered ON TOP of the base design. Nothing above is changed; the warm touches are scoped to
++   html[data-diwali="on"], which <DiwaliLayer /> sets only while the sale is live and never on
++   exam / drill / portal pages. Palette: ember orange #ff7a18, marigold #ffb52e, antique gold #e8b04a.
++   ════════════════════════════════════════════════════════════════════ */
++:root {
++  --dw-ink: #0d0503;
++  --dw-orange: #ff7a18;
++  --font-dw-serif: "Instrument Serif", "Playfair Display", Georgia, "Times New Roman", serif;
++  --font-dw-num: "Bricolage Grotesque", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
++}
++.dw-serif { font-family: var(--font-dw-serif); font-weight: 400; letter-spacing: -0.01em; }
++.dw-num { font-family: var(--font-dw-num); font-optical-sizing: auto; }
++
++/* Shimmering gold lettering */
++.dw-gold-text {
++  background-image: linear-gradient(100deg, #fff0c0 0%, #f6c75f 22%, #e8a23a 42%, #fff3cf 54%, #f0c25e 68%, #d99626 100%);
++  background-size: 220% 100%;
++  -webkit-background-clip: text;
++  background-clip: text;
++  -webkit-text-fill-color: transparent;
++  color: transparent;
++  animation: dw-shimmer 7s ease-in-out infinite;
++  padding-right: 0.04em; /* background-clip:text clips glyph overhang otherwise */
++}
++@keyframes dw-shimmer { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
++
++.dw-kicker-dot {
++  width: 6px; height: 6px; flex: none; border-radius: 9999px; background: var(--dw-orange);
++  box-shadow: 0 0 0 3px rgba(255, 122, 24, 0.25), 0 0 14px 2px rgba(255, 150, 40, 0.9);
++  animation: dw-pulse 2s ease-in-out infinite;
++}
++@keyframes dw-pulse { 50% { transform: scale(1.35); opacity: 0.75; } }
++.dw-pill {
++  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.95rem; border-radius: 9999px;
++  font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #f6d9a0;
++  border: 1px solid rgba(232, 176, 74, 0.35); background: rgba(255, 160, 50, 0.08); backdrop-filter: blur(6px);
++}
++
++/* Dark "golden hour" surface shared by the sale section and the popup */
++.dw-section { background: var(--dw-ink); }
++.dw-section::after { /* gold hairline along the bottom edge */
++  content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 1px; z-index: 1;
++  background: linear-gradient(90deg, transparent, #e8b04a 25%, #fff0c0 50%, #e8b04a 75%, transparent); opacity: 0.8;
++}
++.dw-section-bg {
++  background:
++    radial-gradient(60% 55% at 88% 6%, rgba(255, 110, 10, 0.42), transparent 65%),
++    radial-gradient(50% 50% at 4% 92%, rgba(200, 40, 70, 0.26), transparent 65%),
++    radial-gradient(45% 40% at 45% 45%, rgba(255, 181, 46, 0.1), transparent 70%),
++    linear-gradient(180deg, #1c0a04 0%, var(--dw-ink) 60%, #080302 100%);
++}
++.dw-section-bg::after { /* film grain */
++  content: ""; position: absolute; inset: 0; opacity: 0.16; mix-blend-mode: overlay; pointer-events: none;
++  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 .8 0 0 0 0 .5 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
++}
++/* giant outlined word sitting behind everything */
++.dw-bigword {
++  position: absolute; right: -3%; bottom: -9%; pointer-events: none; user-select: none;
++  font-family: var(--font-dw-serif); font-style: italic; line-height: 0.8; font-size: clamp(12rem, 34vw, 30rem);
++  color: transparent; -webkit-text-stroke: 1px rgba(232, 176, 74, 0.16);
++}
++
++/* Glass tiles */
++.dw-glass {
++  border-radius: 1.25rem;
++  border: 1px solid rgba(255, 214, 140, 0.2);
++  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
++  box-shadow: inset 0 1px 0 rgba(255, 240, 192, 0.14), 0 18px 40px -24px rgba(255, 110, 10, 0.6);
++  backdrop-filter: blur(10px);
++  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s;
++}
++.dw-glass:hover { border-color: rgba(255, 214, 140, 0.5); }
++.dw-icon { color: #2a1206; background: linear-gradient(135deg, #fff0c0, #e8a23a); box-shadow: 0 0 22px -2px rgba(255, 170, 50, 0.7); }
++
++.dw-tile-box {
++  border-radius: 0.9rem;
++  border: 1px solid rgba(232, 176, 74, 0.32);
++  background: linear-gradient(160deg, rgba(255, 190, 90, 0.12), rgba(255, 122, 24, 0.04));
++  box-shadow: inset 0 1px 0 rgba(255, 240, 192, 0.16), 0 10px 28px -14px rgba(255, 122, 24, 0.5);
++}
++
++/* Buttons */
++.dw-btn-gold, .dw-btn-ghost {
++  position: relative; overflow: hidden;
++  display: inline-flex; min-height: 3.25rem; align-items: center; justify-content: center; gap: 0.5rem;
++  border-radius: 9999px; padding-inline: 1.9rem; font-size: 15px; font-weight: 700; letter-spacing: 0.01em;
++  transition: transform 0.2s, box-shadow 0.25s, gap 0.2s, background-color 0.2s, border-color 0.2s;
++}
++.dw-btn-gold {
++  color: #2a1206;
++  background: linear-gradient(120deg, #fff0c0 0%, #f2c45f 35%, #e8a23a 70%, #f6d77c 100%);
++  box-shadow: 0 0 0 1px rgba(255, 240, 192, 0.5) inset, 0 10px 34px -8px rgba(255, 140, 30, 0.75), 0 0 28px -4px rgba(255, 181, 46, 0.45);
++}
++.dw-btn-gold:hover { gap: 0.8rem; transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255, 240, 192, 0.7) inset, 0 14px 44px -8px rgba(255, 140, 30, 0.95), 0 0 40px -2px rgba(255, 181, 46, 0.65); }
++.dw-btn-gold:active { transform: scale(0.97); }
++.dw-btn-gold::after { /* light sweep */
++  content: ""; position: absolute; inset: 0 auto 0 0; width: 30%; pointer-events: none;
++  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
++  animation: promo-shine 3.4s ease-in-out infinite;
++}
++.dw-btn-ghost { color: #ffe3a0; border: 1px solid rgba(232, 176, 74, 0.5); }
++.dw-btn-ghost:hover { background: rgba(232, 176, 74, 0.12); border-color: #f2c45f; }
++.dw-btn-gold:focus-visible, .dw-btn-ghost:focus-visible { outline: 2px solid #ffd978; outline-offset: 3px; }
++
++/* Gold marquee tape */
++.dw-tape {
++  position: relative; z-index: 2; overflow: hidden; color: #2a1206;
++  background: linear-gradient(100deg, #fff0c0, #f2c45f 30%, #e8a23a 60%, #f6d77c);
++  box-shadow: 0 6px 30px -8px rgba(255, 140, 30, 0.7);
++}
++.dw-tape-track { display: flex; width: max-content; animation: dw-marquee 38s linear infinite; }
++.dw-tape-set { display: flex; flex: none; }
++.dw-tape-set span {
++  padding: 0.6rem 0; white-space: pre; font-family: var(--font-display); font-size: 11px; font-weight: 800;
++  letter-spacing: 0.24em; text-transform: uppercase;
++}
++@keyframes dw-marquee { to { transform: translateX(-50%); } }
++
++/* Crisp four-point stars (dark surfaces only) */
++.dw-sparks { position: absolute; inset: 0; z-index: -10; overflow: hidden; pointer-events: none; }
++.dw-spark { position: absolute; display: block; opacity: 0; filter: drop-shadow(0 0 6px rgba(255, 200, 90, 0.9)); animation: dw-star 3.4s ease-in-out infinite; }
++@keyframes dw-star {
++  0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
++  45%, 55% { opacity: 1; transform: scale(1) rotate(45deg); }
++}
++
++/* Popup: bottom sheet on phones, centred card from sm */
++.dw-overlay { background: radial-gradient(circle at 50% 40%, rgba(50, 18, 5, 0.72), rgba(6, 2, 1, 0.9)); backdrop-filter: blur(5px); }
++.dw-overlay[data-state="open"] { animation: dw-fade 0.35s ease both; }
++.dw-overlay[data-state="closed"] { animation: dw-fade 0.2s ease reverse both; }
++.dw-popup {
++  background: var(--dw-ink); isolation: isolate;
++  border: 1px solid rgba(232, 176, 74, 0.5); border-bottom: 0;
++  box-shadow: 0 -20px 80px -20px rgba(255, 122, 24, 0.55), 0 0 60px -10px rgba(255, 181, 46, 0.3);
++}
++.dw-popup:focus, .dw-popup:focus-visible { outline: none !important; }
++.dw-popup[data-state="open"] { animation: dw-sheet 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
++.dw-popup[data-state="closed"] { animation: dw-sheet 0.25s ease reverse both; }
++@keyframes dw-fade { from { opacity: 0; } to { opacity: 1; } }
++@keyframes dw-sheet { from { transform: translateY(100%); } to { transform: none; } }
++/* centring on sm+ is done by Tailwind's `translate` property, so this only animates scale/opacity (no double offset) */
++@keyframes dw-pop { from { opacity: 0; transform: translateY(18px) scale(0.93); } to { opacity: 1; transform: none; } }
++@media (min-width: 640px) {
++  .dw-popup { border-bottom: 1px solid rgba(232, 176, 74, 0.5); box-shadow: 0 40px 120px -20px rgba(255, 122, 24, 0.55), 0 0 80px -10px rgba(255, 181, 46, 0.35); }
++  .dw-popup[data-state="open"], .dw-popup[data-state="closed"] { animation-name: dw-pop; }
++}
++
++/* Ticker bar (in flow, top of marketing pages) */
++.dw-ticker {
++  background:
++    radial-gradient(40% 160% at 15% 0%, rgba(255, 122, 24, 0.35), transparent 70%),
++    radial-gradient(40% 160% at 85% 0%, rgba(255, 181, 46, 0.25), transparent 70%),
++    linear-gradient(90deg, #1a0804, #2e1307 50%, #1a0804);
++  border-bottom: 1px solid rgba(232, 176, 74, 0.45);
++  box-shadow: 0 6px 28px -10px rgba(255, 122, 24, 0.55);
++}
++
++/* ── Fixed ambient overlays (all pointer-events:none) ─────────────── */
++.dw-garland { position: fixed; inset: 0 0 auto 0; height: 22px; overflow: hidden; z-index: 60; pointer-events: none; }
++.dw-garland-row { display: flex; width: max-content; }
++.dw-tile {
++  position: relative; flex: none; width: 100px; height: 22px;
++  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='22' viewBox='0 0 100 22'><path d='M0 1Q50 15 100 1' fill='none' stroke='%23b8862b' stroke-width='1.1' stroke-linecap='round'/></svg>") repeat-x;
++}
++.dw-bulb {
++  position: absolute; width: 5px; height: 8px; margin-left: -2.5px;
++  border-radius: 50% 50% 50% 50% / 38% 38% 62% 62%;
++  background: radial-gradient(circle at 38% 28%, #fff 0 12%, var(--c) 58%);
++  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--c) 80%, transparent), 0 0 16px 4px color-mix(in srgb, var(--c) 40%, transparent);
++  animation: dw-twinkle 2.6s ease-in-out infinite;
++  animation-delay: var(--d);
++}
++.dw-bulb::before { content: ""; position: absolute; left: 50%; top: -2px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 1px; background: #8d5f1a; }
++@keyframes dw-twinkle { 0%, 100% { opacity: 1; filter: brightness(1.15); } 50% { opacity: 0.55; filter: brightness(0.8); } }
++
++.dw-glow {
++  position: fixed; inset: 0; z-index: 44; pointer-events: none;
++  background:
++    radial-gradient(38rem 22rem at 0% 0%, rgba(255, 140, 30, 0.11), transparent 70%),
++    radial-gradient(38rem 22rem at 100% 0%, rgba(255, 181, 46, 0.11), transparent 70%);
++  animation: dw-breathe 6s ease-in-out infinite;
++}
++@keyframes dw-breathe { 50% { opacity: 0.6; } }
++
++.dw-corner-diya { position: fixed; bottom: 6px; z-index: 44; width: 52px; height: 42px; pointer-events: none; display: none; }
++@media (min-width: 1024px) { .dw-corner-diya { display: block; } }
++.dw-flame { transform-origin: 40px 28px; animation: dw-flicker 1.9s ease-in-out infinite; }
++.dw-flame-halo { animation: dw-halo 2.4s ease-in-out infinite; transform-origin: 40px 24px; }
++@keyframes dw-flicker { 0%, 100% { transform: scale(1, 1) rotate(-1.5deg); } 30% { transform: scale(0.94, 1.08) rotate(2deg); } 60% { transform: scale(1.04, 0.95) rotate(-2deg); } }
++@keyframes dw-halo { 50% { transform: scale(1.18); opacity: 0.4; } }
++
++@media (max-width: 639px) {
++  .dw-garland-row { transform: scale(0.8); transform-origin: 0 0; }
++}
++
++/* ── Warm touches on the EXISTING design (only while data-diwali is on) ──
++   Same layout, same colours for text and surfaces; just a gilded edge, a soft marigold glow and gold selection. */
++html[data-diwali="on"] ::selection { background: #ffd978; color: #2a1206; }
++
++html[data-diwali="on"] header.sticky { box-shadow: 0 10px 30px -20px rgba(255, 140, 30, 0.55); }
++html[data-diwali="on"] header.sticky::after {
++  content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 1px; pointer-events: none;
++  background: linear-gradient(90deg, transparent, rgba(232, 176, 74, 0.9) 20%, rgba(255, 240, 192, 0.95) 50%, rgba(232, 176, 74, 0.9) 80%, transparent);
++}
++
++/* the site's dark "ink" bands pick up an ember glow and a gold hairline */
++html[data-diwali="on"] .ink-section,
++html[data-diwali="on"] .bg-\[\#141b2b\] {
++  background-image:
++    radial-gradient(55% 90% at 100% 0%, rgba(255, 140, 30, 0.2), transparent 65%),
++    radial-gradient(45% 80% at 0% 100%, rgba(232, 176, 74, 0.14), transparent 65%);
++  box-shadow: inset 0 1px 0 rgba(232, 176, 74, 0.45), inset 0 -1px 0 rgba(232, 176, 74, 0.25);
++}
++
++/* primary buttons keep their blue; they just glow like they're lit by a diya on hover */
++html[data-diwali="on"] a.bg-primary:hover,
++html[data-diwali="on"] button.bg-primary:hover {
++  box-shadow: 0 0 0 3px rgba(255, 181, 46, 0.28), 0 10px 28px -8px rgba(255, 140, 30, 0.6);
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .dw-glow, .dw-sparks { display: none; }
++  .dw-bulb, .dw-gold-text, .dw-flame, .dw-flame-halo, .dw-kicker-dot, .dw-tape-track,
++  .dw-btn-gold::after, .dw-overlay, .dw-popup { animation: none !important; }
++}

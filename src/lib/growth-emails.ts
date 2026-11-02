@@ -227,3 +227,25 @@ export function outreachEmailHtml(params: OutreachEmailParams): string {
   const preview = (params.previewText ?? params.message.replace(/^#\s.*\n+/, "").replace(/[#>*\-•]/g, "")).replace(/\s+/g, " ").trim().slice(0, 110);
   return emailLayout({ previewText: esc(preview), bodyHtml: body });
 }
+
+// ─── Pro checkout reminder (sent by server-functions/checkout-reminders.ts) ─
+export type CheckoutReminderParams = { name: string; planName: string; amount: number; proUrl: string; refundUrl: string; helpUrl: string; unsubscribeUrl: string };
+
+export function checkoutReminderSubject(p: Pick<CheckoutReminderParams, "name" | "planName">): string {
+  return `${p.name}, your ${p.planName} checkout didn't finish`;
+}
+
+export function checkoutReminderEmailHtml(params: CheckoutReminderParams): string {
+  const { name, planName, amount } = params;
+  const price = amount > 0 ? ` (₹${amount.toLocaleString("en-IN")})` : "";
+  const body = `
+    ${badge("Edurack Pro", C.sky)}
+    ${h1(`${esc(name)}, your checkout didn't finish`)}
+    ${p(`You started getting <strong>${esc(planName)}</strong>${price}, but the payment wasn't completed.`)}
+    ${p(`If you were waiting for a parent's go-ahead, open the plan and tap <strong>Ask a parent to pay</strong>. They get a link they can pay from, with no sign-in needed.`)}
+    ${emailButton(params.proUrl, "Finish checkout")}
+    ${p(`<span style="color:${C.muted};font-size:13px;">If money left your account and Pro isn't active, tell us from the <a href="${esc(params.helpUrl)}" style="color:${C.muted};">Help page</a> and we'll sort it out. Questions about refunds? See the <a href="${esc(params.refundUrl)}" style="color:${C.muted};">refund policy</a>.</span>`)}
+    ${unsubscribeFooter(params.unsubscribeUrl, "because you started checkout for Edurack Pro")}
+  `;
+  return emailLayout({ previewText: `Your ${planName} checkout didn't finish. Pick up where you left off.`, bodyHtml: body });
+}

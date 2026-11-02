@@ -55,7 +55,8 @@ export function cleanPlanFeatures(raw: unknown): ProFeatureKey[] {
   return PRO_FEATURE_KEYS.filter((k) => raw.includes(k));
 }
 
-export type ProPlanPublic = { id: string; name: string; price: number; durationDays: number; blurb: string; features: ProFeatureKey[] };
+/** `price` is what is charged right now. `listPrice` is the normal price and is only set while a sale (Diwali) is discounting the plan. */
+export type ProPlanPublic = { id: string; name: string; price: number; listPrice?: number; durationDays: number; blurb: string; features: ProFeatureKey[] };
 
 export type DrillAccess = {
   /** False until the team publishes at least one plan; while false nothing is limited. */

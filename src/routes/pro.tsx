@@ -65,6 +65,7 @@ function ProPage() {
     { q: "How long does a plan last, and what if I buy again?", a: "Each plan runs for a fixed number of days. If you buy while Pro is still active, the new period starts when the current one ends, so you never lose days." },
     { q: "What happens when Pro ends?", a: "You go back to the free plan. Nothing you practised or saved is deleted." },
     { q: "How do I pay?", a: "Checkout is handled by Razorpay. You choose a plan, pay in the Razorpay window, and Pro switches on as soon as the payment is confirmed." },
+    { q: "Can I get a refund?", a: "Yes, if you ask within 48 hours of buying. You get your money back, minus any payment gateway charges already incurred. Plans never renew by themselves, so you are not charged again unless you buy another plan. The full terms are on the refund policy page." },
   ];
 
   return (
@@ -124,6 +125,14 @@ function ProPage() {
                 </div>
               )}
             </div>
+            {plans.length > 0 && proOnly && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Ask for a refund within 48 hours of buying. Plans never renew by themselves.{" "}
+                <Link to="/legal/refund" className="font-semibold text-foreground hover:underline">
+                  Refund policy
+                </Link>
+              </p>
+            )}
 
             <div className="mt-16 max-w-3xl">
               <h2 className="font-display text-2xl font-extrabold tracking-tight">Questions about Edurack Pro</h2>
