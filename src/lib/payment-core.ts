@@ -480,6 +480,31 @@ export async function completeProPlanPayment(p: {
   return result;
 }
 
+// ─── Parent-pay links ──────────────────────────────────────────────────────
+
+/** Marks a parent-pay link as paid, once. Called after completeProPlanPayment grants Pro (see server-functions/parent-pay.ts). */
+export async function markParentLinkPaid(linkId: string, paymentId: string): Promise<void> {
+  const { ObjectId } = await import("mongodb");
+  const db = await getDb();
+  await db.collection("parentPayLinks").updateOne({ _id: new ObjectId(linkId), paidAt: null }, { $set: { paidAt: new Date(), razorpayPaymentId: paymentId } });
+}
+
+// ─── Pro checkout reminders ─────────────────────────────────────────────────
+
+/** Records that a student started a Pro checkout, so sendCheckoutReminders (checkout-reminders.ts) can follow up if they don't finish. */
+export async function recordProCheckoutStarted(p: { uid: string; planId: string; planName: string; orderId: string; amount: number }): Promise<void> {
+  const db = await getDb();
+  await db.collection("proCheckouts").insertOne({
+    uid: p.uid,
+    planId: p.planId,
+    planName: p.planName,
+    orderId: p.orderId,
+    amount: p.amount,
+    createdAt: new Date(),
+    reminderStatus: null,
+  });
+}
+
 // ─── Webhook ─────────────────────────────────────────────────────────────
 
 /** A payment younger than this is left to the browser's verify call; Razorpay retries the webhook later. */
