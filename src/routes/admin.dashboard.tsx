@@ -19,6 +19,7 @@ import { GrowthOpsModule } from "@/components/admin/growth-ops-module";
 import { LeaderboardModule } from "@/components/admin/leaderboard-module";
 import { IconTrendingUp as TrendingUpIcon, IconTrophy as TrophyIcon, IconUsersGroup as TeamIcon, IconChartBar as ChartBarIcon } from "@tabler/icons-react";
 import { StudentPracticeActivity } from "@/components/admin/student-practice-activity";
+import { NeetAnalyticsModule } from "@/components/admin/neet-analytics-module";
 import { Flag as FlagIcon } from "lucide-react";
 import { adminSignOutUser } from "@/lib/admin-auth-client";
 import { installAdminFetchGuard } from "@/lib/admin-fetch-guard";import {
@@ -73,6 +74,7 @@ type ModuleKey =
   | "bundleManage"
   | "testCore"
   | "questions"
+  | "neetAnalytics"
   | "sellTests"
   | "pro"
   | "inspector"
@@ -110,6 +112,7 @@ const MODULE_GROUPS: { label: string; items: ModuleDef[] }[] = [
       { key: "bundleManage", label: "Manage Bundles", icon: Boxes  as any },
       { key: "testCore", label: "Test Core", icon: ClipboardList  as any },
       { key: "questions", label: "Questions", icon: ListChecks  as any },
+      { key: "neetAnalytics", label: "NEET Analytics", icon: ChartBarIcon as any },
       { key: "sellTests", label: "Sell Tests", icon: Tag },
       { key: "pro", label: "Edurack Pro", icon: Sparkles as any },
       { key: "inspector", label: "Inspector", icon: Search },
@@ -395,6 +398,8 @@ function ModuleRouter({
       return <TestCoreModule adminUser={adminUser} />;
     case "questions":
       return <QuestionIngestionModule adminUser={adminUser} />;
+    case "neetAnalytics":
+      return <NeetAnalyticsModule adminUser={adminUser} />;
     case "inspector":
       return <BundleInspectorModule adminUser={adminUser} />;
     case "sellTests":
