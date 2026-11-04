@@ -16,6 +16,7 @@ import { suppressedSet } from "@/lib/email-guard";
 import { isQuietHour } from "@/lib/email-policy";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
 import { proUntil } from "@/lib/pro-server";
+import { reconcileProCheckoutByOrderId } from "@/lib/payment-core";
 import { SITE_URL, checkoutReminderEmailHtml, checkoutReminderSubject, firstName } from "@/lib/growth-emails";
 
 type Db = Awaited<ReturnType<typeof getDb>>;
@@ -74,7 +75,19 @@ export async function sendCheckoutReminders(now: Date = new Date(), opts: { dryR
 
   for (const [uid, checkout] of latestByUid) {
     // Bought since (or Pro is running right now): nothing to remind about.
-    const boughtSince = await db.collection("proGrants").findOne({ uid, createdAt: { $gte: checkout.createdAt as Date } }, { projection: { _id: 1 } });
+    let boughtSince = await db.collection("proGrants").findOne({ uid, createdAt: { $gte: checkout.createdAt as Date } }, { projection: { _id: 1 } });
+    // Not bought yet, as far as our own records show. That is also what it looks like when the
+    // student *did* pay and both the browser verify call and the webhook missed it. Ask Razorpay
+    // directly before concluding they walked away, so we fix a silent miss instead of emailing them
+    // to buy something they already paid for.
+    if (!boughtSince && !opts.dryRun) {
+      try {
+        const outcome = await reconcileProCheckoutByOrderId(String(checkout.orderId), uid);
+        if (outcome === "granted") boughtSince = { _id: "reconciled" } as any;
+      } catch (err) {
+        console.error(`[checkout-reminders] reconcile failed uid=${uid} order=${checkout.orderId}:`, err);
+      }
+    }
     if (boughtSince || (await proUntil(db, uid, now))) {
       await markDone(uid, "paid");
       result.skipped++;

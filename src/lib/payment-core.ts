@@ -568,3 +568,66 @@ export async function settlePaymentFromWebhook(paymentId: string): Promise<Webho
   console.log(`[webhook] payment ${paymentId} → ${outcome}`);
   return "handled";
 }
+
+// ─── Pro checkout self-heal ──────────────────────────────────────────────
+// Covers the case the webhook alone doesn't: a student pays (often via UPI, which
+// bounces them out to another app) and never returns to the tab, so the browser's
+// verify call never fires, AND the Razorpay webhook either isn't configured
+// (RAZORPAY_WEBHOOK_SECRET unset, or no webhook registered in the Razorpay
+// dashboard) or its one delivery attempt is lost. Unlike the webhook, this asks
+// Razorpay directly "did this order get paid?", so it doesn't depend on Razorpay
+// successfully pushing anything to us. Called from two places: on-demand the
+// instant a student's Pro status is checked (server-functions/pro.ts), and swept
+// periodically for students who haven't opened the app since (checkout-reminders.ts).
+
+/** Looks an order up directly with Razorpay and grants Pro if it shows a captured payment. Idempotent. */
+export async function reconcileProCheckoutByOrderId(orderId: string, uid: string): Promise<"granted" | "already" | "not-captured" | "too-fresh"> {
+  const { keyId, keySecret } = getRazorpayCredentials();
+  const { default: Razorpay } = await import("razorpay");
+  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+
+  const order: any = await razorpay.orders.fetch(orderId);
+  const notes = (order.notes ?? {}) as Record<string, string>;
+  if (notes.itemType !== "proPlan" || notes.uid !== uid) return "not-captured"; // not ours, or belongs to someone else
+
+  const payments: any = await razorpay.orders.fetchPayments(orderId);
+  const captured = ((payments.items ?? []) as any[]).find((p) => p.status === "captured");
+  if (!captured) return "not-captured";
+  if (Date.now() / 1000 - Number(captured.created_at) < WEBHOOK_MIN_AGE_SECONDS) return "too-fresh"; // give the browser's own verify call room first
+
+  const db = await getDb();
+  const profile = await db.collection("profiles").findOne({ uid }, { projection: { email: 1 } });
+  const { granted } = await completeProPlanPayment({
+    uid,
+    email: (profile?.email as string | undefined) ?? null,
+    planId: notes.itemId,
+    orderId,
+    paymentId: captured.id,
+    amountCharged: Number(captured.amount) / 100,
+    notes,
+  });
+  return granted ? "granted" : "already";
+}
+
+/**
+ * Cheap pre-check + reconcile for one student: only hits the Mongo index (no Razorpay call) unless
+ * there's actually a checkout old enough to be suspicious and nothing granted since. Safe to call on
+ * every Pro-status read: it swallows its own errors so a Razorpay hiccup never breaks a page load.
+ */
+export async function reconcilePendingProCheckout(db: Awaited<ReturnType<typeof getDb>>, uid: string): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - WEBHOOK_MIN_AGE_SECONDS * 1000);
+    const checkout = await db
+      .collection("proCheckouts")
+      .find({ uid, createdAt: { $lte: cutoff } })
+      .sort({ createdAt: -1 })
+      .limit(1)
+      .next();
+    if (!checkout) return;
+    const grantedSince = await db.collection("proGrants").findOne({ uid, createdAt: { $gte: checkout.createdAt as Date } }, { projection: { _id: 1 } });
+    if (grantedSince) return; // already settled (by the browser call, the webhook, or an earlier reconcile)
+    await reconcileProCheckoutByOrderId(String(checkout.orderId), uid);
+  } catch (err) {
+    console.error(`[reconcilePendingProCheckout] failed for uid=${uid}:`, err);
+  }
+}

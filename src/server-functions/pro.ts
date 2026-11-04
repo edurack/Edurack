@@ -9,8 +9,13 @@ export const getDrillAccess = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }): Promise<DrillAccess> => {
     const decoded = await adminAuth.verifyIdToken(data.token);
+    const db = await getDb();
+    // Self-heal: if this student paid for Pro but the browser's verify call and the Razorpay
+    // webhook both missed it, this catches it right here instead of leaving them stuck.
+    const { reconcilePendingProCheckout } = await import("@/lib/payment-core");
+    await reconcilePendingProCheckout(db, decoded.uid);
     const { getDrillAccess: access } = await import("@/lib/pro-server");
-    return access(await getDb(), decoded.uid);
+    return access(db, decoded.uid);
   });
 
 /** Paper years that have PYQs for this student's exam, newest first — the options for the drill builder's year filter. */
