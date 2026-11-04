@@ -1,0 +1,337 @@
+diff --git a/src/components/admin/outreach-composer.tsx b/src/components/admin/outreach-composer.tsx
+index 2adff54..6d629a0 100644
+--- a/src/components/admin/outreach-composer.tsx
++++ b/src/components/admin/outreach-composer.tsx
+@@ -1,7 +1,7 @@
+ // Campaign composer: write on the left, see the real email on the right.
+ import { useEffect, useMemo, useRef, useState } from "react";
+-import { countOutreachAudience, renderOutreachPreview, saveOutreachCampaign, sendOutreachTest } from "@/server-functions/outreach";
+-import type { OutreachAudience, OutreachCampaign } from "@/lib/outreach-types";
++import { countOutreachAudience, renderOutreachPreview, resolveOutreachStudents, saveOutreachCampaign, searchOutreachStudents, sendOutreachTest } from "@/server-functions/outreach";
++import type { OutreachAudience, OutreachCampaign, OutreachStudentPick } from "@/lib/outreach-types";
+ 
+ type AdminUser = { getIdToken: () => Promise<string> };
+ export type Draft = Omit<OutreachCampaign, "id" | "lastSentAt"> & { id?: string };
+@@ -43,6 +43,47 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
+   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+   const area = useRef<HTMLTextAreaElement>(null);
+ 
++  // ── manual student picker ──
++  const [pickerQuery, setPickerQuery] = useState("");
++  const [pickerResults, setPickerResults] = useState<OutreachStudentPick[]>([]);
++  const [pickerBusy, setPickerBusy] = useState(false);
++  const [studentCache, setStudentCache] = useState<Record<string, OutreachStudentPick>>({});
++  const pickedKey = d.audience.manualAll ? "excludeUids" : "includeUids";
++  const pickedUids = (d.audience[pickedKey] ?? []) as string[];
++
++  // Resolve names/emails for a selection that was already saved (editing an existing campaign).
++  useEffect(() => {
++    const missing = pickedUids.filter((u) => !studentCache[u]);
++    if (missing.length === 0) return;
++    (async () => {
++      try {
++        const r = await resolveOutreachStudents({ data: { token: await adminUser.getIdToken(), uids: missing } });
++        setStudentCache((c) => ({ ...c, ...Object.fromEntries(r.students.map((s) => [s.uid, s])) }));
++      } catch { /* best-effort */ }
++    })();
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [pickedUids.join(",")]);
++
++  // Search box in the manual picker.
++  useEffect(() => {
++    if (d.audience.mode !== "manual") return;
++    setPickerBusy(true);
++    const t = setTimeout(async () => {
++      try {
++        const r = await searchOutreachStudents({ data: { token: await adminUser.getIdToken(), query: pickerQuery, limit: 25 } });
++        setPickerResults(r.students);
++        setStudentCache((c) => ({ ...c, ...Object.fromEntries(r.students.map((s) => [s.uid, s])) }));
++      } catch { /* best-effort */ } finally { setPickerBusy(false); }
++    }, 300);
++    return () => clearTimeout(t);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [pickerQuery, d.audience.mode]);
++
++  function togglePicked(uid: string) {
++    const next = pickedUids.includes(uid) ? pickedUids.filter((u) => u !== uid) : [...pickedUids, uid];
++    setD({ ...d, audience: { ...d.audience, [pickedKey]: next } });
++  }
++
+   // Live preview: the server renders the exact HTML students receive.
+   useEffect(() => {
+     const t = setTimeout(async () => {
+@@ -61,7 +102,8 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
+       try { setCount(await countOutreachAudience({ data: { token: await adminUser.getIdToken(), audience: d.audience } })); } catch { /* ignore */ }
+     }, 350);
+     return () => clearTimeout(t);
+-  }, [d.audience.exam, d.audience.track, d.audience.nonBuyersOnly, adminUser]); // eslint-disable-line react-hooks/exhaustive-deps
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [d.audience.exam, d.audience.track, d.audience.nonBuyersOnly, d.audience.mode, d.audience.manualAll, (d.audience.includeUids ?? []).join(","), (d.audience.excludeUids ?? []).join(",")]);
+ 
+   const warnings = useMemo(() => {
+     const w: string[] = [];
+@@ -176,13 +218,73 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
+                 {count ? `≈ ${count.total.toLocaleString("en-IN")} student${count.total === 1 ? "" : "s"}` : "Counting…"}
+               </span>
+             </div>
+-            <div><span className={label}>Exam</span><div className="flex flex-wrap gap-2">{EXAMS.map((x) => <Chip key={x.v} active={d.audience.exam === x.v} onClick={() => setAud({ exam: x.v })}>{x.l}</Chip>)}</div></div>
+-            <div><span className={label}>Class</span><div className="flex flex-wrap gap-2">{TRACKS.map((x) => <Chip key={x.v} active={d.audience.track === x.v} onClick={() => setAud({ track: x.v })}>{x.l}</Chip>)}</div></div>
+-            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+-              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={d.audience.nonBuyersOnly} onChange={(e) => setAud({ nonBuyersOnly: e.target.checked })} />
+-              Only students who never purchased
+-            </label>
+-            <p className="text-[11px] text-foreground/45">Students who unsubscribed are always skipped. Nobody gets the same campaign twice.</p>
++
++            <div className="flex flex-wrap gap-2">
++              <Chip active={d.audience.mode !== "manual"} onClick={() => setAud({ mode: "auto" })}>🎯 By exam / class</Chip>
++              <Chip active={d.audience.mode === "manual"} onClick={() => setAud({ mode: "manual", manualAll: d.audience.manualAll ?? true })}>✋ Pick students myself</Chip>
++            </div>
++
++            {d.audience.mode !== "manual" ? (
++              <>
++                <div><span className={label}>Exam</span><div className="flex flex-wrap gap-2">{EXAMS.map((x) => <Chip key={x.v} active={d.audience.exam === x.v} onClick={() => setAud({ exam: x.v })}>{x.l}</Chip>)}</div></div>
++                <div><span className={label}>Class</span><div className="flex flex-wrap gap-2">{TRACKS.map((x) => <Chip key={x.v} active={d.audience.track === x.v} onClick={() => setAud({ track: x.v })}>{x.l}</Chip>)}</div></div>
++                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
++                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={d.audience.nonBuyersOnly} onChange={(e) => setAud({ nonBuyersOnly: e.target.checked })} />
++                  Only students who never purchased
++                </label>
++                <p className="text-[11px] text-foreground/45">Students who unsubscribed are always skipped. Nobody gets the same campaign twice.</p>
++              </>
++            ) : (
++              <>
++                <div className="flex flex-wrap gap-2">
++                  <Chip active={!!d.audience.manualAll} onClick={() => setAud({ manualAll: true })}>Everyone, then I'll deselect a few</Chip>
++                  <Chip active={!d.audience.manualAll} onClick={() => setAud({ manualAll: false })}>Nobody — I'll pick exactly who</Chip>
++                </div>
++
++                <div>
++                  <input
++                    value={pickerQuery} onChange={(e) => setPickerQuery(e.target.value)} placeholder="Search students by name or email…"
++                    className={input}
++                  />
++                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-2xl border border-border bg-background p-1.5">
++                    {pickerBusy && <p className="px-3 py-2 text-xs text-foreground/45">Searching…</p>}
++                    {!pickerBusy && pickerResults.length === 0 && <p className="px-3 py-2 text-xs text-foreground/45">{pickerQuery.trim() ? "No students match." : "Type to search, or scroll your recent students."}</p>}
++                    {!pickerBusy && pickerResults.map((s) => {
++                      const picked = pickedUids.includes(s.uid);
++                      const excludedHere = d.audience.manualAll && picked;
++                      return (
++                        <label key={s.uid} className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm hover:bg-secondary">
++                          <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={picked} onChange={() => togglePicked(s.uid)} />
++                          <span className="min-w-0 flex-1 truncate">{s.fullName || "—"} <span className="text-foreground/45">· {s.email}</span></span>
++                          {excludedHere && <span className="shrink-0 text-[10px] font-bold uppercase text-red-500">Excluded</span>}
++                        </label>
++                      );
++                    })}
++                  </div>
++                </div>
++
++                {pickedUids.length > 0 && (
++                  <div>
++                    <span className={label}>{d.audience.manualAll ? `Deselected (${pickedUids.length})` : `Selected (${pickedUids.length})`}</span>
++                    <div className="flex flex-wrap gap-1.5">
++                      {pickedUids.map((uid) => {
++                        const s = studentCache[uid];
++                        return (
++                          <span key={uid} className="flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-foreground">
++                            {s ? s.fullName || s.email : uid}
++                            <button type="button" aria-label="Remove" className="text-foreground/40 hover:text-red-500" onClick={() => togglePicked(uid)}>✕</button>
++                          </span>
++                        );
++                      })}
++                    </div>
++                  </div>
++                )}
++                <p className="text-[11px] text-foreground/45">
++                  {d.audience.manualAll ? "Starts from every student with an email — search above and check anyone you want to leave out." : "Nobody is included until you search and check them above."}
++                  {" "}Students who unsubscribed, bounced or reported spam are still always skipped, and nobody gets the same campaign twice.
++                </p>
++              </>
++            )}
+           </div>
+ 
+           {warnings.length > 0 && (
+diff --git a/src/components/admin/outreach-module.tsx b/src/components/admin/outreach-module.tsx
+index 9fd555c..d4137ff 100644
+--- a/src/components/admin/outreach-module.tsx
++++ b/src/components/admin/outreach-module.tsx
+@@ -23,7 +23,11 @@ const ago = (iso: string | null) => {
+   return `${Math.round(m / 1440)} d ago`;
+ };
+ const audienceText = (a: OutreachCampaign["audience"]) =>
+-  `${a.exam === "any" ? "Any exam" : a.exam.toUpperCase()} · ${a.track === "any" ? "all classes" : a.track === "Dropper" ? "droppers" : `class ${a.track.replace("th", "")}`}${a.nonBuyersOnly ? " · non-buyers" : ""}`;
++  a.mode === "manual"
++    ? a.manualAll
++      ? `Everyone, minus ${(a.excludeUids ?? []).length} deselected`
++      : `${(a.includeUids ?? []).length} hand-picked student${(a.includeUids ?? []).length === 1 ? "" : "s"}`
++    : `${a.exam === "any" ? "Any exam" : a.exam.toUpperCase()} · ${a.track === "any" ? "all classes" : a.track === "Dropper" ? "droppers" : `class ${a.track.replace("th", "")}`}${a.nonBuyersOnly ? " · non-buyers" : ""}`;
+ 
+ function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+   return (
+diff --git a/src/lib/outreach-core.ts b/src/lib/outreach-core.ts
+index 0335ab9..f9c33dc 100644
+--- a/src/lib/outreach-core.ts
++++ b/src/lib/outreach-core.ts
+@@ -6,7 +6,7 @@ import { getDb } from "@/lib/mongo";
+ import { sendMail } from "@/lib/mailer";
+ import { firstName, outreachEmailHtml, safeUrl } from "@/lib/growth-emails";
+ import { unsubscribeUrl } from "@/lib/unsubscribe";
+-import type { OutreachAudience, OutreachCampaign, OutreachJobView } from "@/lib/outreach-types";
++import type { OutreachAudience, OutreachCampaign, OutreachJobView, OutreachStudentPick } from "@/lib/outreach-types";
+ import { classifyRecipients, isQuietHour, normalizeEmail, parseGapDays } from "@/lib/email-policy";
+ import { ensureGuardIndexes, recentlyEmailedUids, suppressedSet } from "@/lib/email-guard";
+ 
+@@ -48,9 +48,16 @@ export const toJob = (j: any, waiting?: OutreachJobView["waiting"]): OutreachJob
+   ...(waiting ? { waiting } : {}),
+ });
+ 
+-/** Mongo filter for "who is this campaign for". Respects the marketing opt-out. */
++/** Mongo filter for "who is this campaign for". Always respects the marketing opt-out. */
+ export async function audienceFilter(db: Db, a: OutreachAudience): Promise<Record<string, unknown>> {
+   const and: Record<string, unknown>[] = [{ email: { $type: "string", $ne: "" } }, { "emailOptOut.marketing": { $ne: true } }];
++  if (a.mode === "manual") {
++    // The admin picked these students by hand, so exam/class/non-buyer targeting is skipped entirely.
++    // A uid list is never empty-means-everyone: an empty $in/$nin list still needs a value Mongo won't match.
++    if (a.manualAll) and.push({ uid: { $nin: a.excludeUids?.length ? a.excludeUids : ["__none__"] } });
++    else and.push({ uid: { $in: a.includeUids?.length ? a.includeUids : ["__none__"] } });
++    return { $and: and };
++  }
+   if (a.exam !== "any") {
+     const exam = { $regex: `^${a.exam}$`, $options: "i" };
+     // The app treats a missing targetExam as NEET (see getAdminStudentFullProfile), so match that.
+@@ -64,6 +71,33 @@ export async function audienceFilter(db: Db, a: OutreachAudience): Promise<Recor
+   return { $and: and };
+ }
+ 
++/** Students matching a name/email search, for the manual-selection picker. Only "has an email" is required. */
++export async function searchStudents(db: Db, query: string, limit = 25): Promise<OutreachStudentPick[]> {
++  const filter: Record<string, unknown> = { email: { $type: "string", $ne: "" } };
++  const q = query.trim();
++  if (q) {
++    const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
++    filter.$or = [{ fullName: { $regex: safe, $options: "i" } }, { email: { $regex: safe, $options: "i" } }];
++  }
++  const rows = await db
++    .collection("profiles")
++    .find(filter, { projection: { uid: 1, fullName: 1, email: 1 } })
++    .sort({ _id: -1 })
++    .limit(Math.min(Math.max(limit, 1), 100))
++    .toArray();
++  return rows.map((p) => ({ uid: p.uid as string, fullName: (p.fullName as string) || undefined, email: p.email as string }));
++}
++
++/** Display info (name/email) for a fixed set of uids — used to show a saved manual selection in the composer. */
++export async function resolveStudents(db: Db, uids: string[]): Promise<OutreachStudentPick[]> {
++  if (uids.length === 0) return [];
++  const rows = await db
++    .collection("profiles")
++    .find({ uid: { $in: uids.slice(0, 500) } }, { projection: { uid: 1, fullName: 1, email: 1 } })
++    .toArray();
++  return rows.map((p) => ({ uid: p.uid as string, fullName: (p.fullName as string) || undefined, email: p.email as string }));
++}
++
+ export type Recipient = { uid: string; email: string; fullName?: string };
+ 
+ /**
+@@ -77,7 +111,9 @@ export async function pendingRecipients(db: Db, campaignId: string, a: OutreachA
+   const profiles = await db.collection("profiles").find(await audienceFilter(db, a), { projection: { uid: 1, fullName: 1, email: 1 } }).sort({ _id: 1 }).limit(MAX_AUDIENCE).toArray();
+   const notYet = profiles.filter((p) => !done.has(p.uid as string));
+ 
+-  const gapDays = parseGapDays(process.env.OUTREACH_MIN_GAP_DAYS);
++  // Manual mode: the admin picked these students by name, so the automatic re-contact cooldown doesn't
++  // apply — only the hard bounce/spam-complaint block still does (sending there would just fail anyway).
++  const gapDays = a.mode === "manual" ? 0 : parseGapDays(process.env.OUTREACH_MIN_GAP_DAYS);
+   const [blockedEmails, recentUids] = await Promise.all([
+     suppressedSet(db, notYet.map((p) => normalizeEmail(p.email as string))),
+     gapDays > 0 ? recentlyEmailedUids(db, notYet.map((p) => p.uid as string), new Date(Date.now() - gapDays * 864e5)) : Promise.resolve(new Set<string>()),
+diff --git a/src/lib/outreach-templates-c.ts b/src/lib/outreach-templates-c.ts
+index 963e7ba..1ca4828 100644
+--- a/src/lib/outreach-templates-c.ts
++++ b/src/lib/outreach-templates-c.ts
+@@ -245,6 +245,21 @@ You've been practising consistently, and these extras can help you improve faste
+ > [Add price and a clear next step.]`,
+     [["See what's included", "/dashboard"]], A("neet", "any", true)),
+ 
++  T("Sales", "diwali-sale", "🪔", "Diwali sale on Edurack Pro", "Announces the Diwali discount on Edurack Pro.", "While the Diwali sale is switched on (Admin → Edurack Pro → Diwali sale)",
++    "{{name}}, Diwali sale: [X]% off Edurack Pro 🪔",
++    `# This Diwali, go all-in on your prep
++
++Hi {{name}},
++
++For a limited time, **Edurack Pro** — unlimited timed drills and the custom drill builder — is **[X]% off**.
++
++- The discount applies automatically at checkout, no code needed
++- Offer ends **[date/time]**
++- Price only goes back up once the sale ends
++
++> Switch the sale on first in Admin → Edurack Pro → Diwali sale, then match the discount and end time above to what you set there.`,
++    [["Claim the Diwali offer", "/pro"]], A("any", "any", false)),
++
+   // ───────────── Support ─────────────
+   T("Support", "feedback-survey", "📝", "Quick feedback request", "Asks students how it's going.", "A few weeks after sign-up",
+     "{{name}}, how are we doing?",
+diff --git a/src/lib/outreach-types.ts b/src/lib/outreach-types.ts
+index dadf2ea..ba3352b 100644
+--- a/src/lib/outreach-types.ts
++++ b/src/lib/outreach-types.ts
+@@ -7,8 +7,24 @@ export type OutreachAudience = {
+   track: "any" | "11th" | "12th" | "Dropper";
+   /** Only students who have never bought anything — the usual "intro + free PDFs" audience. */
+   nonBuyersOnly: boolean;
++  /**
++   * "auto" (default, and the only mode older saved campaigns have): exam/track/nonBuyersOnly decide who's in.
++   * "manual": the admin picked the audience by hand in the composer — exam/track/nonBuyersOnly are ignored,
++   * and the frequency cooldown (OUTREACH_MIN_GAP_DAYS) is skipped too, since picking someone by name is already
++   * a deliberate choice. The marketing unsubscribe and the bounce/spam-complaint block still always apply.
++   */
++  mode?: "auto" | "manual";
++  /** Manual mode only. true = start from every eligible student and remove `excludeUids` (deselect a few). false = start from nobody and use only `includeUids` (hand-pick a few). */
++  manualAll?: boolean;
++  /** Manual mode + manualAll: students to leave out. */
++  excludeUids?: string[];
++  /** Manual mode + !manualAll: the hand-picked students to include. */
++  includeUids?: string[];
+ };
+ 
++/** One student as shown in the manual-selection picker. */
++export type OutreachStudentPick = { uid: string; fullName?: string; email: string };
++
+ export type OutreachCampaign = {
+   id: string;
+   name: string;
+diff --git a/src/server-functions/outreach.ts b/src/server-functions/outreach.ts
+index 8cda61d..9decf89 100644
+--- a/src/server-functions/outreach.ts
++++ b/src/server-functions/outreach.ts
+@@ -11,7 +11,7 @@ import { logAdminAction } from "@/lib/team-core";
+ import { adminAuth } from "@/lib/firebase-admin";
+ import { getDb } from "@/lib/mongo";
+ import {
+-  countAudience, ensureIndexes, oid, pendingRecipients, previewDraft, runChunk, sendOne, sentCounts, toCampaign, toJob, validateCampaign,
++  countAudience, ensureIndexes, oid, pendingRecipients, previewDraft, resolveStudents, runChunk, searchStudents, sendOne, sentCounts, toCampaign, toJob, validateCampaign,
+ } from "@/lib/outreach-core";
+ import type { OutreachAudience, OutreachCampaign, OutreachJobView } from "@/lib/outreach-types";
+ 
+@@ -147,6 +147,22 @@ export const renderOutreachPreview = createServerFn({ method: "POST" })
+     return previewDraft(data.campaign);
+   });
+ 
++/** Manual-selection picker: students matching a name/email search (email required, nothing else filtered). */
++export const searchOutreachStudents = createServerFn({ method: "POST" })
++  .validator((data: { token: string; query: string; limit?: number }) => data)
++  .handler(async ({ data }) => {
++    await requireAdmin(data.token);
++    return { students: await searchStudents(await getDb(), data.query, data.limit ?? 25) };
++  });
++
++/** Names/emails for a saved manual selection (includeUids / excludeUids), so the composer can show who's picked. */
++export const resolveOutreachStudents = createServerFn({ method: "POST" })
++  .validator((data: { token: string; uids: string[] }) => data)
++  .handler(async ({ data }) => {
++    await requireAdmin(data.token);
++    return { students: await resolveStudents(await getDb(), data.uids) };
++  });
++
+ /** "How many students match this audience?" — live badge while editing, nothing saved. */
+ export const countOutreachAudience = createServerFn({ method: "POST" })
+   .validator((data: { token: string; audience: OutreachAudience }) => data)

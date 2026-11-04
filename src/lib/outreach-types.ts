@@ -7,7 +7,23 @@ export type OutreachAudience = {
   track: "any" | "11th" | "12th" | "Dropper";
   /** Only students who have never bought anything — the usual "intro + free PDFs" audience. */
   nonBuyersOnly: boolean;
+  /**
+   * "auto" (default, and the only mode older saved campaigns have): exam/track/nonBuyersOnly decide who's in.
+   * "manual": the admin picked the audience by hand in the composer — exam/track/nonBuyersOnly are ignored,
+   * and the frequency cooldown (OUTREACH_MIN_GAP_DAYS) is skipped too, since picking someone by name is already
+   * a deliberate choice. The marketing unsubscribe and the bounce/spam-complaint block still always apply.
+   */
+  mode?: "auto" | "manual";
+  /** Manual mode only. true = start from every eligible student and remove `excludeUids` (deselect a few). false = start from nobody and use only `includeUids` (hand-pick a few). */
+  manualAll?: boolean;
+  /** Manual mode + manualAll: students to leave out. */
+  excludeUids?: string[];
+  /** Manual mode + !manualAll: the hand-picked students to include. */
+  includeUids?: string[];
 };
+
+/** One student as shown in the manual-selection picker. */
+export type OutreachStudentPick = { uid: string; fullName?: string; email: string };
 
 export type OutreachCampaign = {
   id: string;

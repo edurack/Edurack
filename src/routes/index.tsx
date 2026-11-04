@@ -41,7 +41,7 @@ import { MotionConfig, motion, useMotionValueEvent, useScroll } from "motion/rea
 import { HeroMotion, PREMIUM_BTN, GHOST_BTN } from "@/components/landing/HeroMotion";
 import { LandingFreeSessionsSection } from "@/components/landing-free-sessions-section";
 import { LandingProSection } from "@/components/landing-pro-section";
-import { DiwaliSaleSection } from "@/components/diwali/diwali-sale-section";
+import { FestivalSaleSection } from "@/components/festival/festival-sale-section";
 import { FreeResourcesSection } from "@/components/landing/free-resources-section";
 import { QuickMockSection } from "@/components/landing/quick-mock-section";
 import { DEMO_EXAM_KEYS, EXAM_DEMOS, toneOf } from "@/components/landing/exam-demos";
@@ -393,7 +393,7 @@ function Index() {
         <Header />
         <main>
           <HeroMotion ctaRef={ctaRef} />
-          <DiwaliSaleSection />
+          <FestivalSaleSection />
           <AnswerSection />
           <ExamsSection />
           <ToolsSection />

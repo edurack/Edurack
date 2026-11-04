@@ -27,9 +27,9 @@ import "@fontsource/plus-jakarta-sans/700.css";
 import { AuthProvider } from "../lib/auth-context";
 import { AnalyticsProvider } from "../components/analytics-provider";
 import { reportError } from "../lib/analytics";
-import { DiwaliLayer } from "../components/diwali/diwali-layer";
-import { getDiwaliSettings } from "../server-functions/diwali";
-import { DEFAULT_DIWALI_SETTINGS } from "../lib/diwali";
+import { FestivalLayer } from "../components/festival/festival-layer";
+import { getFestivalSettings } from "../server-functions/festival";
+import { DEFAULT_FESTIVAL_SETTINGS } from "../lib/festival";
 
 // ─── Site-wide SEO constants ────────────────────────────────────────────────
 // One place to change branding/copy. Nothing here is exam-specific on
@@ -149,13 +149,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  // Is the Diwali sale switched on (Admin → Edurack Pro)? Loaded here so the festive UI is in the server-rendered HTML.
+  // Is a festival sale (Diwali / Christmas) switched on (Admin → Edurack Pro)? Loaded here so the festive UI is in the server-rendered HTML.
   // Never blocks or breaks a page: if it can't be read, the sale counts as off and the site is normal.
   loader: async () => {
     try {
-      return { diwali: await getDiwaliSettings() };
+      return { festival: await getFestivalSettings() };
     } catch {
-      return { diwali: DEFAULT_DIWALI_SETTINGS };
+      return { festival: DEFAULT_FESTIVAL_SETTINGS };
     }
   },
   staleTime: 30_000,
@@ -239,8 +239,8 @@ function RootComponent() {
       <ThemeProvider>
         <AuthProvider>
           <AnalyticsProvider />
-          {/* Diwali 2026 festive layer. Renders nothing outside the sale window (see lib/diwali.ts). */}
-          <DiwaliLayer />
+          {/* Festival layer (Diwali / Christmas). Renders nothing unless a sale is switched on (see lib/festival.ts). */}
+          <FestivalLayer />
           <Outlet />
         </AuthProvider>
       </ThemeProvider>

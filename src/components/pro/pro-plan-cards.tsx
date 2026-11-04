@@ -102,7 +102,7 @@ export function ProPlanCards({ plans, proOnly }: { plans: ProPlanPublic[]; proOn
                 {p.listPrice !== undefined && p.listPrice > p.price && (
                   <>
                     <span className="text-base font-semibold text-muted-foreground line-through">{rupees(p.listPrice)}</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">Diwali {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">{p.saleName ?? "Sale"} {Math.round(100 - (p.price / p.listPrice) * 100)}% off</span>
                   </>
                 )}
                 <span className="text-sm text-muted-foreground">for {p.durationDays} days</span>

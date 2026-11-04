@@ -245,6 +245,21 @@ You've been practising consistently, and these extras can help you improve faste
 > [Add price and a clear next step.]`,
     [["See what's included", "/dashboard"]], A("neet", "any", true)),
 
+  T("Sales", "diwali-sale", "🪔", "Diwali sale on Edurack Pro", "Announces the Diwali discount on Edurack Pro.", "While the Diwali sale is switched on (Admin → Edurack Pro → Diwali sale)",
+    "{{name}}, Diwali sale: [X]% off Edurack Pro 🪔",
+    `# This Diwali, go all-in on your prep
+
+Hi {{name}},
+
+For a limited time, **Edurack Pro** — unlimited timed drills and the custom drill builder — is **[X]% off**.
+
+- The discount applies automatically at checkout, no code needed
+- Offer ends **[date/time]**
+- Price only goes back up once the sale ends
+
+> Switch the sale on first in Admin → Edurack Pro → Diwali sale, then match the discount and end time above to what you set there.`,
+    [["Claim the Diwali offer", "/pro"]], A("any", "any", false)),
+
   // ───────────── Support ─────────────
   T("Support", "feedback-survey", "📝", "Quick feedback request", "Asks students how it's going.", "A few weeks after sign-up",
     "{{name}}, how are we doing?",

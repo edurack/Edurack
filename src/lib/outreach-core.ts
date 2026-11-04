@@ -6,7 +6,7 @@ import { getDb } from "@/lib/mongo";
 import { sendMail } from "@/lib/mailer";
 import { firstName, outreachEmailHtml, safeUrl } from "@/lib/growth-emails";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
-import type { OutreachAudience, OutreachCampaign, OutreachJobView } from "@/lib/outreach-types";
+import type { OutreachAudience, OutreachCampaign, OutreachJobView, OutreachStudentPick } from "@/lib/outreach-types";
 import { classifyRecipients, isQuietHour, normalizeEmail, parseGapDays } from "@/lib/email-policy";
 import { ensureGuardIndexes, recentlyEmailedUids, suppressedSet } from "@/lib/email-guard";
 
@@ -48,9 +48,16 @@ export const toJob = (j: any, waiting?: OutreachJobView["waiting"]): OutreachJob
   ...(waiting ? { waiting } : {}),
 });
 
-/** Mongo filter for "who is this campaign for". Respects the marketing opt-out. */
+/** Mongo filter for "who is this campaign for". Always respects the marketing opt-out. */
 export async function audienceFilter(db: Db, a: OutreachAudience): Promise<Record<string, unknown>> {
   const and: Record<string, unknown>[] = [{ email: { $type: "string", $ne: "" } }, { "emailOptOut.marketing": { $ne: true } }];
+  if (a.mode === "manual") {
+    // The admin picked these students by hand, so exam/class/non-buyer targeting is skipped entirely.
+    // A uid list is never empty-means-everyone: an empty $in/$nin list still needs a value Mongo won't match.
+    if (a.manualAll) and.push({ uid: { $nin: a.excludeUids?.length ? a.excludeUids : ["__none__"] } });
+    else and.push({ uid: { $in: a.includeUids?.length ? a.includeUids : ["__none__"] } });
+    return { $and: and };
+  }
   if (a.exam !== "any") {
     const exam = { $regex: `^${a.exam}$`, $options: "i" };
     // The app treats a missing targetExam as NEET (see getAdminStudentFullProfile), so match that.
@@ -62,6 +69,33 @@ export async function audienceFilter(db: Db, a: OutreachAudience): Promise<Recor
     and.push({ uid: { $nin: buyers } });
   }
   return { $and: and };
+}
+
+/** Students matching a name/email search, for the manual-selection picker. Only "has an email" is required. */
+export async function searchStudents(db: Db, query: string, limit = 25): Promise<OutreachStudentPick[]> {
+  const filter: Record<string, unknown> = { email: { $type: "string", $ne: "" } };
+  const q = query.trim();
+  if (q) {
+    const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = [{ fullName: { $regex: safe, $options: "i" } }, { email: { $regex: safe, $options: "i" } }];
+  }
+  const rows = await db
+    .collection("profiles")
+    .find(filter, { projection: { uid: 1, fullName: 1, email: 1 } })
+    .sort({ _id: -1 })
+    .limit(Math.min(Math.max(limit, 1), 100))
+    .toArray();
+  return rows.map((p) => ({ uid: p.uid as string, fullName: (p.fullName as string) || undefined, email: p.email as string }));
+}
+
+/** Display info (name/email) for a fixed set of uids — used to show a saved manual selection in the composer. */
+export async function resolveStudents(db: Db, uids: string[]): Promise<OutreachStudentPick[]> {
+  if (uids.length === 0) return [];
+  const rows = await db
+    .collection("profiles")
+    .find({ uid: { $in: uids.slice(0, 500) } }, { projection: { uid: 1, fullName: 1, email: 1 } })
+    .toArray();
+  return rows.map((p) => ({ uid: p.uid as string, fullName: (p.fullName as string) || undefined, email: p.email as string }));
 }
 
 export type Recipient = { uid: string; email: string; fullName?: string };
@@ -77,7 +111,9 @@ export async function pendingRecipients(db: Db, campaignId: string, a: OutreachA
   const profiles = await db.collection("profiles").find(await audienceFilter(db, a), { projection: { uid: 1, fullName: 1, email: 1 } }).sort({ _id: 1 }).limit(MAX_AUDIENCE).toArray();
   const notYet = profiles.filter((p) => !done.has(p.uid as string));
 
-  const gapDays = parseGapDays(process.env.OUTREACH_MIN_GAP_DAYS);
+  // Manual mode: the admin picked these students by name, so the automatic re-contact cooldown doesn't
+  // apply — only the hard bounce/spam-complaint block still does (sending there would just fail anyway).
+  const gapDays = a.mode === "manual" ? 0 : parseGapDays(process.env.OUTREACH_MIN_GAP_DAYS);
   const [blockedEmails, recentUids] = await Promise.all([
     suppressedSet(db, notYet.map((p) => normalizeEmail(p.email as string))),
     gapDays > 0 ? recentlyEmailedUids(db, notYet.map((p) => p.uid as string), new Date(Date.now() - gapDays * 864e5)) : Promise.resolve(new Set<string>()),

@@ -17,7 +17,7 @@ import { getProAdmin, saveProSettings, saveProPlan, deleteProPlan, giftPro } fro
 import type { ProAdminOverview, ProAdminPlan } from "@/server-functions/pro-admin";
 import { MAX_FREE_DRILLS_PER_DAY, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
 import type { ProFeatureKey, ProSettings } from "@/lib/pro";
-import { DiwaliSaleCard } from "@/components/admin/diwali-sale-card";
+import { FestivalSaleCard } from "@/components/admin/festival-sale-card";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 type PlanForm = { id: string | null; name: string; price: string; durationDays: string; blurb: string; features: ProFeatureKey[]; active: boolean };
@@ -164,7 +164,7 @@ export function ProModule({ adminUser }: { adminUser: AdminUser }) {
         </div>
       )}
 
-      <DiwaliSaleCard adminUser={adminUser} />
+      <FestivalSaleCard adminUser={adminUser} />
 
       <div className="flex flex-wrap gap-3">
         <Tile label="Pro students now" value={data.stats.activeStudents} />

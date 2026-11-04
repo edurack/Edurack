@@ -23,7 +23,11 @@ const ago = (iso: string | null) => {
   return `${Math.round(m / 1440)} d ago`;
 };
 const audienceText = (a: OutreachCampaign["audience"]) =>
-  `${a.exam === "any" ? "Any exam" : a.exam.toUpperCase()} · ${a.track === "any" ? "all classes" : a.track === "Dropper" ? "droppers" : `class ${a.track.replace("th", "")}`}${a.nonBuyersOnly ? " · non-buyers" : ""}`;
+  a.mode === "manual"
+    ? a.manualAll
+      ? `Everyone, minus ${(a.excludeUids ?? []).length} deselected`
+      : `${(a.includeUids ?? []).length} hand-picked student${(a.includeUids ?? []).length === 1 ? "" : "s"}`
+    : `${a.exam === "any" ? "Any exam" : a.exam.toUpperCase()} · ${a.track === "any" ? "all classes" : a.track === "Dropper" ? "droppers" : `class ${a.track.replace("th", "")}`}${a.nonBuyersOnly ? " · non-buyers" : ""}`;
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

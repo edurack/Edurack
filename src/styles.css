@@ -579,10 +579,11 @@ input:-webkit-autofill:active {
   color: color-mix(in oklab, var(--color-foreground) 40%, transparent) !important;
 }
 /* ════════════════════════════════════════════════════════════════════
-   DIWALI THEME  (remove this whole block + src/components/diwali/ after the festival)
+   FESTIVAL THEMES: Diwali (dw-*) and Christmas (xm-*). Remove a theme's block + its decor in src/components/festival/ after the festival.
    Layered ON TOP of the base design. Nothing above is changed; the warm touches are scoped to
-   html[data-diwali="on"], which <DiwaliLayer /> sets only while the sale is live and never on
-   exam / drill / portal pages. Palette: ember orange #ff7a18, marigold #ffb52e, antique gold #e8b04a.
+   html[data-festival="diwali"|"christmas"], which <FestivalLayer /> sets only while a sale is live and never on
+   exam / drill / portal pages.
+   ── DIWALI ── Palette: ember orange #ff7a18, marigold #ffb52e, antique gold #e8b04a.
    ════════════════════════════════════════════════════════════════════ */
 :root {
   --dw-ink: #0d0503;
@@ -777,17 +778,17 @@ input:-webkit-autofill:active {
 
 /* ── Warm touches on the EXISTING design (only while data-diwali is on) ──
    Same layout, same colours for text and surfaces; just a gilded edge, a soft marigold glow and gold selection. */
-html[data-diwali="on"] ::selection { background: #ffd978; color: #2a1206; }
+html[data-festival="diwali"] ::selection { background: #ffd978; color: #2a1206; }
 
-html[data-diwali="on"] header.sticky { box-shadow: 0 10px 30px -20px rgba(255, 140, 30, 0.55); }
-html[data-diwali="on"] header.sticky::after {
+html[data-festival="diwali"] header.sticky { box-shadow: 0 10px 30px -20px rgba(255, 140, 30, 0.55); }
+html[data-festival="diwali"] header.sticky::after {
   content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 1px; pointer-events: none;
   background: linear-gradient(90deg, transparent, rgba(232, 176, 74, 0.9) 20%, rgba(255, 240, 192, 0.95) 50%, rgba(232, 176, 74, 0.9) 80%, transparent);
 }
 
 /* the site's dark "ink" bands pick up an ember glow and a gold hairline */
-html[data-diwali="on"] .ink-section,
-html[data-diwali="on"] .bg-\[\#141b2b\] {
+html[data-festival="diwali"] .ink-section,
+html[data-festival="diwali"] .bg-\[\#141b2b\] {
   background-image:
     radial-gradient(55% 90% at 100% 0%, rgba(255, 140, 30, 0.2), transparent 65%),
     radial-gradient(45% 80% at 0% 100%, rgba(232, 176, 74, 0.14), transparent 65%);
@@ -795,8 +796,8 @@ html[data-diwali="on"] .bg-\[\#141b2b\] {
 }
 
 /* primary buttons keep their blue; they just glow like they're lit by a diya on hover */
-html[data-diwali="on"] a.bg-primary:hover,
-html[data-diwali="on"] button.bg-primary:hover {
+html[data-festival="diwali"] a.bg-primary:hover,
+html[data-festival="diwali"] button.bg-primary:hover {
   box-shadow: 0 0 0 3px rgba(255, 181, 46, 0.28), 0 10px 28px -8px rgba(255, 140, 30, 0.6);
 }
 
@@ -804,4 +805,213 @@ html[data-diwali="on"] button.bg-primary:hover {
   .dw-glow, .dw-sparks { display: none; }
   .dw-bulb, .dw-gold-text, .dw-flame, .dw-flame-halo, .dw-kicker-dot, .dw-tape-track,
   .dw-btn-gold::after, .dw-overlay, .dw-popup { animation: none !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── CHRISTMAS ──  (xm-*) Palette: pine #0d3b27, deep forest #071a12, cranberry #c1272d, champagne gold #f0cf87, snow #fff8ec.
+   Same structure as the Diwali block above; only colours, decor and the snow differ.
+   ════════════════════════════════════════════════════════════════════ */
+:root {
+  --xm-ink: #06150e;
+  --xm-red: #d6303a;
+}
+.xm-serif { font-family: var(--font-dw-serif); font-weight: 400; letter-spacing: -0.01em; }
+.xm-num { font-family: var(--font-dw-num); font-optical-sizing: auto; }
+
+.xm-gold-text {
+  background-image: linear-gradient(100deg, #fff6d8 0%, #f4d27f 22%, #dba94a 42%, #fff7dc 54%, #f1cf80 68%, #d9a03a 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: dw-shimmer 7s ease-in-out infinite;
+  padding-right: 0.04em;
+}
+.xm-kicker-dot {
+  width: 6px; height: 6px; flex: none; border-radius: 9999px; background: var(--xm-red);
+  box-shadow: 0 0 0 3px rgba(214, 48, 58, 0.28), 0 0 14px 2px rgba(255, 90, 90, 0.85);
+  animation: dw-pulse 2s ease-in-out infinite;
+}
+.xm-pill {
+  display: inline-flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.95rem; border-radius: 9999px;
+  font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #f6e6c0;
+  border: 1px solid rgba(240, 207, 135, 0.35); background: rgba(255, 255, 255, 0.06); backdrop-filter: blur(6px);
+}
+
+.xm-section { background: var(--xm-ink); }
+.xm-section::after {
+  content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 1px; z-index: 1;
+  background: linear-gradient(90deg, transparent, #f0cf87 25%, #fff6d8 50%, #f0cf87 75%, transparent); opacity: 0.8;
+}
+.xm-section-bg {
+  background:
+    radial-gradient(55% 50% at 90% 4%, rgba(214, 48, 58, 0.36), transparent 66%),
+    radial-gradient(55% 55% at 6% 96%, rgba(33, 150, 84, 0.3), transparent 66%),
+    radial-gradient(45% 40% at 48% 46%, rgba(240, 207, 135, 0.08), transparent 70%),
+    linear-gradient(180deg, #0c2c1d 0%, var(--xm-ink) 62%, #040e09 100%);
+}
+.xm-section-bg::after {
+  content: ""; position: absolute; inset: 0; opacity: 0.14; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 .95 0 0 0 0 .85 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.xm-bigword {
+  position: absolute; right: -2%; bottom: -9%; pointer-events: none; user-select: none;
+  font-family: var(--font-dw-serif); font-style: italic; line-height: 0.8; font-size: clamp(12rem, 34vw, 30rem);
+  color: transparent; -webkit-text-stroke: 1px rgba(240, 207, 135, 0.15);
+}
+
+.xm-glass {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 244, 220, 0.18);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
+  box-shadow: inset 0 1px 0 rgba(255, 246, 216, 0.14), 0 18px 40px -24px rgba(214, 48, 58, 0.55);
+  backdrop-filter: blur(10px);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s;
+}
+.xm-glass:hover { border-color: rgba(240, 207, 135, 0.5); }
+.xm-icon { color: #3a0b10; background: linear-gradient(135deg, #fff6d8, #e2b457); box-shadow: 0 0 22px -2px rgba(240, 190, 90, 0.6); }
+.xm-tile-box {
+  border-radius: 0.9rem;
+  border: 1px solid rgba(240, 207, 135, 0.3);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(214, 48, 58, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 246, 216, 0.16), 0 10px 28px -14px rgba(214, 48, 58, 0.5);
+}
+
+.xm-btn-gold, .xm-btn-ghost {
+  position: relative; overflow: hidden;
+  display: inline-flex; min-height: 3.25rem; align-items: center; justify-content: center; gap: 0.5rem;
+  border-radius: 9999px; padding-inline: 1.9rem; font-size: 15px; font-weight: 700; letter-spacing: 0.01em;
+  transition: transform 0.2s, box-shadow 0.25s, gap 0.2s, background-color 0.2s, border-color 0.2s;
+}
+/* the main button is cranberry with a gold rim: it is the one red thing on a green surface, so it pulls the eye */
+.xm-btn-gold {
+  color: #fff8ec;
+  background: linear-gradient(120deg, #e24650 0%, #c1272d 50%, #9d1a22 100%);
+  box-shadow: 0 0 0 1px rgba(240, 207, 135, 0.7) inset, 0 10px 34px -8px rgba(214, 48, 58, 0.8), 0 0 28px -4px rgba(255, 110, 110, 0.4);
+}
+.xm-btn-gold:hover { gap: 0.8rem; transform: translateY(-1px); box-shadow: 0 0 0 1px #f6dc9a inset, 0 14px 44px -8px rgba(214, 48, 58, 1), 0 0 40px -2px rgba(255, 110, 110, 0.6); }
+.xm-btn-gold:active { transform: scale(0.97); }
+.xm-btn-gold::after {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 30%; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: promo-shine 3.4s ease-in-out infinite;
+}
+.xm-btn-ghost { color: #fff3dc; border: 1px solid rgba(240, 207, 135, 0.5); }
+.xm-btn-ghost:hover { background: rgba(240, 207, 135, 0.12); border-color: #f0cf87; }
+.xm-btn-gold:focus-visible, .xm-btn-ghost:focus-visible { outline: 2px solid #f6dc9a; outline-offset: 3px; }
+
+/* cranberry marquee tape with candy-stripe edge */
+.xm-tape {
+  position: relative; z-index: 2; overflow: hidden; color: #fff3dc;
+  background: linear-gradient(100deg, #8f171f, #c1272d 35%, #a31c25 70%, #c1272d);
+  box-shadow: 0 6px 30px -8px rgba(214, 48, 58, 0.7), inset 0 -2px 0 rgba(240, 207, 135, 0.55);
+}
+.xm-tape-track { display: flex; width: max-content; animation: dw-marquee 38s linear infinite; }
+.xm-tape-set { display: flex; flex: none; }
+.xm-tape-set span { padding: 0.6rem 0; white-space: pre; font-family: var(--font-display); font-size: 11px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase; }
+
+/* snow: sparse, soft, slow. Only on the dark sale surfaces, never site-wide */
+.xm-sparks { position: absolute; inset: 0; z-index: -10; overflow: hidden; pointer-events: none; }
+.xm-flake {
+  position: absolute; top: -10px; display: block; border-radius: 9999px; background: #fff; opacity: 0;
+  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.55); animation: xm-fall linear infinite;
+}
+@keyframes xm-fall {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  8% { opacity: 0.85; }
+  50% { transform: translate3d(14px, 50vh, 0); }
+  92% { opacity: 0.7; }
+  100% { transform: translate3d(-8px, 110vh, 0); opacity: 0; }
+}
+.xm-section .xm-flake { animation-name: xm-fall-section; }
+@keyframes xm-fall-section {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  10% { opacity: 0.85; }
+  50% { transform: translate3d(12px, 260px, 0); }
+  90% { opacity: 0.7; }
+  100% { transform: translate3d(-8px, 560px, 0); opacity: 0; }
+}
+
+/* Popup */
+.xm-overlay { background: radial-gradient(circle at 50% 40%, rgba(8, 40, 26, 0.74), rgba(2, 10, 6, 0.92)); backdrop-filter: blur(5px); }
+.xm-overlay[data-state="open"] { animation: dw-fade 0.35s ease both; }
+.xm-overlay[data-state="closed"] { animation: dw-fade 0.2s ease reverse both; }
+.xm-popup {
+  background: var(--xm-ink); isolation: isolate;
+  border: 1px solid rgba(240, 207, 135, 0.5); border-bottom: 0;
+  box-shadow: 0 -20px 80px -20px rgba(214, 48, 58, 0.5), 0 0 60px -10px rgba(240, 207, 135, 0.25);
+}
+.xm-popup:focus, .xm-popup:focus-visible { outline: none !important; }
+.xm-popup[data-state="open"] { animation: dw-sheet 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.xm-popup[data-state="closed"] { animation: dw-sheet 0.25s ease reverse both; }
+.xm-popup .xm-flake { animation-name: xm-fall-section; }
+@media (min-width: 640px) {
+  .xm-popup { border-bottom: 1px solid rgba(240, 207, 135, 0.5); box-shadow: 0 40px 120px -20px rgba(214, 48, 58, 0.5), 0 0 80px -10px rgba(240, 207, 135, 0.3); }
+  .xm-popup[data-state="open"], .xm-popup[data-state="closed"] { animation-name: dw-pop; }
+}
+
+.xm-ticker {
+  background:
+    radial-gradient(40% 160% at 12% 0%, rgba(214, 48, 58, 0.5), transparent 70%),
+    radial-gradient(40% 160% at 88% 0%, rgba(33, 150, 84, 0.4), transparent 70%),
+    linear-gradient(90deg, #07190f, #0e2f20 50%, #07190f);
+  border-bottom: 1px solid rgba(240, 207, 135, 0.45);
+  box-shadow: 0 6px 28px -10px rgba(214, 48, 58, 0.5);
+}
+
+/* Fixed ambient overlays (all pointer-events:none) */
+.xm-garland { position: fixed; inset: 0 0 auto 0; height: 22px; overflow: hidden; z-index: 60; pointer-events: none; }
+.xm-garland-row { display: flex; width: max-content; }
+.xm-tile {
+  position: relative; flex: none; width: 100px; height: 22px;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='22' viewBox='0 0 100 22'><path d='M0 1Q50 15 100 1' fill='none' stroke='%232a6b3e' stroke-width='1.6' stroke-linecap='round'/></svg>") repeat-x;
+}
+.xm-bulb {
+  position: absolute; width: 5px; height: 8px; margin-left: -2.5px;
+  border-radius: 50% 50% 50% 50% / 38% 38% 62% 62%;
+  background: radial-gradient(circle at 38% 28%, #fff 0 12%, var(--c) 58%);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--c) 80%, transparent), 0 0 16px 4px color-mix(in srgb, var(--c) 40%, transparent);
+  animation: dw-twinkle 2.6s ease-in-out infinite;
+  animation-delay: var(--d);
+}
+.xm-bulb::before { content: ""; position: absolute; left: 50%; top: -2px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 1px; background: #5f6b5a; }
+
+.xm-glow {
+  position: fixed; inset: 0; z-index: 44; pointer-events: none;
+  background:
+    radial-gradient(38rem 22rem at 0% 0%, rgba(214, 48, 58, 0.1), transparent 70%),
+    radial-gradient(38rem 22rem at 100% 0%, rgba(53, 212, 111, 0.1), transparent 70%);
+  animation: dw-breathe 6s ease-in-out infinite;
+}
+.xm-corner { position: fixed; bottom: 6px; z-index: 44; width: 44px; height: 56px; pointer-events: none; display: none; filter: drop-shadow(0 0 10px rgba(53, 212, 111, 0.25)); }
+@media (min-width: 1024px) { .xm-corner { display: block; } }
+.xm-bauble { animation: dw-twinkle 2.4s ease-in-out infinite; }
+.xm-tree-star { transform-origin: 32px 14px; animation: dw-halo 2.6s ease-in-out infinite; }
+@media (max-width: 639px) { .xm-garland-row { transform: scale(0.8); transform-origin: 0 0; } }
+
+/* Touches on the EXISTING design (only while data-festival="christmas") */
+html[data-festival="christmas"] ::selection { background: #f6dc9a; color: #3a0b10; }
+html[data-festival="christmas"] header.sticky { box-shadow: 0 10px 30px -20px rgba(33, 150, 84, 0.5); }
+html[data-festival="christmas"] header.sticky::after {
+  content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 2px; pointer-events: none;
+  background: repeating-linear-gradient(90deg, #c1272d 0 18px, #fff8ec 18px 26px, #2a8a52 26px 44px, #fff8ec 44px 52px);
+  opacity: 0.85;
+}
+html[data-festival="christmas"] .ink-section,
+html[data-festival="christmas"] .bg-\[\#141b2b\] {
+  background-image:
+    radial-gradient(55% 90% at 100% 0%, rgba(214, 48, 58, 0.16), transparent 65%),
+    radial-gradient(45% 80% at 0% 100%, rgba(33, 150, 84, 0.18), transparent 65%);
+  box-shadow: inset 0 1px 0 rgba(240, 207, 135, 0.4), inset 0 -1px 0 rgba(240, 207, 135, 0.22);
+}
+html[data-festival="christmas"] a.bg-primary:hover,
+html[data-festival="christmas"] button.bg-primary:hover {
+  box-shadow: 0 0 0 3px rgba(214, 48, 58, 0.22), 0 10px 28px -8px rgba(33, 150, 84, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xm-glow, .xm-sparks { display: none; }
+  .xm-bulb, .xm-gold-text, .xm-bauble, .xm-tree-star, .xm-kicker-dot, .xm-tape-track,
+  .xm-btn-gold::after, .xm-overlay, .xm-popup { animation: none !important; }
 }

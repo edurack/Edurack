@@ -14,8 +14,8 @@ import { sendMail } from "@/lib/mailer";
 import { purchaseConfirmationEmailHtml, sessionBookingConfirmationEmailHtml, sessionBookingNotificationEmailHtml } from "@/lib/email-templates";
 import { splitSessionPrice } from "@/lib/session-types";
 import { refundRazorpayPayment } from "@/lib/razorpay-refund";
-import { diwaliPrice } from "@/lib/diwali";
-import { readDiwaliSettings } from "@/lib/diwali-server";
+import { festivalPrice } from "@/lib/festival";
+import { readFestivalSettings } from "@/lib/festival-server";
 
 // "mentorTest" — a single paid test appended to a mentor's batch series,
 // bought standalone (no batch purchase required). See testCores.price /
@@ -69,10 +69,10 @@ export async function lookupProPlan(planId: string) {
     throw new Error("This plan isn't available right now.");
   }
   const { cleanPlanFeatures } = await import("@/lib/pro");
-  // `price` is what gets CHARGED: the plan's normal price, or the Diwali sale price while the admin has the sale switched on (lib/diwali.ts).
+  // `price` is what gets CHARGED: the plan's normal price, or the festival sale price while the admin has the sale switched on (lib/festival.ts).
   // Read fresh from the database (no cache) so checkout always follows the switch.
   // Everything that takes money for a Pro plan (checkout and parent pay links) reads it from here.
-  return { name: String(plan.name ?? "Edurack Pro"), price: diwaliPrice(price, await readDiwaliSettings(db)), listPrice: price, durationDays: days as number, features: cleanPlanFeatures(plan.features) };
+  return { name: String(plan.name ?? "Edurack Pro"), price: festivalPrice(price, await readFestivalSettings(db)), listPrice: price, durationDays: days as number, features: cleanPlanFeatures(plan.features) };
 }
 
 export async function lookupItemPriceAndTitle(itemType: ItemType, itemId: string) {

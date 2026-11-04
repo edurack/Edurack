@@ -1,7 +1,7 @@
 // Campaign composer: write on the left, see the real email on the right.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { countOutreachAudience, renderOutreachPreview, saveOutreachCampaign, sendOutreachTest } from "@/server-functions/outreach";
-import type { OutreachAudience, OutreachCampaign } from "@/lib/outreach-types";
+import { countOutreachAudience, renderOutreachPreview, resolveOutreachStudents, saveOutreachCampaign, searchOutreachStudents, sendOutreachTest } from "@/server-functions/outreach";
+import type { OutreachAudience, OutreachCampaign, OutreachStudentPick } from "@/lib/outreach-types";
 
 type AdminUser = { getIdToken: () => Promise<string> };
 export type Draft = Omit<OutreachCampaign, "id" | "lastSentAt"> & { id?: string };
@@ -43,6 +43,47 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
 
+  // ── manual student picker ──
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerResults, setPickerResults] = useState<OutreachStudentPick[]>([]);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [studentCache, setStudentCache] = useState<Record<string, OutreachStudentPick>>({});
+  const pickedKey = d.audience.manualAll ? "excludeUids" : "includeUids";
+  const pickedUids = (d.audience[pickedKey] ?? []) as string[];
+
+  // Resolve names/emails for a selection that was already saved (editing an existing campaign).
+  useEffect(() => {
+    const missing = pickedUids.filter((u) => !studentCache[u]);
+    if (missing.length === 0) return;
+    (async () => {
+      try {
+        const r = await resolveOutreachStudents({ data: { token: await adminUser.getIdToken(), uids: missing } });
+        setStudentCache((c) => ({ ...c, ...Object.fromEntries(r.students.map((s) => [s.uid, s])) }));
+      } catch { /* best-effort */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedUids.join(",")]);
+
+  // Search box in the manual picker.
+  useEffect(() => {
+    if (d.audience.mode !== "manual") return;
+    setPickerBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await searchOutreachStudents({ data: { token: await adminUser.getIdToken(), query: pickerQuery, limit: 25 } });
+        setPickerResults(r.students);
+        setStudentCache((c) => ({ ...c, ...Object.fromEntries(r.students.map((s) => [s.uid, s])) }));
+      } catch { /* best-effort */ } finally { setPickerBusy(false); }
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerQuery, d.audience.mode]);
+
+  function togglePicked(uid: string) {
+    const next = pickedUids.includes(uid) ? pickedUids.filter((u) => u !== uid) : [...pickedUids, uid];
+    setD({ ...d, audience: { ...d.audience, [pickedKey]: next } });
+  }
+
   // Live preview: the server renders the exact HTML students receive.
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -61,7 +102,8 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
       try { setCount(await countOutreachAudience({ data: { token: await adminUser.getIdToken(), audience: d.audience } })); } catch { /* ignore */ }
     }, 350);
     return () => clearTimeout(t);
-  }, [d.audience.exam, d.audience.track, d.audience.nonBuyersOnly, adminUser]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.audience.exam, d.audience.track, d.audience.nonBuyersOnly, d.audience.mode, d.audience.manualAll, (d.audience.includeUids ?? []).join(","), (d.audience.excludeUids ?? []).join(",")]);
 
   const warnings = useMemo(() => {
     const w: string[] = [];
@@ -176,13 +218,73 @@ export function OutreachComposer({ adminUser, initial, onClose, onSaved }: {
                 {count ? `≈ ${count.total.toLocaleString("en-IN")} student${count.total === 1 ? "" : "s"}` : "Counting…"}
               </span>
             </div>
-            <div><span className={label}>Exam</span><div className="flex flex-wrap gap-2">{EXAMS.map((x) => <Chip key={x.v} active={d.audience.exam === x.v} onClick={() => setAud({ exam: x.v })}>{x.l}</Chip>)}</div></div>
-            <div><span className={label}>Class</span><div className="flex flex-wrap gap-2">{TRACKS.map((x) => <Chip key={x.v} active={d.audience.track === x.v} onClick={() => setAud({ track: x.v })}>{x.l}</Chip>)}</div></div>
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
-              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={d.audience.nonBuyersOnly} onChange={(e) => setAud({ nonBuyersOnly: e.target.checked })} />
-              Only students who never purchased
-            </label>
-            <p className="text-[11px] text-foreground/45">Students who unsubscribed are always skipped. Nobody gets the same campaign twice.</p>
+
+            <div className="flex flex-wrap gap-2">
+              <Chip active={d.audience.mode !== "manual"} onClick={() => setAud({ mode: "auto" })}>🎯 By exam / class</Chip>
+              <Chip active={d.audience.mode === "manual"} onClick={() => setAud({ mode: "manual", manualAll: d.audience.manualAll ?? true })}>✋ Pick students myself</Chip>
+            </div>
+
+            {d.audience.mode !== "manual" ? (
+              <>
+                <div><span className={label}>Exam</span><div className="flex flex-wrap gap-2">{EXAMS.map((x) => <Chip key={x.v} active={d.audience.exam === x.v} onClick={() => setAud({ exam: x.v })}>{x.l}</Chip>)}</div></div>
+                <div><span className={label}>Class</span><div className="flex flex-wrap gap-2">{TRACKS.map((x) => <Chip key={x.v} active={d.audience.track === x.v} onClick={() => setAud({ track: x.v })}>{x.l}</Chip>)}</div></div>
+                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-foreground">
+                  <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={d.audience.nonBuyersOnly} onChange={(e) => setAud({ nonBuyersOnly: e.target.checked })} />
+                  Only students who never purchased
+                </label>
+                <p className="text-[11px] text-foreground/45">Students who unsubscribed are always skipped. Nobody gets the same campaign twice.</p>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Chip active={!!d.audience.manualAll} onClick={() => setAud({ manualAll: true })}>Everyone, then I'll deselect a few</Chip>
+                  <Chip active={!d.audience.manualAll} onClick={() => setAud({ manualAll: false })}>Nobody — I'll pick exactly who</Chip>
+                </div>
+
+                <div>
+                  <input
+                    value={pickerQuery} onChange={(e) => setPickerQuery(e.target.value)} placeholder="Search students by name or email…"
+                    className={input}
+                  />
+                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-2xl border border-border bg-background p-1.5">
+                    {pickerBusy && <p className="px-3 py-2 text-xs text-foreground/45">Searching…</p>}
+                    {!pickerBusy && pickerResults.length === 0 && <p className="px-3 py-2 text-xs text-foreground/45">{pickerQuery.trim() ? "No students match." : "Type to search, or scroll your recent students."}</p>}
+                    {!pickerBusy && pickerResults.map((s) => {
+                      const picked = pickedUids.includes(s.uid);
+                      const excludedHere = d.audience.manualAll && picked;
+                      return (
+                        <label key={s.uid} className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm hover:bg-secondary">
+                          <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary)]" checked={picked} onChange={() => togglePicked(s.uid)} />
+                          <span className="min-w-0 flex-1 truncate">{s.fullName || "—"} <span className="text-foreground/45">· {s.email}</span></span>
+                          {excludedHere && <span className="shrink-0 text-[10px] font-bold uppercase text-red-500">Excluded</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {pickedUids.length > 0 && (
+                  <div>
+                    <span className={label}>{d.audience.manualAll ? `Deselected (${pickedUids.length})` : `Selected (${pickedUids.length})`}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {pickedUids.map((uid) => {
+                        const s = studentCache[uid];
+                        return (
+                          <span key={uid} className="flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-foreground">
+                            {s ? s.fullName || s.email : uid}
+                            <button type="button" aria-label="Remove" className="text-foreground/40 hover:text-red-500" onClick={() => togglePicked(uid)}>✕</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-foreground/45">
+                  {d.audience.manualAll ? "Starts from every student with an email — search above and check anyone you want to leave out." : "Nobody is included until you search and check them above."}
+                  {" "}Students who unsubscribed, bounced or reported spam are still always skipped, and nobody gets the same campaign twice.
+                </p>
+              </>
+            )}
           </div>
 
           {warnings.length > 0 && (

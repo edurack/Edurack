@@ -11,7 +11,7 @@ import { logAdminAction } from "@/lib/team-core";
 import { adminAuth } from "@/lib/firebase-admin";
 import { getDb } from "@/lib/mongo";
 import {
-  countAudience, ensureIndexes, oid, pendingRecipients, previewDraft, runChunk, sendOne, sentCounts, toCampaign, toJob, validateCampaign,
+  countAudience, ensureIndexes, oid, pendingRecipients, previewDraft, resolveStudents, runChunk, searchStudents, sendOne, sentCounts, toCampaign, toJob, validateCampaign,
 } from "@/lib/outreach-core";
 import type { OutreachAudience, OutreachCampaign, OutreachJobView } from "@/lib/outreach-types";
 
@@ -145,6 +145,22 @@ export const renderOutreachPreview = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await requireAdmin(data.token);
     return previewDraft(data.campaign);
+  });
+
+/** Manual-selection picker: students matching a name/email search (email required, nothing else filtered). */
+export const searchOutreachStudents = createServerFn({ method: "POST" })
+  .validator((data: { token: string; query: string; limit?: number }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    return { students: await searchStudents(await getDb(), data.query, data.limit ?? 25) };
+  });
+
+/** Names/emails for a saved manual selection (includeUids / excludeUids), so the composer can show who's picked. */
+export const resolveOutreachStudents = createServerFn({ method: "POST" })
+  .validator((data: { token: string; uids: string[] }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    return { students: await resolveStudents(await getDb(), data.uids) };
   });
 
 /** "How many students match this audience?" — live badge while editing, nothing saved. */

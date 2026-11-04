@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { splitCountdown, type Countdown } from "@/lib/diwali";
-import { useDiwaliSettings } from "./use-diwali-settings";
+import { splitCountdown, type Countdown } from "@/lib/festival";
+import { useFestivalSettings } from "./use-festival-settings";
 
 /** Time left in the sale. null until mounted, so server HTML and first client paint match. */
-export function useDiwaliCountdown(): Countdown | null {
-  const { endsAt } = useDiwaliSettings();
+export function useFestivalCountdown(): Countdown | null {
+  const { endsAt } = useFestivalSettings();
   const [left, setLeft] = useState<Countdown | null>(null);
   useEffect(() => {
     const tick = () => setLeft(splitCountdown(endsAt - Date.now()));
