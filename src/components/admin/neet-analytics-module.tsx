@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, BarChart3, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, BarChart3, Download, FileSpreadsheet, RefreshCw, Search } from "lucide-react";
 import { getAdminNeetQuestionAnalytics } from "@/server-functions/neet-analytics-admin";
 
 type AnalyticsRow = {
@@ -28,6 +28,25 @@ type TopicRow = {
 };
 
 const number = (value: number) => new Intl.NumberFormat("en-IN").format(value);
+
+function downloadCsv(filename: string, headers: string[], rows: Array<Array<string | number>>) {
+  const escapeCell = (value: string | number) => {
+    const text = String(value ?? "");
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(escapeCell).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+const fileDate = () => new Date().toISOString().slice(0, 10);
 
 export function NeetAnalyticsModule({ adminUser }: Props) {
   const [result, setResult] = useState<AnalyticsResult | null>(null);
@@ -99,9 +118,35 @@ export function NeetAnalyticsModule({ adminUser }: Props) {
           </div>
           <p className="mt-1 text-sm text-foreground/60">Live, read-only breakdown of NEET PYQs already stored in MongoDB.</p>
         </div>
-        <button onClick={() => void load()} disabled={loading} className="clay-btn-ghost inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh data
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => downloadCsv(`neet-topic-summary-${fileDate()}.csv`,
+              ["Subject", "Chapter", "Topic", "Total Questions", "Easy", "Medium", "Hard", "Unclassified"],
+              topicRows.map((row) => [row.subject, row.chapter, row.topic, row.total, row.easy, row.medium, row.hard, row.unclassified]))}
+            disabled={!result || topicRows.length === 0}
+            className="clay-btn-ghost inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            title="Download the currently filtered topic summary"
+          >
+            <Download className="h-3.5 w-3.5" /> Download summary CSV
+          </button>
+          <button
+            onClick={() => downloadCsv(`neet-analytics-breakdown-${fileDate()}.csv`,
+              ["Subject", "Chapter", "Topic", "Year", "Difficulty", "Question Count"],
+              (result?.rows ?? []).filter((row) =>
+                (subject === "All subjects" || row.subject === subject) &&
+                (year === "All years" || row.year === year) &&
+                (!search.trim() || `${row.subject} ${row.chapter} ${row.topic}`.toLowerCase().includes(search.trim().toLowerCase()))
+              ).map((row) => [row.subject, row.chapter, row.topic, row.year, row.difficulty, row.count]))}
+            disabled={!result || result.rows.length === 0}
+            className="clay-btn-ghost inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            title="Download all available year and difficulty breakdown rows for the selected filters"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Download detailed CSV
+          </button>
+          <button onClick={() => void load()} disabled={loading} className="clay-btn-ghost inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50">
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh data
+          </button>
+        </div>
       </div>
 
       {error && <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
