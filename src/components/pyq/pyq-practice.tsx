@@ -10,6 +10,7 @@ import { checkGuestPyqAnswer, listGuestPyqQuestions } from "@/server-functions/p
 import { listPyqSession, togglePyqBookmark } from "@/server-functions/practice-extras";
 import { ReportDialog } from "@/components/pyq/report-dialog";
 import { SessionSummary } from "@/components/pyq/session-summary";
+import { QuestionListView } from "@/components/pyq/question-list-view";
 import { GUEST_PYQ_LIMIT, SESSION_TITLES, type Difficulty, type OptionKey, type PyqCheckResult, type PyqList, type PyqQuestion, type PyqStatus, type SessionKind } from "@/lib/pyq-types";
 import { cn } from "@/lib/utils";
 import { track, trackOnce } from "@/lib/analytics";
@@ -62,6 +63,14 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
   const defaultStatus: StatusFilter = weakAttemptId ? "unsolved" : startFresh && !session ? "new" : "all";
   const [statusF, setStatusF] = useState<StatusFilter>(defaultStatus);
   const [showFilters, setShowFilters] = useState(false);
+  // Topic/chapter practice opens on a list of every question (tap one to solve it). Sessions, weak-topic runs, "continue"
+  // and the capped first-5 start go straight to solving, as before.
+  const listMode = !session && !weakAttemptId && !limit && !startFresh && !guest;
+  const [view, setView] = useState<"list" | "solve">(listMode ? "list" : "solve");
+  const [newestFirst, setNewestFirst] = useState(true);
+  // The questions in the order the student saw them when they tapped one. Frozen so that answering a question
+  // (which changes its status) can't make it vanish from a "Hide Attempted" list mid-solve.
+  const [queue, setQueue] = useState<string[] | null>(null);
 
   const [list, setList] = useState<PyqList | null>(null);
   const [years, setYears] = useState<string[]>([]);
@@ -151,14 +160,25 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     setIdx(0);
   }, [year, statusF]);
 
-  const questions = useMemo(() => {
+  // What the list screen shows: the loaded questions with the filters applied, newest paper first (or oldest first).
+  const filtered = useMemo(() => {
     let qs = list?.questions ?? [];
     if (year !== "All") qs = qs.filter((x) => x.source.year === year);
     if (statusF === "unsolved") qs = qs.filter((x) => x.status !== "correct");
     else if (statusF === "wrong") qs = qs.filter((x) => x.status === "wrong");
     else if (statusF === "new") qs = qs.filter((x) => x.status === "new" || x.status === "revealed"); // a peeked-at solution isn't an attempt
+    if (listMode) {
+      const yr = (x: PyqQuestion) => Number(x.source.year) || 0;
+      qs = [...qs].sort((a, b) => (newestFirst ? yr(b) - yr(a) : yr(a) - yr(b)));
+    }
     return limit ? qs.slice(0, limit) : qs;
-  }, [list, year, statusF, limit]);
+  }, [list, year, statusF, limit, listMode, newestFirst]);
+  // What the solve screen steps through: the frozen queue when opened from the list, otherwise the filtered list.
+  const questions = useMemo(() => {
+    if (!queue || !list) return filtered;
+    const byId = new Map(list.questions.map((x) => [x.id, x]));
+    return queue.map((id) => byId.get(id)).filter((x): x is PyqQuestion => Boolean(x));
+  }, [queue, list, filtered]);
   const q: PyqQuestion | undefined = questions[idx];
   const result = q ? results[q.id] : undefined;
   const activeFilters = (difficulty !== "All" ? 1 : 0) + (year !== "All" ? 1 : 0) + (statusF !== defaultStatus ? 1 : 0);
@@ -286,17 +306,64 @@ export function PyqPractice({ subject, chapter, topic, weakAttemptId, session, e
     return <SessionSummary title={heading} stats={stats} streak={streakNow} weakAttemptId={weakAttemptId} showQuickMock={!revising && !guest} onDone={onExit} />;
   }
 
+  function openFromList(i: number) {
+    setQueue(filtered.map((x) => x.id));
+    setIdx(i);
+    setActionError(null);
+    setView("solve");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  }
+  function backFromSolve() {
+    if (!listMode) return onExit();
+    setQueue(null);
+    setView("list");
+  }
+
+  if (listMode && view === "list" && !loadError) {
+    if (list === null) {
+      return (
+        <div className="space-y-3" aria-live="polite">
+          <div className="clay h-72 animate-pulse bg-foreground/5" />
+        </div>
+      );
+    }
+    return (
+      <QuestionListView
+        title={heading ?? ""}
+        subtitle={subheading}
+        items={filtered}
+        total={list.total}
+        hideAttempted={statusF === "new"}
+        onHideAttempted={(on) => setStatusF(on ? "new" : "all")}
+        difficulty={difficulty}
+        onDifficulty={setDifficulty}
+        years={years}
+        year={year}
+        onYear={setYear}
+        newestFirst={newestFirst}
+        onToggleSort={() => setNewestFirst((v) => !v)}
+        onOpen={openFromList}
+        onBack={onExit}
+        onClearFilters={() => {
+          setDifficulty("All");
+          setYear("All");
+          setStatusF("all");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
       {reporting && q && <ReportDialog questionId={q.id} onClose={() => setReporting(false)} />}
       {/* Top bar */}
       <div className="mb-3 flex items-center gap-2">
         <button
-          onClick={onExit}
+          onClick={backFromSolve}
           className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold text-foreground/60 hover:bg-foreground/5 hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" aria-hidden />
-          Back
+          {listMode ? "All questions" : "Back"}
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{heading}</p>
@@ -711,4 +778,4 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       {children}
     </button>
   );
-}
+}

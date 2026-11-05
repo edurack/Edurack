@@ -8,6 +8,7 @@ import { IconLoader2 as Loader2 } from "@tabler/icons-react";
 import { ChevronDown, ChevronLeft, ChevronRight, Lightbulb, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { SmartContent } from "@/lib/smart-content";
+import { QuestionListView } from "@/components/pyq/question-list-view";
 import { getNcertTree, listNcertQuestions, submitNcertAnswer } from "@/server-functions/ncert-line-practice";
 import type { NcertCheckResult, NcertQuestion, NcertStatus, NcertTree } from "@/lib/ncert-line-types";
 import { cn } from "@/lib/utils";
@@ -179,6 +180,12 @@ function NcertPractice({ subject, chapter, topic, onExit }: { subject: string; c
   const [busy, setBusy] = useState(false);
   const [finished, setFinished] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Opens on a list of every question in the topic; tapping one starts solving from that question.
+  const [view, setView] = useState<"list" | "solve">("list");
+  const [hideAttempted, setHideAttempted] = useState(false);
+  const [difficulty, setDifficulty] = useState<"All" | "Easy" | "Medium" | "Hard">("All");
+  // Question ids in the order the student tapped into. Frozen so answering one can't drop it from a Hide Attempted list mid-solve.
+  const [queue, setQueue] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -195,7 +202,22 @@ function NcertPractice({ subject, chapter, topic, onExit }: { subject: string; c
     return () => { cancelled = true; };
   }, [user, subject, chapter, topic]);
 
-  const q = questions?.[idx];
+  // The rows of the list screen: filters applied. A peeked-at solution doesn't count as an attempt.
+  const filtered = useMemo(
+    () =>
+      (questions ?? []).filter(
+        (x) => (!hideAttempted || x.status === "new" || x.status === "revealed") && (difficulty === "All" || x.difficulty === difficulty),
+      ),
+    [questions, hideAttempted, difficulty],
+  );
+  // What the solve screen steps through.
+  const queued = useMemo(() => {
+    if (!queue || !questions) return filtered;
+    const byId = new Map(questions.map((x) => [x.id, x]));
+    return queue.map((id) => byId.get(id)).filter((x): x is NcertQuestion => Boolean(x));
+  }, [queue, questions, filtered]);
+
+  const q = queued[idx];
   const result = q ? results[q.id] : undefined;
   const canCheck = useMemo(() => {
     if (!q || result) return false;
@@ -225,7 +247,7 @@ function NcertPractice({ subject, chapter, topic, onExit }: { subject: string; c
     void send(q.type === "mcq" ? { option: picked[q.id] } : { value: Number(typed[q.id]) });
   }
 
-  const atEnd = questions ? idx >= questions.length - 1 : true;
+  const atEnd = idx >= queued.length - 1;
   function next() {
     if (atEnd) setFinished(true);
     else setIdx((i) => i + 1);
@@ -253,11 +275,39 @@ function NcertPractice({ subject, chapter, topic, onExit }: { subject: string; c
     );
   }
 
+  if (view === "list") {
+    if (questions === null) return <div className="clay h-72 animate-pulse bg-foreground/5" />;
+    return (
+      <QuestionListView
+        title={topic ? `${chapter} · ${topic}` : chapter}
+        subtitle={`${subject} · NCERT Line by Line`}
+        items={filtered}
+        total={questions.length}
+        hideAttempted={hideAttempted}
+        onHideAttempted={setHideAttempted}
+        difficulty={difficulty}
+        onDifficulty={setDifficulty}
+        onOpen={(i) => {
+          setQueue(filtered.map((x) => x.id));
+          setIdx(i);
+          setActionError(null);
+          setView("solve");
+          if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+        }}
+        onBack={onExit}
+        onClearFilters={() => {
+          setHideAttempted(false);
+          setDifficulty("All");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="animate-in fade-in duration-300 motion-reduce:animate-none">
       <div className="mb-3 flex items-center gap-2">
-        <button onClick={onExit} className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold text-foreground/60 hover:bg-foreground/5 hover:text-foreground">
-          <ChevronLeft className="h-4 w-4" aria-hidden /> Back
+        <button onClick={() => { setQueue(null); setView("list"); }} className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold text-foreground/60 hover:bg-foreground/5 hover:text-foreground">
+          <ChevronLeft className="h-4 w-4" aria-hidden /> All questions
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{topic ? `${chapter} · ${topic}` : chapter}</p>
@@ -276,11 +326,11 @@ function NcertPractice({ subject, chapter, topic, onExit }: { subject: string; c
         <>
           <div className="mb-3">
             <div className="mb-1.5 flex items-center justify-between text-xs text-foreground/50">
-              <span className="font-semibold text-foreground/70">Question {idx + 1} of {questions.length}</span>
+              <span className="font-semibold text-foreground/70">Question {idx + 1} of {queued.length}</span>
               <span className={cn("font-bold", q.difficulty === "Easy" ? "text-emerald-600" : q.difficulty === "Hard" ? "text-destructive" : "text-amber-600")}>{q.difficulty}</span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-foreground/10">
-              <div className="h-full rounded-full bg-[var(--sky-deep)] transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${((idx + 1) / questions.length) * 100}%` }} />
+              <div className="h-full rounded-full bg-[var(--sky-deep)] transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${((idx + 1) / queued.length) * 100}%` }} />
             </div>
           </div>
 
