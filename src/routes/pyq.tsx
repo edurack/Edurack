@@ -6,13 +6,15 @@ import { useAuth } from "@/lib/auth-context";
 import { AppHeader } from "@/components/app-header";
 import { PyqBrowser, type PyqNav } from "@/components/pyq/pyq-browser";
 import { PyqPractice } from "@/components/pyq/pyq-practice";
+import { NcertLineByLine } from "@/components/pyq/ncert-line-by-line";
 import { getPyqTree } from "@/server-functions/pyq-practice";
 import { getGuestPyqTree } from "@/server-functions/pyq-guest";
+import { getNcertAccess } from "@/server-functions/ncert-line-practice";
 import type { PyqTree } from "@/lib/pyq-types";
 import { EXAM_KEYS, EXAM_LABELS } from "@/lib/admin-types";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { BookMarked, Sparkles, Timer } from "lucide-react";
+import { BookMarked, BookOpen, Sparkles, Timer } from "lucide-react";
 import { getDrillAccess } from "@/server-functions/pro";
 import { quickMockName } from "@/lib/quick-mock";
 import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
@@ -26,7 +28,7 @@ import type { SessionKind } from "@/lib/pyq-types";
 // `weakAttempt` = "Practice my weak topics" for that test attempt (set by the result page).
 // `session` = a ready-made session: today's PYQ, revision due, mistakes, or bookmarks.
 // `first5` = the new-student start from the dashboard: practise just the first 5 questions of this chapter, then go back to the dashboard.
-type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean; fresh?: boolean };
+type PyqSearch = { exam?: string; subject?: string; chapter?: string; topic?: string; practice?: boolean; weakAttempt?: string; session?: SessionKind; first5?: boolean; fresh?: boolean; ncert?: boolean };
 
 const FIRST_N = 5;
 
@@ -45,6 +47,7 @@ export const Route = createFileRoute("/pyq")({
     practice: search.practice === true || search.practice === "true" || search.practice === 1 || search.practice === "1" ? true : undefined,
     fresh: search.fresh === true || search.fresh === "true" || search.fresh === 1 || search.fresh === "1" ? true : undefined,
     first5: search.first5 === true || search.first5 === "true" || search.first5 === 1 || search.first5 === "1" ? true : undefined,
+    ncert: search.ncert === true || search.ncert === "true" || search.ncert === 1 || search.ncert === "1" ? true : undefined,
   }),
   // Public now: logged-out visitors can browse and try a few questions.
   head: () =>
@@ -81,6 +84,25 @@ function PyqPage() {
       cancelled = true;
     };
   }, [user]);
+
+  // Whether THIS student can open NCERT Line by Line yet (Coming soon vs. live). Guests always see it as coming soon.
+  const [ncertAccess, setNcertAccess] = useState<{ enabled: boolean; mode: "beta" | "live" } | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const a = await getNcertAccess({ data: { token: await user.getIdToken() } });
+        if (!cancelled) setNcertAccess(a);
+      } catch {
+        /* treat as not yet available */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+  const ncertEnabled = Boolean(ncertAccess?.enabled);
 
   // Logged out is fine: guests get the browse tree and a few free questions.
   const guest = !loading && !user;
@@ -123,6 +145,17 @@ function PyqPage() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-foreground/40" />
+      </div>
+    );
+  }
+
+  if (search.ncert && ncertEnabled) {
+    return (
+      <div className="relative min-h-screen overflow-hidden">
+        <AppHeader user={user} />
+        <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+          <NcertLineByLine onExit={() => navigate({ search: { exam: search.exam } })} />
+        </main>
       </div>
     );
   }
@@ -232,6 +265,27 @@ function PyqPage() {
                   </span>
                 </Link>
               </div>
+            )}
+            {!guest && !search.subject && (
+              <button
+                type="button"
+                onClick={() => ncertEnabled && navigate({ search: { exam: search.exam, ncert: true } })}
+                disabled={!ncertEnabled}
+                aria-disabled={!ncertEnabled}
+                className={cn(
+                  "clay-inset mb-4 flex w-full items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left transition-opacity",
+                  !ncertEnabled && "cursor-default opacity-80",
+                )}
+              >
+                <BookOpen className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-foreground">NCERT Line by Line</span>
+                  <span className="block truncate text-[11px] text-foreground/50">Topic-by-topic questions, straight from NCERT</span>
+                </span>
+                <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide", ncertEnabled ? "bg-emerald-100 text-emerald-800" : "bg-foreground/10 text-foreground/50")}>
+                  {ncertEnabled ? (ncertAccess?.mode === "beta" ? "Beta access" : "Live") : "Coming soon"}
+                </span>
+              </button>
             )}
             {!guest && !search.subject && proAccess && (() => {
               // Dark banner when there's something to buy; a quiet card otherwise (Pro active, or Pro not on sale yet).

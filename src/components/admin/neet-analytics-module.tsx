@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, BarChart3, Download, FileSpreadsheet, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, BarChart3, BookOpen, Download, FileSpreadsheet, RefreshCw, Search } from "lucide-react";
 import { getAdminNeetQuestionAnalytics } from "@/server-functions/neet-analytics-admin";
+import { NcertLineByLineModule } from "@/components/admin/ncert-line-by-line-module";
+import { cn } from "@/lib/utils";
 
 type AnalyticsRow = {
   subject: string;
@@ -49,6 +51,7 @@ function downloadCsv(filename: string, headers: string[], rows: Array<Array<stri
 const fileDate = () => new Date().toISOString().slice(0, 10);
 
 export function NeetAnalyticsModule({ adminUser }: Props) {
+  const [branch, setBranch] = useState<"analytics" | "ncertLineByLine">("analytics");
   const [result, setResult] = useState<AnalyticsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -110,6 +113,31 @@ export function NeetAnalyticsModule({ adminUser }: Props) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="NEET Question Analytics section">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={branch === "analytics"}
+          onClick={() => setBranch("analytics")}
+          className={cn("inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold", branch === "analytics" ? "clay-btn text-white" : "clay-chip text-foreground/70")}
+        >
+          <BarChart3 className="h-3.5 w-3.5" /> PYQ Analytics
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={branch === "ncertLineByLine"}
+          onClick={() => setBranch("ncertLineByLine")}
+          className={cn("inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold", branch === "ncertLineByLine" ? "clay-btn text-white" : "clay-chip text-foreground/70")}
+        >
+          <BookOpen className="h-3.5 w-3.5" /> NCERT Line by Line
+        </button>
+      </div>
+
+      {branch === "ncertLineByLine" ? (
+        <NcertLineByLineModule adminUser={adminUser} />
+      ) : (
+      <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -223,6 +251,8 @@ export function NeetAnalyticsModule({ adminUser }: Props) {
           </div>
           <p className="text-xs text-foreground/45">Unclassified includes questions whose difficulty is missing or does not match Easy, Medium or Hard. Counts reflect saved database tags; this module does not infer or change difficulty.</p>
         </>
+      )}
+      </>
       )}
     </div>
   );

@@ -43,6 +43,8 @@ import {
   type Db,
 } from "@/lib/pyq-server";
 import { DRILL_LIMIT_PREFIX, cleanCustomDrill, drillBlockReason, hasFeature, isCustomDrill } from "@/lib/pro";
+import { getNcertVisibility, isNcertEnabledFor } from "@/lib/ncert-line-server";
+import { NCERT_SOURCE } from "@/lib/ncert-line-types";
 import {
   GENERAL_TOPIC,
   UNTAGGED_CHAPTER,
@@ -333,8 +335,21 @@ export const startPyqDrill = createServerFn({ method: "POST" })
     }
 
     const exam = await resolveExam(db, uid, data.exam);
-    const match: Record<string, unknown> = { ...(await pyqMatch(db, exam)) };
-    if (data.subject) match.subject = data.subject;
+    const basePyqMatch: Record<string, unknown> = { ...(await pyqMatch(db, exam)) };
+    if (data.subject) basePyqMatch.subject = data.subject;
+
+    // Standard (non-custom, non-revision) drills also pull from NCERT Line by Line once that's open to
+    // this student — Quick Mock then mixes PYQs with the chapter-tagged NCERT questions. Custom and
+    // mistake-revision drills stay PYQ-only: their filters (paper years, chapters tagged for PYQs) don't apply here.
+    let match: Record<string, unknown> = basePyqMatch;
+    if (!wantsMistakes && !wantsCustom) {
+      const ncertVisibility = await getNcertVisibility(db);
+      if (isNcertEnabledFor(ncertVisibility, decoded.email)) {
+        const ncertBranch: Record<string, unknown> = { source: NCERT_SOURCE };
+        if (data.subject) ncertBranch.subject = data.subject;
+        match = { $or: [basePyqMatch, ncertBranch] };
+      }
+    }
     // A revision drill draws only from the questions they got wrong, oldest mistake first.
     const mistakeIds = wantsMistakes ? await mistakeQuestionIds(db, uid) : null;
     if (mistakeIds) {
