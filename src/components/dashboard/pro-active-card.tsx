@@ -47,9 +47,9 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
             <Sparkles className="h-6 w-6" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-extrabold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
+            <p className="text-xs font-extrabold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
             <h2 className="font-display mt-0.5 text-lg font-extrabold leading-snug tracking-tight text-foreground sm:text-xl">{daysLeft <= 1 ? "Your last day of Pro. Make it count." : `${daysLeft} days of Pro left. Put them to work.`}</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
+            <p className="mt-0.5 text-xs text-foreground/70">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:items-end">
@@ -65,7 +65,7 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
       {access.features.length > 0 && (
         <ul className="mt-4 flex flex-wrap gap-1.5">
           {access.features.map((k) => (
-            <li key={k} className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold text-foreground/80 dark:bg-white/10">
+            <li key={k} className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-xs font-bold text-foreground/80 dark:bg-white/10">
               <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-300" aria-hidden /> {PRO_FEATURES[k].label}
             </li>
           ))}
@@ -76,7 +76,7 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
         <div role="status" data-testid="ncert-free-notice" className="mt-4 flex items-start gap-3 rounded-2xl bg-white/80 p-3.5 dark:bg-white/10">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-extrabold text-foreground">NCERT Line by Line is coming, completely free for you</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">As a Pro student you won't pay anything extra for it when it opens.</p>
+            <p className="mt-0.5 text-xs text-foreground/70">As a Pro student you won't pay anything extra for it when it opens.</p>
           </div>
           <button type="button" onClick={closeNotice} aria-label="Close this notice" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/50 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <X className="h-4 w-4" aria-hidden />

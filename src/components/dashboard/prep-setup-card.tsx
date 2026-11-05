@@ -51,16 +51,16 @@ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile
     <section aria-label="Finish your prep details" className="rounded-3xl border border-border bg-card p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-muted-foreground">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
-          <p className="mt-0.5 text-xs text-muted-foreground">So we recommend the right questions. You can change this later in Profile.</p>
+          <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-foreground/70">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
+          <p className="mt-0.5 text-xs text-foreground/70">So we recommend the right questions. You can change this later in Profile.</p>
         </div>
-        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-muted-foreground hover:bg-secondary">Not now</button>
+        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-foreground/70 hover:bg-secondary">Not now</button>
       </div>
 
       <div className="mt-3 space-y-3">
         {missing.includes("exam") && (
           <div role="radiogroup" aria-label="Target exam" className="flex flex-wrap items-center gap-2">
-            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Exam</span>
+            <span className="w-full text-xs font-bold uppercase tracking-wide text-foreground/70 sm:w-24">Exam</span>
             {(["neet", "jee"] as const).map((e) => (
               <button key={e} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("exam", { targetExam: e }, { targetExam: e })} className={chip(false)}>{e === "neet" ? "NEET" : "JEE"}</button>
             ))}
@@ -68,7 +68,7 @@ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile
         )}
         {missing.includes("track") && (
           <div role="radiogroup" aria-label="Current class" className="flex flex-wrap items-center gap-2">
-            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">I am in</span>
+            <span className="w-full text-xs font-bold uppercase tracking-wide text-foreground/70 sm:w-24">I am in</span>
             {TRACKS.map((t) => (
               <button key={t} type="button" role="radio" aria-checked={false} disabled={busy !== null} onClick={() => save("track", { track: t }, { track: t })} className={chip(false)}>{t}</button>
             ))}
@@ -76,7 +76,7 @@ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile
         )}
         {missing.includes("year") && (
           <div role="radiogroup" aria-label="Target year" className="flex flex-wrap items-center gap-2">
-            <span className="w-full text-[11px] font-bold uppercase tracking-wide text-muted-foreground sm:w-24">Target year</span>
+            <span className="w-full text-xs font-bold uppercase tracking-wide text-foreground/70 sm:w-24">Target year</span>
             {years.map((y) => (
               <button key={y} type="button" role="radio" aria-checked={profile.targetYear === y} disabled={busy !== null} onClick={() => save("year", { targetYear: y }, { targetYear: y })} className={chip(profile.targetYear === y)}>
                 {profile.targetYear === y && <Check className="h-3.5 w-3.5" aria-hidden />}{y}

@@ -104,7 +104,7 @@ function TodayBody({ t, dateLabel, weekday }: { t: TodaySummary; dateLabel: stri
             lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70",
           )}
         >
-          <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
+          <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/80")} aria-hidden />
           {lit ? (
             <>
               <span className="tabular-nums">{s.current}</span> day streak
@@ -116,18 +116,18 @@ function TodayBody({ t, dateLabel, weekday }: { t: TodaySummary; dateLabel: stri
       </div>
 
       <h2 className="font-display mt-3 text-balance text-2xl font-extrabold leading-tight tracking-tight sm:text-[28px]">{title}</h2>
-      <p className="mt-1.5 text-sm text-white/65">{sub}</p>
+      <p className="mt-1.5 text-sm text-white/80">{sub}</p>
 
       {/* This week: seven small dots, no extra box */}
       <div className="mt-4 max-w-sm" role="img" aria-label={dayPhrase(doneDays)}>
-        <div className="flex items-center justify-between text-[11px] text-white/55" aria-hidden>
+        <div className="flex items-center justify-between text-xs text-white/80" aria-hidden>
           <span>This week · {doneDays} of 7</span>
           {s.longest > 1 && <span className="font-semibold text-white/70">Best · {s.longest} days</span>}
         </div>
         <div className="mt-2 grid grid-cols-7 gap-1.5">
           {s.week.map((d) => (
             <div key={d.day} className="flex flex-col items-center gap-1">
-              <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
+              <span className={cn("text-[10px] font-bold uppercase", d.isToday ? "text-white" : "text-white/80")}>{d.label}</span>
               <span
                 className={cn(
                   "grid h-6 w-6 place-items-center rounded-full",
@@ -210,7 +210,7 @@ function Chip({
       <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-md", done ? "bg-emerald-400 text-emerald-950" : attention ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white")}>
         {done ? <Check className="h-3 w-3" strokeWidth={3} aria-hidden /> : icon}
       </span>
-      <span className="text-white/60">{label}</span>
+      <span className="text-white/80">{label}</span>
       <span className="truncate font-bold text-white">{value}</span>
     </Link>
   );
@@ -220,12 +220,12 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
   return (
     <div className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-3", divider && "mt-5 border-t border-white/10 pt-4")}>
       <div className="min-w-0">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-[#7ba4f0]">Up next</p>
-        {info.state === "loading" && <p className="mt-1 text-sm text-white/60">Checking your calendar…</p>}
+        <p className="text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Up next</p>
+        {info.state === "loading" && <p className="mt-1 text-sm text-white/80">Checking your calendar…</p>}
         {info.state === "empty" && (
           <>
             <p className="mt-1 text-sm font-bold">Nothing booked yet</p>
-            <p className="max-w-xs text-balance text-xs text-white/60">{info.text}</p>
+            <p className="max-w-xs text-balance text-xs text-white/80">{info.text}</p>
           </>
         )}
         {info.state === "session" && (
@@ -233,7 +233,7 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
             <p className="mt-1 text-sm font-bold leading-snug">
               {info.date} · {info.meta}
             </p>
-            <p className="truncate text-xs text-white/60">{info.title}</p>
+            <p className="truncate text-xs text-white/80">{info.title}</p>
           </>
         )}
       </div>
@@ -286,7 +286,7 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
           {icon}
           <div className="min-w-0">
             <p className="text-sm font-bold leading-tight">No mentor session booked</p>
-            <p className="truncate text-xs text-muted-foreground">{info.text}</p>
+            <p className="truncate text-xs text-foreground/70">{info.text}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -300,9 +300,9 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
       <div className="flex min-w-0 items-center gap-3">
         {icon}
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-primary">Up next</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Up next</p>
           <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
-          <p className="truncate text-xs text-muted-foreground">{info.title}</p>
+          <p className="truncate text-xs text-foreground/70">{info.title}</p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">

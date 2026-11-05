@@ -14,9 +14,9 @@ const TABS: { key: Tab; label: string }[] = [
 function Cell({ label, value, hint, to, search, tone }: { label: string; value: string; hint?: string; to?: "/pyq"; search?: Record<string, unknown>; tone?: "attention" }) {
   const body = (
     <>
-      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-muted-foreground/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
-      <p className="mt-1.5 text-xs font-semibold text-muted-foreground">{label}</p>
-      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground/80">{hint}</p>}
+      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-foreground/70/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
+      <p className="mt-1.5 text-xs font-semibold text-foreground/70">{label}</p>
+      {hint && <p className="mt-0.5 text-xs text-foreground/70/80">{hint}</p>}
     </>
   );
   const cls = "min-w-0 rounded-2xl bg-secondary/60 p-3.5";
@@ -63,7 +63,7 @@ export function PracticePerformanceCard({
     return (
       <section aria-label="Your performance" className={shell}>
         <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
-        <p className="mt-2 text-sm text-muted-foreground">We couldn't load your numbers just now. <button type="button" onClick={onRetry} className="font-bold text-primary hover:underline">Try again</button></p>
+        <p className="mt-2 text-sm text-foreground/70">We couldn't load your numbers just now. <button type="button" onClick={onRetry} className="font-bold text-primary hover:underline">Try again</button></p>
       </section>
     );
   }
@@ -107,18 +107,18 @@ export function PracticePerformanceCard({
       </div>
 
       {!hasPractice && (
-        <p className="mt-3 text-sm text-muted-foreground">
+        <p className="mt-3 text-sm text-foreground/70">
           {stats.questionsAnswered > 0 ? `No ${label} practice yet. Switch the tab above to see your other exam.` : `Solve your first ${label} question and your numbers show up here.`}
         </p>
       )}
 
       <div className="mt-4 border-t border-border pt-3 text-sm">
         {mock ? (
-          <p className="text-muted-foreground">
+          <p className="text-foreground/70">
             <span className="font-bold text-foreground">{label} mock tests</span> · average <b className="text-foreground">{mock.average}%</b> · best <b className="text-foreground">{mock.best}%</b> · {mock.attempts} attempt{mock.attempts === 1 ? "" : "s"} across {mock.tests} test{mock.tests === 1 ? "" : "s"}
           </p>
         ) : (
-          <p className="text-muted-foreground">{tests === null ? "Checking your mock tests…" : `No ${label} mock tests attempted yet.`}</p>
+          <p className="text-foreground/70">{tests === null ? "Checking your mock tests…" : `No ${label} mock tests attempted yet.`}</p>
         )}
       </div>
     </section>

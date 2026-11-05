@@ -22,10 +22,10 @@ export function QuickMockCard({ status, loaded, exam, source = "dashboard", clas
         <div className="flex min-w-0 items-start gap-3.5">
           <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-300 text-amber-950"><Timer className="h-6 w-6" aria-hidden /></span>
           <div className="min-w-0">
-            <p className="text-[11px] font-extrabold uppercase tracking-widest text-primary">{quickMockName(exam)}</p>
-            <p className="text-xs font-semibold text-muted-foreground">{DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} Minutes</p>
+            <p className="text-xs font-extrabold uppercase tracking-widest text-primary">{quickMockName(exam)}</p>
+            <p className="text-xs font-semibold text-foreground/70">{DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} Minutes</p>
             <p className={cn("font-display mt-1 font-extrabold leading-snug tracking-tight text-foreground", waiting ? "text-sm sm:text-base" : "text-lg sm:text-xl")}>{loaded || status.kind !== "unknown" ? copy.headline : "Checking your Quick Mock…"}</p>
-            {copy.detail && !waiting && <p className="mt-0.5 text-xs text-muted-foreground">{copy.detail}</p>}
+            {copy.detail && !waiting && <p className="mt-0.5 text-xs text-foreground/70">{copy.detail}</p>}
           </div>
         </div>
 

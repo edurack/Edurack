@@ -472,25 +472,25 @@ function DashboardPage() {
         <aside className="sticky top-24 hidden h-[calc(100vh-7rem)] w-56 shrink-0 flex-col justify-between py-8 md:flex">
           <nav className="space-y-1">
             <Link to="/pyq" className="mb-3 flex min-h-12 items-center gap-3 rounded-2xl bg-primary px-3 text-sm font-extrabold text-primary-foreground shadow-md transition-transform hover:-translate-y-0.5">
-              <ClipboardList className="h-[18px] w-[18px]" />PYQ Practice
-              <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Free</span>
+              <ClipboardList className="h-5 w-5" />PYQ Practice
+              <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-amber-950">Free</span>
             </Link>
             {/* Quick Mock sits right under PYQ Practice: same practice family, one tap, same engine. */}
             <Link to="/pyq-drill" search={quickMockSearch({ src: "sidebar", drillId: qmStatus.kind === "resume" ? qmStatus.drillId : undefined })} onClick={() => trackQuickMockClick("sidebar", { state: qmStatus.kind })} data-testid="sidebar-quick-mock" className="mb-3 flex min-h-11 items-center gap-3 rounded-xl border border-border px-3 text-sm font-bold text-foreground transition-colors hover:border-primary hover:text-primary">
-              <Clock className="h-[18px] w-[18px]" />{quickMockName(profile?.targetExam)}
-              {qmStatus.kind === "ready" && <span className="ml-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-emerald-700 dark:text-emerald-300">{qmStatus.unlimited ? "Pro" : "Free"}</span>}
-              {qmStatus.kind === "resume" && <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-950">Resume</span>}
+              <Clock className="h-5 w-5" />{quickMockName(profile?.targetExam)}
+              {qmStatus.kind === "ready" && <span className="ml-auto rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-300">{qmStatus.unlimited ? "Pro" : "Free"}</span>}
+              {qmStatus.kind === "resume" && <span className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-amber-950">Resume</span>}
             </Link>
             {nav.map((n) => (
-              <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); }} className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-bold transition-colors ${view === n.key ? "bg-primary/10 text-primary" : "text-foreground/70 hover:bg-secondary"}`}>
-                <n.icon className="h-[18px] w-[18px]" />{n.label}
-                {n.badge != null && <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{n.badge}</span>}
+              <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); }} className={`flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-[15px] font-bold transition-colors ${view === n.key ? "bg-primary/15 text-primary ring-1 ring-primary/25" : "text-foreground/80 hover:bg-secondary hover:text-foreground"}`}>
+                <n.icon className="h-5 w-5" />{n.label}
+                {n.badge != null && <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[11px] text-primary-foreground">{n.badge}</span>}
               </button>
             ))}
           </nav>
           <nav className="space-y-1 border-t border-border pt-4">
             {([["/my-sessions", "My bookings", CalendarDays], ["/purchases", "Purchases", Receipt], ["/tickets", "Support", LifeBuoy], ["/profile", "Profile", GraduationCap]] as const).map(([to, label, Icon]) => (
-              <Link key={to} to={to} className="flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"><Icon className="h-4 w-4" />{label}</Link>
+              <Link key={to} to={to} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-foreground/80 transition-colors hover:bg-secondary hover:text-foreground"><Icon className="h-4 w-4" />{label}</Link>
             ))}
           </nav>
         </aside>
@@ -499,13 +499,13 @@ function DashboardPage() {
         <main className="min-w-0 flex-1 pb-28 pt-6 md:pb-12 md:pt-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              {view === "home" && <p className="text-sm font-semibold text-muted-foreground">{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>}
+              {view === "home" && <p className="text-sm font-semibold text-foreground/70">{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>}
               <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">{title}</h1>
             </div>
-            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-border bg-card px-4 transition-colors focus-within:border-primary sm:max-w-xs">
-              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search mentors, courses, tests…" className="w-full bg-transparent text-[15px] placeholder:text-muted-foreground focus:outline-none" />
-              {hasQuery && <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-secondary"><X className="h-4 w-4" /></button>}
+            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-foreground/20 bg-card px-4 shadow-sm transition-colors focus-within:border-primary sm:max-w-xs">
+              <Search className="h-4 w-4 shrink-0 text-foreground/70" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search mentors, courses, tests…" className="w-full bg-transparent text-[15px] placeholder:text-foreground/55 focus:outline-none" />
+              {hasQuery && <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/70 hover:bg-secondary"><X className="h-4 w-4" /></button>}
             </label>
           </div>
 
@@ -523,9 +523,9 @@ function DashboardPage() {
               />
             ) : view === "explore" ? (
               <>
-                <div className="inline-flex rounded-full border border-border p-1">
+                <div className="inline-flex rounded-full border border-foreground/20 p-1">
                   {exploreTabs.map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setTab(k)} className={`min-h-10 rounded-full px-4 text-sm font-bold transition-colors ${tab === k ? "bg-foreground text-background" : "text-foreground/70"}`}>{label}</button>
+                    <button key={k} type="button" onClick={() => setTab(k)} className={`min-h-10 rounded-full px-4 text-sm font-bold transition-colors ${tab === k ? "bg-foreground text-background" : "text-foreground/80"}`}>{label}</button>
                   ))}
                 </div>
                 {showFilters && (
@@ -543,7 +543,7 @@ function DashboardPage() {
             ) : view === "sessions" ? (
               <div>
                 <div className="mb-5 flex items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">Free and paid sessions open for booking right now.</p>
+                  <p className="text-sm text-foreground/70">Free and paid sessions open for booking right now.</p>
                   <Link to="/my-sessions" className={linkAction}>My booked sessions</Link>
                 </div>
                 <StudentOpenSessionsModule getToken={() => user.getIdToken()} />
@@ -577,9 +577,9 @@ function DashboardPage() {
       {/* ── Bottom tab bar (phones) ─────────────────────────── */}
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-background/95 backdrop-blur-xl md:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         {nav.map((n) => (
-          <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); window.scrollTo({ top: 0 }); }} aria-current={view === n.key} className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-bold transition-colors ${view === n.key ? "text-primary" : "text-muted-foreground"}`}>
-            {view === n.key && <motion.span layoutId="bottom-tab" className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary" />}
-            <span className="relative"><n.icon className="h-5 w-5" />{n.badge != null && <span className="absolute -right-2 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">{n.badge}</span>}</span>
+          <button key={n.key} type="button" onClick={() => { setView(n.key); setQuery(""); window.scrollTo({ top: 0 }); }} aria-current={view === n.key} className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-bold transition-colors ${view === n.key ? "text-primary" : "text-foreground/65"}`}>
+            {view === n.key && <motion.span layoutId="bottom-tab" className="absolute inset-x-4 top-0 h-1 rounded-full bg-primary" />}
+            <span className="relative"><n.icon className="h-6 w-6" />{n.badge != null && <span className="absolute -right-2 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] text-primary-foreground">{n.badge}</span>}</span>
             {n.label}
           </button>
         ))}
@@ -591,9 +591,9 @@ function DashboardPage() {
 // ─── Overview (the actual dashboard) ────────────────────────────────────
 function Panel({ title, action, children, className = "" }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6 ${className}`}>
+    <section className={`min-w-0 rounded-3xl border border-foreground/15 bg-card p-5 shadow-sm sm:p-6 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="font-display text-base font-extrabold tracking-tight">{title}</h2>
+        <h2 className="font-display text-lg font-extrabold tracking-tight">{title}</h2>
         {action}
       </div>
       {children}
@@ -601,7 +601,17 @@ function Panel({ title, action, children, className = "" }: { title: string; act
   );
 }
 
-const linkAction = "inline-flex min-h-9 items-center text-sm font-bold text-primary hover:underline";
+/** Names each group of cards on the overview, so the page reads as sections instead of one long stack. */
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 px-1 pt-4">
+      <h2 className="font-display text-xl font-extrabold tracking-tight text-foreground">{children}</h2>
+      <span className="h-px flex-1 bg-foreground/15" aria-hidden />
+    </div>
+  );
+}
+
+const linkAction = "inline-flex min-h-10 items-center text-sm font-bold text-primary underline-offset-4 hover:underline";
 
 function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, qmStatus, qmLoaded, proAccess, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, recommended, go, getToken, onBooked }: {
   upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
@@ -640,7 +650,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
           state: "empty",
           text: freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam.",
         };
-  const tile = "group flex min-h-24 min-w-0 flex-col items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-colors hover:border-primary sm:min-h-20 sm:flex-row sm:items-center";
+  const tile = "group flex min-h-24 min-w-0 flex-col items-start gap-3 rounded-2xl border border-foreground/15 bg-card p-4 text-left shadow-sm transition-colors hover:border-primary sm:min-h-20 sm:flex-row sm:items-center";
 
   return (
     <div className="space-y-4">
@@ -648,6 +658,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
       <ProActiveCard access={proAccess} />
 
       {/* 1. PYQ practice comes first: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
+      <SectionHeading>Practice</SectionHeading>
       <PyqHero stats={stats} statsFailed={statsFailed} />
 
       {/* 1b. Quick Mock, right under chapter-wise practice and well above the mentorship card, reflecting today's real allowance. */}
@@ -660,6 +671,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
         onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
       />
 
+      <SectionHeading>Your progress</SectionHeading>
       {/* 3. One performance card: practice numbers per exam + mock-test scores, from one source. */}
       <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
 
@@ -667,10 +679,11 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
       {!isNew && <StudentOfTheWeekBanner />}
 
       {/* Quick actions: for students who have started. A new student finds all of these in the menu. */}
+      {!isNew && <SectionHeading>Quick links</SectionHeading>}
       {!isNew && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {actions.map((a, i) => {
-            const inner = (<><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-sm font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-xs leading-snug text-muted-foreground">{a.sub}</p></div></>);
+            const inner = (<><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><a.icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-[15px] font-bold leading-tight">{a.label}</p><p className="mt-0.5 text-[13px] leading-snug text-foreground/70">{a.sub}</p></div></>);
             const cls = actions.length % 2 === 1 && i === actions.length - 1 ? `${tile} col-span-2 sm:col-span-1` : tile;
             return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} className={cls}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} className={cls}>{inner}</button>;
           })}
@@ -678,13 +691,14 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
       )}
 
       {/* 4. Mentorship, below the practice content, as a compact card (the marketplace itself is unchanged: Sessions / Mentors / Explore). */}
+      <SectionHeading>Mentorship and courses</SectionHeading>
       <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
 
       <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-5"}`}>
         {!isNew && (
           <Panel title="Continue learning" className="lg:col-span-3" action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
             {continueCount === 0 ? (
-              <div className="text-sm text-muted-foreground">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
+              <div className="text-sm text-foreground/70">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
             ) : (
               <div className="-mx-2">
                 {ownedListings.slice(0, 4).map((l) => (
@@ -701,7 +715,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
         )}
 
         <Panel title="Free sessions open" className={isNew ? "" : "lg:col-span-2"} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
-          {freeSlots.length === 0 ? <p className="text-sm text-muted-foreground">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
+          {freeSlots.length === 0 ? <p className="text-sm text-foreground/70">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
         </Panel>
       </div>
 
@@ -723,10 +737,10 @@ function FreeSlotList({ slots, getToken, onBooked }: { slots: { offering: Public
         {slots.slice(0, 4).map(({ offering, slot }) => (
           <li key={offering.id}>
             <button type="button" onClick={() => setBooking({ offering, slot })} className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-secondary">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Gift className="h-4 w-4" /></div>
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Gift className="h-4 w-4" /></div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">{offering.title}</p>
-                <p className="truncate text-xs text-muted-foreground">{offering.mentorName} · {formatSlot(slot.date, slot.startTime)}</p>
+                <p className="truncate text-[13px] text-foreground/70">{offering.mentorName} · {formatSlot(slot.date, slot.startTime)}</p>
               </div>
               <span className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Book</span>
             </button>
@@ -743,7 +757,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex min-h-9 items-center rounded-full border px-4 text-xs font-bold transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/70 hover:border-foreground/40"}`}
+      className={`inline-flex min-h-10 items-center rounded-full border px-4 text-[13px] font-bold transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-foreground/25 text-foreground/80 hover:border-foreground/50"}`}
     >
       {children}
     </button>
@@ -759,7 +773,7 @@ function SkeletonGrid() {
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="rounded-3xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">{text}</div>;
+  return <div className="rounded-3xl border border-dashed border-foreground/25 p-10 text-center text-sm text-foreground/70">{text}</div>;
 }
 
 const CARD = "clay group flex flex-col overflow-hidden text-left hover:border-primary";
@@ -777,10 +791,10 @@ function ResultRow({ onClick, icon, title, sub, right }: { onClick: () => void; 
       <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-primary/10 text-primary">{icon}</div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-foreground">{title}</p>
-        <p className="truncate text-xs text-muted-foreground">{sub}</p>
+        <p className="truncate text-[13px] text-foreground/70">{sub}</p>
       </div>
       {right}
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-foreground/70" />
     </button>
   );
 }
@@ -788,14 +802,14 @@ function ResultRow({ onClick, icon, title, sub, right }: { onClick: () => void; 
 function SearchResults({ matchedMentors, matchedListings, matchedTests, loading, query }: { query: string; matchedMentors: MentorDirectoryEntry[]; matchedListings: Listing[]; matchedTests: SoldTestEntry[]; loading: boolean }) {
   const navigate = useNavigate();
   const has = matchedMentors.length > 0 || matchedListings.length > 0 || matchedTests.length > 0;
-  const Label = ({ children }: { children: ReactNode }) => <p className="mb-1 px-3 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{children}</p>;
+  const Label = ({ children }: { children: ReactNode }) => <p className="mb-1 px-3 text-[11px] font-bold uppercase tracking-wide text-foreground/70">{children}</p>;
   const owned = <span className={OWNED}>Owned</span>;
   return (
     <div className="mt-3 max-h-[28rem] overflow-y-auto rounded-3xl border border-border bg-card p-2">
       {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-foreground/70" /></div>
       ) : !has ? (
-        <p className="px-3 py-8 text-center text-sm text-muted-foreground">No matches for "{query}".</p>
+        <p className="px-3 py-8 text-center text-sm text-foreground/70">No matches for "{query}".</p>
       ) : (
         <div className="space-y-4 py-2">
           {matchedMentors.length > 0 && (
@@ -865,7 +879,7 @@ function ListingCard({ listing, index = 0, showKindBadge }: { listing: Listing; 
       </div>
       <div className="flex w-full flex-1 flex-col p-4">
         <h3 className="line-clamp-2 font-display text-lg font-bold leading-snug tracking-tight text-foreground">{listing.title}</h3>
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><MetaIcon className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{listing.metaLine}</span><span className="ml-auto shrink-0 rounded-full border border-border px-2 py-0.5 font-bold">{listing.track || "All"}</span></p>
+        <p className="mt-2 flex items-center gap-1.5 text-[13px] text-foreground/70"><MetaIcon className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{listing.metaLine}</span><span className="ml-auto shrink-0 rounded-full border border-border px-2 py-0.5 font-bold">{listing.track || "All"}</span></p>
         <div className="mt-4 flex flex-wrap items-baseline gap-x-2">
           {listing.purchased ? (
             <span className={OWNED}><BadgeCheck className="h-3.5 w-3.5" />You're in</span>
@@ -874,7 +888,7 @@ function ListingCard({ listing, index = 0, showKindBadge }: { listing: Listing; 
           ) : (
             <>
               <span className="font-display text-xl font-extrabold text-foreground">₹{listing.sellingPrice.toLocaleString()}</span>
-              {listing.crossedPrice > listing.sellingPrice && <span className="text-sm text-muted-foreground line-through">₹{listing.crossedPrice.toLocaleString()}</span>}
+              {listing.crossedPrice > listing.sellingPrice && <span className="text-sm text-foreground/70 line-through">₹{listing.crossedPrice.toLocaleString()}</span>}
               {listing.discountPercent > 0 && <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{listing.discountPercent}% off</span>}
             </>
           )}
@@ -892,7 +906,7 @@ function SoldTestCard({ test, index = 0 }: { test: SoldTestEntry; index?: number
       <div className="grid aspect-[16/9] w-full place-items-center bg-secondary"><ClipboardList className="h-10 w-10 text-primary/40" strokeWidth={1.4} /></div>
       <div className="flex w-full flex-1 flex-col p-4">
         <h3 className="line-clamp-2 font-display text-lg font-bold leading-snug tracking-tight text-foreground">{test.name}</h3>
-        <p className="mt-2 truncate text-xs text-muted-foreground">By {test.mentorName} · {test.totalQuestions}Q · {test.durationMinutes}m</p>
+        <p className="mt-2 truncate text-[13px] text-foreground/70">By {test.mentorName} · {test.totalQuestions}Q · {test.durationMinutes}m</p>
         <div className="mt-4">{test.purchased ? <span className={OWNED}><BadgeCheck className="h-3.5 w-3.5" />You're in</span> : <span className="font-display text-xl font-extrabold">₹{test.price.toLocaleString()}</span>}</div>
         <span className={CTA}>{test.purchased ? "Start test" : "Buy now"}<ArrowRight className="h-4 w-4" /></span>
       </div>
@@ -910,13 +924,13 @@ function MentorCard({ mentor, index = 0 }: { mentor: MentorDirectoryEntry; index
           </div>
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 truncate font-display text-base font-bold text-foreground">{mentor.name}<BadgeCheck className="h-4 w-4 shrink-0 text-primary" /></p>
-            {mentor.yearOfStudy && <p className="flex items-center gap-1 truncate text-xs text-muted-foreground"><GraduationCap className="h-3 w-3 shrink-0" />{mentor.yearOfStudy}</p>}
+            {mentor.yearOfStudy && <p className="flex items-center gap-1 truncate text-[13px] text-foreground/70"><GraduationCap className="h-3 w-3 shrink-0" />{mentor.yearOfStudy}</p>}
           </div>
           {mentor.avgRating !== null && <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-1 text-xs font-bold"><Star className="h-3 w-3 fill-amber-500 text-amber-500" />{mentor.avgRating}</span>}
         </div>
-        {mentor.aboutText && <p className="mt-4 line-clamp-2 text-sm text-muted-foreground">{mentor.aboutText}</p>}
+        {mentor.aboutText && <p className="mt-4 line-clamp-2 text-sm text-foreground/70">{mentor.aboutText}</p>}
         <div className="mt-auto flex items-center justify-between pt-5">
-          <span className="text-xs font-bold text-muted-foreground">{mentor.batches.length} batch{mentor.batches.length === 1 ? "" : "es"}</span>
+          <span className="text-xs font-bold text-foreground/70">{mentor.batches.length} batch{mentor.batches.length === 1 ? "" : "es"}</span>
           <span className="inline-flex items-center gap-1 text-sm font-bold text-primary transition-all group-hover:gap-2">View profile<ChevronRight className="h-4 w-4" /></span>
         </div>
       </Link>

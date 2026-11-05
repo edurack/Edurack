@@ -55,7 +55,7 @@ function Ring({ percent, size = 96 }: { percent: number; size?: number }) {
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
           <p className="font-display text-xl font-extrabold leading-none tabular-nums">{percent}%</p>
-          <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/50">done</p>
+          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-white/80">done</p>
         </div>
       </div>
     </div>
@@ -150,7 +150,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 max-w-xl">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-950">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-amber-950">
               <Sparkles className="h-3 w-3" aria-hidden /> {examName} PYQ practice · Free
             </span>
             {!isNew && (
@@ -158,7 +158,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
                 data-testid="hero-streak"
                 className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
               >
-                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/50")} aria-hidden />
+                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/80")} aria-hidden />
                 {lit ? `${s!.current} day streak` : "No streak yet"}
               </span>
             )}
@@ -172,7 +172,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
               <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
                 <span className="min-w-0">
                   <span className="block truncate">Start Your First 5 {examName} PYQs</span>
-                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
+                  <span className="block truncate text-xs font-semibold text-[#141b2b]/75">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
                 </span>
                 <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
               </Link>
@@ -204,7 +204,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
               <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, "mt-4")}>
                 <span className="min-w-0">
                   <span className="block truncate">Continue Practising</span>
-                  <span className="block truncate text-[11px] font-semibold text-[#141b2b]/60">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
+                  <span className="block truncate text-xs font-semibold text-[#141b2b]/75">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
                 </span>
                 <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
               </Link>
@@ -221,7 +221,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
                   <div className="grid grid-cols-7 gap-1.5">
                     {s.week.map((d) => (
                       <div key={d.day} className="flex flex-col items-center gap-1">
-                        <span className={cn("text-[9px] font-bold uppercase", d.isToday ? "text-white" : "text-white/40")}>{d.label}</span>
+                        <span className={cn("text-[10px] font-bold uppercase", d.isToday ? "text-white" : "text-white/80")}>{d.label}</span>
                         <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
                           {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
                         </span>
@@ -240,9 +240,9 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
             <div className="flex items-center gap-4">
               <Ring percent={percent} />
               <div className="min-w-0">
-                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/55">of {total.toLocaleString("en-IN")} PYQs attempted</span></p>
-                <p className="mt-0.5 text-xs text-white/60">{prog.remaining.toLocaleString("en-IN")} left{accuracy !== null ? ` · ${accuracy}% accuracy` : " · accuracy shows after your first answer"}</p>
-                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
+                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/80">of {total.toLocaleString("en-IN")} PYQs attempted</span></p>
+                <p className="mt-0.5 text-xs text-white/80">{prog.remaining.toLocaleString("en-IN")} left{accuracy !== null ? ` · ${accuracy}% accuracy` : " · accuracy shows after your first answer"}</p>
+                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
               </div>
             </div>
           </div>
@@ -257,12 +257,12 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
             return (
               <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
                 <div className="flex items-center gap-2">
-                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/60")}>
+                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/80")}>
                     {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
                   </span>
                   <p className="truncate text-xs font-extrabold">{q.label}</p>
                 </div>
-                <p className="mt-1.5 truncate text-[11px] text-white/55">{q.done ? "Unlocked" : q.hint}</p>
+                <p className="mt-1.5 truncate text-xs text-white/80">{q.done ? "Unlocked" : q.hint}</p>
                 {!q.done && (
                   <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
                     <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
@@ -276,7 +276,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
 
       {!isNew && tree && tree.subjects.length > 0 && (
         <div className="mt-5">
-          <p className="mb-2.5 text-[11px] font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
+          <p className="mb-2.5 text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
           <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
             {tree.subjects.slice(0, 4).map((sub, i) => {
               const st = subjectStyle(sub.subject, i);
@@ -290,13 +290,13 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-extrabold">{sub.subject}</p>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-white/40 transition-transform group-hover:translate-x-0.5 group-hover:text-white" aria-hidden />
+                    <ArrowRight className="h-4 w-4 shrink-0 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" aria-hidden />
                   </div>
-                  <p className="mt-0.5 text-[11px] text-white/55">{sub.count.toLocaleString("en-IN")} PYQs</p>
+                  <p className="mt-0.5 text-xs text-white/80">{sub.count.toLocaleString("en-IN")} PYQs</p>
                   <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/10">
                     <motion.div className="h-full rounded-full" style={{ background: st.bar }} initial={{ width: 0 }} animate={{ width: `${Math.max(pct, sub.attempted > 0 ? 4 : 0)}%` }} transition={{ duration: 0.9, delay: 0.05 * i }} />
                   </div>
-                  <p className={cn("mt-2 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold", st.chip)}>{sub.attempted > 0 ? `${pct}% · ${sub.correct} right` : "Start here"}</p>
+                  <p className={cn("mt-2 inline-block rounded-md px-1.5 py-0.5 text-[11px] font-bold", st.chip)}>{sub.attempted > 0 ? `${pct}% · ${sub.correct} right` : "Start here"}</p>
                 </Link>
               );
             })}
