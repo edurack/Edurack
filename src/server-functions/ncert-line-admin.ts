@@ -14,6 +14,7 @@ import { getDb } from "@/lib/mongo";
 import { logAdminAction } from "@/lib/team-core";
 import { syllabusKey } from "@/lib/ncert-syllabus";
 import {
+  clearNcertTreeCache,
   clearNcertVisibilityCache,
   ensureNcertIndexes,
   findNeetChapter,
@@ -218,7 +219,148 @@ export const bulkUploadNcertQuestions = createServerFn({ method: "POST" })
     });
 
     await db.collection("questions").insertMany(docs, { ordered: true });
+    clearNcertTreeCache();
     return { ok: true as const, dryRun: false, inserted: docs.length, ...summary, errors: [] };
+  });
+
+// ─── Manage uploaded questions: list, edit, delete ─────────────────────────
+// Everything here is scoped to `source: "ncertLineByLine"`, so it can never touch PYQs or test-series questions.
+const OID = /^[a-f0-9]{24}$/i;
+const MAX_DELETE_IDS = 500;
+const PAGE = 50;
+
+export type NcertAdminQuestion = {
+  id: string;
+  topic: string;
+  topicQuestionNo: number;
+  type: "mcq" | "integer";
+  body: string;
+  options?: { A: string; B: string; C: string; D: string };
+  correctOption?: "A" | "B" | "C" | "D";
+  correctAnswer?: number;
+  solution: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+};
+
+const toAdminQuestion = (d: Record<string, unknown>): NcertAdminQuestion => ({
+  id: String(d._id),
+  topic: String(d.topic ?? ""),
+  topicQuestionNo: Number(d.topicQuestionNo) || 0,
+  type: d.type === "integer" ? "integer" : "mcq",
+  body: String(d.body ?? ""),
+  ...(d.options ? { options: d.options as NcertAdminQuestion["options"] } : {}),
+  ...(d.correctOption ? { correctOption: d.correctOption as NcertAdminQuestion["correctOption"] } : {}),
+  ...(typeof d.correctAnswer === "number" ? { correctAnswer: d.correctAnswer } : {}),
+  solution: String(d.solution ?? ""),
+  difficulty: d.difficulty === "Easy" || d.difficulty === "Hard" ? d.difficulty : "Medium",
+});
+
+/** The uploaded questions of one chapter (optionally one topic), with answers and solutions, 50 at a time. Admin only. */
+export const listNcertQuestions = createServerFn({ method: "POST" })
+  .validator((data: { token: string; subject: string; chapter: string; topic?: string; skip?: number }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    if (!NCERT_SUBJECTS.includes(data.subject as (typeof NCERT_SUBJECTS)[number])) throw new Error("Pick a subject.");
+    if (!data.chapter?.trim()) throw new Error("Pick a chapter.");
+    const db = await getDb();
+    const match: Record<string, unknown> = { source: NCERT_SOURCE, subject: data.subject, chapterKey: data.chapter.trim().toLowerCase() };
+    if (data.topic?.trim()) match.topicKey = data.topic.trim().toLowerCase();
+    const col = db.collection("questions");
+    const skip = Math.max(0, Math.floor(Number(data.skip) || 0));
+    const [total, docs] = await Promise.all([
+      col.countDocuments(match),
+      col.find(match).sort({ topicKey: 1, topicQuestionNo: 1, _id: 1 }).skip(skip).limit(PAGE).toArray(),
+    ]);
+    return { total, questions: docs.map((d) => toAdminQuestion(d)) };
+  });
+
+/** Saves a corrected question. Same rules as the bulk upload; moving it to another topic numbers it last in that topic. */
+export const updateNcertQuestion = createServerFn({ method: "POST" })
+  .validator((data: { token: string; id: string; question: unknown }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    await logAdminAction(data.token, "updateNcertQuestion", { id: data.id }, "Questions");
+    if (!OID.test(data.id)) throw new Error("Question not found.");
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const col = db.collection("questions");
+    const q = await col.findOne({ _id: new ObjectId(data.id), source: NCERT_SOURCE });
+    if (!q) throw new Error("That question no longer exists.");
+
+    // The topics of its chapter, plus the one it already has (the syllabus may have been renamed since it was uploaded).
+    const syllabus = await loadNeetSyllabus(db);
+    const hit = findNeetChapter(syllabus, String(q.subject), (q.classLevel as NcertClassLevel) ?? "11", String(q.chapter));
+    const allowed = [...new Set([...(hit?.topics ?? []), String(q.topic)])];
+    const res = normalizeRow(data.question, allowed);
+    if (!res.row) throw new Error(res.errors.join(" "));
+    const r = res.row;
+
+    const set: Record<string, unknown> = { topic: r.topic, topicKey: r.topic.toLowerCase(), body: r.body, type: r.type, solution: r.solution, difficulty: r.difficulty, updatedAt: new Date() };
+    const unset: Record<string, ""> = {};
+    if (r.type === "mcq") {
+      set.options = r.options;
+      set.correctOption = r.correctOption;
+      unset.correctAnswer = "";
+    } else {
+      set.correctAnswer = r.correctAnswer;
+      unset.options = "";
+      unset.correctOption = "";
+    }
+    const moved = r.topic.toLowerCase() !== String(q.topicKey);
+    if (moved) {
+      const last = await col
+        .find({ source: NCERT_SOURCE, subject: q.subject, chapterKey: q.chapterKey, topicKey: r.topic.toLowerCase() }, { projection: { topicQuestionNo: 1 } })
+        .sort({ topicQuestionNo: -1 })
+        .limit(1)
+        .next();
+      set.topicQuestionNo = (Number(last?.topicQuestionNo) || 0) + 1;
+    }
+    await col.updateOne({ _id: q._id }, { $set: set, $unset: unset });
+    // Students' progress is grouped by topic, so it follows the question to its new topic.
+    if (moved) await db.collection("ncertProgress").updateMany({ questionId: data.id }, { $set: { topicKey: r.topic.toLowerCase() } });
+    clearNcertTreeCache();
+    const fresh = await col.findOne({ _id: q._id });
+    return { ok: true as const, question: toAdminQuestion(fresh ?? { ...q, ...set }) };
+  });
+
+/**
+ * Deletes questions, either the exact ones selected (`ids`) or every question of one topic (`topic`, with the count the
+ * admin was shown: if more were uploaded in the meantime the call refuses instead of deleting what they never saw).
+ * Students' progress rows for the deleted questions go with them.
+ */
+export const deleteNcertQuestions = createServerFn({ method: "POST" })
+  .validator((data: { token: string; ids?: string[]; topic?: { subject: string; chapter: string; topic: string; expectedCount: number } }) => data)
+  .handler(async ({ data }) => {
+    await requireAdmin(data.token);
+    await logAdminAction(data.token, "deleteNcertQuestions", data, "Questions");
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    const col = db.collection("questions");
+
+    let filter: Record<string, unknown>;
+    if (Array.isArray(data.ids)) {
+      const ids = [...new Set(data.ids.filter((i) => typeof i === "string" && OID.test(i)))];
+      if (ids.length === 0) throw new Error("Select at least one question.");
+      if (ids.length > MAX_DELETE_IDS) throw new Error(`Select at most ${MAX_DELETE_IDS} questions at a time.`);
+      filter = { source: NCERT_SOURCE, _id: { $in: ids.map((i) => new ObjectId(i)) } };
+    } else if (data.topic) {
+      const t = data.topic;
+      if (!NCERT_SUBJECTS.includes(t.subject as (typeof NCERT_SUBJECTS)[number]) || !t.chapter?.trim() || !t.topic?.trim()) throw new Error("Pick a subject, chapter and topic.");
+      filter = { source: NCERT_SOURCE, subject: t.subject, chapterKey: t.chapter.trim().toLowerCase(), topicKey: t.topic.trim().toLowerCase() };
+      const now = await col.countDocuments(filter);
+      if (now !== t.expectedCount) throw new Error(`This topic now has ${now} question${now === 1 ? "" : "s"}, not ${t.expectedCount}. Reload the list and check again before deleting.`);
+    } else {
+      throw new Error("Nothing to delete.");
+    }
+
+    const targets = await col.find(filter, { projection: { _id: 1 } }).toArray();
+    if (targets.length === 0) return { deleted: 0 };
+    const objectIds = targets.map((d) => d._id);
+    const stringIds = objectIds.map((i) => String(i));
+    const res = await col.deleteMany({ _id: { $in: objectIds }, source: NCERT_SOURCE });
+    await Promise.all([db.collection("ncertProgress").deleteMany({ questionId: { $in: stringIds } }), db.collection("practiceProgress").deleteMany({ questionId: { $in: stringIds } })]);
+    clearNcertTreeCache();
+    return { deleted: res.deletedCount };
   });
 
 // ─── Visibility: coming soon / beta testers / live ─────────────────────────

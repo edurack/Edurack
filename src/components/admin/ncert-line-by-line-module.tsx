@@ -4,6 +4,7 @@ import { chaptersFor, toSyllabusSubject, type Syllabus } from "@/lib/ncert-sylla
 import { getNcertSyllabus, getNcertTopicCounts, getNcertVisibilityAdmin, setNcertVisibility } from "@/server-functions/ncert-line-admin";
 import { NCERT_SUBJECTS, type NcertClassLevel, type NcertSubject, type NcertVisibility } from "@/lib/ncert-line-types";
 import { NcertQuestionJsonUpload } from "@/components/admin/ncert-question-json-upload";
+import { NcertQuestionManager } from "@/components/admin/ncert-question-manager";
 import { cn } from "@/lib/utils";
 
 type AdminUser = { getIdToken: () => Promise<string> };
@@ -23,6 +24,8 @@ export function NcertLineByLineModule({ adminUser }: Props) {
 
   const [counts, setCounts] = useState<{ topic: string; count: number }[]>([]);
   const [countsLoading, setCountsLoading] = useState(false);
+  // Bumped after an upload so the "Manage uploaded questions" list reloads.
+  const [listVersion, setListVersion] = useState(0);
 
   // Syllabus loads once.
   useEffect(() => {
@@ -163,8 +166,16 @@ export function NcertLineByLineModule({ adminUser }: Props) {
                   classLevel={classLevel}
                   chapter={chapterHit.chapter}
                   topics={selectedTopics}
-                  onImported={loadCounts}
+                  onImported={async () => {
+                    await loadCounts();
+                    setListVersion((v) => v + 1);
+                  }}
                 />
+              </div>
+
+              <div className="mt-5">
+                <h2 className="mb-3 text-sm font-bold">4. Manage uploaded questions</h2>
+                <NcertQuestionManager adminUser={adminUser} subject={subject} chapter={chapterHit.chapter} topics={chapterHit.topics} counts={counts} reloadSignal={listVersion} onChanged={loadCounts} />
               </div>
             </>
           )}

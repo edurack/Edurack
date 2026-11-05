@@ -11,6 +11,7 @@
 // where the feature is used. The admin screen, plan editor and student upgrade card pick it up by themselves.
 import { addDays, istDayKey, DRILL_QUESTIONS } from "@/lib/practice-schedule";
 import type { Difficulty } from "@/lib/pyq-types";
+import { cleanPicks, type DrillPick } from "@/lib/drill-picks";
 
 /** Free standard drills per India day. One drill is 20 questions, so this is 40 timed questions a day on top of unlimited untimed practice. */
 export const FREE_DRILLS_PER_DAY = 2;
@@ -22,7 +23,7 @@ export const DRILL_LIMIT_PREFIX = "DRILL_LIMIT";
 /** Every feature Pro can switch on. The admin screen and the student upgrade card are generated from this list. */
 export const PRO_FEATURES = {
   unlimitedDrills: { label: "Unlimited Quick Mocks", description: "No daily cap on Quick Mocks (timed PYQ drills)." },
-  customDrillBuilder: { label: "Build your own drill", description: "Pick chapter or topic, difficulty, paper years and length." },
+  customDrillBuilder: { label: "Build your own drill", description: "Mix several chapters and topics, set the difficulty for each, then pick paper years and length." },
   mistakeRevision: { label: "Revise your mistakes", description: "A timed drill built from the questions you got wrong, oldest first, so old mistakes come back before you forget them." },
   timeAnalysis: { label: "Time and marks analysis", description: "See which wrong answers were rushed guesses and where you spend long on questions that still go wrong, in every Quick Mock and test." },
 } as const;
@@ -78,7 +79,12 @@ export type DrillAccess = {
 };
 
 /** `mistakes` = a revision drill made from the student's wrong answers (the mistakeRevision feature); it ignores the other filters. */
-export type CustomDrillInput = { chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number; mistakes?: boolean };
+/**
+ * `picks` = the multi-topic builder: several chapters/topics, each with its own difficulty (the drill takes a fair share
+ * from every pick). The single `chapter`/`topic`/`difficulty` fields are the older one-chapter form, still used by the
+ * "drill this weak chapter" button on a test result; when `picks` is present they are ignored.
+ */
+export type CustomDrillInput = { picks?: DrillPick[]; chapter?: string; topic?: string; difficulty?: Difficulty; years?: string[]; count?: number; mistakes?: boolean };
 
 const DIFFICULTIES: Difficulty[] = ["Easy", "Medium", "Hard"];
 const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
@@ -97,6 +103,13 @@ export function cleanCustomDrill(raw: unknown): CustomDrillInput | null {
     const years = [...new Set(r.years.filter((y): y is string => typeof y === "string" && /^\d{4}$/.test(y)))].slice(0, 20);
     if (years.length) out.years = years;
   }
+  const picks = cleanPicks(r.picks);
+  if (picks.length) {
+    out.picks = picks;
+    delete out.chapter;
+    delete out.topic;
+    delete out.difficulty;
+  }
   const count = Number(r.count);
   if ((CUSTOM_DRILL_COUNTS as readonly number[]).includes(count)) out.count = count;
   if (r.mistakes === true) return { mistakes: true, ...(out.count ? { count: out.count } : {}) };
@@ -105,7 +118,7 @@ export function cleanCustomDrill(raw: unknown): CustomDrillInput | null {
 
 /** A drill that goes beyond the standard one — and so needs Pro once plans are published. */
 export const isCustomDrill = (c: CustomDrillInput | null): boolean =>
-  !!c && Boolean(c.chapter || c.topic || c.difficulty || c.years?.length || (c.count && c.count !== DRILL_QUESTIONS));
+  !!c && Boolean(c.picks?.length || c.chapter || c.topic || c.difficulty || c.years?.length || (c.count && c.count !== DRILL_QUESTIONS));
 
 /** [start, end) of the India calendar day containing `now`. */
 export function istDayRange(now: Date): { start: Date; end: Date } {

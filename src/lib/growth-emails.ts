@@ -249,3 +249,23 @@ export function checkoutReminderEmailHtml(params: CheckoutReminderParams): strin
   `;
   return emailLayout({ previewText: `Your ${planName} checkout didn't finish. Pick up where you left off.`, bodyHtml: body });
 }
+
+// ─── Pro announcement: NCERT Line by Line is free for Pro students (sent from the admin "Edurack Pro" tab) ───
+export type ProNcertFreeParams = { name: string; drillUrl: string; unsubscribeUrl: string };
+
+export function proNcertFreeSubject(p: Pick<ProNcertFreeParams, "name">): string {
+  return `${p.name}, NCERT Line by Line will be completely free for you`;
+}
+
+export function proNcertFreeEmailHtml(params: ProNcertFreeParams): string {
+  const { name } = params;
+  const body = `
+    ${badge("Edurack Pro", C.sky)}
+    ${h1(`${esc(name)}, NCERT Line by Line is coming, and it's free for you`)}
+    ${p(`You're on <strong>Edurack Pro</strong>, so when NCERT Line by Line opens you won't pay anything extra for it. No new plan, no add-on.`)}
+    ${p(`Until then, put your Pro days to work: build a mock drill from several chapters and topics, and set the difficulty for each one.`)}
+    ${emailButton(params.drillUrl, "Build a mock drill")}
+    ${unsubscribeFooter(params.unsubscribeUrl, "because you're an Edurack Pro student")}
+  `;
+  return emailLayout({ previewText: "NCERT Line by Line will be completely free for Pro students. No extra payment.", bodyHtml: body });
+}

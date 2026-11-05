@@ -1,20 +1,19 @@
 // The start screen of the timed drill: the standard drill, today's free allowance, and — for Edurack Pro —
 // the custom drill builder. Limits are enforced on the server (startPyqDrill); this screen only explains
 // them and takes the student to checkout. While no plan is published nothing is limited and the builder is open to all.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2 } from "@tabler/icons-react";
-import { Check, ChevronDown, Lock, RotateCcw, Sparkles, Timer } from "lucide-react";
+import { Check, ChevronDown, Flame, Lock, RotateCcw, Sparkles, Timer } from "lucide-react";
 import { createRazorpayOrder, verifyRazorpayPayment } from "@/server-functions/payments";
 import { track, trackOnce } from "@/lib/analytics";
-import { getPyqTree } from "@/server-functions/pyq-practice";
 import { getMistakeCount } from "@/server-functions/practice-extras";
 import { InviteCard } from "@/components/referral/invite-card";
-import { getDrillAccess, getDrillBuilderYears } from "@/server-functions/pro";
-import { CUSTOM_DRILL_COUNTS, DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
+import { getDrillAccess } from "@/server-functions/pro";
+import { DrillBuilder } from "@/components/pyq/drill-builder";
+import { DRILL_LIMIT_PREFIX, PRO_FEATURES, PRO_FEATURE_KEYS, drillsLeft, hasFeature, type CustomDrillInput, type DrillAccess, type ProFeatureKey, type ProPlanPublic } from "@/lib/pro";
 import { DRILL_MARKS, DRILL_MINUTES, DRILL_QUESTIONS } from "@/lib/practice-schedule";
 import { quickMockCopy, quickMockName, quickMockStatus, type QuickMockSource } from "@/lib/quick-mock";
-import type { Difficulty, PyqTree } from "@/lib/pyq-types";
 import type { ExamKey } from "@/lib/admin-types";
 
 type LauncherUser = { getIdToken: () => Promise<string>; email?: string | null };
@@ -212,117 +211,10 @@ function UpgradePanel({
   );
 }
 
-const field = "min-h-11 w-full rounded-xl border border-border bg-background px-3 text-sm";
-
-function CustomDrillBuilder({ user, exam, starting, onStart }: { user: LauncherUser; exam?: string; starting: boolean; onStart: (o: StartOptions) => void }) {
-  const [tree, setTree] = useState<PyqTree | null>(null);
-  const [years, setYears] = useState<string[]>([]);
-  const [subject, setSubject] = useState("");
-  const [chapter, setChapter] = useState("");
-  const [topic, setTopic] = useState("");
-  const [difficulty, setDifficulty] = useState<Difficulty | "">("");
-  const [picked, setPicked] = useState<string[]>([]);
-  const [count, setCount] = useState<number>(DRILL_QUESTIONS);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const [t, y] = await Promise.all([getPyqTree({ data: { token, exam } }), getDrillBuilderYears({ data: { token, exam } })]);
-        if (alive) {
-          setTree(t);
-          setYears(y);
-        }
-      } catch {
-        // the builder just stays empty; the standard drill above still works
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [user, exam]);
-
-  const subjectNode = tree?.subjects.find((s) => s.subject === subject);
-  const chapterNode = subjectNode?.chapters.find((c) => c.chapter === chapter);
-  const toggleYear = (y: string) => setPicked((p) => (p.includes(y) ? p.filter((x) => x !== y) : [...p, y]));
-
-  const start = () =>
-    onStart({
-      subject: subject || undefined,
-      custom: { chapter: chapter || undefined, topic: topic || undefined, difficulty: difficulty || undefined, years: picked.length ? picked : undefined, count },
-    });
-
-  return (
-    <div className="mt-5 space-y-3 text-left">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-xs font-bold text-foreground/70">
-          Subject
-          <select className={`${field} mt-1`} value={subject} onChange={(e) => { setSubject(e.target.value); setChapter(""); setTopic(""); }}>
-            <option value="">All subjects</option>
-            {tree?.subjects.map((s) => <option key={s.subject} value={s.subject}>{s.subject}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-bold text-foreground/70">
-          Chapter
-          <select className={`${field} mt-1`} value={chapter} disabled={!subjectNode} onChange={(e) => { setChapter(e.target.value); setTopic(""); }}>
-            <option value="">{subjectNode ? "Any chapter" : "Pick a subject first"}</option>
-            {subjectNode?.chapters.map((c) => <option key={c.chapter} value={c.chapter}>{c.chapter}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-bold text-foreground/70">
-          Topic
-          <select className={`${field} mt-1`} value={topic} disabled={!chapterNode} onChange={(e) => setTopic(e.target.value)}>
-            <option value="">{chapterNode ? "Any topic" : "Pick a chapter first"}</option>
-            {chapterNode?.topics.map((t) => <option key={t.topic} value={t.topic}>{t.topic}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-bold text-foreground/70">
-          Difficulty
-          <select className={`${field} mt-1`} value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty | "")}>
-            <option value="">Any</option>
-            <option value="Easy">Easy</option>
-            <option value="Medium">Medium</option>
-            <option value="Hard">Hard</option>
-          </select>
-        </label>
-      </div>
-
-      {years.length > 0 && (
-        <fieldset>
-          <legend className="text-xs font-bold text-foreground/70">Paper years {picked.length === 0 && <span className="font-medium text-foreground/45">(all)</span>}</legend>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {years.map((y) => (
-              <button key={y} type="button" aria-pressed={picked.includes(y)} onClick={() => toggleYear(y)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${picked.includes(y) ? "bg-foreground text-background" : "border border-border text-foreground/70"}`}>
-                {y}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      )}
-
-      <fieldset>
-        <legend className="text-xs font-bold text-foreground/70">Number of questions</legend>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {CUSTOM_DRILL_COUNTS.map((n) => (
-            <button key={n} type="button" aria-pressed={count === n} onClick={() => setCount(n)} className={`rounded-full px-3.5 py-1.5 text-xs font-bold ${count === n ? "bg-foreground text-background" : "border border-border text-foreground/70"}`}>
-              {n} · {Math.round(n * 1.5)} min
-            </button>
-          ))}
-        </div>
-      </fieldset>
-
-      <button type="button" onClick={start} disabled={starting} className="clay-btn inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-bold text-white disabled:opacity-50 sm:w-auto">
-        {starting && <Loader2 className="h-4 w-4 animate-spin" />}
-        Start my drill
-      </button>
-    </div>
-  );
-}
-
-export function DrillLauncher({ user, exam, source, preset, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; /** A weak chapter sent from a test result. */ preset?: { chapter: string; subject?: string }; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
+export function DrillLauncher({ user, exam, source, preset, openBuilder, starting, error, onStart }: { user: LauncherUser; exam?: string; source?: QuickMockSource; /** Open the drill builder straight away (the dashboard's "Build a mock drill" button). */ openBuilder?: boolean; /** A weak chapter sent from a test result. */ preset?: { chapter: string; subject?: string }; starting: boolean; error: string | null; onStart: (o: StartOptions) => void }) {
   const [access, setAccess] = useState<DrillAccess | null>(null);
-  const [showBuilder, setShowBuilder] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(!!openBuilder);
+  const builderRef = useRef<HTMLDivElement>(null);
   // The Pro plans are one tap away, not the first thing on the page: the free Quick Mock is the point of this screen.
   const [showPro, setShowPro] = useState(false);
 
@@ -380,6 +272,15 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
   useEffect(() => {
     if (preset && access) trackOnce("result-drill-preset-shown", "result_drill_preset_shown", { can_build: canBuild, source: source ?? "direct" });
   }, [preset, access, canBuild, source]);
+
+  // Arriving from the dashboard's "Build a mock drill" button: bring the builder into view once it is on the page.
+  const scrolledToBuilder = useRef(false);
+  useEffect(() => {
+    if (openBuilder && canBuild && !scrolledToBuilder.current) {
+      scrolledToBuilder.current = true;
+      builderRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    }
+  }, [openBuilder, canBuild]);
 
   const limitedFree = access ? access.gatingOn && !hasFeature(access, "unlimitedDrills") : false;
   const builderIsPro = access ? access.gatingOn && access.proOnly.customDrillBuilder : false;
@@ -564,22 +465,22 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
       )}
 
       {(canBuild || missing) && (
-        <div className="clay p-5 sm:p-6">
+        <div ref={builderRef} className="clay p-5 sm:p-6">
           {canBuild ? (
             <>
               <button type="button" aria-expanded={showBuilder} onClick={() => setShowBuilder((v) => !v)} className="flex w-full items-center gap-3 text-left">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]">
-                  <Sparkles className="h-5 w-5 text-[var(--sky-deep)]" aria-hidden />
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-300 text-amber-950">
+                  <Flame className="h-5 w-5" aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill {builderIsPro && <ProTag />}</span>
-                  <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length.</span>
+                  <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own mock drill {builderIsPro && <ProTag />}</span>
+                  <span className="block text-xs text-foreground/60">Mix chapters and topics, set the difficulty for each, then go.</span>
                 </span>
                 <ChevronDown className={`h-4 w-4 shrink-0 text-foreground/50 transition-transform ${showBuilder ? "rotate-180" : ""}`} aria-hidden />
               </button>
               {showBuilder && (
                 <div className="mt-4 border-t border-border pt-4">
-                  <CustomDrillBuilder user={user} exam={exam} starting={starting} onStart={onStart} />
+                  <DrillBuilder user={user} exam={exam} starting={starting} onStart={onStart} />
                 </div>
               )}
             </>
@@ -589,8 +490,8 @@ export function DrillLauncher({ user, exam, source, preset, starting, error, onS
                 <Lock className="h-5 w-5 text-foreground/50" aria-hidden />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own drill <ProTag /></span>
-                <span className="block text-xs text-foreground/60">Pick the chapter or topic, difficulty, paper years and length. Included in Edurack Pro: tap "Explore Edurack Pro" above.</span>
+                <span className="flex items-center gap-2 text-sm font-bold text-foreground">Build your own mock drill <ProTag /></span>
+                <span className="block text-xs text-foreground/60">Mix chapters and topics and set the difficulty for each. Included in Edurack Pro: tap "Explore Edurack Pro" above.</span>
               </span>
             </div>
           )}

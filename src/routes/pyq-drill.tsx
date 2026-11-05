@@ -19,11 +19,12 @@ import { cleanQuickMockSource, type QuickMockSource } from "@/lib/quick-mock";
 // ?src= says which entry point sent the student here (homepage, dashboard, sidebar, ...) so Quick Mock analytics can
 // tell the placements apart. It is only ever used as an analytics label.
 // ?chapter= (+ ?subject=) is a weak chapter sent from a test result: the launcher offers a timed drill on it.
-type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource; chapter?: string; subject?: string };
+// ?build=1 opens the drill builder straight away (the dashboard's "Build a mock drill" button).
+type DrillSearch = { exam?: string; drillId?: string; src?: QuickMockSource; chapter?: string; subject?: string; build?: boolean };
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v : undefined);
 
 export const Route = createFileRoute("/pyq-drill")({
-  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src), chapter: str(search.chapter), subject: str(search.subject) }),
+  validateSearch: (search: Record<string, unknown>): DrillSearch => ({ exam: str(search.exam), drillId: str(search.drillId), src: cleanQuickMockSource(search.src), chapter: str(search.chapter), subject: str(search.subject), build: search.build === true || search.build === "true" || search.build === "1" || search.build === 1 ? true : undefined }),
   head: () => noindexHead("Quick Mock"),
   component: DrillPage,
 });
@@ -31,7 +32,7 @@ export const Route = createFileRoute("/pyq-drill")({
 function DrillPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { exam, drillId, src, chapter, subject } = Route.useSearch();
+  const { exam, drillId, src, chapter, subject, build } = Route.useSearch();
 
   const [state, setState] = useState<DrillState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +43,10 @@ function DrillPage() {
   useEffect(() => {
     // Not signed in: sign in (or up), then come straight back here with the same ?src=, ?exam= and chapter.
     if (!loading && !user) {
-      const qs = new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}), ...(chapter ? { chapter } : {}), ...(subject ? { subject } : {}) }).toString();
+      const qs = new URLSearchParams({ ...(exam ? { exam } : {}), ...(src ? { src } : {}), ...(chapter ? { chapter } : {}), ...(subject ? { subject } : {}), ...(build ? { build: "true" } : {}) }).toString();
       navigate({ to: "/auth", search: { tab: "signin", redirect: `/pyq-drill${qs ? `?${qs}` : ""}` } });
     }
-  }, [loading, user, navigate, src, exam, chapter, subject]);
+  }, [loading, user, navigate, src, exam, chapter, subject, build]);
 
   // Load (or resume) the drill named in the URL.
   useEffect(() => {
@@ -160,12 +161,12 @@ function DrillPage() {
         ) : state?.status === "done" ? (
           <DrillResultView result={state.result} onBack={() => navigate({ to: "/pyq", search: { exam } })} />
         ) : (
-          <div className="mx-auto max-w-lg animate-in fade-in duration-300 motion-reduce:animate-none">
+          <div className="mx-auto max-w-2xl animate-in fade-in duration-300 motion-reduce:animate-none">
             <button onClick={() => navigate({ to: "/pyq", search: { exam } })} className="mb-4 inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold text-foreground/60 hover:bg-foreground/5">
               <ChevronLeft className="h-4 w-4" aria-hidden />
               PYQs
             </button>
-            <DrillLauncher user={user} exam={exam} source={src} preset={chapter ? { chapter, subject } : undefined} starting={starting} error={startError} onStart={start} />
+            <DrillLauncher user={user} exam={exam} source={src} preset={chapter ? { chapter, subject } : undefined} openBuilder={build} starting={starting} error={startError} onStart={start} />
           </div>
         )}
       </main>

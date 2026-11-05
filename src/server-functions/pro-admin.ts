@@ -210,3 +210,78 @@ export const giftPro = createServerFn({ method: "POST" })
     });
     return { until: until.toISOString() };
   });
+
+// ─── "NCERT Line by Line is free for Pro" announcement ─────────────────────
+// Emails every student whose Pro is active right now, once each (a unique log row per student and announcement),
+// so pressing the button again only reaches students who haven't had it yet. Students who unsubscribed or whose
+// address bounced are skipped. Each press sends at most PRO_ANNOUNCE_BATCH emails to stay inside the request time limit.
+const NCERT_FREE_KEY = "ncert-line-by-line-free";
+const PRO_ANNOUNCE_BATCH = 60;
+
+export type ProAnnounceResult = { activePro: number; alreadySent: number; skipped: number; toSend: number; sent: number; failed: number; remaining: number; dryRun: boolean };
+
+export const sendProNcertAnnouncement = createServerFn({ method: "POST" })
+  .validator((data: { token: string; dryRun?: boolean }) => data)
+  .handler(async ({ data }): Promise<ProAnnounceResult> => {
+    await requireAdmin(data.token);
+    const dryRun = data.dryRun === true;
+    await logAdminAction(data.token, "sendProNcertAnnouncement", { dryRun }, "Edurack Pro");
+    const db = await getDb();
+    const now = new Date();
+    const log = db.collection("proAnnouncementLog");
+    try {
+      await log.createIndex({ key: 1, uid: 1 }, { unique: true });
+    } catch {
+      /* best-effort: the unique index is what makes a double click harmless, but sending still works without it */
+    }
+
+    const uids = ((await db.collection("proGrants").distinct("uid", { startsAt: { $lte: now }, endsAt: { $gt: now } })) as unknown[]).filter((u): u is string => typeof u === "string");
+    const done = new Set((await log.find({ key: NCERT_FREE_KEY, uid: { $in: uids }, status: "sent" }, { projection: { uid: 1 } }).toArray()).map((r) => String(r.uid)));
+    const pending = uids.filter((u) => !done.has(u));
+
+    const profiles = pending.length
+      ? await db.collection("profiles").find({ uid: { $in: pending }, email: { $type: "string", $ne: "" } }, { projection: { uid: 1, fullName: 1, email: 1, emailOptOut: 1 } }).toArray()
+      : [];
+    const { suppressedSet } = await import("@/lib/email-guard");
+    const blocked = await suppressedSet(db, profiles.map((p) => String(p.email)));
+    const sendable = profiles.filter((p) => !p.emailOptOut?.marketing && !blocked.has(String(p.email).trim().toLowerCase()));
+    const result: ProAnnounceResult = { activePro: uids.length, alreadySent: done.size, skipped: pending.length - sendable.length, toSend: sendable.length, sent: 0, failed: 0, remaining: sendable.length, dryRun };
+    if (dryRun || sendable.length === 0) return result;
+
+    const { sendMail } = await import("@/lib/mailer");
+    const { SITE_URL, firstName, proNcertFreeEmailHtml, proNcertFreeSubject } = await import("@/lib/growth-emails");
+    const { unsubscribeUrl } = await import("@/lib/unsubscribe");
+    for (const p of sendable.slice(0, PRO_ANNOUNCE_BATCH)) {
+      const uid = String(p.uid);
+      // Claim this student first: a duplicate-key error means another press already sent (or is sending) theirs.
+      try {
+        await log.insertOne({ key: NCERT_FREE_KEY, uid, status: "sending", createdAt: new Date() });
+      } catch (err) {
+        if ((err as { code?: number }).code === 11000) {
+          const row = await log.findOne({ key: NCERT_FREE_KEY, uid });
+          const stale = row?.status === "sending" && Date.now() - new Date(row.createdAt as Date).getTime() > 10 * 60_000; // a press that died mid-send
+          if (row?.status !== "failed" && !stale) continue; // already sent, or being sent by another press
+          await log.updateOne({ key: NCERT_FREE_KEY, uid }, { $set: { status: "sending", retriedAt: new Date() } });
+        } else {
+          throw err;
+        }
+      }
+      const name = firstName(p.fullName as string);
+      try {
+        await sendMail({
+          to: String(p.email),
+          subject: proNcertFreeSubject({ name }),
+          html: proNcertFreeEmailHtml({ name, drillUrl: `${SITE_URL}/pyq-drill?src=email&build=true`, unsubscribeUrl: unsubscribeUrl(uid, "marketing") }),
+        });
+        await log.updateOne({ key: NCERT_FREE_KEY, uid }, { $set: { status: "sent", sentAt: new Date() } });
+        result.sent++;
+      } catch (err) {
+        console.error(`[pro-announce] send failed uid=${uid}:`, err);
+        await log.updateOne({ key: NCERT_FREE_KEY, uid }, { $set: { status: "failed", error: String(err) } });
+        result.failed++;
+      }
+      await new Promise((r) => setTimeout(r, 550)); // Resend default limit ≈ 2 requests a second
+    }
+    result.remaining = Math.max(0, sendable.length - result.sent);
+    return result;
+  });

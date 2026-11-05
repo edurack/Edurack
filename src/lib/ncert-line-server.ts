@@ -137,6 +137,11 @@ export function assembleNcertTree(rows: NcertTreeRow[], progMap: Map<string, { a
 }
 
 /** Current question count per topic (used by the admin upload screen's live counts). */
+/** Drops the cached per-topic counts so the admin screen and the student tree see an upload, edit or delete straight away. */
+export function clearNcertTreeCache() {
+  treeRowsCache.set("all", undefined as unknown as NcertTreeRow[]);
+}
+
 export async function ncertTopicCounts(db: Db, subject?: string, chapter?: string) {
   const rows = await loadNcertTreeRows(db);
   return rows

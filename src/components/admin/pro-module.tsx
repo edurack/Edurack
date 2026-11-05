@@ -13,7 +13,8 @@ import {
   IconAlertCircle as AlertCircle,
   IconX as X,
 } from "@tabler/icons-react";
-import { getProAdmin, saveProSettings, saveProPlan, deleteProPlan, giftPro } from "@/server-functions/pro-admin";
+import { getProAdmin, saveProSettings, saveProPlan, deleteProPlan, giftPro, sendProNcertAnnouncement } from "@/server-functions/pro-admin";
+import type { ProAnnounceResult } from "@/server-functions/pro-admin";
 import type { ProAdminOverview, ProAdminPlan } from "@/server-functions/pro-admin";
 import { MAX_FREE_DRILLS_PER_DAY, PRO_FEATURES, PRO_FEATURE_KEYS } from "@/lib/pro";
 import type { ProFeatureKey, ProSettings } from "@/lib/pro";
@@ -47,6 +48,7 @@ export function ProModule({ adminUser }: { adminUser: AdminUser }) {
   const [giftEmail, setGiftEmail] = useState("");
   const [giftPlan, setGiftPlan] = useState("");
   const [giftDays, setGiftDays] = useState("30");
+  const [announce, setAnnounce] = useState<ProAnnounceResult | null>(null);
 
   async function load() {
     try {
@@ -115,6 +117,21 @@ export function ProModule({ adminUser }: { adminUser: AdminUser }) {
       "Pro added for that student.",
       () => setGiftEmail(""),
     );
+  }
+
+  // Emails every student with active Pro that NCERT Line by Line will be free for them. "Check" only counts; "Send" mails up to a batch.
+  async function announceNcert(dryRun: boolean) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await sendProNcertAnnouncement({ data: { token: await adminUser.getIdToken(), dryRun } });
+      setAnnounce(r);
+      if (!dryRun) setMsg({ kind: r.failed > 0 ? "error" : "ok", text: `Sent ${r.sent} email${r.sent === 1 ? "" : "s"}${r.failed > 0 ? `, ${r.failed} failed` : ""}.${r.remaining > 0 ? ` ${r.remaining} still to go: press Send again.` : ""}` });
+    } catch (err) {
+      setMsg({ kind: "error", text: err instanceof Error ? err.message : "Something went wrong." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (status === "loading" && !data) {
@@ -362,6 +379,33 @@ export function ProModule({ adminUser }: { adminUser: AdminUser }) {
         <button onClick={gift} disabled={busy || !giftEmail.trim() || !giftDays} className="clay-btn rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-50">
           Give Pro
         </button>
+      </section>
+
+      {/* Tell Pro students NCERT Line by Line is free for them */}
+      <section className="clay space-y-3 p-4">
+        <div>
+          <h3 className="text-sm font-bold text-foreground">Tell Pro students: NCERT Line by Line is free for them</h3>
+          <p className="text-xs text-foreground/60">Emails every student whose Pro is active right now, once each. Students who unsubscribed are skipped. The same notice shows on their dashboard.</p>
+        </div>
+        {announce && (
+          <p className="text-xs font-semibold text-foreground/75">
+            {announce.activePro} active Pro student{announce.activePro === 1 ? "" : "s"} · {announce.alreadySent} already emailed · {announce.skipped} skipped (unsubscribed or no email) · {announce.remaining} still to email
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => void announceNcert(true)} disabled={busy} className="rounded-full border border-border px-5 py-2 text-xs font-bold text-foreground disabled:opacity-50">
+            Check who gets it
+          </button>
+          <button
+            onClick={() => {
+              if (confirm("Email every active Pro student who hasn't had this yet?")) void announceNcert(false);
+            }}
+            disabled={busy}
+            className="clay-btn rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-50"
+          >
+            Send the email
+          </button>
+        </div>
       </section>
 
       {/* Recent activity */}

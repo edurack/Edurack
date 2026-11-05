@@ -43,6 +43,7 @@ import {
   type Db,
 } from "@/lib/pyq-server";
 import { DRILL_LIMIT_PREFIX, cleanCustomDrill, drillBlockReason, hasFeature, isCustomDrill } from "@/lib/pro";
+import { interleave } from "@/lib/drill-picks";
 import { getNcertVisibility, isNcertEnabledFor } from "@/lib/ncert-line-server";
 import { NCERT_SOURCE } from "@/lib/ncert-line-types";
 import {
@@ -357,7 +358,9 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       match._id = { $in: mistakeIds.map((i) => new ObjectId(i)) };
     }
     const mistakeRank = mistakeIds ? new Map(mistakeIds.map((id, i) => [id, i] as const)) : null;
-    if (custom) {
+    // The multi-topic builder: one pool per pick (each with its own difficulty), so every pick can be given a fair share below.
+    const picks = custom?.picks ?? [];
+    if (custom && picks.length === 0) {
       const and: Record<string, unknown>[] = [];
       if (custom.chapter) and.push({ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), custom.chapter.toLowerCase()] } });
       if (custom.topic) and.push({ $expr: { $eq: [keyExpr("topic", GENERAL_TOPIC), custom.topic.toLowerCase()] } });
@@ -366,7 +369,21 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       if (custom.years) match.pyqYear = { $in: custom.years };
     }
     const target = custom?.count ?? DRILL_QUESTIONS;
-    const pool = await db.collection("questions").find(match, { projection: { _id: 1, subject: 1 } }).limit(3000).toArray();
+    const questionsCol = db.collection("questions");
+    const pickPools =
+      custom && picks.length > 0
+        ? await Promise.all(
+            picks.map((pk) => {
+              const and: Record<string, unknown>[] = [{ $expr: { $eq: [keyExpr("chapter", UNTAGGED_CHAPTER), pk.chapter.toLowerCase()] } }];
+              if (pk.topic) and.push({ $expr: { $eq: [keyExpr("topic", GENERAL_TOPIC), pk.topic.toLowerCase()] } });
+              const m: Record<string, unknown> = { ...match, subject: pk.subject, $and: and };
+              if (pk.difficulty) m.difficulty = pk.difficulty;
+              if (custom.years) m.pyqYear = { $in: custom.years };
+              return questionsCol.find(m, { projection: { _id: 1, subject: 1 } }).limit(1000).toArray();
+            }),
+          )
+        : null;
+    const pool = pickPools ? pickPools.flat() : await questionsCol.find(match, { projection: { _id: 1, subject: 1 } }).limit(3000).toArray();
 
     // Unseen first, then past mistakes, then already-solved — shuffled inside each tier.
     const progress = await db
@@ -378,14 +395,17 @@ export const startPyqDrill = createServerFn({ method: "POST" })
       const p = seen.get(id);
       return !p || !(Number(p.attempts) > 0) ? 0 : p.correct === true ? 2 : 1;
     };
-    const ranked = [0, 1, 2].flatMap((t) => shuffle(pool.filter((p) => tier(String(p._id)) === t))).map((p) => ({ id: String(p._id), subject: p.subject as string }));
-    const picked = mistakeRank
-      ? [...ranked].sort((a, b) => (mistakeRank.get(a.id) ?? 0) - (mistakeRank.get(b.id) ?? 0)).slice(0, target)
-      : data.subject || custom?.chapter
-        ? ranked.slice(0, target)
-        : balancedPick(ranked, target);
+    const rankIn = (docs: typeof pool) => [0, 1, 2].flatMap((t) => shuffle(docs.filter((p) => tier(String(p._id)) === t))).map((p) => ({ id: String(p._id), subject: p.subject as string }));
+    const ranked = pickPools ? [] : rankIn(pool);
+    const picked = pickPools
+      ? interleave(pickPools.map(rankIn), target, (x) => x.id)
+      : mistakeRank
+        ? [...ranked].sort((a, b) => (mistakeRank.get(a.id) ?? 0) - (mistakeRank.get(b.id) ?? 0)).slice(0, target)
+        : data.subject || custom?.chapter
+          ? ranked.slice(0, target)
+          : balancedPick(ranked, target);
     if (picked.length < MIN_DRILL_QUESTIONS) {
-      throw new Error(wantsMistakes ? `You need at least ${MIN_DRILL_QUESTIONS} questions in your notebook to revise. Practise a few more first.` : wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those filters — widen them to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
+      throw new Error(wantsMistakes ? `You need at least ${MIN_DRILL_QUESTIONS} questions in your notebook to revise. Practise a few more first.` : wantsCustom ? `Only ${picked.length} question${picked.length === 1 ? "" : "s"} match those picks — add more topics, or set a pick's difficulty to Any, to start a drill.` : "There aren't enough PYQs yet for a timed drill. Check back soon.");
     }
 
     const questionIds = shuffle(picked).map((p) => p.id);
@@ -583,4 +603,4 @@ export const getWeakUpsell = createServerFn({ method: "POST" })
       })
       .filter((b): b is UpsellBundle => b !== null);
     return { bundles, weakSubjects };
-  });
+  });
