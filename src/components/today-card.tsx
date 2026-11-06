@@ -270,11 +270,11 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
  * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
  */
 export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
-  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-3xl border border-foreground/15 bg-card px-5 py-4 shadow-sm", className);
+  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-foreground/10 bg-card px-5 py-4", className);
   const icon = (
-    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
+    <span className="shrink-0 text-foreground/70"><Users className="h-5 w-5" aria-hidden /></span>
   );
-  const ghost = "inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-bold text-foreground transition-colors hover:border-foreground/40";
+  const ghost = "inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border border-foreground/15 px-4 text-[13px] font-semibold text-foreground transition-colors hover:border-foreground/40";
 
   if (info.state === "loading") {
     return <div className={cn(shell, "h-[4.25rem] animate-pulse bg-secondary")} aria-hidden />;
@@ -286,7 +286,7 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
           {icon}
           <div className="min-w-0">
             <p className="text-sm font-bold leading-tight">No mentor session booked</p>
-            <p className="truncate text-xs text-foreground/70">{info.text}</p>
+            <p className="text-[13px] text-foreground/70">{info.text}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -302,11 +302,11 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-widest text-primary">Up next</p>
           <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
-          <p className="truncate text-xs text-foreground/70">{info.title}</p>
+          <p className="truncate text-[13px] text-foreground/70">{info.title}</p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground">Join session</a>}
+        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-[13px] font-semibold text-primary-foreground">Join session</a>}
         <Link to="/my-sessions" className={ghost}>{info.total > 1 ? `All ${info.total} sessions` : "My sessions"}</Link>
       </div>
     </section>

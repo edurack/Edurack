@@ -20,7 +20,7 @@ const noticeClosed = (uid: string) => {
   }
 };
 
-export function ProActiveCard({ access, className }: { access: DrillAccess | null; className?: string }) {
+export function ProActiveCard({ access, className, compact = false }: { access: DrillAccess | null; className?: string; /** One slim status row (used at the top of the dashboard) instead of the full card. */ compact?: boolean }) {
   const { user } = useAuth();
   const [closed, setClosed] = useState(false);
   if (!access?.isPro || !access.proUntil) return null;
@@ -30,55 +30,61 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
   const untilLabel = until.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
   const showNotice = !!user && !closed && !noticeClosed(user.uid);
 
-  function closeNotice() {
-    setClosed(true);
-    try {
-      if (user) localStorage.setItem(noticeStorageKey(user.uid), "1");
-    } catch {
-      /* storage unavailable: the notice may come back next visit, harmless */
-    }
+  if (compact) {
+    return (
+      <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("flex min-h-11 items-center justify-between gap-3 rounded-full bg-amber-500/10 pl-4 pr-3", className)}>
+        <p className="flex min-w-0 items-center gap-2 text-[13px]">
+          <Sparkles className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+          <span className="truncate">
+            <span className="font-semibold text-foreground">Edurack Pro</span>
+            <span className="text-foreground/70"> · {daysLeft <= 1 ? "last day" : `${daysLeft} days left`}</span>
+          </span>
+        </p>
+        <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-11 shrink-0 items-center gap-1 text-[13px] font-semibold text-primary underline-offset-4 hover:underline">
+          Mock drill <ArrowRight className="h-4 w-4" aria-hidden />
+        </Link>
+      </section>
+    );
   }
 
   return (
-    <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("min-w-0 rounded-3xl border border-amber-300/70 bg-amber-50 p-4 dark:border-amber-300/30 dark:bg-amber-300/10 sm:p-5", className)}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-300 text-amber-950">
-            <Sparkles className="h-6 w-6" aria-hidden />
-          </span>
+    <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("min-w-0 rounded-2xl border border-foreground/10 bg-amber-500/10 p-5 sm:p-6", className)}>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <Sparkles className="mt-1 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
           <div className="min-w-0">
-            <p className="text-xs font-extrabold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
-            <h2 className="font-display mt-0.5 text-lg font-extrabold leading-snug tracking-tight text-foreground sm:text-xl">{daysLeft <= 1 ? "Your last day of Pro. Make it count." : `${daysLeft} days of Pro left. Put them to work.`}</h2>
-            <p className="mt-0.5 text-xs text-foreground/70">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
+            <h2 className="font-display mt-1 text-lg font-bold leading-snug tracking-tight text-foreground">{daysLeft <= 1 ? "Your last day of Pro. Make it count." : `${daysLeft} days of Pro left. Put them to work.`}</h2>
+            <p className="mt-1 text-[13px] text-foreground/70">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-          <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5 motion-reduce:transition-none">
+        <div className="flex shrink-0 flex-col gap-1 sm:items-end">
+          <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 motion-reduce:transition-none">
             <Flame className="h-4 w-4" aria-hidden /> Build a mock drill
           </Link>
-          <Link to="/pyq" search={{}} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-bold text-foreground/80 hover:bg-foreground/5">
+          <Link to="/pyq" search={{}} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 text-[13px] font-semibold text-foreground/80 hover:bg-foreground/5">
             Solve a PYQ now <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
         </div>
       </div>
 
       {access.features.length > 0 && (
-        <ul className="mt-4 flex flex-wrap gap-1.5">
+        <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-1.5">
           {access.features.map((k) => (
-            <li key={k} className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-xs font-bold text-foreground/80 dark:bg-white/10">
-              <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-300" aria-hidden /> {PRO_FEATURES[k].label}
+            <li key={k} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground/80">
+              <Check className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden /> {PRO_FEATURES[k].label}
             </li>
           ))}
         </ul>
       )}
 
       {showNotice && (
-        <div role="status" data-testid="ncert-free-notice" className="mt-4 flex items-start gap-3 rounded-2xl bg-white/80 p-3.5 dark:bg-white/10">
+        <div role="status" data-testid="ncert-free-notice" className="mt-5 flex items-start gap-3 border-t border-foreground/10 pt-4">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-extrabold text-foreground">NCERT Line by Line is coming, completely free for you</p>
-            <p className="mt-0.5 text-xs text-foreground/70">As a Pro student you won't pay anything extra for it when it opens.</p>
+            <p className="text-sm font-semibold text-foreground">NCERT Line by Line is coming, completely free for you</p>
+            <p className="mt-0.5 text-[13px] text-foreground/70">As a Pro student you won't pay anything extra for it when it opens.</p>
           </div>
-          <button type="button" onClick={closeNotice} aria-label="Close this notice" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/50 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <button type="button" onClick={closeNotice} aria-label="Close this notice" className="-mr-2 -mt-1 grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground/60 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <X className="h-4 w-4" aria-hidden />
           </button>
         </div>

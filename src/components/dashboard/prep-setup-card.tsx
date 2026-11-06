@@ -18,7 +18,7 @@ const snooze = (uid: string) => {
   try { localStorage.setItem(key(uid), String(Date.now() + SNOOZE_DAYS * 86_400_000)); } catch { /* storage unavailable: it may show again next visit */ }
 };
 
-const CHIP = "inline-flex min-h-10 items-center justify-center gap-1 rounded-full border px-4 text-xs font-bold transition-colors";
+const CHIP = "inline-flex min-h-11 items-center justify-center gap-1 rounded-full border px-4 text-[13px] font-semibold transition-colors";
 
 export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile: PrepProfile | null; /** New students: ask for exam/class now, the target year after their first question. */ deferYear?: boolean; onSaved: (next: Partial<PrepProfile>) => void }) {
   const { user } = useAuth();
@@ -45,16 +45,16 @@ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile
     }
   }
 
-  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/80 hover:border-foreground/40");
+  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-foreground/15 text-foreground/80 hover:border-foreground/40");
 
   return (
-    <section aria-label="Finish your prep details" className="rounded-3xl border border-border bg-card p-4 sm:p-5">
+    <section aria-label="Finish your prep details" className="rounded-2xl border border-foreground/10 bg-card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-foreground/70">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
-          <p className="mt-0.5 text-xs text-foreground/70">So we recommend the right questions. You can change this later in Profile.</p>
+          <p className="mt-0.5 text-[13px] text-foreground/70">So we recommend the right questions. You can change this later in Profile.</p>
         </div>
-        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-foreground/70 hover:bg-secondary">Not now</button>
+        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-[13px] font-semibold text-foreground/70 hover:bg-secondary">Not now</button>
       </div>
 
       <div className="mt-3 space-y-3">

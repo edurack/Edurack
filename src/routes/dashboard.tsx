@@ -9,6 +9,7 @@ import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
 import type { PracticeStats } from "@/lib/practice-stats";
 import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
 import { PyqHero } from "@/components/dashboard/pyq-hero";
+import { NcertBanner } from "@/components/dashboard/ncert-banner";
 import { ProActiveCard } from "@/components/dashboard/pro-active-card";
 import type { DrillAccess } from "@/lib/pro";
 import { StreakPopup } from "@/components/dashboard/streak-popup";
@@ -17,7 +18,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { noindexHead } from "@/lib/seo";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { IconTrophy as Trophy, IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play, IconCircleCheck as CircleCheck, IconTarget as Target, IconCalendarWeek as CalendarWeek, IconRefresh as Refresh } from "@tabler/icons-react";
+import { IconTrophy as Trophy, IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
 import { getDashboardBootstrap } from "@/server-functions/dashboard";
 import { getProfile } from "@/server-functions/profile";
@@ -501,19 +502,20 @@ function DashboardPage() {
 
         {/* ── Main ──────────────────────────────────────────── */}
         <main className="min-w-0 flex-1 pb-28 pt-6 md:pb-12 md:pt-8">
+          {/* The overview is one calm column (56rem); the other views keep the full width. */}
+          <div className={view === "home" ? "mx-auto w-full max-w-4xl" : undefined}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              {view === "home" && <p className="mb-1 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-primary"><CalendarWeek className="h-3.5 w-3.5" />{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>}
-              <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">{view === "home" && firstName ? (<>{greet}, <span className="text-primary">{firstName}</span></>) : title}</h1>
+              <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">{view === "home" && firstName ? (<>{greet}, <span className="text-primary">{firstName}</span></>) : title}</h1>
             </div>
-            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-foreground/20 bg-card px-4 shadow-sm transition-colors focus-within:border-primary sm:max-w-xs">
+            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-foreground/15 bg-card px-4 transition-colors focus-within:border-primary sm:max-w-xs">
               <Search className="h-4 w-4 shrink-0 text-foreground/70" />
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search mentors, courses, tests…" className="w-full bg-transparent text-[15px] placeholder:text-foreground/55 focus:outline-none" />
               {hasQuery && <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/70 hover:bg-secondary"><X className="h-4 w-4" /></button>}
             </label>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-8">
             {hasQuery ? (
               <SearchResults query={query} matchedMentors={matchedMentors} matchedListings={matchedListings} matchedTests={matchedTests} loading={mentors === null || allListings === null || soldTests === null} />
             ) : view === "home" ? (
@@ -575,6 +577,7 @@ function DashboardPage() {
               <MentorGrid mentors={mentors} />
             )}
           </div>
+          </div>
         </main>
       </div>
 
@@ -592,11 +595,12 @@ function DashboardPage() {
 }
 
 // ─── Overview (the actual dashboard) ────────────────────────────────────
+// One calm column. Flat cards: no shadows, one hairline (border-foreground/10), at most one soft tint each, no boxes inside boxes.
 function Panel({ title, icon, action, children, className = "" }: { title: string; icon?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`min-w-0 rounded-3xl border border-foreground/15 bg-card p-5 shadow-sm sm:p-6 ${className}`}>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2.5 font-display text-lg font-extrabold tracking-tight">{icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary" aria-hidden>{icon}</span>}{title}</h2>
+    <section className={`min-w-0 rounded-2xl border border-foreground/10 bg-card p-5 sm:p-6 ${className}`}>
+      <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 font-display text-base font-bold tracking-tight">{icon && <span className="text-foreground/70" aria-hidden>{icon}</span>}{title}</h2>
         {action}
       </div>
       {children}
@@ -604,49 +608,38 @@ function Panel({ title, icon, action, children, className = "" }: { title: strin
   );
 }
 
-/** Names each group of cards on the overview, so the page reads as sections instead of one long stack. */
-function SectionHeading({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 px-1 pt-5">
-      <span className="h-6 w-1.5 rounded-full bg-primary" aria-hidden />
-      <h2 className="font-display text-xl font-extrabold tracking-tight text-foreground">{children}</h2>
-    </div>
-  );
+/** Names a section of the overview. `quiet` is for "More": same size, softer colour. */
+function SectionHeading({ children, quiet = false }: { children: ReactNode; quiet?: boolean }) {
+  return <h2 className={`font-display text-xl font-bold tracking-tight ${quiet ? "text-foreground/70" : "text-foreground"}`}>{children}</h2>;
 }
 
-/** Four numbers a returning student wants at a glance. Tiles with something to do (revise) are links. */
-function Snapshot({ stats }: { stats: PracticeStats }) {
-  const o = stats.overall;
-  const tiles: { icon: typeof Home; label: string; value: string; tone: string; to?: boolean }[] = [
-    { icon: CircleCheck, label: "Questions solved", value: o.solved.toLocaleString("en-IN"), tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" },
-    { icon: Target, label: "Accuracy", value: o.accuracy !== null ? `${o.accuracy}%` : "–", tone: "bg-sky-500/15 text-sky-600 dark:text-sky-300" },
-    { icon: CalendarWeek, label: "This week", value: o.weekAnswered.toLocaleString("en-IN"), tone: "bg-violet-500/15 text-violet-600 dark:text-violet-300" },
-    { icon: Refresh, label: o.due > 0 ? "Mistakes to revise" : "Nothing to revise", value: o.due.toLocaleString("en-IN"), tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300", to: o.due > 0 },
-  ];
-  const base = "flex min-w-0 items-center gap-3 rounded-2xl border border-foreground/15 bg-card p-3.5 shadow-sm";
+const linkAction = "inline-flex min-h-11 items-center text-sm font-bold text-primary underline-offset-4 hover:underline";
+
+/** The Recommended shelf as one flat list (it used to be three big cards). Same destinations as before. */
+function RecommendedList({ listings, onAll }: { listings: Listing[]; onAll: () => void }) {
+  const navigate = useNavigate();
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Your practice at a glance">
-      {tiles.map((t) => {
-        const inner = (
-          <>
-            <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${t.tone}`} aria-hidden><t.icon className="h-5 w-5" /></span>
-            <span className="min-w-0">
-              <span className="block text-2xl font-extrabold leading-none tabular-nums text-foreground">{t.value}</span>
-              <span className="mt-1 block truncate text-[13px] font-semibold text-foreground/70">{t.label}</span>
-            </span>
-          </>
-        );
-        return t.to ? (
-          <Link key={t.label} to="/pyq" search={{ practice: true, session: "due" }} className={`${base} transition-colors hover:border-primary`}>{inner}</Link>
-        ) : (
-          <div key={t.label} className={base}>{inner}</div>
-        );
-      })}
-    </div>
+    <section aria-label="Recommended for you">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <SectionHeading>Recommended for you</SectionHeading>
+        <button type="button" onClick={onAll} className={linkAction}>Explore all</button>
+      </div>
+      <ul className="divide-y divide-foreground/10 overflow-hidden rounded-2xl border border-foreground/10 bg-card p-1">
+        {listings.map((l) => (
+          <li key={`${l.kind}-${l.id}`}>
+            <ResultRow
+              onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
+              icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
+              title={l.title}
+              sub={`${EXAM_LABELS[l.exam]} · ${l.kind} · ${l.track || "All tracks"}`}
+              right={<span className="shrink-0 text-[13px] font-semibold text-foreground">{l.purchased ? "You're in" : l.sellingPrice === 0 ? "Free" : `₹${l.sellingPrice.toLocaleString("en-IN")}`}</span>}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
-
-const linkAction = "inline-flex min-h-10 items-center text-sm font-bold text-primary underline-offset-4 hover:underline";
 
 function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, qmStatus, qmLoaded, proAccess, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, mentors, offerings, slotsByOffering, recommended, go, getToken, onBooked }: {
   upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
@@ -661,7 +654,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
   // A student who has never answered a question gets a short page: one clear action, then the rest further down.
   // (Until the numbers load we assume "returning" so nothing is hidden and then pops back in.)
   const isNew = stats !== null && stats.questionsAnswered === 0;
-  // PYQ practice isn't a tile any more: it is the hero above and the first item in the sidebar / bottom bar.
+  // PYQ practice isn't a tile any more: it is the first section above and the first item in the sidebar / bottom bar.
   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
     { icon: Trophy, label: "Leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
     { icon: Play, label: "CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
@@ -686,74 +679,82 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
           text: freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam.",
         };
 
-  const chip = "group flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 py-2 text-center transition-colors hover:bg-secondary";
-  const chipIcon = "grid h-14 w-14 place-items-center rounded-2xl bg-primary/15 text-primary transition-transform group-hover:-translate-y-0.5";
+  // Pro is a status, not an ad: an active plan gets a slim row at the very top (it renders nothing otherwise).
+  // The one promotional card at the end of "More" is the Student of the Week, or Recommended when nobody is featured.
+  const isPro = Boolean(proAccess?.isPro && proAccess.proUntil);
+  const recommendedShelf = recommended.length > 0 ? <RecommendedList listings={recommended} onAll={() => go("explore")} /> : null;
+  const promo = !isNew ? <StudentOfTheWeekBanner fallback={recommendedShelf} /> : recommendedShelf;
+
+  const shortcut = "flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-foreground/10 px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:border-foreground/30 last:col-span-2 sm:last:col-span-1";
 
   return (
-    <div className="space-y-5">
-      {/* A student with an active Edurack Pro plan sees it first. Renders nothing otherwise. */}
-      <ProActiveCard access={proAccess} />
-
-      {/* 1. PYQ practice leads the page: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
-      <PyqHero stats={stats} statsFailed={statsFailed} />
-      {!isNew && stats && <Snapshot stats={stats} />}
-      <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />
-      {/* Exam, class and target year: only what's missing, one tap each, never blocks practice. */}
-      <PrepSetupCard
-        profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
-        deferYear={isNew}
-        onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
-      />
-
-      {/* 2. Mentors to talk to, each with a one-time guidance session that can be booked right here. */}
-      <MentorsForYou mentors={mentors} offerings={offerings} slotsByOffering={slotsByOffering} track={profile?.track ?? ""} onSeeAll={() => go("mentors")} getToken={getToken} onBooked={onBooked} />
-
-      {/* 3. How it is going. */}
-      <SectionHeading>Your progress</SectionHeading>
-      <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
-      {!isNew && <StudentOfTheWeekBanner />}
-
-      {/* 4. Everything else, one tap away. */}
-      {!isNew && (
-        <nav aria-label="Shortcuts" className="grid grid-cols-5 gap-1 rounded-3xl border border-foreground/15 bg-card p-2 shadow-sm">
-          {actions.map((a) => {
-            const inner = (<><span className={chipIcon}><a.icon className="h-6 w-6" /></span><span className="text-[13px] font-bold leading-tight text-foreground">{a.label}</span></>);
-            return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} aria-label={`${a.label}: ${a.sub}`} className={chip}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} aria-label={`${a.label}: ${a.sub}`} className={chip}>{inner}</button>;
-          })}
-        </nav>
-      )}
-
-      <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
-      <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-2"}`}>
-        <Panel title="Free sessions open" icon={<Gift className="h-5 w-5" />} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
-          {freeSlots.length === 0 ? <p className="text-sm text-foreground/70">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
-        </Panel>
-        {!isNew && (
-          <Panel title="Continue learning" icon={<BookOpen className="h-5 w-5" />} action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
-            {continueCount === 0 ? (
-              <div className="text-sm text-foreground/70">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
-            ) : (
-              <div className="-mx-2">
-                {ownedListings.slice(0, 3).map((l) => (
-                  <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
-                    icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
-                    title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
-                ))}
-                {ownedTests.slice(0, 2).map((t) => (
-                  <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
-                ))}
-              </div>
-            )}
-          </Panel>
-        )}
+    <div className="space-y-10 sm:space-y-12">
+      {/* 1. Where to start: goal + numbers, one "continue" button, a soft tile per subject. A brand-new student gets one button. */}
+      <div className="space-y-6">
+        <ProActiveCard access={proAccess} compact />
+        <PyqHero stats={stats} statsFailed={statsFailed} />
       </div>
 
-      {recommended.length > 0 && (
-        <section className="pt-2">
-          <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl font-extrabold tracking-tight">Recommended for you</h2><button type="button" onClick={() => go("explore")} className={linkAction}>Explore all</button></div>
-          <div className={GRID}>{recommended.map((l, i) => <ListingCard key={`${l.kind}-${l.id}`} listing={l} index={i} />)}</div>
-        </section>
-      )}
+      {/* 2. The one banner. */}
+      {!isNew && <NcertBanner isPro={isPro} />}
+
+      {/* 3. Mentors to talk to, each with a one-time guidance session that can be booked right here. */}
+      <MentorsForYou mentors={mentors} offerings={offerings} slotsByOffering={slotsByOffering} track={profile?.track ?? ""} onSeeAll={() => go("mentors")} getToken={getToken} onBooked={onBooked} />
+
+      {/* 4. Quick Mock. */}
+      {!isNew && <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />}
+
+      {/* 5. Everything else, quieter and further down. */}
+      <section aria-label="More" className="border-t border-foreground/10 pt-10 sm:pt-12">
+        <SectionHeading quiet>More</SectionHeading>
+        <div className="mt-8 space-y-10 sm:space-y-12">
+          {/* Exam, class and target year: only what's missing, one tap each, never blocks practice. */}
+          <PrepSetupCard
+            profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
+            deferYear={isNew}
+            onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
+          />
+
+          {!isNew && <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />}
+
+          {!isNew && (
+            <nav aria-label="Shortcuts" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              {actions.map((a) => {
+                const inner = (<><a.icon className="h-5 w-5 shrink-0 text-foreground/70" />{a.label}</>);
+                return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} aria-label={`${a.label}: ${a.sub}`} className={shortcut}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} aria-label={`${a.label}: ${a.sub}`} className={shortcut}>{inner}</button>;
+              })}
+            </nav>
+          )}
+
+          <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
+
+          <div className={`grid grid-cols-1 gap-6 ${isNew ? "" : "lg:grid-cols-2"}`}>
+            <Panel title="Free sessions open" icon={<Gift className="h-5 w-5" />} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
+              {freeSlots.length === 0 ? <p className="text-sm text-foreground/70">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
+            </Panel>
+            {!isNew && (
+              <Panel title="Continue learning" icon={<BookOpen className="h-5 w-5" />} action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
+                {continueCount === 0 ? (
+                  <div className="text-sm text-foreground/70">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
+                ) : (
+                  <div className="-mx-2">
+                    {ownedListings.slice(0, 3).map((l) => (
+                      <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
+                        icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
+                        title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
+                    ))}
+                    {ownedTests.slice(0, 2).map((t) => (
+                      <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            )}
+          </div>
+
+          {promo}
+        </div>
+      </section>
     </div>
   );
 }
@@ -791,39 +792,39 @@ function MentorsForYou({ mentors, offerings, slotsByOffering, track, onSeeAll, g
       <div className="flex items-end justify-between gap-3">
         <div>
           <SectionHeading>Mentors for you</SectionHeading>
-          <p className="mt-1 px-1 text-[13px] text-foreground/70">Talk to someone who has cleared your exam. Book a one-time session for guidance.</p>
+          <p className="mt-1 text-[13px] text-foreground/70">Talk to someone who has cleared your exam. Book a one-time session for guidance.</p>
         </div>
         <button type="button" onClick={onSeeAll} className={`${linkAction} shrink-0`}>See all</button>
       </div>
-      <ul className="-mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <ul className="-mx-4 mt-4 flex snap-x snap-mandatory scroll-pl-4 gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:scroll-pl-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {mentors === null
-          ? [0, 1, 2].map((i) => <li key={i} className="h-60 w-[17.5rem] shrink-0 animate-pulse rounded-3xl bg-foreground/10 lg:w-[19rem]" />)
+          ? [0, 1, 2].map((i) => <li key={i} className="h-60 w-[17rem] shrink-0 animate-pulse rounded-2xl bg-foreground/10 sm:w-[18rem]" />)
           : picks.map(({ mentor: m, offer }) => (
-              <li key={m.id} className="flex w-[17.5rem] shrink-0 snap-start lg:w-[19rem]">
-                <div className="flex w-full flex-col rounded-3xl border border-foreground/15 bg-card p-4 shadow-sm">
-                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="block rounded-2xl">
+              <li key={m.id} className="flex w-[17rem] shrink-0 snap-start sm:w-[18rem]">
+                <div className="flex w-full flex-col rounded-2xl border border-foreground/10 bg-card p-5">
+                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="block rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary/15 font-display text-lg font-bold text-primary">
+                      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-foreground/[0.06] font-display text-lg font-bold text-foreground/70">
                         {m.profilePictureUrl ? <img src={m.profilePictureUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : m.name.charAt(0)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="flex items-center gap-1.5 truncate font-display text-base font-bold text-foreground">{m.name}<BadgeCheck className="h-4 w-4 shrink-0 text-primary" /></p>
+                        <p className="flex items-center gap-1.5 truncate font-display text-base font-bold text-foreground">{m.name}<BadgeCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Verified" /></p>
                         <p className="truncate text-[13px] text-foreground/70">{m.yearOfStudy || "Mentor"}</p>
                       </div>
-                      {m.avgRating !== null && <span className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/20 px-2 py-1 text-xs font-bold"><Star className="h-3 w-3 fill-amber-500 text-amber-500" />{m.avgRating}</span>}
+                      {m.avgRating !== null && <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-foreground"><Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />{m.avgRating}</span>}
                     </div>
                     {m.aboutText && <p className="mt-3 line-clamp-2 text-[13px] leading-snug text-foreground/70">{m.aboutText}</p>}
                   </Link>
-                  <div className="mt-auto pt-4">
+                  <div className="mt-auto pt-5">
                     {offer ? (
-                      <div className="rounded-2xl bg-primary/10 p-3">
-                        <p className="text-xs font-bold uppercase tracking-wider text-primary">{formatForOffering(offer.offering) === "one_on_one" ? "One-time 1:1 session" : "One-time group session"}</p>
+                      <div className="border-t border-foreground/10 pt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-primary">{formatForOffering(offer.offering) === "one_on_one" ? "One-time 1:1 session" : "One-time group session"}</p>
                         <p className="mt-1 truncate text-sm font-bold text-foreground">{offer.offering.title}</p>
                         <p className="truncate text-[13px] text-foreground/70">{offer.offering.durationMinutes} min · {offer.offering.isFree ? "Free" : `₹${offer.offering.price.toLocaleString("en-IN")}`} · {formatSlot(offer.slot.date, offer.slot.startTime)}</p>
-                        <button type="button" onClick={() => setBooking(offer)} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-extrabold text-primary-foreground transition-transform active:scale-[0.98]">Book session</button>
+                        <button type="button" onClick={() => setBooking(offer)} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98]">Book session</button>
                       </div>
                     ) : (
-                      <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-foreground/25 px-4 text-sm font-bold text-foreground transition-colors hover:border-primary">View profile<ChevronRight className="h-4 w-4" /></Link>
+                      <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-foreground/15 px-4 text-sm font-semibold text-foreground transition-colors hover:border-foreground/40">View profile<ChevronRight className="h-4 w-4" /></Link>
                     )}
                   </div>
                 </div>
@@ -842,13 +843,13 @@ function FreeSlotList({ slots, getToken, onBooked }: { slots: { offering: Public
       <ul className="-mx-2">
         {slots.slice(0, 4).map(({ offering, slot }) => (
           <li key={offering.id}>
-            <button type="button" onClick={() => setBooking({ offering, slot })} className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-secondary">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Gift className="h-4 w-4" /></div>
+            <button type="button" onClick={() => setBooking({ offering, slot })} className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-secondary">
+              <Gift className="h-5 w-5 shrink-0 text-foreground/70" aria-hidden />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">{offering.title}</p>
                 <p className="truncate text-[13px] text-foreground/70">{offering.mentorName} · {formatSlot(slot.date, slot.startTime)}</p>
               </div>
-              <span className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Book</span>
+              <span className="shrink-0 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground">Book</span>
             </button>
           </li>
         ))}

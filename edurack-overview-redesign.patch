@@ -1,0 +1,1208 @@
+diff --git a/src/components/dashboard/ncert-banner.tsx b/src/components/dashboard/ncert-banner.tsx
+new file mode 100644
+index 0000000..d3c5b81
+--- /dev/null
++++ b/src/components/dashboard/ncert-banner.tsx
+@@ -0,0 +1,59 @@
++// The ONE banner on the dashboard overview: NCERT Line by Line. It reads the same "can this student open it yet" answer the
++// PYQ page uses (getNcertAccess), so it says "Coming soon" until the section is open for them, and links straight in when it is.
++import { useEffect, useState } from "react";
++import { Link } from "@tanstack/react-router";
++import { ArrowRight, BookOpen } from "lucide-react";
++import { useAuth } from "@/lib/auth-context";
++import { getNcertAccess } from "@/server-functions/ncert-line-practice";
++import { cn } from "@/lib/utils";
++
++export function NcertBanner({ className, isPro = false }: { className?: string; /** Pro students are told it will be free for them. */ isPro?: boolean }) {
++  const { user } = useAuth();
++  const [access, setAccess] = useState<{ enabled: boolean; mode: "beta" | "live" } | null>(null);
++
++  useEffect(() => {
++    if (!user) return;
++    let cancelled = false;
++    (async () => {
++      try {
++        const a = await getNcertAccess({ data: { token: await user.getIdToken() } });
++        if (!cancelled) setAccess(a);
++      } catch {
++        /* treat as not yet available */
++      }
++    })();
++    return () => {
++      cancelled = true;
++    };
++  }, [user]);
++
++  const enabled = Boolean(access?.enabled);
++  const shell = cn("flex min-h-[4.5rem] w-full items-center gap-4 rounded-2xl bg-violet-500/10 px-5 py-4 text-left", className);
++  const body = (
++    <>
++      <BookOpen className="h-6 w-6 shrink-0 text-violet-700 dark:text-violet-300" aria-hidden />
++      <span className="min-w-0 flex-1">
++        <span className="block text-[15px] font-semibold text-foreground">NCERT Line by Line</span>
++        <span className="block text-[13px] text-foreground/70">{!enabled && isPro ? "Coming soon, and completely free for you as a Pro student" : "Topic-by-topic questions, straight from NCERT"}</span>
++      </span>
++      {enabled ? (
++        <span className="inline-flex shrink-0 items-center gap-1.5 text-[13px] font-semibold text-foreground">
++          {access?.mode === "beta" ? "Beta access" : "Open"}
++          <ArrowRight className="h-4 w-4" aria-hidden />
++        </span>
++      ) : (
++        <span className="shrink-0 rounded-full bg-foreground/10 px-3 py-1 text-xs font-semibold text-foreground/70">{isPro ? "Free for Pro" : "Coming soon"}</span>
++      )}
++    </>
++  );
++
++  return enabled ? (
++    <Link to="/pyq" search={{ ncert: true }} aria-label="NCERT Line by Line" data-testid="ncert-banner" className={cn(shell, "transition-colors hover:bg-violet-500/15 motion-reduce:transition-none")}>
++      {body}
++    </Link>
++  ) : (
++    <div aria-label="NCERT Line by Line, coming soon" data-testid="ncert-banner" className={shell}>
++      {body}
++    </div>
++  );
++}
+diff --git a/src/components/dashboard/practice-performance-card.tsx b/src/components/dashboard/practice-performance-card.tsx
+index eddf6ac..46d659e 100644
+--- a/src/components/dashboard/practice-performance-card.tsx
++++ b/src/components/dashboard/practice-performance-card.tsx
+@@ -14,14 +14,14 @@ const TABS: { key: Tab; label: string }[] = [
+ function Cell({ label, value, hint, to, search, tone }: { label: string; value: string; hint?: string; to?: "/pyq"; search?: Record<string, unknown>; tone?: "attention" }) {
+   const body = (
+     <>
+-      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-foreground/70/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
++      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-foreground/50", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
+       <p className="mt-1.5 text-xs font-semibold text-foreground/70">{label}</p>
+-      {hint && <p className="mt-0.5 text-xs text-foreground/70/80">{hint}</p>}
++      {hint && <p className="mt-0.5 text-xs text-foreground/70">{hint}</p>}
+     </>
+   );
+-  const cls = "min-w-0 rounded-2xl bg-secondary/60 p-3.5";
++  const cls = "min-w-0";
+   return to ? (
+-    <Link to={to} search={search} className={cn(cls, "transition-colors hover:bg-secondary")}>{body}</Link>
++    <Link to={to} search={search} className={cn(cls, "-m-2 block rounded-xl p-2 transition-colors hover:bg-secondary")}>{body}</Link>
+   ) : (
+     <div className={cls}>{body}</div>
+   );
+@@ -49,7 +49,7 @@ export function PracticePerformanceCard({
+     if (stats && tab === null) setTab(defaultExamTab(stats, targetExam));
+   }, [stats, targetExam, tab]);
+ 
+-  const shell = cn("min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6", className);
++  const shell = cn("min-w-0 rounded-2xl border border-foreground/10 bg-card p-5 sm:p-6", className);
+ 
+   if (!stats && !failed) {
+     return (
+@@ -80,16 +80,16 @@ export function PracticePerformanceCard({
+     <section aria-label="Your performance" className={shell}>
+       <div className="flex flex-wrap items-center justify-between gap-3">
+         <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
+-        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-border p-0.5">
++        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-foreground/10 p-0.5">
+           {TABS.map((t) => (
+-            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-9 rounded-full px-4 text-xs font-bold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
++            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-11 rounded-full px-5 text-[13px] font-semibold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
+               {t.label}
+             </button>
+           ))}
+         </div>
+       </div>
+ 
+-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
++      <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-5">
+         <Cell label="Questions solved" value={hasPractice ? s.solved.toLocaleString("en-IN") : dash} />
+         <Cell label="Accuracy" value={s.accuracy === null ? dash : `${s.accuracy}%`} hint={hasPractice ? `${s.correct} of ${s.solved} right` : undefined} />
+         <Cell label="This week" value={hasPractice ? s.weekAnswered.toLocaleString("en-IN") : dash} hint={approx ? "estimate" : "last 7 days"} />
+@@ -112,7 +112,7 @@ export function PracticePerformanceCard({
+         </p>
+       )}
+ 
+-      <div className="mt-4 border-t border-border pt-3 text-sm">
++      <div className="mt-6 border-t border-foreground/10 pt-4 text-sm">
+         {mock ? (
+           <p className="text-foreground/70">
+             <span className="font-bold text-foreground">{label} mock tests</span> · average <b className="text-foreground">{mock.average}%</b> · best <b className="text-foreground">{mock.best}%</b> · {mock.attempts} attempt{mock.attempts === 1 ? "" : "s"} across {mock.tests} test{mock.tests === 1 ? "" : "s"}
+diff --git a/src/components/dashboard/prep-setup-card.tsx b/src/components/dashboard/prep-setup-card.tsx
+index 24691c7..59cf832 100644
+--- a/src/components/dashboard/prep-setup-card.tsx
++++ b/src/components/dashboard/prep-setup-card.tsx
+@@ -18,7 +18,7 @@ const snooze = (uid: string) => {
+   try { localStorage.setItem(key(uid), String(Date.now() + SNOOZE_DAYS * 86_400_000)); } catch { /* storage unavailable: it may show again next visit */ }
+ };
+ 
+-const CHIP = "inline-flex min-h-10 items-center justify-center gap-1 rounded-full border px-4 text-xs font-bold transition-colors";
++const CHIP = "inline-flex min-h-11 items-center justify-center gap-1 rounded-full border px-4 text-[13px] font-semibold transition-colors";
+ 
+ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile: PrepProfile | null; /** New students: ask for exam/class now, the target year after their first question. */ deferYear?: boolean; onSaved: (next: Partial<PrepProfile>) => void }) {
+   const { user } = useAuth();
+@@ -45,16 +45,16 @@ export function PrepSetupCard({ profile, deferYear = false, onSaved }: { profile
+     }
+   }
+ 
+-  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-border text-foreground/80 hover:border-foreground/40");
++  const chip = (active: boolean) => cn(CHIP, active ? "border-foreground bg-foreground text-background" : "border-foreground/15 text-foreground/80 hover:border-foreground/40");
+ 
+   return (
+-    <section aria-label="Finish your prep details" className="rounded-3xl border border-border bg-card p-4 sm:p-5">
++    <section aria-label="Finish your prep details" className="rounded-2xl border border-foreground/10 bg-card p-5">
+       <div className="flex items-start justify-between gap-3">
+         <div className="min-w-0">
+           <p className="text-sm font-extrabold">Tune your practice <span className="font-medium text-foreground/70">· {missing.length === 1 ? "one tap" : `${missing.length} quick taps`}</span></p>
+-          <p className="mt-0.5 text-xs text-foreground/70">So we recommend the right questions. You can change this later in Profile.</p>
++          <p className="mt-0.5 text-[13px] text-foreground/70">So we recommend the right questions. You can change this later in Profile.</p>
+         </div>
+-        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold text-foreground/70 hover:bg-secondary">Not now</button>
++        <button type="button" onClick={() => { snooze(user.uid); setHidden(true); }} className="inline-flex min-h-11 shrink-0 items-center rounded-full px-3 text-[13px] font-semibold text-foreground/70 hover:bg-secondary">Not now</button>
+       </div>
+ 
+       <div className="mt-3 space-y-3">
+diff --git a/src/components/dashboard/pro-active-card.tsx b/src/components/dashboard/pro-active-card.tsx
+index 2ed65d3..2278f87 100644
+--- a/src/components/dashboard/pro-active-card.tsx
++++ b/src/components/dashboard/pro-active-card.tsx
+@@ -20,7 +20,7 @@ const noticeClosed = (uid: string) => {
+   }
+ };
+ 
+-export function ProActiveCard({ access, className }: { access: DrillAccess | null; className?: string }) {
++export function ProActiveCard({ access, className, compact = false }: { access: DrillAccess | null; className?: string; /** One slim status row (used at the top of the dashboard) instead of the full card. */ compact?: boolean }) {
+   const { user } = useAuth();
+   const [closed, setClosed] = useState(false);
+   if (!access?.isPro || !access.proUntil) return null;
+@@ -30,6 +30,21 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
+   const untilLabel = until.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+   const showNotice = !!user && !closed && !noticeClosed(user.uid);
+ 
++  if (compact) {
++    return (
++      <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("flex min-h-12 flex-wrap items-center justify-between gap-x-4 rounded-2xl bg-amber-500/10 px-4", className)}>
++        <p className="flex items-center gap-2 py-2 text-[13px]">
++          <Sparkles className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
++          <span className="font-semibold text-foreground">Edurack Pro</span>
++          <span className="text-foreground/70">· {daysLeft <= 1 ? "last day" : `${daysLeft} days left`}</span>
++        </p>
++        <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-primary underline-offset-4 hover:underline">
++          Build a mock drill <ArrowRight className="h-4 w-4" aria-hidden />
++        </Link>
++      </section>
++    );
++  }
++
+   function closeNotice() {
+     setClosed(true);
+     try {
+@@ -40,45 +55,43 @@ export function ProActiveCard({ access, className }: { access: DrillAccess | nul
+   }
+ 
+   return (
+-    <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("min-w-0 rounded-3xl border border-amber-300/70 bg-amber-50 p-4 dark:border-amber-300/30 dark:bg-amber-300/10 sm:p-5", className)}>
+-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+-        <div className="flex min-w-0 items-start gap-3.5">
+-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-300 text-amber-950">
+-            <Sparkles className="h-6 w-6" aria-hidden />
+-          </span>
++    <section aria-label="Your Edurack Pro plan" data-testid="pro-active-card" className={cn("min-w-0 rounded-2xl border border-foreground/10 bg-amber-500/10 p-5 sm:p-6", className)}>
++      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
++        <div className="flex min-w-0 items-start gap-3">
++          <Sparkles className="mt-1 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+           <div className="min-w-0">
+-            <p className="text-xs font-extrabold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
+-            <h2 className="font-display mt-0.5 text-lg font-extrabold leading-snug tracking-tight text-foreground sm:text-xl">{daysLeft <= 1 ? "Your last day of Pro. Make it count." : `${daysLeft} days of Pro left. Put them to work.`}</h2>
+-            <p className="mt-0.5 text-xs text-foreground/70">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
++            <p className="text-xs font-semibold uppercase tracking-widest text-amber-800 dark:text-amber-200">Edurack Pro is active</p>
++            <h2 className="font-display mt-1 text-lg font-bold leading-snug tracking-tight text-foreground">{daysLeft <= 1 ? "Your last day of Pro. Make it count." : `${daysLeft} days of Pro left. Put them to work.`}</h2>
++            <p className="mt-1 text-[13px] text-foreground/70">Active until {untilLabel}. Solve a few questions today and keep your streak alive.</p>
+           </div>
+         </div>
+-        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+-          <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5 motion-reduce:transition-none">
++        <div className="flex shrink-0 flex-col gap-1 sm:items-end">
++          <Link to="/pyq-drill" search={{ src: "dashboard", build: true }} data-testid="pro-build-drill" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 motion-reduce:transition-none">
+             <Flame className="h-4 w-4" aria-hidden /> Build a mock drill
+           </Link>
+-          <Link to="/pyq" search={{}} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-bold text-foreground/80 hover:bg-foreground/5">
++          <Link to="/pyq" search={{}} className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full px-4 text-[13px] font-semibold text-foreground/80 hover:bg-foreground/5">
+             Solve a PYQ now <ArrowRight className="h-4 w-4" aria-hidden />
+           </Link>
+         </div>
+       </div>
+ 
+       {access.features.length > 0 && (
+-        <ul className="mt-4 flex flex-wrap gap-1.5">
++        <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-1.5">
+           {access.features.map((k) => (
+-            <li key={k} className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-xs font-bold text-foreground/80 dark:bg-white/10">
+-              <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-300" aria-hidden /> {PRO_FEATURES[k].label}
++            <li key={k} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground/80">
++              <Check className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" aria-hidden /> {PRO_FEATURES[k].label}
+             </li>
+           ))}
+         </ul>
+       )}
+ 
+       {showNotice && (
+-        <div role="status" data-testid="ncert-free-notice" className="mt-4 flex items-start gap-3 rounded-2xl bg-white/80 p-3.5 dark:bg-white/10">
++        <div role="status" data-testid="ncert-free-notice" className="mt-5 flex items-start gap-3 border-t border-foreground/10 pt-4">
+           <div className="min-w-0 flex-1">
+-            <p className="text-sm font-extrabold text-foreground">NCERT Line by Line is coming, completely free for you</p>
+-            <p className="mt-0.5 text-xs text-foreground/70">As a Pro student you won't pay anything extra for it when it opens.</p>
++            <p className="text-sm font-semibold text-foreground">NCERT Line by Line is coming, completely free for you</p>
++            <p className="mt-0.5 text-[13px] text-foreground/70">As a Pro student you won't pay anything extra for it when it opens.</p>
+           </div>
+-          <button type="button" onClick={closeNotice} aria-label="Close this notice" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-foreground/50 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
++          <button type="button" onClick={closeNotice} aria-label="Close this notice" className="-mr-2 -mt-1 grid h-11 w-11 shrink-0 place-items-center rounded-full text-foreground/60 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+             <X className="h-4 w-4" aria-hidden />
+           </button>
+         </div>
+diff --git a/src/components/dashboard/pyq-hero.tsx b/src/components/dashboard/pyq-hero.tsx
+index 905a302..b87afff 100644
+--- a/src/components/dashboard/pyq-hero.tsx
++++ b/src/components/dashboard/pyq-hero.tsx
+@@ -1,66 +1,32 @@
+-// The first thing a student sees on the dashboard: one clear PYQ action, a streak,
+-// a short quest path, and a tile per subject. For a brand-new student it turns into
+-// "Solve your first question", because that first answer is what makes people stay.
++// The first thing a student can act on in the dashboard: where to start practising.
++// A thin goal bar and one line of numbers, one "continue" button, and a soft tile per subject.
++// For a brand-new student it turns into a single "Start your first 5" button, because that first answer is what makes people stay.
+ import { useCallback, useEffect, useState } from "react";
+ import { Link } from "@tanstack/react-router";
+-import { motion } from "motion/react";
+-import { ArrowRight, CalendarCheck, Check, Flame, Lock, RotateCcw, Sparkles, Trophy } from "lucide-react";
++import { ArrowRight, Atom, BookOpen, CalendarCheck, Check, ChevronRight, FlaskConical, Flame, Leaf, PawPrint, RotateCcw, Sigma } from "lucide-react";
+ import { useAuth } from "@/lib/auth-context";
+ import { getTodaySummary } from "@/server-functions/practice-extras";
+ import { getPyqTree } from "@/server-functions/pyq-practice";
+ import type { PyqTree, TodaySummary } from "@/lib/pyq-types";
+-import { headlineFor } from "@/components/today-card";
+ import { examLabel, pickFirstChapter, practiceProgress, type PracticeStats } from "@/lib/practice-stats";
+ import { PRACTICE_ANSWERED_EVENT } from "@/components/dashboard/streak-popup";
+ import { cn } from "@/lib/utils";
+ 
+-
+-// Fixed colours (like the Today card) so the hero looks the same in light and dark mode.
+-const SUBJECT_STYLE: { match: RegExp; bar: string; chip: string }[] = [
+-  { match: /phys/i, bar: "#7ba4f0", chip: "bg-[#7ba4f0]/15 text-[#a9c4f7]" },
+-  { match: /chem/i, bar: "#f5c26b", chip: "bg-amber-300/15 text-amber-200" },
+-  { match: /bot|biolog/i, bar: "#5fd3a0", chip: "bg-emerald-400/15 text-emerald-200" },
+-  { match: /zoo/i, bar: "#f08fa8", chip: "bg-rose-400/15 text-rose-200" },
+-  { match: /math/i, bar: "#b79cf5", chip: "bg-violet-400/15 text-violet-200" },
++// One soft tint per subject. Every colour has a light and a dark value, so the tiles read well in both modes.
++// The array order is also the order the tiles are shown in.
++const SUBJECT_STYLE: { match: RegExp; icon: typeof Atom; tile: string; icon_: string; bar: string }[] = [
++  { match: /phys/i, icon: Atom, tile: "bg-sky-500/10 hover:bg-sky-500/15", icon_: "text-sky-700 dark:text-sky-300", bar: "bg-sky-600 dark:bg-sky-400" },
++  { match: /chem/i, icon: FlaskConical, tile: "bg-amber-500/10 hover:bg-amber-500/15", icon_: "text-amber-700 dark:text-amber-300", bar: "bg-amber-600 dark:bg-amber-400" },
++  { match: /zoo/i, icon: PawPrint, tile: "bg-rose-500/10 hover:bg-rose-500/15", icon_: "text-rose-700 dark:text-rose-300", bar: "bg-rose-600 dark:bg-rose-400" },
++  { match: /bot|biolog/i, icon: Leaf, tile: "bg-emerald-500/10 hover:bg-emerald-500/15", icon_: "text-emerald-700 dark:text-emerald-300", bar: "bg-emerald-600 dark:bg-emerald-400" },
++  { match: /math/i, icon: Sigma, tile: "bg-violet-500/10 hover:bg-violet-500/15", icon_: "text-violet-700 dark:text-violet-300", bar: "bg-violet-600 dark:bg-violet-400" },
+ ];
+-const subjectStyle = (name: string, i: number) =>
+-  SUBJECT_STYLE.find((s) => s.match.test(name)) ?? { bar: ["#7ba4f0", "#f5c26b", "#5fd3a0", "#f08fa8"][i % 4], chip: "bg-white/10 text-white/80" };
+-
+-type Quest = { key: string; label: string; hint: string; done: boolean; progress: number };
+-
+-function buildQuests(t: TodaySummary | null, attempted: number): Quest[] {
+-  const longest = Math.max(t?.streak.longest ?? 0, t?.streak.current ?? 0);
+-  const clamp = (n: number) => Math.max(0, Math.min(1, n));
+-  return [
+-    { key: "first", label: "First PYQ", hint: "Solve one question", done: attempted > 0 || longest > 0, progress: attempted > 0 || longest > 0 ? 1 : 0 },
+-    { key: "s3", label: "3-day streak", hint: "Practise 3 days in a row", done: longest >= 3, progress: clamp(longest / 3) },
+-    { key: "q25", label: "25 PYQs", hint: "Attempt 25 questions", done: attempted >= 25, progress: clamp(attempted / 25) },
+-    { key: "s7", label: "7-day streak", hint: "A full week, no breaks", done: longest >= 7, progress: clamp(longest / 7) },
+-  ];
+-}
+-
+-function Ring({ percent, size = 96 }: { percent: number; size?: number }) {
+-  const r = (size - 12) / 2;
+-  const c = 2 * Math.PI * r;
+-  return (
+-    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`${percent}% of PYQs attempted`}>
+-      <svg width={size} height={size} className="-rotate-90">
+-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth={8} />
+-        <motion.circle
+-          cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f5c26b" strokeWidth={8} strokeLinecap="round"
+-          strokeDasharray={c} initial={{ strokeDashoffset: c }} animate={{ strokeDashoffset: c * (1 - percent / 100) }}
+-          transition={{ duration: 1.1, ease: [0.22, 1, 0.36, 1] }}
+-        />
+-      </svg>
+-      <div className="absolute inset-0 grid place-items-center text-center">
+-        <div>
+-          <p className="font-display text-xl font-extrabold leading-none tabular-nums">{percent}%</p>
+-          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-white/80">done</p>
+-        </div>
+-      </div>
+-    </div>
+-  );
+-}
++const FALLBACK_STYLE = { icon: BookOpen, tile: "bg-foreground/[0.04] hover:bg-foreground/[0.07]", icon_: "text-foreground/70", bar: "bg-foreground/60" };
++const subjectStyle = (name: string) => SUBJECT_STYLE.find((s) => s.match.test(name)) ?? FALLBACK_STYLE;
++const subjectRank = (name: string) => {
++  const i = SUBJECT_STYLE.findIndex((s) => s.match.test(name));
++  return i === -1 ? SUBJECT_STYLE.length : i;
++};
+ 
+ export function PyqHero({ className, stats = null, statsFailed = false }: { className?: string; /** The shared practice numbers (see use-practice-stats). null while loading. */ stats?: PracticeStats | null; statsFailed?: boolean }) {
+   const { user } = useAuth();
+@@ -81,7 +47,7 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+   useEffect(() => {
+     let cancelled = false;
+     void load(() => cancelled);
+-    // After an answer is saved in the streak popup, refetch so the flame, week strip and ring update at once.
++    // After an answer is saved in the streak popup, refetch so the goal bar and the numbers update at once.
+     const onAnswered = () => void load(() => cancelled);
+     window.addEventListener(PRACTICE_ANSWERED_EVENT, onAnswered);
+     return () => { cancelled = true; window.removeEventListener(PRACTICE_ANSWERED_EVENT, onAnswered); };
+@@ -89,18 +55,10 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+ 
+   const exam = t?.exam ?? tree?.exam ?? null;
+   const examName = exam ? examLabel(exam) : "NEET";
+-  const total = tree?.totalQuestions ?? 0;
+ 
+   // The numbers come from the shared stats (the same ones the performance card shows). If they failed to load we fall
+-  // back to the browse tree's own counts so the hero still works.
+-  const examStats = stats ? (exam ? stats.byExam[exam as "neet" | "jee"] : undefined) ?? stats.overall : null;
++  // back to the browse tree's own counts so the section still works.
+   const treeAttempted = tree?.subjects.reduce((n, s) => n + s.attempted, 0) ?? 0;
+-  // Available / unique attempted / remaining / accuracy: ONE rule (practiceProgress), the same one the chapter lists use.
+-  // `attempted` counts distinct questions, so redoing a question in revision never moves it.
+-  const prog = practiceProgress(total, examStats ? examStats.solved : treeAttempted, examStats ? examStats.correct : tree?.totalCorrect ?? 0);
+-  const attempted = prog.attempted;
+-  const accuracy = prog.accuracy;
+-  const percent = prog.percentDone;
+ 
+   // "New" means they have never answered a question in ANY exam. (It used to be judged from the exam-scoped tree, so a
+   // student who had practised JEE while their profile said NEET was told to "solve your first question".)
+@@ -108,13 +66,12 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+   const questionsAnswered = stats ? stats.questionsAnswered : treeAttempted;
+   const isNew = ready && questionsAnswered === 0 && (stats !== null || ((t?.streak.longest ?? 0) === 0 && (t?.streak.current ?? 0) === 0));
+ 
+-  const quests = buildQuests(t, questionsAnswered);
+-  const nextQuest = quests.find((q) => !q.done);
+-  const head = t ? headlineFor(t) : null;
+   const s = t?.streak;
+   const lit = (s?.current ?? 0) > 0;
++  const doneDays = s ? s.week.filter((d) => d.done).length : 0;
+   const due = stats ? stats.overall.due : t?.due ?? 0;
+   const dailyPending = Boolean(t?.daily.available && !t.daily.done);
++  const o = stats?.overall ?? null;
+ 
+   // ── Where the main button goes ──
+   // New student: straight into 5 questions of the biggest chapter of their exam (no browsing, no setup).
+@@ -132,175 +89,143 @@ export function PyqHero({ className, stats = null, statsFailed = false }: { clas
+       : { subject: last.subject, exam: exam ?? undefined }
+     : { exam: exam ?? undefined };
+ 
+-  const CTA = "group inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-[#ffffff] py-1.5 pl-6 pr-1.5 text-left text-base font-extrabold text-[#141b2b] shadow-[0_8px_30px_-8px_rgba(123,164,240,0.6)] transition-transform hover:-translate-y-0.5 sm:w-auto sm:min-w-80 motion-reduce:transition-none";
+-  const ARROW = "grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#141b2b] text-white transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none";
++  const subjects = tree ? [...tree.subjects].sort((a, b) => subjectRank(a.subject) - subjectRank(b.subject)).slice(0, 4) : [];
+ 
+-  const title = !ready ? "Your PYQ practice" : isNew ? "Welcome to Edurack" : head?.title ?? `${examName} PYQ practice`;
+-  const sub = !ready
+-    ? "Loading your progress…"
+-    : isNew
+-      ? `Start with 5 real previous-year ${examName} questions. Every one comes with the answer and a clear solution, and your streak starts with the first.`
+-      : head?.sub ?? "Chapter-wise questions with solutions, free.";
++  const CTA = "group inline-flex min-h-14 w-full items-center justify-between gap-4 rounded-full bg-primary py-2 pl-6 pr-4 text-left text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto sm:min-w-80 motion-reduce:transition-none";
++  const QUIET = "inline-flex min-h-11 items-center gap-2 text-[13px] font-semibold text-foreground/80 underline-offset-4 transition-colors hover:text-foreground hover:underline";
++  const num = "font-semibold text-foreground";
++  const ROW = "flex min-h-14 items-center gap-3 px-4 py-2 text-[13px] transition-colors hover:bg-foreground/[0.04] motion-reduce:transition-none";
+ 
+   return (
+-    <section aria-label="PYQ practice" className={cn("ink-section relative isolate overflow-hidden rounded-3xl p-5 sm:p-7", className)}>
+-      <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7ba4f0]/20 blur-3xl" />
+-      <div aria-hidden className="pointer-events-none absolute -bottom-28 -left-16 -z-10 h-64 w-64 rounded-full bg-amber-300/10 blur-3xl" />
+-
+-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+-        <div className="min-w-0 max-w-xl">
+-          <div className="flex flex-wrap items-center gap-2">
+-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-widest text-amber-950">
+-              <Sparkles className="h-3 w-3" aria-hidden /> {examName} PYQ practice · Free
++    <section aria-label="PYQ practice" className={cn("min-w-0", className)}>
++      {!ready ? (
++        <div aria-busy="true">
++          <div className="h-14 w-full max-w-sm animate-pulse rounded-full bg-foreground/10" />
++          <p className="mt-3 text-[13px] text-foreground/70">Loading your progress…</p>
++        </div>
++      ) : isNew ? (
++        <div>
++          <p className="text-xs font-semibold uppercase tracking-wider text-primary">{examName} PYQ practice · Free</p>
++          <p className="mt-2 max-w-lg text-[15px] leading-relaxed text-foreground/80">Start with 5 real previous-year {examName} questions. Every one comes with the answer and a clear solution, and your streak starts with the first.</p>
++          <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
++            <span className="min-w-0">
++              <span className="block truncate text-base font-semibold">Start Your First 5 {examName} PYQs</span>
++              <span className="block truncate text-[13px] text-primary-foreground/90">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
+             </span>
+-            {!isNew && (
+-              <span
+-                data-testid="hero-streak"
+-                className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold", lit ? "border-amber-300/40 bg-amber-300/15 text-amber-200" : "border-white/15 bg-white/[0.06] text-white/70")}
+-              >
+-                <Flame className={cn("h-4 w-4", lit ? "fill-amber-300 text-amber-300" : "text-white/80")} aria-hidden />
+-                {lit ? `${s!.current} day streak` : "No streak yet"}
+-              </span>
+-            )}
+-          </div>
+-
+-          <h2 className="font-display mt-4 text-balance text-3xl font-extrabold leading-[1.1] tracking-tight sm:text-4xl">{title}</h2>
+-          <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70 sm:text-[15px]">{sub}</p>
++            <ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
++          </Link>
++          <Link to="/pyq" search={{ exam: exam ?? undefined }} className={cn(QUIET, "mt-1")}>
++            or pick a subject yourself
++          </Link>
++        </div>
++      ) : (
++        <div>
++          {/* Goal and numbers: one thin bar, one line. */}
++          {s && (
++            <div>
++              <div className="flex items-center justify-between gap-3 text-[13px]">
++                <p className="flex min-w-0 items-center gap-2 font-semibold text-foreground">
++                  {s.doneToday && <Check className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" strokeWidth={3} aria-hidden />}
++                  <span className="truncate">{s.doneToday ? "Today's goal reached" : "Today's goal: solve 1 PYQ"}</span>
++                  <span data-testid="hero-streak" aria-label={lit ? `${s.current} day streak` : "No streak yet"} className="inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums text-foreground/80">
++                    <Flame className={cn("h-4 w-4", lit ? "fill-amber-500 text-amber-500" : "text-foreground/50")} aria-hidden />
++                    {s.current}
++                  </span>
++                </p>
++                <p className="shrink-0 tabular-nums text-foreground/70">{doneDays} of 7 days</p>
++              </div>
++              <div role="progressbar" aria-label="Days practised this week" aria-valuemin={0} aria-valuemax={7} aria-valuenow={doneDays} className="mt-2 h-1 overflow-hidden rounded-full bg-foreground/10">
++                <div className="h-full rounded-full bg-primary transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${(doneDays / 7) * 100}%` }} />
++              </div>
++            </div>
++          )}
++          {o && (
++            <p className={cn("text-[13px] tabular-nums text-foreground/70", s ? "mt-3" : "")} aria-label="Your practice at a glance">
++              <span className={num}>{o.solved.toLocaleString("en-IN")}</span> solved · <span className={num}>{o.accuracy !== null ? `${o.accuracy}%` : "–"}</span> accuracy · <span className={num}>{o.weekAnswered.toLocaleString("en-IN")}</span> this week · <span className={num}>{o.due.toLocaleString("en-IN")}</span> to revise
++            </p>
++          )}
+ 
+-          {isNew ? (
+-            <>
+-              <Link to="/pyq" search={startTo} data-testid="hero-start-first-5" className={cn(CTA, "mt-5")}>
+-                <span className="min-w-0">
+-                  <span className="block truncate">Start Your First 5 {examName} PYQs</span>
+-                  <span className="block truncate text-xs font-semibold text-[#141b2b]/75">{first ? `${first.subject} · ${first.chapter} · about 10 minutes` : "Free · answers and solutions included"}</span>
+-                </span>
+-                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
+-              </Link>
+-              <Link to="/pyq" search={{ exam: exam ?? undefined }} className="mt-3 inline-flex min-h-9 items-center text-xs font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
+-                or pick a subject yourself
+-              </Link>
+-            </>
+-          ) : (
+-            <>
+-              {/* Returning students: today's question + streak come first. */}
+-              {ready && t && (
+-                <div className="mt-4 flex flex-wrap items-center gap-2">
+-                  {t.daily.available && (
+-                    dailyPending ? (
+-                      <Link to="/pyq" search={{ practice: true, session: "daily" }} data-testid="hero-daily" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/50 bg-amber-300/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-300/25">
+-                        <CalendarCheck className="h-4 w-4" aria-hidden />
+-                        Solve today's PYQ
+-                        <span className="text-xs font-semibold text-amber-200/80">{lit ? `keeps your ${s!.current}-day streak` : "starts your streak"}</span>
+-                      </Link>
+-                    ) : (
+-                      <span data-testid="hero-daily-done" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-4 text-sm font-bold text-emerald-100">
+-                        <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> Today's PYQ done
++          {/* The one main action, with today's question and revision as quiet links. */}
++          <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, s || o ? "mt-6" : "")}>
++            <span className="min-w-0">
++              <span className="block truncate text-base font-semibold">Continue practising</span>
++              <span className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-primary-foreground/90">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
++            </span>
++            <ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
++          </Link>
++          {((t?.daily.available ?? false) || due > 0) && (
++            <ul className="mt-4 divide-y divide-foreground/10 overflow-hidden rounded-2xl border border-foreground/10">
++              {t?.daily.available && (
++                <li>
++                  {dailyPending ? (
++                    <Link to="/pyq" search={{ practice: true, session: "daily" }} data-testid="hero-daily" className={ROW}>
++                      <CalendarCheck className="h-5 w-5 shrink-0 text-foreground/70" aria-hidden />
++                      <span className="min-w-0 flex-1">
++                        <span className="block font-semibold text-foreground">Solve today's PYQ</span>
++                        <span className="block text-foreground/70">{lit && !s?.doneToday ? `Keeps your ${s!.current}-day streak` : "The daily question"}</span>
+                       </span>
+-                    )
++                      <ChevronRight className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden />
++                    </Link>
++                  ) : (
++                    <div data-testid="hero-daily-done" className="flex min-h-14 items-center gap-3 px-4 py-2 text-[13px]">
++                      <Check className="h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-300" strokeWidth={3} aria-hidden />
++                      <span className="font-semibold text-foreground">Today's PYQ done</span>
++                    </div>
+                   )}
+-                </div>
++                </li>
+               )}
+-
+-              <Link to="/pyq" search={continueSearch} data-testid="hero-continue" className={cn(CTA, "mt-4")}>
+-                <span className="min-w-0">
+-                  <span className="block truncate">Continue Practising</span>
+-                  <span className="block truncate text-xs font-semibold text-[#141b2b]/75">{lastLabel ? `Last: ${lastLabel}` : "Pick a chapter and go"}</span>
+-                </span>
+-                <span className={ARROW}><ArrowRight className="h-5 w-5" aria-hidden /></span>
+-              </Link>
+-
+               {due > 0 && (
+-                <Link to="/pyq" search={{ practice: true, session: "due" }} data-testid="hero-revise" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 px-4 text-sm font-bold text-white transition-colors hover:border-white/60">
+-                  <RotateCcw className="h-4 w-4" aria-hidden />
+-                  Revise {due} mistake{due === 1 ? "" : "s"} due today
+-                </Link>
++                <li>
++                  <Link to="/pyq" search={{ practice: true, session: "due" }} data-testid="hero-revise" className={ROW}>
++                    <RotateCcw className="h-5 w-5 shrink-0 text-foreground/70" aria-hidden />
++                    <span className="min-w-0 flex-1">
++                      <span className="block font-semibold text-foreground">Revise {due} mistake{due === 1 ? "" : "s"}</span>
++                      <span className="block text-foreground/70">Due back today</span>
++                    </span>
++                    <ChevronRight className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden />
++                  </Link>
++                </li>
+               )}
+-
+-              {s && (
+-                <div className="mt-5 max-w-sm" role="img" aria-label={`Practised on ${s.week.filter((d) => d.done).length} of the last 7 days`}>
+-                  <div className="grid grid-cols-7 gap-1.5">
+-                    {s.week.map((d) => (
+-                      <div key={d.day} className="flex flex-col items-center gap-1">
+-                        <span className={cn("text-[10px] font-bold uppercase", d.isToday ? "text-white" : "text-white/80")}>{d.label}</span>
+-                        <span className={cn("grid h-7 w-7 place-items-center rounded-full", d.done ? "bg-amber-300 text-amber-950" : d.isToday ? "border-2 border-white/90 motion-safe:animate-pulse" : "bg-white/[0.07]")}>
+-                          {d.done ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : null}
+-                        </span>
+-                      </div>
+-                    ))}
+-                  </div>
+-                </div>
+-              )}
+-            </>
++            </ul>
+           )}
+-        </div>
+ 
+-        {/* Progress panel: only once there is progress to show. */}
+-        {!isNew && (
+-          <div className="flex shrink-0 items-center gap-5 rounded-3xl border border-white/10 bg-white/[0.05] p-5 lg:w-[19rem] lg:flex-col lg:items-stretch lg:gap-4">
+-            <div className="flex items-center gap-4">
+-              <Ring percent={percent} />
+-              <div className="min-w-0">
+-                <p className="text-sm font-bold">{attempted.toLocaleString("en-IN")} <span className="font-medium text-white/80">of {total.toLocaleString("en-IN")} PYQs attempted</span></p>
+-                <p className="mt-0.5 text-xs text-white/80">{prog.remaining.toLocaleString("en-IN")} left{accuracy !== null ? ` · ${accuracy}% accuracy` : " · accuracy shows after your first answer"}</p>
+-                {nextQuest && <p className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-amber-200"><Trophy className="h-3.5 w-3.5" aria-hidden />Next: {nextQuest.label}</p>}
++          {/* A soft tile per subject: tap to open that subject's PYQs. */}
++          {subjects.length > 0 && (
++            <div className="mt-8">
++              <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-foreground/70">Practise by subject</h2>
++              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
++                {subjects.map((sub) => {
++                  const st = subjectStyle(sub.subject);
++                  const Icon = st.icon;
++                  const pct = sub.count > 0 ? Math.round((sub.attempted / sub.count) * 100) : 0;
++                  return (
++                    <Link
++                      key={sub.subject}
++                      to="/pyq"
++                      search={{ subject: sub.subject, exam: exam ?? undefined }}
++                      className={cn("flex min-h-32 min-w-0 flex-col rounded-2xl p-4 transition-colors motion-reduce:transition-none", st.tile)}
++                    >
++                      <Icon className={cn("h-6 w-6", st.icon_)} aria-hidden />
++                      <p className="mt-3 truncate text-[15px] font-semibold text-foreground">{sub.subject}</p>
++                      <p className="mt-0.5 text-[13px] text-foreground/70">{sub.count.toLocaleString("en-IN")} PYQs</p>
++                      <div className="mt-auto pt-3">
++                        {sub.attempted > 0 ? (
++                          <>
++                            <p className="text-[13px] font-medium text-foreground">{pct}% done</p>
++                            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-foreground/10">
++                              <div className={cn("h-full rounded-full transition-[width] duration-700 motion-reduce:transition-none", st.bar)} style={{ width: `${Math.max(pct, 4)}%` }} />
++                            </div>
++                          </>
++                        ) : (
++                          <p className="text-[13px] font-medium text-foreground">Start here</p>
++                        )}
++                      </div>
++                    </Link>
++                  );
++                })}
+               </div>
+             </div>
+-          </div>
+-        )}
+-      </div>
+-
+-      {/* Milestones + subject tiles are for students who have started; a brand-new student gets one clear action instead. */}
+-      {!isNew && (
+-        <ol className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Milestones">
+-          {quests.map((q) => {
+-            const isNext = nextQuest?.key === q.key;
+-            return (
+-              <li key={q.key} className={cn("rounded-2xl border p-3", q.done ? "border-emerald-300/30 bg-emerald-400/10" : isNext ? "border-amber-300/50 bg-amber-300/10" : "border-white/10 bg-white/[0.04]")}>
+-                <div className="flex items-center gap-2">
+-                  <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", q.done ? "bg-emerald-400 text-emerald-950" : isNext ? "bg-amber-300 text-amber-950" : "bg-white/10 text-white/80")}>
+-                    {q.done ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden /> : isNext ? <Flame className="h-3.5 w-3.5" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
+-                  </span>
+-                  <p className="truncate text-xs font-extrabold">{q.label}</p>
+-                </div>
+-                <p className="mt-1.5 truncate text-xs text-white/80">{q.done ? "Unlocked" : q.hint}</p>
+-                {!q.done && (
+-                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+-                    <motion.div className="h-full rounded-full bg-amber-300" initial={{ width: 0 }} animate={{ width: `${Math.max(q.progress * 100, isNext ? 6 : 0)}%` }} transition={{ duration: 0.8 }} />
+-                  </div>
+-                )}
+-              </li>
+-            );
+-          })}
+-        </ol>
+-      )}
+-
+-      {!isNew && tree && tree.subjects.length > 0 && (
+-        <div className="mt-5">
+-          <p className="mb-2.5 text-xs font-bold uppercase tracking-widest text-[#7ba4f0]">Practise by subject</p>
+-          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+-            {tree.subjects.slice(0, 4).map((sub, i) => {
+-              const st = subjectStyle(sub.subject, i);
+-              const pct = sub.count > 0 ? Math.round((sub.attempted / sub.count) * 100) : 0;
+-              return (
+-                <Link
+-                  key={sub.subject}
+-                  to="/pyq"
+-                  search={{ subject: sub.subject, exam: exam ?? undefined }}
+-                  className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.05] p-3.5 transition-colors hover:border-white/30 hover:bg-white/[0.09]"
+-                >
+-                  <div className="flex items-center justify-between gap-2">
+-                    <p className="truncate text-sm font-extrabold">{sub.subject}</p>
+-                    <ArrowRight className="h-4 w-4 shrink-0 text-white/80 transition-transform group-hover:translate-x-0.5 group-hover:text-white" aria-hidden />
+-                  </div>
+-                  <p className="mt-0.5 text-xs text-white/80">{sub.count.toLocaleString("en-IN")} PYQs</p>
+-                  <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+-                    <motion.div className="h-full rounded-full" style={{ background: st.bar }} initial={{ width: 0 }} animate={{ width: `${Math.max(pct, sub.attempted > 0 ? 4 : 0)}%` }} transition={{ duration: 0.9, delay: 0.05 * i }} />
+-                  </div>
+-                  <p className={cn("mt-2 inline-block rounded-md px-1.5 py-0.5 text-[11px] font-bold", st.chip)}>{sub.attempted > 0 ? `${pct}% · ${sub.correct} right` : "Start here"}</p>
+-                </Link>
+-              );
+-            })}
+-          </div>
++          )}
+         </div>
+       )}
+     </section>
+diff --git a/src/components/leaderboard-view.tsx b/src/components/leaderboard-view.tsx
+index bc52440..c910d18 100644
+--- a/src/components/leaderboard-view.tsx
++++ b/src/components/leaderboard-view.tsx
+@@ -1,6 +1,6 @@
+ // Weekly PYQ leaderboard page + the "Student of the week" shout-out card.
+ // Students appear only by choice, under a nickname (see server-functions/leaderboard.ts).
+-import { useCallback, useEffect, useState } from "react";
++import { useCallback, useEffect, useState, type ReactNode } from "react";
+ import { Link } from "@tanstack/react-router";
+ import { IconLoader2 as Loader2, IconTrophy as Trophy } from "@tabler/icons-react";
+ import { useAuth } from "@/lib/auth-context";
+@@ -9,7 +9,21 @@ import { getStudentOfTheWeek, getWeeklyLeaderboard, saveLeaderboardPrefs, type L
+ import type { PublicFeatured } from "@/lib/leaderboard-server";
+ import type { Week } from "@/lib/leaderboard";
+ 
+-export function FeaturedCard({ f, className = "" }: { f: PublicFeatured; className?: string }) {
++export function FeaturedCard({ f, className = "", flat = false }: { f: PublicFeatured; className?: string; /** The calm dashboard look: one hairline, one soft tint, no shout. */ flat?: boolean }) {
++  if (flat) {
++    return (
++      <section className={`rounded-2xl border border-foreground/10 bg-amber-500/10 p-5 sm:p-6 ${className}`} aria-label="Student of the week">
++        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-800 dark:text-amber-200">
++          <Trophy className="h-4 w-4" aria-hidden /> Student of the week · {f.weekLabel}
++        </div>
++        <p className="font-display mt-2 text-lg font-bold text-foreground">{f.displayName}</p>
++        <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">{f.message}</p>
++        <p className="mt-3 text-[13px] font-medium text-foreground/70">
++          {f.solved} PYQs solved · {f.accuracy}% accuracy
++        </p>
++      </section>
++    );
++  }
+   return (
+     <section className={`rounded-3xl border border-amber-300/60 bg-amber-50 p-5 text-amber-950 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-50 ${className}`} aria-label="Student of the week">
+       <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+@@ -24,23 +38,25 @@ export function FeaturedCard({ f, className = "" }: { f: PublicFeatured; classNa
+   );
+ }
+ 
+-/** For the student dashboard: shows the latest shout-out, or nothing at all. */
+-export function StudentOfTheWeekBanner() {
++/** For the student dashboard: shows the latest shout-out, or `fallback` (default: nothing) once it is known there is none. */
++export function StudentOfTheWeekBanner({ fallback = null }: { fallback?: ReactNode }) {
+   const [f, setF] = useState<PublicFeatured | null>(null);
++  const [settled, setSettled] = useState(false);
+   useEffect(() => {
+     let alive = true;
+     getStudentOfTheWeek()
+       .then((r) => alive && setF(r))
+-      .catch(() => {});
++      .catch(() => {})
++      .finally(() => alive && setSettled(true));
+     return () => {
+       alive = false;
+     };
+   }, []);
+-  if (!f) return null;
++  if (!f) return settled ? <>{fallback}</> : null;
+   return (
+     <div>
+-      <FeaturedCard f={f} />
+-      <Link to="/leaderboard" className="mt-2 inline-block text-sm font-bold text-primary hover:underline">
++      <FeaturedCard f={f} flat />
++      <Link to="/leaderboard" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-primary hover:underline">
+         See this week's leaderboard →
+       </Link>
+     </div>
+diff --git a/src/components/quick-mock/quick-mock-card.tsx b/src/components/quick-mock/quick-mock-card.tsx
+index 401f907..1847b86 100644
+--- a/src/components/quick-mock/quick-mock-card.tsx
++++ b/src/components/quick-mock/quick-mock-card.tsx
+@@ -17,24 +17,24 @@ export function QuickMockCard({ status, loaded, exam, source = "dashboard", clas
+   const waiting = status.kind === "exhausted";
+ 
+   return (
+-    <section ref={ref} aria-label={quickMockName(exam)} data-testid="quick-mock-card" className={cn("min-w-0 rounded-3xl border border-border bg-card p-4 sm:p-5", className)}>
++    <section ref={ref} aria-label={quickMockName(exam)} data-testid="quick-mock-card" className={cn("min-w-0 rounded-2xl border border-foreground/10 bg-card p-5", className)}>
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+         <div className="flex min-w-0 items-start gap-3.5">
+-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-300 text-amber-950"><Timer className="h-6 w-6" aria-hidden /></span>
++          <span className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300"><Timer className="h-6 w-6" aria-hidden /></span>
+           <div className="min-w-0">
+-            <p className="text-xs font-extrabold uppercase tracking-widest text-primary">{quickMockName(exam)}</p>
+-            <p className="text-xs font-semibold text-foreground/70">{DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} Minutes</p>
+-            <p className={cn("font-display mt-1 font-extrabold leading-snug tracking-tight text-foreground", waiting ? "text-sm sm:text-base" : "text-lg sm:text-xl")}>{loaded || status.kind !== "unknown" ? copy.headline : "Checking your Quick Mock…"}</p>
+-            {copy.detail && !waiting && <p className="mt-0.5 text-xs text-foreground/70">{copy.detail}</p>}
++            <p className="text-xs font-semibold uppercase tracking-widest text-primary">{quickMockName(exam)}</p>
++            <p className="text-[13px] font-medium text-foreground/70">{DRILL_QUESTIONS} PYQs · {DRILL_MINUTES} Minutes</p>
++            <p className={cn("font-display mt-1 font-bold leading-snug tracking-tight text-foreground", waiting ? "text-sm sm:text-base" : "text-lg sm:text-xl")}>{loaded || status.kind !== "unknown" ? copy.headline : "Checking your Quick Mock…"}</p>
++            {copy.detail && !waiting && <p className="mt-0.5 text-[13px] text-foreground/70">{copy.detail}</p>}
+           </div>
+         </div>
+ 
+         {waiting ? (
+-          <Link to="/pyq-drill" search={quickMockSearch({ src: source })} onClick={() => trackQuickMockClick(source, { state: "exhausted" })} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-border px-5 text-sm font-bold text-foreground transition-colors hover:border-foreground/40">
++          <Link to="/pyq-drill" search={quickMockSearch({ src: source })} onClick={() => trackQuickMockClick(source, { state: "exhausted" })} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-foreground/15 px-5 text-sm font-semibold text-foreground transition-colors hover:border-foreground/40">
+             Unlimited with Pro <ArrowRight className="h-4 w-4" aria-hidden />
+           </Link>
+         ) : (
+-          <Link to="/pyq-drill" search={search} onClick={() => trackQuickMockClick(source, { state: status.kind })} data-testid="quick-mock-cta" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5 motion-reduce:transition-none">
++          <Link to="/pyq-drill" search={search} onClick={() => trackQuickMockClick(source, { state: status.kind })} data-testid="quick-mock-cta" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 motion-reduce:transition-none">
+             {copy.cta} <ArrowRight className="h-4 w-4" aria-hidden />
+           </Link>
+         )}
+diff --git a/src/components/today-card.tsx b/src/components/today-card.tsx
+index e5846bf..b9ff699 100644
+--- a/src/components/today-card.tsx
++++ b/src/components/today-card.tsx
+@@ -270,11 +270,11 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
+  * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
+  */
+ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
+-  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-3xl border border-foreground/15 bg-card px-5 py-4 shadow-sm", className);
++  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-foreground/10 bg-card px-5 py-4", className);
+   const icon = (
+-    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
++    <span className="shrink-0 text-foreground/70"><Users className="h-5 w-5" aria-hidden /></span>
+   );
+-  const ghost = "inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full border border-border px-4 text-xs font-bold text-foreground transition-colors hover:border-foreground/40";
++  const ghost = "inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border border-foreground/15 px-4 text-[13px] font-semibold text-foreground transition-colors hover:border-foreground/40";
+ 
+   if (info.state === "loading") {
+     return <div className={cn(shell, "h-[4.25rem] animate-pulse bg-secondary")} aria-hidden />;
+@@ -286,7 +286,7 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
+           {icon}
+           <div className="min-w-0">
+             <p className="text-sm font-bold leading-tight">No mentor session booked</p>
+-            <p className="truncate text-xs text-foreground/70">{info.text}</p>
++            <p className="text-[13px] text-foreground/70">{info.text}</p>
+           </div>
+         </div>
+         <div className="flex shrink-0 items-center gap-2">
+@@ -302,11 +302,11 @@ export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpN
+         <div className="min-w-0">
+           <p className="text-xs font-bold uppercase tracking-widest text-primary">Up next</p>
+           <p className="truncate text-sm font-bold leading-tight">{info.date} · {info.meta}</p>
+-          <p className="truncate text-xs text-foreground/70">{info.title}</p>
++          <p className="truncate text-[13px] text-foreground/70">{info.title}</p>
+         </div>
+       </div>
+       <div className="flex shrink-0 items-center gap-2">
+-        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-xs font-bold text-primary-foreground">Join session</a>}
++        {info.joinUrl && <a href={info.joinUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-primary px-4 text-[13px] font-semibold text-primary-foreground">Join session</a>}
+         <Link to="/my-sessions" className={ghost}>{info.total > 1 ? `All ${info.total} sessions` : "My sessions"}</Link>
+       </div>
+     </section>
+diff --git a/src/routes/dashboard.tsx b/src/routes/dashboard.tsx
+index 4d725c2..5f1476a 100644
+--- a/src/routes/dashboard.tsx
++++ b/src/routes/dashboard.tsx
+@@ -9,6 +9,7 @@ import { trackQuickMockClick } from "@/lib/quick-mock-analytics";
+ import type { PracticeStats } from "@/lib/practice-stats";
+ import { StudentOfTheWeekBanner } from "@/components/leaderboard-view";
+ import { PyqHero } from "@/components/dashboard/pyq-hero";
++import { NcertBanner } from "@/components/dashboard/ncert-banner";
+ import { ProActiveCard } from "@/components/dashboard/pro-active-card";
+ import type { DrillAccess } from "@/lib/pro";
+ import { StreakPopup } from "@/components/dashboard/streak-popup";
+@@ -17,7 +18,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+ import { noindexHead } from "@/lib/seo";
+ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+ import { motion } from "motion/react";
+-import { IconTrophy as Trophy, IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play, IconCircleCheck as CircleCheck, IconTarget as Target, IconCalendarWeek as CalendarWeek, IconRefresh as Refresh } from "@tabler/icons-react";
++import { IconTrophy as Trophy, IconLoader2 as Loader2, IconSearch as Search, IconBook2 as BookOpen, IconUsersGroup as Users2, IconArrowRight as ArrowRight, IconChevronRight as ChevronRight, IconSchool as GraduationCap, IconStar as Star, IconRosetteDiscountCheck as BadgeCheck, IconTag as Tag, IconClipboardList as ClipboardList, IconX as X, IconGift as Gift, IconUsers as UsersGroupIcon, IconClock as Clock, IconHome as Home, IconCompass as Compass, IconCalendarEvent as CalendarDays, IconLifebuoy as LifeBuoy, IconReceipt as Receipt, IconLink as LinkIcon, IconPlayerPlayFilled as Play } from "@tabler/icons-react";
+ import { useAuth } from "@/lib/auth-context";
+ import { getDashboardBootstrap } from "@/server-functions/dashboard";
+ import { getProfile } from "@/server-functions/profile";
+@@ -501,19 +502,20 @@ function DashboardPage() {
+ 
+         {/* ── Main ──────────────────────────────────────────── */}
+         <main className="min-w-0 flex-1 pb-28 pt-6 md:pb-12 md:pt-8">
++          {/* The overview is one calm column (56rem); the other views keep the full width. */}
++          <div className={view === "home" ? "mx-auto w-full max-w-4xl" : undefined}>
+           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+             <div className="min-w-0">
+-              {view === "home" && <p className="mb-1 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-primary"><CalendarWeek className="h-3.5 w-3.5" />{now.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>}
+-              <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-4xl">{view === "home" && firstName ? (<>{greet}, <span className="text-primary">{firstName}</span></>) : title}</h1>
++              <h1 className="font-display text-2xl font-bold leading-tight tracking-tight text-foreground sm:text-3xl">{view === "home" && firstName ? (<>{greet}, <span className="text-primary">{firstName}</span></>) : title}</h1>
+             </div>
+-            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-foreground/20 bg-card px-4 shadow-sm transition-colors focus-within:border-primary sm:max-w-xs">
++            <label className="flex min-h-12 w-full items-center gap-3 rounded-full border border-foreground/15 bg-card px-4 transition-colors focus-within:border-primary sm:max-w-xs">
+               <Search className="h-4 w-4 shrink-0 text-foreground/70" />
+               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search mentors, courses, tests…" className="w-full bg-transparent text-[15px] placeholder:text-foreground/55 focus:outline-none" />
+               {hasQuery && <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-foreground/70 hover:bg-secondary"><X className="h-4 w-4" /></button>}
+             </label>
+           </div>
+ 
+-          <div className="mt-6">
++          <div className="mt-8">
+             {hasQuery ? (
+               <SearchResults query={query} matchedMentors={matchedMentors} matchedListings={matchedListings} matchedTests={matchedTests} loading={mentors === null || allListings === null || soldTests === null} />
+             ) : view === "home" ? (
+@@ -575,6 +577,7 @@ function DashboardPage() {
+               <MentorGrid mentors={mentors} />
+             )}
+           </div>
++          </div>
+         </main>
+       </div>
+ 
+@@ -592,11 +595,12 @@ function DashboardPage() {
+ }
+ 
+ // ─── Overview (the actual dashboard) ────────────────────────────────────
++// One calm column. Flat cards: no shadows, one hairline (border-foreground/10), at most one soft tint each, no boxes inside boxes.
+ function Panel({ title, icon, action, children, className = "" }: { title: string; icon?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
+   return (
+-    <section className={`min-w-0 rounded-3xl border border-foreground/15 bg-card p-5 shadow-sm sm:p-6 ${className}`}>
+-      <div className="mb-4 flex items-center justify-between gap-3">
+-        <h2 className="flex items-center gap-2.5 font-display text-lg font-extrabold tracking-tight">{icon && <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary" aria-hidden>{icon}</span>}{title}</h2>
++    <section className={`min-w-0 rounded-2xl border border-foreground/10 bg-card p-5 sm:p-6 ${className}`}>
++      <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
++        <h2 className="flex items-center gap-2 font-display text-base font-bold tracking-tight">{icon && <span className="text-foreground/70" aria-hidden>{icon}</span>}{title}</h2>
+         {action}
+       </div>
+       {children}
+@@ -604,50 +608,39 @@ function Panel({ title, icon, action, children, className = "" }: { title: strin
+   );
+ }
+ 
+-/** Names each group of cards on the overview, so the page reads as sections instead of one long stack. */
+-function SectionHeading({ children }: { children: ReactNode }) {
+-  return (
+-    <div className="flex items-center gap-3 px-1 pt-5">
+-      <span className="h-6 w-1.5 rounded-full bg-primary" aria-hidden />
+-      <h2 className="font-display text-xl font-extrabold tracking-tight text-foreground">{children}</h2>
+-    </div>
+-  );
++/** Names a section of the overview. `quiet` is for "More": same size, softer colour. */
++function SectionHeading({ children, quiet = false }: { children: ReactNode; quiet?: boolean }) {
++  return <h2 className={`font-display text-xl font-bold tracking-tight ${quiet ? "text-foreground/70" : "text-foreground"}`}>{children}</h2>;
+ }
+ 
+-/** Four numbers a returning student wants at a glance. Tiles with something to do (revise) are links. */
+-function Snapshot({ stats }: { stats: PracticeStats }) {
+-  const o = stats.overall;
+-  const tiles: { icon: typeof Home; label: string; value: string; tone: string; to?: boolean }[] = [
+-    { icon: CircleCheck, label: "Questions solved", value: o.solved.toLocaleString("en-IN"), tone: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" },
+-    { icon: Target, label: "Accuracy", value: o.accuracy !== null ? `${o.accuracy}%` : "–", tone: "bg-sky-500/15 text-sky-600 dark:text-sky-300" },
+-    { icon: CalendarWeek, label: "This week", value: o.weekAnswered.toLocaleString("en-IN"), tone: "bg-violet-500/15 text-violet-600 dark:text-violet-300" },
+-    { icon: Refresh, label: o.due > 0 ? "Mistakes to revise" : "Nothing to revise", value: o.due.toLocaleString("en-IN"), tone: "bg-amber-500/15 text-amber-700 dark:text-amber-300", to: o.due > 0 },
+-  ];
+-  const base = "flex min-w-0 items-center gap-3 rounded-2xl border border-foreground/15 bg-card p-3.5 shadow-sm";
++const linkAction = "inline-flex min-h-11 items-center text-sm font-bold text-primary underline-offset-4 hover:underline";
++
++/** The Recommended shelf as one flat list (it used to be three big cards). Same destinations as before. */
++function RecommendedList({ listings, onAll }: { listings: Listing[]; onAll: () => void }) {
++  const navigate = useNavigate();
+   return (
+-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Your practice at a glance">
+-      {tiles.map((t) => {
+-        const inner = (
+-          <>
+-            <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${t.tone}`} aria-hidden><t.icon className="h-5 w-5" /></span>
+-            <span className="min-w-0">
+-              <span className="block text-2xl font-extrabold leading-none tabular-nums text-foreground">{t.value}</span>
+-              <span className="mt-1 block truncate text-[13px] font-semibold text-foreground/70">{t.label}</span>
+-            </span>
+-          </>
+-        );
+-        return t.to ? (
+-          <Link key={t.label} to="/pyq" search={{ practice: true, session: "due" }} className={`${base} transition-colors hover:border-primary`}>{inner}</Link>
+-        ) : (
+-          <div key={t.label} className={base}>{inner}</div>
+-        );
+-      })}
+-    </div>
++    <section aria-label="Recommended for you">
++      <div className="mb-3 flex items-center justify-between gap-3">
++        <SectionHeading>Recommended for you</SectionHeading>
++        <button type="button" onClick={onAll} className={linkAction}>Explore all</button>
++      </div>
++      <ul className="divide-y divide-foreground/10 overflow-hidden rounded-2xl border border-foreground/10 bg-card p-1">
++        {listings.map((l) => (
++          <li key={`${l.kind}-${l.id}`}>
++            <ResultRow
++              onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
++              icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
++              title={l.title}
++              sub={`${EXAM_LABELS[l.exam]} · ${l.kind} · ${l.track || "All tracks"}`}
++              right={<span className="shrink-0 text-[13px] font-semibold text-foreground">{l.purchased ? "You're in" : l.sellingPrice === 0 ? "Free" : `₹${l.sellingPrice.toLocaleString("en-IN")}`}</span>}
++            />
++          </li>
++        ))}
++      </ul>
++    </section>
+   );
+ }
+ 
+-const linkAction = "inline-flex min-h-10 items-center text-sm font-bold text-primary underline-offset-4 hover:underline";
+-
+ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadStats, qmStatus, qmLoaded, proAccess, profile, onProfileSaved, ownedListings, ownedTests, freeSlots, mentors, offerings, slotsByOffering, recommended, go, getToken, onBooked }: {
+   upcoming: BookingRow[]; bookingsLoaded: boolean; perf: BatchPerf[] | null;
+   stats: PracticeStats | null; statsFailed: boolean; reloadStats: () => void; qmStatus: QuickMockStatus; qmLoaded: boolean; proAccess: DrillAccess | null;
+@@ -661,7 +654,7 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
+   // A student who has never answered a question gets a short page: one clear action, then the rest further down.
+   // (Until the numbers load we assume "returning" so nothing is hidden and then pops back in.)
+   const isNew = stats !== null && stats.questionsAnswered === 0;
+-  // PYQ practice isn't a tile any more: it is the hero above and the first item in the sidebar / bottom bar.
++  // PYQ practice isn't a tile any more: it is the first section above and the first item in the sidebar / bottom bar.
+   const actions: { icon: typeof Home; label: string; sub: string; to?: string; onClick?: () => void; highlight?: boolean }[] = [
+     { icon: Trophy, label: "Leaderboard", sub: "Top PYQ solvers this week", to: "/leaderboard" },
+     { icon: Play, label: "CBT demo", sub: "Exam-format demo", to: "/simulator/live" },
+@@ -686,74 +679,82 @@ function Overview({ upcoming, bookingsLoaded, perf, stats, statsFailed, reloadSt
+           text: freeSlots.length > 0 ? `${freeSlots.length} free mentor session${freeSlots.length === 1 ? " is" : "s are"} open right now.` : "Book a session with a mentor who has cleared your exam.",
+         };
+ 
+-  const chip = "group flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 py-2 text-center transition-colors hover:bg-secondary";
+-  const chipIcon = "grid h-14 w-14 place-items-center rounded-2xl bg-primary/15 text-primary transition-transform group-hover:-translate-y-0.5";
++  // Pro is a status, not an ad: an active plan gets a slim row at the very top (it renders nothing otherwise).
++  // The one promotional card at the end of "More" is the Student of the Week, or Recommended when nobody is featured.
++  const isPro = Boolean(proAccess?.isPro && proAccess.proUntil);
++  const recommendedShelf = recommended.length > 0 ? <RecommendedList listings={recommended} onAll={() => go("explore")} /> : null;
++  const promo = !isNew ? <StudentOfTheWeekBanner fallback={recommendedShelf} /> : recommendedShelf;
++
++  const shortcut = "flex min-h-11 w-full items-center gap-2.5 rounded-xl border border-foreground/10 px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:border-foreground/30 last:col-span-2 sm:last:col-span-1";
+ 
+   return (
+-    <div className="space-y-5">
+-      {/* A student with an active Edurack Pro plan sees it first. Renders nothing otherwise. */}
+-      <ProActiveCard access={proAccess} />
+-
+-      {/* 1. PYQ practice leads the page: "Start your first 5" for a new student, "Continue practising" + today's question + streak otherwise. */}
+-      <PyqHero stats={stats} statsFailed={statsFailed} />
+-      {!isNew && stats && <Snapshot stats={stats} />}
+-      <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />
+-      {/* Exam, class and target year: only what's missing, one tap each, never blocks practice. */}
+-      <PrepSetupCard
+-        profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
+-        deferYear={isNew}
+-        onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
+-      />
++    <div className="space-y-10 sm:space-y-12">
++      {/* 1. Where to start: goal + numbers, one "continue" button, a soft tile per subject. A brand-new student gets one button. */}
++      <div className="space-y-6">
++        <ProActiveCard access={proAccess} compact />
++        <PyqHero stats={stats} statsFailed={statsFailed} />
++      </div>
++
++      {/* 2. The one banner. */}
++      {!isNew && <NcertBanner isPro={isPro} />}
+ 
+-      {/* 2. Mentors to talk to, each with a one-time guidance session that can be booked right here. */}
++      {/* 3. Mentors to talk to, each with a one-time guidance session that can be booked right here. */}
+       <MentorsForYou mentors={mentors} offerings={offerings} slotsByOffering={slotsByOffering} track={profile?.track ?? ""} onSeeAll={() => go("mentors")} getToken={getToken} onBooked={onBooked} />
+ 
+-      {/* 3. How it is going. */}
+-      <SectionHeading>Your progress</SectionHeading>
+-      <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />
+-      {!isNew && <StudentOfTheWeekBanner />}
+-
+-      {/* 4. Everything else, one tap away. */}
+-      {!isNew && (
+-        <nav aria-label="Shortcuts" className="grid grid-cols-5 gap-1 rounded-3xl border border-foreground/15 bg-card p-2 shadow-sm">
+-          {actions.map((a) => {
+-            const inner = (<><span className={chipIcon}><a.icon className="h-6 w-6" /></span><span className="text-[13px] font-bold leading-tight text-foreground">{a.label}</span></>);
+-            return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} aria-label={`${a.label}: ${a.sub}`} className={chip}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} aria-label={`${a.label}: ${a.sub}`} className={chip}>{inner}</button>;
+-          })}
+-        </nav>
+-      )}
++      {/* 4. Quick Mock. */}
++      {!isNew && <QuickMockCard status={qmStatus} loaded={qmLoaded} exam={profile?.targetExam} source="dashboard" />}
++
++      {/* 5. Everything else, quieter and further down. */}
++      <section aria-label="More" className="border-t border-foreground/10 pt-10 sm:pt-12">
++        <SectionHeading quiet>More</SectionHeading>
++        <div className="mt-8 space-y-10 sm:space-y-12">
++          {/* Exam, class and target year: only what's missing, one tap each, never blocks practice. */}
++          <PrepSetupCard
++            profile={profile ? { targetExam: profile.targetExam, track: profile.track, targetYear: profile.targetYear } : null}
++            deferYear={isNew}
++            onSaved={(n) => onProfileSaved({ ...(n.targetExam !== undefined ? { targetExam: n.targetExam ?? "" } : {}), ...(n.track !== undefined ? { track: (n.track ?? "") as Track } : {}), ...(n.targetYear !== undefined ? { targetYear: n.targetYear ?? null } : {}) })}
++          />
++
++          {!isNew && <PracticePerformanceCard stats={stats} failed={statsFailed} onRetry={reloadStats} targetExam={profile?.targetExam} tests={perf} />}
++
++          {!isNew && (
++            <nav aria-label="Shortcuts" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
++              {actions.map((a) => {
++                const inner = (<><a.icon className="h-5 w-5 shrink-0 text-foreground/70" />{a.label}</>);
++                return a.to ? <Link key={a.label} to={a.to as "/leaderboard"} aria-label={`${a.label}: ${a.sub}`} className={shortcut}>{inner}</Link> : <button key={a.label} type="button" onClick={a.onClick} aria-label={`${a.label}: ${a.sub}`} className={shortcut}>{inner}</button>;
++              })}
++            </nav>
++          )}
+ 
+-      <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
+-      <div className={`grid grid-cols-1 gap-4 ${isNew ? "" : "lg:grid-cols-2"}`}>
+-        <Panel title="Free sessions open" icon={<Gift className="h-5 w-5" />} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
+-          {freeSlots.length === 0 ? <p className="text-sm text-foreground/70">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
+-        </Panel>
+-        {!isNew && (
+-          <Panel title="Continue learning" icon={<BookOpen className="h-5 w-5" />} action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
+-            {continueCount === 0 ? (
+-              <div className="text-sm text-foreground/70">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
+-            ) : (
+-              <div className="-mx-2">
+-                {ownedListings.slice(0, 3).map((l) => (
+-                  <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
+-                    icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
+-                    title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
+-                ))}
+-                {ownedTests.slice(0, 2).map((t) => (
+-                  <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
+-                ))}
+-              </div>
++          <MentorshipCompactCard info={upNext} onBrowse={() => go("sessions")} />
++
++          <div className={`grid grid-cols-1 gap-6 ${isNew ? "" : "lg:grid-cols-2"}`}>
++            <Panel title="Free sessions open" icon={<Gift className="h-5 w-5" />} action={freeSlots.length > 0 ? <button type="button" onClick={() => go("sessions")} className={linkAction}>See all</button> : undefined}>
++              {freeSlots.length === 0 ? <p className="text-sm text-foreground/70">No free sessions are open right now. Check back soon.</p> : <FreeSlotList slots={freeSlots} getToken={getToken} onBooked={onBooked} />}
++            </Panel>
++            {!isNew && (
++              <Panel title="Continue learning" icon={<BookOpen className="h-5 w-5" />} action={continueCount > 0 ? <Link to="/purchases" className={linkAction}>All purchases</Link> : undefined}>
++                {continueCount === 0 ? (
++                  <div className="text-sm text-foreground/70">You haven't enrolled in anything yet. <button type="button" onClick={() => go("explore")} className="font-bold text-primary hover:underline">Explore courses</button></div>
++                ) : (
++                  <div className="-mx-2">
++                    {ownedListings.slice(0, 3).map((l) => (
++                      <ResultRow key={`${l.kind}-${l.id}`} onClick={() => navigate({ to: "/course/$kind/$id", params: { kind: l.kind === "Test Series" ? "bundle" : "mentorship", id: l.id } })}
++                        icon={l.thumbnailUrl ? <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : l.kind === "Test Series" ? <BookOpen className="h-4 w-4" /> : <Users2 className="h-4 w-4" />}
++                        title={l.title} sub={`${EXAM_LABELS[l.exam]} · ${l.kind}`} />
++                    ))}
++                    {ownedTests.slice(0, 2).map((t) => (
++                      <ResultRow key={t.id} onClick={() => navigate({ to: "/sold-test/$id", params: { id: t.id } })} icon={<Tag className="h-4 w-4" />} title={t.name} sub={`By ${t.mentorName} · ${t.totalQuestions}Q`} />
++                    ))}
++                  </div>
++                )}
++              </Panel>
+             )}
+-          </Panel>
+-        )}
+-      </div>
++          </div>
+ 
+-      {recommended.length > 0 && (
+-        <section className="pt-2">
+-          <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl font-extrabold tracking-tight">Recommended for you</h2><button type="button" onClick={() => go("explore")} className={linkAction}>Explore all</button></div>
+-          <div className={GRID}>{recommended.map((l, i) => <ListingCard key={`${l.kind}-${l.id}`} listing={l} index={i} />)}</div>
+-        </section>
+-      )}
++          {promo}
++        </div>
++      </section>
+     </div>
+   );
+ }
+@@ -791,39 +792,39 @@ function MentorsForYou({ mentors, offerings, slotsByOffering, track, onSeeAll, g
+       <div className="flex items-end justify-between gap-3">
+         <div>
+           <SectionHeading>Mentors for you</SectionHeading>
+-          <p className="mt-1 px-1 text-[13px] text-foreground/70">Talk to someone who has cleared your exam. Book a one-time session for guidance.</p>
++          <p className="mt-1 text-[13px] text-foreground/70">Talk to someone who has cleared your exam. Book a one-time session for guidance.</p>
+         </div>
+         <button type="button" onClick={onSeeAll} className={`${linkAction} shrink-0`}>See all</button>
+       </div>
+-      <ul className="-mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++      <ul className="-mx-4 mt-4 flex snap-x snap-mandatory scroll-pl-4 gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:scroll-pl-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+         {mentors === null
+-          ? [0, 1, 2].map((i) => <li key={i} className="h-60 w-[17.5rem] shrink-0 animate-pulse rounded-3xl bg-foreground/10 lg:w-[19rem]" />)
++          ? [0, 1, 2].map((i) => <li key={i} className="h-60 w-[17rem] shrink-0 animate-pulse rounded-2xl bg-foreground/10 sm:w-[18rem]" />)
+           : picks.map(({ mentor: m, offer }) => (
+-              <li key={m.id} className="flex w-[17.5rem] shrink-0 snap-start lg:w-[19rem]">
+-                <div className="flex w-full flex-col rounded-3xl border border-foreground/15 bg-card p-4 shadow-sm">
+-                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="block rounded-2xl">
++              <li key={m.id} className="flex w-[17rem] shrink-0 snap-start sm:w-[18rem]">
++                <div className="flex w-full flex-col rounded-2xl border border-foreground/10 bg-card p-5">
++                  <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="block rounded-xl">
+                     <div className="flex items-center gap-3">
+-                      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-primary/15 font-display text-lg font-bold text-primary">
++                      <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-foreground/[0.06] font-display text-lg font-bold text-foreground/70">
+                         {m.profilePictureUrl ? <img src={m.profilePictureUrl} alt="" loading="lazy" className="h-full w-full object-cover" /> : m.name.charAt(0)}
+                       </div>
+                       <div className="min-w-0 flex-1">
+-                        <p className="flex items-center gap-1.5 truncate font-display text-base font-bold text-foreground">{m.name}<BadgeCheck className="h-4 w-4 shrink-0 text-primary" /></p>
++                        <p className="flex items-center gap-1.5 truncate font-display text-base font-bold text-foreground">{m.name}<BadgeCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Verified" /></p>
+                         <p className="truncate text-[13px] text-foreground/70">{m.yearOfStudy || "Mentor"}</p>
+                       </div>
+-                      {m.avgRating !== null && <span className="flex shrink-0 items-center gap-1 rounded-full border border-foreground/20 px-2 py-1 text-xs font-bold"><Star className="h-3 w-3 fill-amber-500 text-amber-500" />{m.avgRating}</span>}
++                      {m.avgRating !== null && <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-foreground"><Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />{m.avgRating}</span>}
+                     </div>
+                     {m.aboutText && <p className="mt-3 line-clamp-2 text-[13px] leading-snug text-foreground/70">{m.aboutText}</p>}
+                   </Link>
+-                  <div className="mt-auto pt-4">
++                  <div className="mt-auto pt-5">
+                     {offer ? (
+-                      <div className="rounded-2xl bg-primary/10 p-3">
+-                        <p className="text-xs font-bold uppercase tracking-wider text-primary">{formatForOffering(offer.offering) === "one_on_one" ? "One-time 1:1 session" : "One-time group session"}</p>
++                      <div className="border-t border-foreground/10 pt-4">
++                        <p className="text-xs font-semibold uppercase tracking-wider text-primary">{formatForOffering(offer.offering) === "one_on_one" ? "One-time 1:1 session" : "One-time group session"}</p>
+                         <p className="mt-1 truncate text-sm font-bold text-foreground">{offer.offering.title}</p>
+                         <p className="truncate text-[13px] text-foreground/70">{offer.offering.durationMinutes} min · {offer.offering.isFree ? "Free" : `₹${offer.offering.price.toLocaleString("en-IN")}`} · {formatSlot(offer.slot.date, offer.slot.startTime)}</p>
+-                        <button type="button" onClick={() => setBooking(offer)} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-extrabold text-primary-foreground transition-transform active:scale-[0.98]">Book session</button>
++                        <button type="button" onClick={() => setBooking(offer)} className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98]">Book session</button>
+                       </div>
+                     ) : (
+-                      <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-foreground/25 px-4 text-sm font-bold text-foreground transition-colors hover:border-primary">View profile<ChevronRight className="h-4 w-4" /></Link>
++                      <Link to="/mentor-profile/$mentorId" params={{ mentorId: m.id }} className="inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full border border-foreground/15 px-4 text-sm font-semibold text-foreground transition-colors hover:border-foreground/40">View profile<ChevronRight className="h-4 w-4" /></Link>
+                     )}
+                   </div>
+                 </div>
+@@ -842,13 +843,13 @@ function FreeSlotList({ slots, getToken, onBooked }: { slots: { offering: Public
+       <ul className="-mx-2">
+         {slots.slice(0, 4).map(({ offering, slot }) => (
+           <li key={offering.id}>
+-            <button type="button" onClick={() => setBooking({ offering, slot })} className="flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-secondary">
+-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Gift className="h-4 w-4" /></div>
++            <button type="button" onClick={() => setBooking({ offering, slot })} className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-secondary">
++              <Gift className="h-5 w-5 shrink-0 text-foreground/70" aria-hidden />
+               <div className="min-w-0 flex-1">
+                 <p className="truncate text-sm font-bold">{offering.title}</p>
+                 <p className="truncate text-[13px] text-foreground/70">{offering.mentorName} · {formatSlot(slot.date, slot.startTime)}</p>
+               </div>
+-              <span className="shrink-0 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">Book</span>
++              <span className="shrink-0 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground">Book</span>
+             </button>
+           </li>
+         ))}

@@ -14,14 +14,14 @@ const TABS: { key: Tab; label: string }[] = [
 function Cell({ label, value, hint, to, search, tone }: { label: string; value: string; hint?: string; to?: "/pyq"; search?: Record<string, unknown>; tone?: "attention" }) {
   const body = (
     <>
-      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-foreground/70/60", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
+      <p className={cn("font-display text-2xl font-extrabold leading-none tracking-tight tabular-nums sm:text-3xl", value === "—" && "text-foreground/50", tone === "attention" && "text-amber-600 dark:text-amber-400")}>{value}</p>
       <p className="mt-1.5 text-xs font-semibold text-foreground/70">{label}</p>
-      {hint && <p className="mt-0.5 text-xs text-foreground/70/80">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-foreground/70">{hint}</p>}
     </>
   );
-  const cls = "min-w-0 rounded-2xl bg-secondary/60 p-3.5";
+  const cls = "min-w-0";
   return to ? (
-    <Link to={to} search={search} className={cn(cls, "transition-colors hover:bg-secondary")}>{body}</Link>
+    <Link to={to} search={search} className={cn(cls, "-m-2 block rounded-xl p-2 transition-colors hover:bg-secondary")}>{body}</Link>
   ) : (
     <div className={cls}>{body}</div>
   );
@@ -49,7 +49,7 @@ export function PracticePerformanceCard({
     if (stats && tab === null) setTab(defaultExamTab(stats, targetExam));
   }, [stats, targetExam, tab]);
 
-  const shell = cn("min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-6", className);
+  const shell = cn("min-w-0 rounded-2xl border border-foreground/10 bg-card p-5 sm:p-6", className);
 
   if (!stats && !failed) {
     return (
@@ -80,16 +80,16 @@ export function PracticePerformanceCard({
     <section aria-label="Your performance" className={shell}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-base font-extrabold tracking-tight">Your performance</h2>
-        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-border p-0.5">
+        <div role="tablist" aria-label="Exam" className="inline-flex rounded-full border border-foreground/10 p-0.5">
           {TABS.map((t) => (
-            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-9 rounded-full px-4 text-xs font-bold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
+            <button key={t.key} role="tab" type="button" aria-selected={exam === t.key} onClick={() => setTab(t.key)} className={cn("min-h-11 rounded-full px-5 text-[13px] font-semibold transition-colors", exam === t.key ? "bg-foreground text-background" : "text-foreground/70 hover:text-foreground")}>
               {t.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-5">
         <Cell label="Questions solved" value={hasPractice ? s.solved.toLocaleString("en-IN") : dash} />
         <Cell label="Accuracy" value={s.accuracy === null ? dash : `${s.accuracy}%`} hint={hasPractice ? `${s.correct} of ${s.solved} right` : undefined} />
         <Cell label="This week" value={hasPractice ? s.weekAnswered.toLocaleString("en-IN") : dash} hint={approx ? "estimate" : "last 7 days"} />
@@ -112,7 +112,7 @@ export function PracticePerformanceCard({
         </p>
       )}
 
-      <div className="mt-4 border-t border-border pt-3 text-sm">
+      <div className="mt-6 border-t border-foreground/10 pt-4 text-sm">
         {mock ? (
           <p className="text-foreground/70">
             <span className="font-bold text-foreground">{label} mock tests</span> · average <b className="text-foreground">{mock.average}%</b> · best <b className="text-foreground">{mock.best}%</b> · {mock.attempts} attempt{mock.attempts === 1 ? "" : "s"} across {mock.tests} test{mock.tests === 1 ? "" : "s"}

@@ -1,6 +1,6 @@
 // Weekly PYQ leaderboard page + the "Student of the week" shout-out card.
 // Students appear only by choice, under a nickname (see server-functions/leaderboard.ts).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { IconLoader2 as Loader2, IconTrophy as Trophy } from "@tabler/icons-react";
 import { useAuth } from "@/lib/auth-context";
@@ -9,7 +9,21 @@ import { getStudentOfTheWeek, getWeeklyLeaderboard, saveLeaderboardPrefs, type L
 import type { PublicFeatured } from "@/lib/leaderboard-server";
 import type { Week } from "@/lib/leaderboard";
 
-export function FeaturedCard({ f, className = "" }: { f: PublicFeatured; className?: string }) {
+export function FeaturedCard({ f, className = "", flat = false }: { f: PublicFeatured; className?: string; /** The calm dashboard look: one hairline, one soft tint, no shout. */ flat?: boolean }) {
+  if (flat) {
+    return (
+      <section className={`rounded-2xl border border-foreground/10 bg-amber-500/10 p-5 sm:p-6 ${className}`} aria-label="Student of the week">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-800 dark:text-amber-200">
+          <Trophy className="h-4 w-4" aria-hidden /> Student of the week · {f.weekLabel}
+        </div>
+        <p className="font-display mt-2 text-lg font-bold text-foreground">{f.displayName}</p>
+        <p className="mt-1.5 text-sm leading-relaxed text-foreground/80">{f.message}</p>
+        <p className="mt-3 text-[13px] font-medium text-foreground/70">
+          {f.solved} PYQs solved · {f.accuracy}% accuracy
+        </p>
+      </section>
+    );
+  }
   return (
     <section className={`rounded-3xl border border-amber-300/60 bg-amber-50 p-5 text-amber-950 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-50 ${className}`} aria-label="Student of the week">
       <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
@@ -24,23 +38,25 @@ export function FeaturedCard({ f, className = "" }: { f: PublicFeatured; classNa
   );
 }
 
-/** For the student dashboard: shows the latest shout-out, or nothing at all. */
-export function StudentOfTheWeekBanner() {
+/** For the student dashboard: shows the latest shout-out, or `fallback` (default: nothing) once it is known there is none. */
+export function StudentOfTheWeekBanner({ fallback = null }: { fallback?: ReactNode }) {
   const [f, setF] = useState<PublicFeatured | null>(null);
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
     let alive = true;
     getStudentOfTheWeek()
       .then((r) => alive && setF(r))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => alive && setSettled(true));
     return () => {
       alive = false;
     };
   }, []);
-  if (!f) return null;
+  if (!f) return settled ? <>{fallback}</> : null;
   return (
     <div>
-      <FeaturedCard f={f} />
-      <Link to="/leaderboard" className="mt-2 inline-block text-sm font-bold text-primary hover:underline">
+      <FeaturedCard f={f} flat />
+      <Link to="/leaderboard" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-primary hover:underline">
         See this week's leaderboard →
       </Link>
     </div>
