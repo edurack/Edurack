@@ -1,0 +1,662 @@
+diff --git a/src/components/pyq/pyq-browser.tsx b/src/components/pyq/pyq-browser.tsx
+index a03ef38..205d717 100644
+--- a/src/components/pyq/pyq-browser.tsx
++++ b/src/components/pyq/pyq-browser.tsx
+@@ -1,4 +1,5 @@
+-import { ChevronRight, Play } from "lucide-react";
++import { useMemo, useState, type ReactNode } from "react";
++import { ChevronRight, Play, Search, X } from "lucide-react";
+ import { cn } from "@/lib/utils";
+ import { UNTAGGED_CHAPTER, type PyqTree } from "@/lib/pyq-types";
+ import { OUT_OF_SYLLABUS } from "@/lib/ncert-syllabus";
+@@ -8,28 +9,42 @@ import { QuickMockStrip } from "@/components/quick-mock/quick-mock-strip";
+ /** `fresh` opens practice on the questions the student hasn't attempted yet (falls back to everything when none are left). */
+ export type PyqNav = { subject?: string; chapter?: string; topic?: string; practice?: boolean; fresh?: boolean };
+ 
+-/** "120 PYQs · 40 attempted · 80 left · 75% accuracy": the same numbers (unique questions) as the dashboard. */
+-function progressLine(n: { count: number; attempted: number; correct: number }): string {
+-  const p = practiceProgress(n.count, n.attempted, n.correct);
+-  return `${p.available} PYQ${p.available === 1 ? "" : "s"} · ${p.attempted} attempted · ${p.remaining} left${p.accuracy !== null ? ` · ${p.accuracy}% accuracy` : ""}`;
+-}
++// One accent per subject, used for the ring, the tinted header and the little badge, so each subject feels like its own place.
++const SUBJECT_COLORS: { match: RegExp; color: string }[] = [
++  { match: /phys/i, color: "#4f86f0" },
++  { match: /chem/i, color: "#e89b1c" },
++  { match: /bot|biolog/i, color: "#22a979" },
++  { match: /zoo/i, color: "#e0527a" },
++  { match: /math/i, color: "#8b6cf0" },
++];
++const FALLBACK_COLORS = ["#4f86f0", "#e89b1c", "#22a979", "#e0527a", "#8b6cf0"];
++const subjectColor = (name: string, i: number) => SUBJECT_COLORS.find((s) => s.match.test(name))?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
++
++const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sky-deep)]";
++const pctOf = (correct: number, count: number) => (count > 0 ? Math.round((correct / count) * 100) : 0);
++const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
++
++type Counts = { count: number; attempted: number; correct: number };
+ 
+ type Props = {
+   tree: PyqTree;
+   subject?: string;
+   chapter?: string;
+   onNavigate: (next: PyqNav) => void;
++  /** Extra cards shown under the subjects on the first screen (quick mock, notebook, NCERT, Pro). */
++  landingExtras?: ReactNode;
+ };
+ 
+ /** Browse screens: Subjects → Chapters → Topics. Practising starts from a chapter or topic. */
+-export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
+-  const subjectNode = tree.subjects.find((s) => s.subject === subject);
++export function PyqBrowser({ tree, subject, chapter, onNavigate, landingExtras }: Props) {
++  const subjectIndex = tree.subjects.findIndex((s) => s.subject === subject);
++  const subjectNode = tree.subjects[subjectIndex];
+   const chapterNode = subjectNode?.chapters.find((c) => c.chapter === chapter);
++  const color = subjectNode ? subjectColor(subjectNode.subject, subjectIndex) : "#4f86f0";
+ 
+   // Unknown subject/chapter in the URL (stale link) → fall back a level instead of a blank page.
+   if (subject && !subjectNode) return <NotFound onBack={() => onNavigate({})} label="That subject isn't available." />;
+-  if (chapter && subjectNode && !chapterNode)
+-    return <NotFound onBack={() => onNavigate({ subject })} label="That chapter isn't available." />;
++  if (chapter && subjectNode && !chapterNode) return <NotFound onBack={() => onNavigate({ subject })} label="That chapter isn't available." />;
+ 
+   const crumbs = [
+     { label: "All subjects", nav: {} as PyqNav },
+@@ -39,217 +54,344 @@ export function PyqBrowser({ tree, subject, chapter, onNavigate }: Props) {
+ 
+   return (
+     <div className="animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none">
+-      <Crumbs crumbs={crumbs} onNavigate={onNavigate} />
++      {subjectNode && <Crumbs crumbs={crumbs} onNavigate={onNavigate} />}
+ 
++      {/* ── Level 1: all subjects ── */}
+       {!subjectNode && (
+         <>
+-          <Intro total={tree.totalQuestions} correct={tree.totalCorrect} />
++          <Hero tree={tree} />
+           {tree.subjects.length === 0 ? (
+-            <div className="clay mt-4 p-8 text-center text-sm text-foreground/60">No previous year questions are available yet.</div>
++            <div className="clay mt-5 p-8 text-center text-sm text-foreground/70">No previous year questions are available yet.</div>
+           ) : (
+-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+-              {tree.subjects.map((s) => (
+-                <Row
+-                  key={s.subject}
+-                  big
+-                  title={s.subject}
+-                  meta={`${s.chapters.length} chapter${s.chapters.length === 1 ? "" : "s"} · ${s.count} questions`}
+-                  count={s.count}
+-                  attempted={s.attempted}
+-                  correct={s.correct}
+-                  onClick={() => onNavigate({ subject: s.subject })}
+-                />
+-              ))}
+-            </div>
++            <>
++              <h2 className="mb-3 mt-7 font-display text-lg font-extrabold tracking-tight text-foreground">Choose a subject</h2>
++              <div className="grid gap-3 sm:grid-cols-2">
++                {tree.subjects.map((s, i) => (
++                  <SubjectCard key={s.subject} s={s} color={subjectColor(s.subject, i)} onClick={() => onNavigate({ subject: s.subject })} />
++                ))}
++              </div>
++            </>
++          )}
++          {landingExtras && (
++            <>
++              <h2 className="mb-3 mt-8 font-display text-lg font-extrabold tracking-tight text-foreground">More ways to practise</h2>
++              <div className="space-y-3">{landingExtras}</div>
++            </>
+           )}
+         </>
+       )}
+ 
++      {/* ── Level 2: chapters of a subject ── */}
+       {subjectNode && !chapterNode && (
+         <>
+-          <Title title={subjectNode.subject} sub={`${progressLine(subjectNode)} · ${subjectNode.chapters.length} chapters`} />
+-          <div className="mt-4 space-y-2.5">
+-            {subjectNode.chapters.map((c) => (
+-              <Row
+-                key={c.chapter}
+-                title={c.chapter}
+-                muted={c.chapter === UNTAGGED_CHAPTER || c.chapter === OUT_OF_SYLLABUS}
+-                meta={`${c.count} question${c.count === 1 ? "" : "s"}${c.topics.length > 1 ? ` · ${c.topics.length} topics` : ""}`}
+-                count={c.count}
+-                attempted={c.attempted}
+-                correct={c.correct}
+-                onClick={() => onNavigate({ subject, chapter: c.chapter })}
+-              />
+-            ))}
+-          </div>
+-          <QuickMockStrip source="subject_practice" exam={tree.exam} lead="a timed test across subjects" className="mt-5" />
++          <HeaderCard color={color} eyebrow="Subject" title={subjectNode.subject} meta={plural(subjectNode.chapters.length, "chapter")} n={subjectNode} />
++          <ChapterList chapters={subjectNode.chapters} color={color} onOpen={(c) => onNavigate({ subject, chapter: c })} />
++          <QuickMockStrip source="subject_practice" exam={tree.exam} lead="a timed test across subjects" className="mt-6" />
+         </>
+       )}
+ 
++      {/* ── Level 3: a chapter and its topics ── */}
+       {subjectNode && chapterNode && (
+         <>
+-          <Title title={chapterNode.chapter} sub={`${subjectNode.subject} · ${progressLine(chapterNode)}`} />
++          <HeaderCard color={color} eyebrow={subjectNode.subject} title={chapterNode.chapter} meta={chapterNode.topics.length > 1 ? plural(chapterNode.topics.length, "topic") : undefined} n={chapterNode} />
+           {/* Started this chapter but not finished: the main button picks up at the first question not attempted yet. */}
+           {chapterNode.attempted > 0 && chapterNode.attempted < chapterNode.count ? (
+             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+-              <button
+-                onClick={() => onNavigate({ subject, chapter, practice: true, fresh: true })}
+-                className="clay-btn inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
+-              >
++              <button onClick={() => onNavigate({ subject, chapter, practice: true, fresh: true })} className={cn("clay-btn inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-extrabold text-white sm:w-auto", focusRing)}>
+                 <Play className="h-4 w-4" aria-hidden />
+                 Continue · {chapterNode.count - chapterNode.attempted} left
+               </button>
+-              <button
+-                onClick={() => onNavigate({ subject, chapter, practice: true })}
+-                className="clay-chip inline-flex w-full items-center justify-center rounded-full px-5 py-3.5 text-sm font-bold text-foreground/80 sm:w-auto"
+-              >
+-                Practice all {chapterNode.count}
++              <button onClick={() => onNavigate({ subject, chapter, practice: true })} className={cn("clay-chip inline-flex min-h-12 w-full items-center justify-center rounded-full px-6 text-sm font-bold text-foreground/80 sm:w-auto", focusRing)}>
++                See all {chapterNode.count} questions
+               </button>
+             </div>
+           ) : (
+-            <button
+-              onClick={() => onNavigate({ subject, chapter, practice: true })}
+-              className="clay-btn mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white sm:w-auto"
+-            >
++            <button onClick={() => onNavigate({ subject, chapter, practice: true })} className={cn("clay-btn mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-extrabold text-white sm:w-auto", focusRing)}>
+               <Play className="h-4 w-4" aria-hidden />
+-              Practice all {chapterNode.count} questions
++              Practise all {chapterNode.count} questions
+             </button>
+           )}
+ 
+-          <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-foreground/50">Or pick a topic</p>
+-          <div className="space-y-2.5">
+-            {chapterNode.topics.map((t) => (
+-              <Row
+-                key={t.topic}
+-                title={t.topic}
+-                meta={`${t.count} question${t.count === 1 ? "" : "s"}`}
+-                count={t.count}
+-                attempted={t.attempted}
+-                correct={t.correct}
+-                onClick={() => onNavigate({ subject, chapter, topic: t.topic, practice: true })}
+-              />
+-            ))}
+-          </div>
++          {chapterNode.topics.length > 0 && (
++            <>
++              <h2 className="mb-3 mt-7 font-display text-lg font-extrabold tracking-tight text-foreground">Or pick a topic</h2>
++              <ul className="space-y-2.5">
++                {chapterNode.topics.map((t, i) => (
++                  <li key={t.topic}>
++                    <TopicRow index={i + 1} title={t.topic} n={t} color={color} onClick={() => onNavigate({ subject, chapter, topic: t.topic, practice: true })} />
++                  </li>
++                ))}
++              </ul>
++            </>
++          )}
+         </>
+       )}
+     </div>
+   );
+ }
+ 
+-function Crumbs({ crumbs, onNavigate }: { crumbs: { label: string; nav: PyqNav }[]; onNavigate: (n: PyqNav) => void }) {
++/* ───────────────────────── pieces ───────────────────────── */
++
++/** A circular progress ring with the percentage inside. */
++function Ring({ pct, size = 64, stroke = 7, color, onDark, label }: { pct: number; size?: number; stroke?: number; color: string; onDark?: boolean; label: string }) {
++  const r = (size - stroke) / 2;
++  const c = 2 * Math.PI * r;
++  return (
++    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={label}>
++      <svg width={size} height={size} className="-rotate-90" aria-hidden>
++        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} stroke={onDark ? "rgba(255,255,255,0.18)" : "currentColor"} className={onDark ? undefined : "text-foreground/10"} />
++        <circle
++          cx={size / 2}
++          cy={size / 2}
++          r={r}
++          fill="none"
++          strokeWidth={stroke}
++          stroke={color}
++          strokeLinecap="round"
++          strokeDasharray={c}
++          strokeDashoffset={c * (1 - Math.min(100, pct) / 100)}
++          className="transition-[stroke-dashoffset] duration-700 ease-out motion-reduce:transition-none"
++        />
++      </svg>
++      <span className={cn("absolute inset-0 grid place-items-center font-extrabold", size >= 80 ? "text-xl" : "text-sm", onDark ? "text-white" : "text-foreground")}>{pct}%</span>
++    </div>
++  );
++}
++
++/** The first screen's banner: overall progress at a glance. */
++function Hero({ tree }: { tree: PyqTree }) {
++  const total = tree.totalQuestions;
++  const solved = tree.totalCorrect;
++  const attempted = tree.subjects.reduce((n, s) => n + s.attempted, 0);
++  const left = Math.max(0, total - attempted);
++  const pct = pctOf(solved, total);
++  return (
++    <section className="ink-section relative overflow-hidden rounded-3xl p-5 sm:p-7" aria-label="Your PYQ progress">
++      <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-sky-400/25 blur-3xl" aria-hidden />
++      <div className="pointer-events-none absolute -bottom-24 -left-10 h-48 w-48 rounded-full bg-emerald-400/20 blur-3xl" aria-hidden />
++      <div className="relative flex items-center gap-4 sm:gap-6">
++        <div className="min-w-0 flex-1">
++          <p className="text-xs font-bold uppercase tracking-[0.14em] text-sky-300">PYQ Practice</p>
++          <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight text-white sm:text-3xl">Previous year questions, chapter by chapter</h1>
++          <p className="mt-2 text-sm text-white/80">
++            {total > 0 ? (
++              <>
++                <span className="font-bold text-white">{solved}</span> of {total} solved
++              </>
++            ) : (
++              "Pick a subject to begin."
++            )}
++          </p>
++        </div>
++        {total > 0 && <Ring pct={pct} size={88} stroke={9} color="#7dd3fc" onDark label={`${solved} of ${total} questions solved`} />}
++      </div>
++      {total > 0 && (
++        <dl className="relative mt-5 grid grid-cols-3 gap-2">
++          {[
++            ["Solved", solved],
++            ["Attempted", attempted],
++            ["Still to try", left],
++          ].map(([k, v]) => (
++            <div key={k as string} className="rounded-2xl bg-white/10 px-3 py-2.5">
++              <dd className="text-lg font-extrabold text-white sm:text-xl">{v}</dd>
++              <dt className="text-xs font-semibold text-white/75">{k}</dt>
++            </div>
++          ))}
++        </dl>
++      )}
++    </section>
++  );
++}
++
++function SubjectCard({ s, color, onClick }: { s: Counts & { subject: string; chapters: unknown[] }; color: string; onClick: () => void }) {
++  const p = practiceProgress(s.count, s.attempted, s.correct);
++  const pct = pctOf(s.correct, s.count);
+   return (
+-    <nav
+-      aria-label="Breadcrumb"
+-      className="-mx-1 mb-4 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-xs [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
++    <button
++      onClick={onClick}
++      className={cn("clay group relative overflow-hidden rounded-3xl p-5 text-left transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.99] motion-reduce:transition-none", focusRing)}
++      style={{ backgroundImage: `linear-gradient(135deg, ${color}1f, ${color}08 55%, transparent)` }}
+     >
+-      {crumbs.map((c, i) => {
+-        const last = i === crumbs.length - 1;
+-        return (
+-          <span key={`${i}-${c.label}`} className="inline-flex shrink-0 items-center gap-1">
+-            {i > 0 && <ChevronRight className="h-3 w-3 text-foreground/30" aria-hidden />}
+-            <button
+-              onClick={() => !last && onNavigate(c.nav)}
+-              disabled={last}
+-              className={cn(
+-                "max-w-[11rem] truncate rounded-full px-2.5 py-1.5 font-semibold",
+-                last ? "bg-foreground/5 text-foreground" : "text-foreground/50 hover:bg-foreground/5 hover:text-foreground",
+-              )}
+-            >
+-              {c.label}
+-            </button>
++      <div className="flex items-center gap-4">
++        <div className="min-w-0 flex-1">
++          <span className="grid h-10 w-10 place-items-center rounded-2xl text-base font-extrabold text-white shadow-sm" style={{ backgroundColor: color }} aria-hidden>
++            {s.subject.charAt(0).toUpperCase()}
+           </span>
+-        );
+-      })}
+-    </nav>
++          <p className="mt-3 font-display text-xl font-extrabold leading-tight text-foreground">{s.subject}</p>
++          <p className="mt-0.5 text-[13px] text-foreground/70">
++            {plural(s.chapters.length, "chapter")} · {plural(s.count, "question")}
++          </p>
++        </div>
++        <Ring pct={pct} size={68} color={color} label={`${s.correct} of ${s.count} solved`} />
++      </div>
++      <div className="mt-4 flex items-center justify-between text-[13px] font-semibold">
++        <span className="text-foreground/75">{p.attempted > 0 ? `${p.attempted} tried · ${p.remaining} left` : "Not started yet"}</span>
++        <span className="inline-flex items-center gap-0.5" style={{ color }}>
++          Open <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
++        </span>
++      </div>
++    </button>
+   );
+ }
+ 
+-function Intro({ total, correct }: { total: number; correct: number }) {
++/** Tinted header for a subject or chapter: title, ring, and the four numbers a student actually wants. */
++function HeaderCard({ color, eyebrow, title, meta, n }: { color: string; eyebrow: string; title: string; meta?: string; n: Counts }) {
++  const p = practiceProgress(n.count, n.attempted, n.correct);
++  const pct = pctOf(n.correct, n.count);
++  const stats: [string, string | number][] = [
++    ["Questions", p.available],
++    ["Attempted", p.attempted],
++    ["Left", p.remaining],
++    ["Accuracy", p.accuracy !== null ? `${p.accuracy}%` : "–"],
++  ];
+   return (
+-    <div>
+-      <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">PYQ Practice</h1>
+-      <p className="mt-1 text-sm text-foreground/60">
+-        {total > 0 ? (
+-          <>
+-            {total} previous year questions · <span className="font-semibold text-foreground">{correct}</span> solved
+-          </>
+-        ) : (
+-          "Previous year questions, chapter by chapter."
+-        )}
+-      </p>
+-    </div>
++    <section className="clay overflow-hidden rounded-3xl p-5 sm:p-6" style={{ backgroundImage: `linear-gradient(135deg, ${color}26, ${color}0a 55%, transparent)` }}>
++      <div className="flex items-center gap-4">
++        <div className="min-w-0 flex-1">
++          <p className="text-xs font-bold uppercase tracking-[0.12em]" style={{ color }}>
++            {eyebrow}
++          </p>
++          <h1 className="mt-1 font-display text-2xl font-extrabold leading-snug text-foreground sm:text-3xl">{title}</h1>
++          {meta && <p className="mt-1 text-sm text-foreground/70">{meta}</p>}
++        </div>
++        <Ring pct={pct} size={76} stroke={8} color={color} label={`${n.correct} of ${n.count} solved`} />
++      </div>
++      <dl className="mt-4 grid grid-cols-4 gap-2">
++        {stats.map(([k, v]) => (
++          <div key={k} className="rounded-2xl bg-background/60 px-2 py-2 text-center">
++            <dd className="text-base font-extrabold text-foreground sm:text-lg">{v}</dd>
++            <dt className="text-[11px] font-semibold text-foreground/70 sm:text-xs">{k}</dt>
++          </div>
++        ))}
++      </dl>
++    </section>
+   );
+ }
+ 
+-function Title({ title, sub }: { title: string; sub: string }) {
++type Status = "new" | "progress" | "done";
++const statusOf = (n: Counts): Status => (n.attempted === 0 ? "new" : n.attempted >= n.count ? "done" : "progress");
++const STATUS_CHIP: Record<Status, { label: string; cls: string }> = {
++  new: { label: "New", cls: "bg-foreground/10 text-foreground/70" },
++  progress: { label: "In progress", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
++  done: { label: "Done", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
++};
++
++/** Chapters of a subject, with search and a status filter once there are enough of them to need it. */
++function ChapterList({ chapters, color, onOpen }: { chapters: (Counts & { chapter: string; topics: unknown[] })[]; color: string; onOpen: (chapter: string) => void }) {
++  const [query, setQuery] = useState("");
++  const [filter, setFilter] = useState<"all" | Status>("all");
++  const rows = useMemo(() => {
++    const q = query.trim().toLowerCase();
++    return chapters
++      .map((c, i) => ({ c, i }))
++      .filter(({ c }) => (!q || c.chapter.toLowerCase().includes(q)) && (filter === "all" || statusOf(c) === filter));
++  }, [chapters, query, filter]);
++  const showTools = chapters.length >= 8;
++  const FILTERS: { key: "all" | Status; label: string }[] = [
++    { key: "all", label: "All" },
++    { key: "progress", label: "In progress" },
++    { key: "new", label: "New" },
++    { key: "done", label: "Done" },
++  ];
++
+   return (
+-    <div>
+-      <h1 className="font-display text-xl font-bold leading-snug text-foreground sm:text-2xl">{title}</h1>
+-      <p className="mt-1 text-sm text-foreground/60">{sub}</p>
+-    </div>
++    <>
++      <h2 className="mb-3 mt-7 font-display text-lg font-extrabold tracking-tight text-foreground">Chapters</h2>
++      {showTools && (
++        <div className="mb-3 space-y-2">
++          <label className="flex min-h-11 items-center gap-2 rounded-2xl bg-foreground/[0.06] px-3.5">
++            <Search className="h-4 w-4 shrink-0 text-foreground/50" aria-hidden />
++            <span className="sr-only">Search chapters</span>
++            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search chapters" className="w-full bg-transparent text-sm placeholder:text-foreground/50 focus:outline-none" />
++            {query && (
++              <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="grid h-6 w-6 place-items-center rounded-full text-foreground/55 hover:bg-foreground/10">
++                <X className="h-3.5 w-3.5" aria-hidden />
++              </button>
++            )}
++          </label>
++          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label="Filter chapters">
++            {FILTERS.map((f) => (
++              <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)} className={cn("min-h-9 shrink-0 rounded-full px-4 text-[13px] font-bold transition-colors motion-reduce:transition-none", focusRing, filter === f.key ? "bg-foreground text-background" : "bg-foreground/[0.07] text-foreground/75 hover:bg-foreground/10")}>
++                {f.label}
++              </button>
++            ))}
++          </div>
++        </div>
++      )}
++      {rows.length === 0 ? (
++        <div className="clay p-8 text-center text-sm text-foreground/70">No chapters match.</div>
++      ) : (
++        <ul className="space-y-2.5">
++          {rows.map(({ c, i }) => (
++            <li key={c.chapter}>
++              <TopicRow
++                index={i + 1}
++                title={c.chapter}
++                muted={c.chapter === UNTAGGED_CHAPTER || c.chapter === OUT_OF_SYLLABUS}
++                extra={c.topics.length > 1 ? ` · ${plural(c.topics.length, "topic")}` : ""}
++                n={c}
++                color={color}
++                onClick={() => onOpen(c.chapter)}
++              />
++            </li>
++          ))}
++        </ul>
++      )}
++    </>
+   );
+ }
+ 
+-function Row({
+-  title,
+-  meta,
+-  count,
+-  attempted,
+-  correct,
+-  onClick,
+-  big,
+-  muted,
+-}: {
+-  title: string;
+-  meta: string;
+-  count: number;
+-  attempted: number;
+-  correct: number;
+-  onClick: () => void;
+-  big?: boolean;
+-  muted?: boolean;
+-}) {
+-  const pct = count > 0 ? Math.round((correct / count) * 100) : 0;
++/** One chapter or topic: a numbered badge, the title, a progress bar and a status chip. */
++function TopicRow({ index, title, n, color, onClick, muted, extra = "" }: { index: number; title: string; n: Counts; color: string; onClick: () => void; muted?: boolean; extra?: string }) {
++  const pct = pctOf(n.correct, n.count);
++  const st = STATUS_CHIP[statusOf(n)];
+   return (
+-    <button
+-      onClick={onClick}
+-      className={cn(
+-        "clay-inset w-full rounded-2xl text-left transition-transform duration-150 active:scale-[0.99]",
+-        big ? "p-4 sm:p-5" : "px-4 py-3.5",
+-      )}
+-    >
++    <button onClick={onClick} className={cn("clay-inset group w-full rounded-2xl px-4 py-3.5 text-left transition-transform duration-150 active:scale-[0.99] motion-reduce:transition-none", focusRing)}>
+       <div className="flex items-center gap-3">
++        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-extrabold" style={{ backgroundColor: `${color}22`, color }} aria-hidden>
++          {index}
++        </span>
+         <div className="min-w-0 flex-1">
+-          <p className={cn("font-bold leading-snug", big ? "font-display text-lg" : "text-sm", muted ? "text-foreground/60" : "text-foreground")}>
+-            {title}
++          <p className={cn("text-[15px] font-bold leading-snug", muted ? "text-foreground/70" : "text-foreground")}>{title}</p>
++          <p className="mt-0.5 text-[13px] text-foreground/70">
++            {plural(n.count, "question")}
++            {extra}
++            {n.attempted > 0 ? ` · ${n.correct} correct of ${n.attempted} tried` : ""}
+           </p>
+-          <p className="mt-0.5 text-xs text-foreground/50">{meta}</p>
+         </div>
+-        <span className="shrink-0 text-xs font-bold text-foreground/60">{pct}%</span>
+-        <ChevronRight className="h-4 w-4 shrink-0 text-foreground/30" aria-hidden />
++        <span className={cn("hidden shrink-0 rounded-full px-2.5 py-1 text-xs font-bold sm:inline", st.cls)}>{st.label}</span>
++        <span className="w-9 shrink-0 text-right text-sm font-extrabold text-foreground/80">{pct}%</span>
++        <ChevronRight className="h-4 w-4 shrink-0 text-foreground/40 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
+       </div>
+-      <div
+-        className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-foreground/10"
+-        role="progressbar"
+-        aria-valuenow={pct}
+-        aria-valuemin={0}
+-        aria-valuemax={100}
+-        aria-label={`${correct} of ${count} solved`}
+-      >
+-        <div
+-          className="h-full rounded-full bg-emerald-500 transition-[width] duration-700 ease-out motion-reduce:transition-none"
+-          style={{ width: `${correct > 0 ? Math.max(3, pct) : 0}%` }}
+-        />
++      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${n.correct} of ${n.count} solved`}>
++        <div className="h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none" style={{ width: `${n.correct > 0 ? Math.max(3, pct) : 0}%`, backgroundColor: color }} />
+       </div>
+-      {attempted > 0 && (
+-        <p className="mt-1.5 text-[11px] text-foreground/40">
+-          {attempted} tried · {correct} correct
+-        </p>
+-      )}
+     </button>
+   );
+ }
+ 
++function Crumbs({ crumbs, onNavigate }: { crumbs: { label: string; nav: PyqNav }[]; onNavigate: (n: PyqNav) => void }) {
++  return (
++    <nav aria-label="Breadcrumb" className="-mx-1 mb-4 flex items-center gap-1 overflow-x-auto px-1 pb-1 text-[13px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++      {crumbs.map((c, i) => {
++        const last = i === crumbs.length - 1;
++        return (
++          <span key={`${i}-${c.label}`} className="inline-flex shrink-0 items-center gap-1">
++            {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-foreground/40" aria-hidden />}
++            <button
++              onClick={() => !last && onNavigate(c.nav)}
++              disabled={last}
++              className={cn("max-w-[12rem] truncate rounded-full px-3 py-1.5 font-semibold", focusRing, last ? "bg-foreground/10 text-foreground" : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground")}
++            >
++              {c.label}
++            </button>
++          </span>
++        );
++      })}
++    </nav>
++  );
++}
++
+ function NotFound({ onBack, label }: { onBack: () => void; label: string }) {
+   return (
+     <div className="clay mx-auto max-w-md p-8 text-center">
+diff --git a/src/routes/pyq.tsx b/src/routes/pyq.tsx
+index 846d5b1..84d3afd 100644
+--- a/src/routes/pyq.tsx
++++ b/src/routes/pyq.tsx
+@@ -180,7 +180,7 @@ function PyqPage() {
+                   setTree(null);
+                   navigate({ search: { exam: k } });
+                 }}
+-                className={cn("clay-chip px-4 py-1.5 text-xs font-bold", (tree?.exam ?? search.exam) === k && "ring-2 ring-[var(--sky-deep)]")}
++                className={cn("inline-flex min-h-10 items-center rounded-full px-5 text-[13px] font-bold transition-colors motion-reduce:transition-none", (tree?.exam ?? search.exam) === k ? "bg-foreground text-background shadow-sm" : "bg-foreground/[0.07] text-foreground/75 hover:bg-foreground/10")}
+               >
+                 {EXAM_LABELS[k]}
+               </button>
+@@ -223,11 +223,11 @@ function PyqPage() {
+             }
+           />
+         ) : tree === null ? (
+-          <div className="space-y-3" aria-live="polite">
+-            <div className="h-8 w-48 animate-pulse rounded-full bg-foreground/10" />
++          <div className="space-y-4" aria-live="polite" aria-busy="true">
++            <div className="h-44 animate-pulse rounded-3xl bg-foreground/10" />
+             <div className="grid gap-3 sm:grid-cols-2">
+               {Array.from({ length: 4 }).map((_, i) => (
+-                <div key={i} className="clay-inset h-24 animate-pulse rounded-2xl bg-foreground/5" />
++                <div key={i} className="h-36 animate-pulse rounded-3xl bg-foreground/5" />
+               ))}
+             </div>
+           </div>
+@@ -248,20 +248,28 @@ function PyqPage() {
+                 </div>
+               </div>
+             )}
++            <PyqBrowser
++              tree={tree}
++              subject={search.subject}
++              chapter={search.chapter}
++              onNavigate={go}
++              landingExtras={
++                !guest && !search.subject ? (
++                  <>
+             {!guest && !search.subject && (
+-              <div className="mb-4 grid grid-cols-2 gap-2.5">
+-                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+-                  <Timer className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
++              <div className="grid grid-cols-2 gap-3">
++                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-transform active:scale-[0.99]">
++                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><Timer className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
+                   <span className="min-w-0">
+                     <span className="block text-sm font-bold text-foreground">{quickMockName(tree.exam)}</span>
+-                    <span className="block truncate text-[11px] text-foreground/50">20 PYQs · 30 min</span>
++                    <span className="block truncate text-xs text-foreground/70">20 PYQs · 30 min</span>
+                   </span>
+                 </Link>
+-                <Link to="/notebook" className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
+-                  <BookMarked className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
++                <Link to="/notebook" className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-transform active:scale-[0.99]">
++                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><BookMarked className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
+                   <span className="min-w-0">
+                     <span className="block text-sm font-bold text-foreground">My notebook</span>
+-                    <span className="block truncate text-[11px] text-foreground/50">Revise · mistakes · bookmarks</span>
++                    <span className="block truncate text-xs text-foreground/70">Revise · mistakes · bookmarks</span>
+                   </span>
+                 </Link>
+               </div>
+@@ -273,14 +281,14 @@ function PyqPage() {
+                 disabled={!ncertEnabled}
+                 aria-disabled={!ncertEnabled}
+                 className={cn(
+-                  "clay-inset mb-4 flex w-full items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left transition-opacity",
++                  "clay-inset flex w-full items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left transition-opacity",
+                   !ncertEnabled && "cursor-default opacity-80",
+                 )}
+               >
+-                <BookOpen className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
++                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><BookOpen className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
+                 <span className="min-w-0 flex-1">
+                   <span className="block text-sm font-bold text-foreground">NCERT Line by Line</span>
+-                  <span className="block truncate text-[11px] text-foreground/50">Topic-by-topic questions, straight from NCERT</span>
++                  <span className="block truncate text-xs text-foreground/70">Topic-by-topic questions, straight from NCERT</span>
+                 </span>
+                 <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide", ncertEnabled ? "bg-emerald-100 text-emerald-800" : "bg-foreground/10 text-foreground/50")}>
+                   {ncertEnabled ? (ncertAccess?.mode === "beta" ? "Beta access" : "Live") : "Coming soon"}
+@@ -301,7 +309,7 @@ function PyqPage() {
+                 <Link
+                   to="/pyq-drill"
+                   search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }}
+-                  className={cn("mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
++                  className={cn("flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
+                 >
+                   <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", dark ? "bg-white/10" : "bg-[var(--sky-soft)]")}>
+                     <Sparkles className={cn("h-5 w-5", dark ? "text-sky-300" : "text-[var(--sky-deep)]")} aria-hidden />
+@@ -316,7 +324,10 @@ function PyqPage() {
+                 </Link>
+               );
+             })()}
+-            <PyqBrowser tree={tree} subject={search.subject} chapter={search.chapter} onNavigate={go} />
++                  </>
++                ) : undefined
++              }
++            />
+           </>
+         )}
+       </main>

@@ -180,7 +180,7 @@ function PyqPage() {
                   setTree(null);
                   navigate({ search: { exam: k } });
                 }}
-                className={cn("clay-chip px-4 py-1.5 text-xs font-bold", (tree?.exam ?? search.exam) === k && "ring-2 ring-[var(--sky-deep)]")}
+                className={cn("inline-flex min-h-10 items-center rounded-full px-5 text-[13px] font-bold transition-colors motion-reduce:transition-none", (tree?.exam ?? search.exam) === k ? "bg-foreground text-background shadow-sm" : "bg-foreground/[0.07] text-foreground/75 hover:bg-foreground/10")}
               >
                 {EXAM_LABELS[k]}
               </button>
@@ -223,11 +223,11 @@ function PyqPage() {
             }
           />
         ) : tree === null ? (
-          <div className="space-y-3" aria-live="polite">
-            <div className="h-8 w-48 animate-pulse rounded-full bg-foreground/10" />
+          <div className="space-y-4" aria-live="polite" aria-busy="true">
+            <div className="h-44 animate-pulse rounded-3xl bg-foreground/10" />
             <div className="grid gap-3 sm:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="clay-inset h-24 animate-pulse rounded-2xl bg-foreground/5" />
+                <div key={i} className="h-36 animate-pulse rounded-3xl bg-foreground/5" />
               ))}
             </div>
           </div>
@@ -248,20 +248,28 @@ function PyqPage() {
                 </div>
               </div>
             )}
+            <PyqBrowser
+              tree={tree}
+              subject={search.subject}
+              chapter={search.chapter}
+              onNavigate={go}
+              landingExtras={
+                !guest && !search.subject ? (
+                  <>
             {!guest && !search.subject && (
-              <div className="mb-4 grid grid-cols-2 gap-2.5">
-                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
-                  <Timer className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+              <div className="grid grid-cols-2 gap-3">
+                <Link to="/pyq-drill" search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }} onClick={() => trackQuickMockClick("pyq_browse")} className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-transform active:scale-[0.99]">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><Timer className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
                   <span className="min-w-0">
                     <span className="block text-sm font-bold text-foreground">{quickMockName(tree.exam)}</span>
-                    <span className="block truncate text-[11px] text-foreground/50">20 PYQs · 30 min</span>
+                    <span className="block truncate text-xs text-foreground/70">20 PYQs · 30 min</span>
                   </span>
                 </Link>
-                <Link to="/notebook" className="clay-inset flex items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left">
-                  <BookMarked className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                <Link to="/notebook" className="clay-inset flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-transform active:scale-[0.99]">
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><BookMarked className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
                   <span className="min-w-0">
                     <span className="block text-sm font-bold text-foreground">My notebook</span>
-                    <span className="block truncate text-[11px] text-foreground/50">Revise · mistakes · bookmarks</span>
+                    <span className="block truncate text-xs text-foreground/70">Revise · mistakes · bookmarks</span>
                   </span>
                 </Link>
               </div>
@@ -273,14 +281,14 @@ function PyqPage() {
                 disabled={!ncertEnabled}
                 aria-disabled={!ncertEnabled}
                 className={cn(
-                  "clay-inset mb-4 flex w-full items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left transition-opacity",
+                  "clay-inset flex w-full items-center gap-2.5 rounded-2xl px-3.5 py-3 text-left transition-opacity",
                   !ncertEnabled && "cursor-default opacity-80",
                 )}
               >
-                <BookOpen className="h-4 w-4 shrink-0 text-[var(--sky-deep)]" aria-hidden />
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sky-soft)]"><BookOpen className="h-[18px] w-[18px] text-[var(--sky-deep)]" aria-hidden /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-bold text-foreground">NCERT Line by Line</span>
-                  <span className="block truncate text-[11px] text-foreground/50">Topic-by-topic questions, straight from NCERT</span>
+                  <span className="block truncate text-xs text-foreground/70">Topic-by-topic questions, straight from NCERT</span>
                 </span>
                 <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide", ncertEnabled ? "bg-emerald-100 text-emerald-800" : "bg-foreground/10 text-foreground/50")}>
                   {ncertEnabled ? (ncertAccess?.mode === "beta" ? "Beta access" : "Live") : "Coming soon"}
@@ -301,7 +309,7 @@ function PyqPage() {
                 <Link
                   to="/pyq-drill"
                   search={{ exam: tree.exam ?? undefined, src: "pyq_browse" }}
-                  className={cn("mb-4 flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
+                  className={cn("flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors", dark ? "ink-section hover:bg-[#1b2438]" : "clay hover:border-[var(--sky-deep)]/50")}
                 >
                   <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", dark ? "bg-white/10" : "bg-[var(--sky-soft)]")}>
                     <Sparkles className={cn("h-5 w-5", dark ? "text-sky-300" : "text-[var(--sky-deep)]")} aria-hidden />
@@ -316,7 +324,10 @@ function PyqPage() {
                 </Link>
               );
             })()}
-            <PyqBrowser tree={tree} subject={search.subject} chapter={search.chapter} onNavigate={go} />
+                  </>
+                ) : undefined
+              }
+            />
           </>
         )}
       </main>
