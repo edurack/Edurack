@@ -270,7 +270,7 @@ function UpNextRow({ info, onBrowse, divider }: { info: UpNextInfo; onBrowse?: (
  * single row with the join link. (The full-size TodayView/TodayCard above is unchanged and still used elsewhere.)
  */
 export function MentorshipCompactCard({ info, onBrowse, className }: { info: UpNextInfo; onBrowse?: () => void; className?: string }) {
-  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-2xl border border-border bg-card px-4 py-3", className);
+  const shell = cn("flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-3xl border border-foreground/15 bg-card px-5 py-4 shadow-sm", className);
   const icon = (
     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Users className="h-5 w-5" aria-hidden /></span>
   );
