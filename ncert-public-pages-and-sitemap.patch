@@ -1,0 +1,537 @@
+diff --git a/src/lib/ncert-public-server.ts b/src/lib/ncert-public-server.ts
+new file mode 100644
+index 0000000..847841d
+--- /dev/null
++++ b/src/lib/ncert-public-server.ts
+@@ -0,0 +1,127 @@
++// SERVER-ONLY helpers for the public NCERT question pages (/ncert/$id) and their sitemap.
++// Lives in lib/ because this repo's rule is that server-function files never import from each other.
++//
++// The one rule: the page and the sitemap may only ever see a question that
++//   • belongs to the NCERT Line-by-Line bank, AND
++//   • is read while the section is LIVE (not "coming soon" / beta).
++// While it isn't live every function here answers "nothing": the page 404s and the sitemap is empty, so beta content is
++// never public and never listed. And only NCERT_QUESTION_PROJECTION fields are read, so no answer or solution leaves here.
++import { NCERT_QUESTION_PROJECTION, buildNcertQuestions, getNcertVisibility, ncertMatch, type Db } from "@/lib/ncert-line-server";
++import { isNcertIndexable, ncertQuestionParam, ncertSnippet, type NcertPublicPage, type NcertRelated } from "@/lib/ncert-public";
++
++const RELATED_COUNT = 6;
++const ADJACENT_SCAN = 6;
++/** A sitemap file holds at most 50,000 urls; stay well under it (same size as the PYQ chunks). */
++export const SITEMAP_NCERT_PER_FILE = 10_000;
++
++const PAGE_PROJECTION = { ...NCERT_QUESTION_PROJECTION, chapterKey: 1, topicKey: 1 } as unknown as Record<string, 0 | 1>;
++type Doc = Record<string, unknown> & { _id: unknown };
++
++export async function isNcertLive(db: Db): Promise<boolean> {
++  return (await getNcertVisibility(db)).mode === "live";
++}
++
++/** One NCERT question by id, only while the section is live. Never includes the answer or solution. */
++export async function loadPublicNcertDoc(db: Db, id: string): Promise<Doc | null> {
++  if (typeof id !== "string" || !/^[a-f0-9]{24}$/i.test(id)) return null;
++  if (!(await isNcertLive(db))) return null;
++  const { ObjectId } = await import("mongodb");
++  const q = await db.collection("questions").findOne({ _id: new ObjectId(id), ...ncertMatch } as never, { projection: PAGE_PROJECTION });
++  return (q as Doc | null) ?? null;
++}
++
++const scopeOf = (doc: Doc, withTopic: boolean) => ({
++  ...ncertMatch,
++  subject: doc.subject,
++  ...(doc.chapterKey ? { chapterKey: doc.chapterKey } : { chapter: doc.chapter }),
++  ...(withTopic && doc.topicKey ? { topicKey: doc.topicKey } : {}),
++});
++
++/** "Next N questions in the same topic/chapter" by _id, wrapping around, so every question is linked from another one. */
++async function neighbours(db: Db, match: Record<string, unknown>, doc: Doc, limit: number, skip: Set<string>) {
++  const col = db.collection("questions");
++  const after = await col.find({ ...match, _id: { $gt: doc._id } } as never, { projection: PAGE_PROJECTION }).sort({ _id: 1 }).limit(limit + skip.size).toArray();
++  let out = after.filter((d) => !skip.has(String(d._id)));
++  if (out.length < limit) {
++    const before = await col.find({ ...match, _id: { $lt: doc._id } } as never, { projection: PAGE_PROJECTION }).sort({ _id: 1 }).limit(limit - out.length + skip.size).toArray();
++    out = [...out, ...before.filter((d) => !skip.has(String(d._id)))];
++  }
++  return out.slice(0, limit);
++}
++
++async function toRelated(db: Db, docs: Record<string, unknown>[]): Promise<NcertRelated[]> {
++  const built = await buildNcertQuestions(db, "", docs);
++  return built.map((q) => ({ param: ncertQuestionParam(q), snippet: ncertSnippet(q.body), chapter: q.chapter, topic: q.topic, difficulty: q.difficulty }));
++}
++
++export async function buildPublicNcertPage(db: Db, doc: Doc): Promise<NcertPublicPage> {
++  const [built] = await buildNcertQuestions(db, "", [doc]);
++  const { status: _status, ...question } = built;
++
++  // Related: same topic first, then the rest of the chapter.
++  const skip = new Set<string>([String(doc._id)]);
++  let picked = doc.topicKey ? await neighbours(db, scopeOf(doc, true), doc, RELATED_COUNT, skip) : [];
++  if (picked.length < RELATED_COUNT) {
++    for (const p of picked) skip.add(String(p._id));
++    picked = [...picked, ...(await neighbours(db, scopeOf(doc, false), doc, RELATED_COUNT - picked.length, skip))];
++  }
++
++  // Previous / next in the chapter by _id (no wrap-around), skipping thin pages that stay out of search.
++  const col = db.collection("questions");
++  const chapterScope = scopeOf(doc, false);
++  const [after, before] = await Promise.all([
++    col.find({ ...chapterScope, _id: { $gt: doc._id } } as never, { projection: PAGE_PROJECTION }).sort({ _id: 1 }).limit(ADJACENT_SCAN).toArray(),
++    col.find({ ...chapterScope, _id: { $lt: doc._id } } as never, { projection: PAGE_PROJECTION }).sort({ _id: -1 }).limit(ADJACENT_SCAN).toArray(),
++  ]);
++  const pick = (rows: Record<string, unknown>[]) => rows.find((d) => isNcertIndexable({ body: String(d.body ?? "") }));
++  const next = pick(after);
++  const prev = pick(before);
++
++  const [related, adj] = await Promise.all([toRelated(db, picked), toRelated(db, [next, prev].filter((d): d is Record<string, unknown> => Boolean(d)))]);
++  const byParam = (d: Record<string, unknown> | undefined) => (d ? adj.find((a) => a.param.endsWith(String(d._id))) ?? null : null);
++
++  return {
++    question,
++    canonical: ncertQuestionParam(question),
++    indexable: isNcertIndexable(question),
++    related,
++    adjacent: { prev: byParam(prev), next: byParam(next) },
++  };
++}
++
++// ─── Sitemap ───────────────────────────────────────────────────────────────
++const isoDate = (v: unknown): string | null => {
++  if (v instanceof Date) return v.toISOString().slice(0, 10);
++  if (typeof v === "string" && v.length >= 10) return v.slice(0, 10);
++  return null;
++};
++
++/** How many NCERT sitemap files exist. 0 while the section isn't live (so the index doesn't list one at all). */
++export async function countNcertSitemapPages(db: Db): Promise<number> {
++  if (!(await isNcertLive(db))) return 0;
++  const n = await db.collection("questions").countDocuments(ncertMatch as never);
++  return Math.max(1, Math.ceil(n / SITEMAP_NCERT_PER_FILE));
++}
++
++/** Indexable NCERT questions for one sitemap file (1-based page) as { path, lastmod }. Empty while not live. */
++export async function listNcertSitemapQuestions(db: Db, page = 1): Promise<{ path: string; lastmod: string | null }[]> {
++  if (!(await isNcertLive(db))) return [];
++  const rows = await db
++    .collection("questions")
++    .find(ncertMatch as never, { projection: { body: 1, subject: 1, chapter: 1, type: 1, updatedAt: 1, createdAt: 1 } })
++    .sort({ _id: 1 })
++    .skip((Math.max(1, page) - 1) * SITEMAP_NCERT_PER_FILE)
++    .limit(SITEMAP_NCERT_PER_FILE)
++    .toArray();
++
++  const out: { path: string; lastmod: string | null }[] = [];
++  for (const r of rows) {
++    const body = String(r.body ?? "");
++    if (!isNcertIndexable({ body })) continue;
++    out.push({
++      path: `/ncert/${ncertQuestionParam({ id: String(r._id), body, subject: String(r.subject ?? ""), chapter: String(r.chapter ?? "") })}`,
++      lastmod: isoDate(r.updatedAt ?? r.createdAt),
++    });
++  }
++  return out;
++}
+diff --git a/src/lib/ncert-public.ts b/src/lib/ncert-public.ts
+new file mode 100644
+index 0000000..abfae0c
+--- /dev/null
++++ b/src/lib/ncert-public.ts
+@@ -0,0 +1,86 @@
++// Public (indexable) NCERT Line-by-Line question pages: /ncert/<slug>-<id>
++//
++// Pure — no server imports — so the route, the server function and the sitemap all build the SAME url for a question.
++// Same idea as lib/pyq-public.ts: the slug is only for humans and search engines; the 24-char ObjectId at the end is what
++// we look the question up by, so an edited slug never breaks a link (the page 301s to the current one).
++//
++// These pages exist ONLY while the NCERT section is "live" (see ncert-public-server.ts). They show the question and its
++// options and nothing else: no answer, no solution.
++import { isIndexable, plainText, slugify, stemKind } from "@/lib/pyq-public";
++import { SITE_URL, truncate } from "@/lib/seo";
++import type { NcertQuestion } from "@/lib/ncert-line-types";
++
++export type NcertPublicQuestion = Omit<NcertQuestion, "status">;
++export type NcertRelated = { param: string; snippet: string; chapter: string; topic: string; difficulty: string };
++export type NcertPublicPage = {
++  question: NcertPublicQuestion;
++  /** The one canonical `$id` segment for this question. */
++  canonical: string;
++  /** false → the page is served but marked noindex (image-only / too little text). */
++  indexable: boolean;
++  related: NcertRelated[];
++  adjacent: { prev: NcertRelated | null; next: NcertRelated | null };
++};
++
++const whereOf = (q: { subject: string; chapter: string }) => q.chapter?.trim() || q.subject?.trim() || "";
++
++/** The `$id` segment of /ncert/$id, e.g. "a-particle-moves-along-the-x-axis-6710f0c2…". */
++export function ncertQuestionParam(q: { id: string; body: string; subject: string; chapter: string }): string {
++  const where = whereOf(q);
++  const text = plainText(q.body);
++  const kind = stemKind(text);
++  // Generic stems get "<kind> <chapter>" so hundreds of look-alike pages don't share a title.
++  const base = (kind ? slugify(`${kind} ${where}`) : slugify(text)) || slugify(`ncert ${where}`) || "ncert-question";
++  return `${base}-${q.id}`;
++}
++
++/** Pull the question id off the end of the url segment; null if it isn't there. */
++export function parseNcertParam(param: string): string | null {
++  const m = /([a-f0-9]{24})$/i.exec(param);
++  return m ? m[1].toLowerCase() : null;
++}
++
++/** <title> text (before the " · Edurack" suffix). */
++export function ncertQuestionTitle(q: { body: string; subject: string; chapter: string }): string {
++  const text = plainText(q.body);
++  const kind = stemKind(text);
++  return kind ? `${kind}: ${whereOf(q)} (NCERT ${q.subject})` : text;
++}
++
++export const ncertSnippet = (body: string, max = 140) => truncate(plainText(body), max);
++
++/** Is there enough readable text for Google? (SVG diagrams, images and LaTeX markup do not count.) */
++export const isNcertIndexable = (q: { body: string }) => isIndexable(plainText(q.body));
++
++/** Plain sentences that say where the question sits, so every page has facts of its own. */
++export function ncertContextLines(q: NcertPublicQuestion): string[] {
++  return [
++    `From the Edurack NCERT Line by Line bank: Class ${q.classLevel} ${q.subject}, chapter "${q.chapter}", topic "${q.topic}".`,
++    `Tagged ${q.difficulty.toLowerCase()} difficulty.`,
++    q.type === "mcq" ? "Multiple choice, one correct option." : "Numerical answer type.",
++  ];
++}
++
++/**
++ * schema.org Question. Only what a visitor can see is marked up: the stem and the options. The answer and solution are
++ * not in the page, so there is deliberately NO acceptedAnswer.
++ */
++export function ncertJsonLd(q: NcertPublicQuestion, url: string) {
++  const text = plainText(q.body);
++  const options = q.type === "mcq" && q.options ? (["A", "B", "C", "D"] as const).map((k) => plainText(q.options?.[k] ?? "")) : [];
++  const allOptions = options.length === 4 && options.every(Boolean);
++  return {
++    "@context": "https://schema.org",
++    "@type": "Question",
++    "@id": `${url}#question`,
++    url,
++    name: truncate(ncertQuestionTitle(q), 110),
++    text: truncate(text, 1000),
++    inLanguage: "en-IN",
++    eduQuestionType: q.type === "mcq" ? "Multiple choice" : "Numerical",
++    about: [{ "@type": "Thing", name: q.subject }, { "@type": "Thing", name: q.chapter }],
++    isPartOf: { "@type": "WebPage", "@id": url },
++    publisher: { "@id": `${SITE_URL}/#organization` },
++    ...(allOptions ? { suggestedAnswer: options.map((t) => ({ "@type": "Answer", text: truncate(t, 300) })) } : {}),
++  };
++}
+diff --git a/src/lib/pyq-public.ts b/src/lib/pyq-public.ts
+index 31c5519..8045161 100644
+--- a/src/lib/pyq-public.ts
++++ b/src/lib/pyq-public.ts
+@@ -34,6 +34,7 @@ function latexToText(src: string): string {
+ /** Question/option text → plain text for <title>, meta description and slugs: images and LaTeX markup removed. */
+ export function plainText(raw: string): string {
+   return raw
++    .replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, " ") // inline SVG diagrams
+     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // markdown images
+     .replace(/https?:\/\/\S+/g, " ")
+     .replace(/\$\$([^$]+)\$\$|\$([^$]+)\$/g, (_m, display?: string, inline?: string) => ` ${latexToText(display ?? inline ?? "")} `)
+diff --git a/src/routes/ncert.$id.tsx b/src/routes/ncert.$id.tsx
+new file mode 100644
+index 0000000..af93d7d
+--- /dev/null
++++ b/src/routes/ncert.$id.tsx
+@@ -0,0 +1,196 @@
++// src/routes/ncert.$id.tsx  →  /ncert/<slug>-<questionId>
++//
++// A public, server-rendered page for one NCERT Line-by-Line question, so the question text is in the HTML Google reads.
++// It shows the question and its options ONLY: the answer and the step-by-step solution stay inside the practice screen
++// (login needed), the same way the PYQ pages keep their solution out of the HTML.
++// The page exists only while NCERT is live; before that it is a 404 and is not in the sitemap.
++import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
++import { AppHeader } from "@/components/app-header";
++import { useAuth } from "@/lib/auth-context";
++import { SmartContent } from "@/lib/smart-content";
++import { SITE_URL, breadcrumbJsonLd, pageHead, truncate } from "@/lib/seo";
++import { plainText } from "@/lib/pyq-public";
++import { ncertContextLines, ncertJsonLd, ncertQuestionTitle, parseNcertParam, type NcertPublicPage } from "@/lib/ncert-public";
++import { getPublicNcertQuestion } from "@/server-functions/ncert-public";
++
++const OPTIONS = ["A", "B", "C", "D"] as const;
++
++export const Route = createFileRoute("/ncert/$id")({
++  loader: async ({ params }) => {
++    const id = parseNcertParam(params.id);
++    if (!id) throw notFound();
++    const page = await getPublicNcertQuestion({ data: { id } });
++    if (!page) throw notFound();
++    // Wrong or outdated slug → permanent redirect to the one canonical url.
++    if (params.id !== page.canonical) {
++      throw redirect({ to: "/ncert/$id", params: { id: page.canonical }, statusCode: 301 });
++    }
++    return page;
++  },
++  head: ({ loaderData }) => {
++    const page = loaderData as NcertPublicPage | undefined;
++    if (!page) return { meta: [{ title: "Question not found · Edurack" }, { name: "robots", content: "noindex" }] };
++
++    const { question: q, canonical, indexable } = page;
++    const path = `/ncert/${canonical}`;
++    const text = plainText(q.body);
++    const where = `NCERT Class ${q.classLevel} ${q.subject}, ${q.chapter}`;
++
++    // Too little readable text (image-only question etc.): keep it out of search, but let Google follow its links.
++    if (!indexable) {
++      return {
++        meta: [{ title: `${truncate(text || `${q.subject} NCERT question`, 52)} · Edurack` }, { name: "robots", content: "noindex, follow" }],
++        links: [{ rel: "canonical", href: `${SITE_URL}${path}` }],
++      };
++    }
++    return pageHead({
++      title: ncertQuestionTitle(q),
++      description: `${truncate(text, 100)} — ${where}. NCERT Line by Line practice on Edurack.`,
++      path,
++      type: "article",
++      jsonLd: [
++        breadcrumbJsonLd([
++          { name: "Home", path: "/" },
++          { name: "PYQ practice", path: "/pyq" },
++          { name: truncate(text, 60), path },
++        ]),
++        ncertJsonLd(q, `${SITE_URL}${path}`),
++      ],
++    });
++  },
++  notFoundComponent: NotFoundView,
++  component: NcertQuestionPage,
++});
++
++function NotFoundView() {
++  return (
++    <div className="mx-auto max-w-2xl px-4 py-24 text-center">
++      <h1 className="font-display text-2xl font-bold text-foreground">Question not found</h1>
++      <p className="mt-2 text-sm text-foreground/70">This question doesn't exist or is not available yet.</p>
++      <Link to="/pyq" className="clay-btn mt-6 inline-block rounded-full px-5 py-2.5 text-sm font-bold text-white">
++        Browse PYQs
++      </Link>
++    </div>
++  );
++}
++
++function NcertQuestionPage() {
++  const page = Route.useLoaderData() as NcertPublicPage;
++  const { question: q, canonical, related, adjacent } = page;
++  const { user, loading } = useAuth();
++  const path = `/ncert/${canonical}`;
++
++  return (
++    <div className="relative min-h-screen overflow-hidden">
++      <AppHeader user={user} />
++      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
++        <nav aria-label="Breadcrumb" className="mb-3 text-[13px] font-semibold text-foreground/70">
++          <Link to="/pyq" className="hover:text-foreground">PYQ practice</Link>
++          <span aria-hidden> / </span>
++          <span>NCERT Line by Line</span>
++          <span aria-hidden> / </span>
++          <span>{q.subject}</span>
++          <span aria-hidden> / </span>
++          <span>{q.chapter}</span>
++        </nav>
++
++        <h1 className="font-display text-xl font-bold leading-snug text-foreground sm:text-2xl">
++          {q.chapter}: NCERT {q.subject} question
++        </h1>
++
++        <article className="clay mt-4 p-4 sm:p-6">
++          <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-foreground/70">
++            <span>Class {q.classLevel}</span>
++            <span>· {q.difficulty}</span>
++            <span>· {q.topic}</span>
++          </div>
++
++          <SmartContent value={q.body} eager className="mt-3 text-[15px] leading-relaxed text-foreground" />
++
++          {q.type === "mcq" && q.options ? (
++            <ol className="mt-4 space-y-2" aria-label="Options">
++              {OPTIONS.map((opt) => (
++                <li key={opt} className="flex items-start gap-3 rounded-2xl bg-foreground/[0.04] px-3 py-3 text-sm">
++                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-foreground/10 text-xs font-bold text-foreground/70">{opt}</span>
++                  <div className="min-w-0 flex-1">
++                    <SmartContent value={q.options?.[opt] ?? ""} className="text-foreground" />
++                  </div>
++                </li>
++              ))}
++            </ol>
++          ) : (
++            <p className="mt-4 text-[13px] font-semibold text-foreground/70">This is a numerical-answer question.</p>
++          )}
++
++          {/* The answer and solution live in the practice screen. This is where a search visit becomes a student. */}
++          <div className="clay-inset mt-5 rounded-2xl p-4 text-center sm:p-5">
++            <p className="font-display text-sm font-bold text-foreground">Check your answer and see the solution</p>
++            <p className="mt-1 text-[13px] text-foreground/70">Practise this chapter question by question in NCERT Line by Line.</p>
++            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
++              {loading ? null : user ? (
++                <Link to="/pyq" search={{ ncert: true }} className="clay-btn inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold text-white">
++                  Practise NCERT Line by Line
++                </Link>
++              ) : (
++                <>
++                  <Link to="/auth" search={{ tab: "signup", redirect: path }} className="clay-btn inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold text-white">
++                    Sign up free
++                  </Link>
++                  <Link to="/auth" search={{ tab: "signin", redirect: path }} className="clay-chip inline-flex min-h-11 items-center rounded-full px-5 text-sm font-bold text-foreground">
++                    Log in
++                  </Link>
++                </>
++              )}
++            </div>
++          </div>
++        </article>
++
++        <section aria-labelledby="about-question" className="clay mt-6 p-4 sm:p-5">
++          <h2 id="about-question" className="font-display text-base font-bold text-foreground">About this question</h2>
++          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-foreground/80">
++            {ncertContextLines(q).map((line) => (
++              <li key={line}>{line}</li>
++            ))}
++          </ul>
++        </section>
++
++        {(adjacent.prev || adjacent.next) && (
++          <nav aria-label="Previous and next question" className="mt-6 grid gap-2 sm:grid-cols-2">
++            {adjacent.prev ? (
++              <Link to="/ncert/$id" params={{ id: adjacent.prev.param }} className="clay block p-3.5 transition-colors hover:bg-foreground/[0.03]">
++                <p className="text-xs font-bold uppercase tracking-wide text-foreground/70">← Previous question</p>
++                <p className="mt-1 text-sm leading-snug text-foreground">{adjacent.prev.snippet || `${adjacent.prev.chapter} question`}</p>
++              </Link>
++            ) : (
++              <span />
++            )}
++            {adjacent.next && (
++              <Link to="/ncert/$id" params={{ id: adjacent.next.param }} className="clay block p-3.5 text-right transition-colors hover:bg-foreground/[0.03]">
++                <p className="text-xs font-bold uppercase tracking-wide text-foreground/70">Next question →</p>
++                <p className="mt-1 text-sm leading-snug text-foreground">{adjacent.next.snippet || `${adjacent.next.chapter} question`}</p>
++              </Link>
++            )}
++          </nav>
++        )}
++
++        {related.length > 0 && (
++          <section aria-labelledby="related" className="mt-8">
++            <h2 id="related" className="font-display text-base font-bold text-foreground">Related questions</h2>
++            <ul className="mt-3 space-y-2">
++              {related.map((r) => (
++                <li key={r.param}>
++                  <Link to="/ncert/$id" params={{ id: r.param }} className="clay block p-3.5 transition-colors hover:bg-foreground/[0.03]">
++                    <p className="text-sm leading-snug text-foreground">{r.snippet || `${r.chapter} question`}</p>
++                    <p className="mt-1.5 text-xs font-semibold text-foreground/70">
++                      {r.topic} · {r.difficulty}
++                    </p>
++                  </Link>
++                </li>
++              ))}
++            </ul>
++          </section>
++        )}
++      </main>
++    </div>
++  );
++}
+diff --git a/src/routes/sitemap-ncert[.]xml.ts b/src/routes/sitemap-ncert[.]xml.ts
+new file mode 100644
+index 0000000..cc144a3
+--- /dev/null
++++ b/src/routes/sitemap-ncert[.]xml.ts
+@@ -0,0 +1,30 @@
++// src/routes/sitemap-ncert[.]xml.ts — GET /sitemap-ncert.xml?page=N
++// One chunk of the indexable public NCERT Line-by-Line question pages (/ncert/...).
++// The number of chunks is decided by the index at /sitemap.xml. While NCERT is not live there are no public pages,
++// so this answers 404 (and the index does not list it).
++import { createFileRoute } from "@tanstack/react-router";
++import { getDb } from "@/lib/mongo";
++import { SITE_URL } from "@/lib/seo";
++import { isNcertLive, listNcertSitemapQuestions } from "@/lib/ncert-public-server";
++import { questionEntry, sitemapUnavailable, urlsetXml, xmlResponse } from "@/lib/sitemap-core";
++
++export const Route = createFileRoute("/sitemap-ncert.xml")({
++  server: {
++    handlers: {
++      GET: async ({ request }: { request: Request }) => {
++        const raw = new URL(request.url).searchParams.get("page") ?? "1";
++        const page = Number(raw);
++        if (!Number.isInteger(page) || page < 1 || page > 1000) return new Response("Not found", { status: 404 });
++
++        try {
++          const db = await getDb();
++          if (!(await isNcertLive(db))) return new Response("Not found", { status: 404 });
++          const rows = await listNcertSitemapQuestions(db, page);
++          return xmlResponse(urlsetXml(rows.map((r) => questionEntry(`${SITE_URL}${r.path}`, r.lastmod))));
++        } catch (err) {
++          return sitemapUnavailable(`ncert page ${page}`, err);
++        }
++      },
++    },
++  },
++});
+diff --git a/src/routes/sitemap[.]xml.ts b/src/routes/sitemap[.]xml.ts
+index ad72d57..17a18f9 100644
+--- a/src/routes/sitemap[.]xml.ts
++++ b/src/routes/sitemap[.]xml.ts
+@@ -7,6 +7,7 @@ import { createFileRoute } from "@tanstack/react-router";
+ import { getDb } from "@/lib/mongo";
+ import { SITE_URL } from "@/lib/seo";
+ import { countSitemapQuestionPages } from "@/lib/pyq-public-server";
++import { countNcertSitemapPages } from "@/lib/ncert-public-server";
+ import { sitemapIndexXml, xmlResponse, SITEMAP_CACHE } from "@/lib/sitemap-core";
+ 
+ export const Route = createFileRoute("/sitemap.xml")({
+@@ -14,9 +15,17 @@ export const Route = createFileRoute("/sitemap.xml")({
+     handlers: {
+       GET: async () => {
+         let questionPages = 1;
++        let ncertPages = 0; // 0 → NCERT isn't live yet, so no NCERT sitemap is listed
+         let degraded = false;
+         try {
+-          questionPages = await countSitemapQuestionPages(await getDb());
++          const db = await getDb();
++          questionPages = await countSitemapQuestionPages(db);
++          try {
++            ncertPages = await countNcertSitemapPages(db);
++          } catch (err) {
++            // A problem on the NCERT side must never take the whole index down.
++            console.error("[sitemap] ncert page count failed:", err);
++          }
+         } catch (err) {
+           // Still list page 1 so the index is valid; keep the short cache so the real count returns soon.
+           console.error("[sitemap] question page count failed:", err);
+@@ -30,6 +39,7 @@ export const Route = createFileRoute("/sitemap.xml")({
+           `${SITE_URL}/sitemap-blog.xml`,
+           `${SITE_URL}/sitemap-mentors.xml`,
+           ...Array.from({ length: questionPages }, (_, i) => `${SITE_URL}/sitemap-questions.xml?page=${i + 1}`),
++          ...Array.from({ length: ncertPages }, (_, i) => `${SITE_URL}/sitemap-ncert.xml?page=${i + 1}`),
+         ];
+         return xmlResponse(sitemapIndexXml(locs), degraded ? "public, s-maxage=60" : SITEMAP_CACHE);
+       },
+diff --git a/src/server-functions/ncert-public.ts b/src/server-functions/ncert-public.ts
+new file mode 100644
+index 0000000..29cefef
+--- /dev/null
++++ b/src/server-functions/ncert-public.ts
+@@ -0,0 +1,17 @@
++// Public NCERT question pages (/ncert/$id) for visitors arriving from Google.
++// Returns the question text and options plus a few neighbours: same projection as the practice list, so no answer and
++// no solution ever leave the server here. Only answers while NCERT is live (see lib/ncert-public-server.ts).
++import { createServerFn } from "@tanstack/react-start";
++import { getDb } from "@/lib/mongo";
++import { ensureNcertIndexes } from "@/lib/ncert-line-server";
++import { buildPublicNcertPage, loadPublicNcertDoc } from "@/lib/ncert-public-server";
++import type { NcertPublicPage } from "@/lib/ncert-public";
++
++export const getPublicNcertQuestion = createServerFn({ method: "GET" })
++  .validator((data: { id: string }) => data)
++  .handler(async ({ data }): Promise<NcertPublicPage | null> => {
++    const db = await getDb();
++    await ensureNcertIndexes(db);
++    const doc = await loadPublicNcertDoc(db, String(data.id));
++    return doc ? buildPublicNcertPage(db, doc) : null;
++  });

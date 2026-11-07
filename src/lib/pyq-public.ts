@@ -34,6 +34,7 @@ function latexToText(src: string): string {
 /** Question/option text → plain text for <title>, meta description and slugs: images and LaTeX markup removed. */
 export function plainText(raw: string): string {
   return raw
+    .replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, " ") // inline SVG diagrams
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // markdown images
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/\$\$([^$]+)\$\$|\$([^$]+)\$/g, (_m, display?: string, inline?: string) => ` ${latexToText(display ?? inline ?? "")} `)
