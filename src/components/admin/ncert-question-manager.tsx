@@ -9,7 +9,7 @@ type AdminUser = { getIdToken: () => Promise<string> };
 type Difficulty = "Easy" | "Medium" | "Hard";
 const OPTION_KEYS = ["A", "B", "C", "D"] as const;
 const field = "clay-inset w-full rounded-xl px-3 py-2 text-sm";
-const plain = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+const plain = (html: string) => html.replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, " [diagram] ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 const DIFFICULTY_STYLE: Record<Difficulty, string> = { Easy: "bg-emerald-500/15 text-emerald-700", Medium: "bg-amber-500/15 text-amber-700", Hard: "bg-rose-500/15 text-rose-700" };
 
 export function NcertQuestionManager({

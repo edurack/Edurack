@@ -2,6 +2,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 import { PH_OPEN, PH_CLOSE, formatWithChunks } from "@/lib/inline-format";
+import { SVG_BLOCK, sanitizeSvg } from "@/lib/svg-safe";
 
 const MATH_PATTERN = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
 
@@ -52,9 +53,9 @@ function isBareImageUrl(value: string): boolean {
   return /^https?:\/\//i.test(trimmed) && IMAGE_EXTENSION_PATTERN.test(trimmed);
 }
 
-type Segment = { type: "text"; html: string } | { type: "image"; url: string };
+type Segment = { type: "text"; html: string } | { type: "image"; url: string } | { type: "svg"; html: string };
 
-function splitIntoSegments(value: string): Segment[] {
+function splitTextAndImages(value: string): Segment[] {
   const segments: Segment[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -67,6 +68,26 @@ function splitIntoSegments(value: string): Segment[] {
   }
   const rest = value.slice(lastIndex);
   if (rest.trim()) segments.push({ type: "text", html: renderMixedLatexHtml(rest) });
+  return segments;
+}
+
+// Inline <svg>…</svg> diagrams typed or uploaded into the question text become real (sanitised) drawings instead of
+// showing up as raw markup. Everything around them goes through the usual text / LaTeX / image handling.
+function splitIntoSegments(value: string): Segment[] {
+  if (!/<svg\b/i.test(value)) return splitTextAndImages(value);
+  const segments: Segment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  SVG_BLOCK.lastIndex = 0;
+  while ((match = SVG_BLOCK.exec(value)) !== null) {
+    const before = value.slice(lastIndex, match.index);
+    if (before.trim()) segments.push(...splitTextAndImages(before));
+    const svg = sanitizeSvg(match[0]);
+    if (svg) segments.push({ type: "svg", html: svg });
+    lastIndex = match.index + match[0].length;
+  }
+  const rest = value.slice(lastIndex);
+  if (rest.trim()) segments.push(...splitTextAndImages(rest));
   return segments;
 }
 
@@ -128,7 +149,9 @@ export function SmartContent({
   return (
     <div className={`${wrapClass} ${className ?? ""}`}>
       {segments.map((seg, i) =>
-        seg.type === "image" ? (
+        seg.type === "svg" ? (
+          <div key={i} className="my-3 max-w-full overflow-x-auto [&>svg]:h-auto [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: seg.html }} />
+        ) : seg.type === "image" ? (
           <img
             key={i}
             src={seg.url}

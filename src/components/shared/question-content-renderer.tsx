@@ -14,19 +14,21 @@
 import { useEffect, useMemo, useState } from "react";
 import "katex/dist/katex.min.css";
 import { formatInlineHtml } from "@/lib/inline-format";
+import { SVG_BLOCK, sanitizeSvg } from "@/lib/svg-safe";
 
 type Segment =
   | { type: "text"; value: string }
   | { type: "mathInline"; value: string }
   | { type: "mathDisplay"; value: string }
-  | { type: "image"; src: string; alt: string };
+  | { type: "image"; src: string; alt: string }
+  | { type: "svg"; html: string };
 
 // Order matters: display math ($$...$$) must be tried before inline math
 // ($...$) or the outer $$ would get eaten as two empty inline matches.
 const TOKEN_REGEX =
   /(\$\$[\s\S]+?\$\$)|(\$[^$\n]+?\$)|(!\[[^\]]*\]\([^)]+\))|(https?:\/\/\S+?\.(?:png|jpe?g|gif|webp|svg)(?=[\s)]|$))/g;
 
-function tokenize(raw: string): Segment[] {
+function tokenizeText(raw: string): Segment[] {
   const segments: Segment[] = [];
   let lastIndex = 0;
   TOKEN_REGEX.lastIndex = 0;
@@ -49,6 +51,23 @@ function tokenize(raw: string): Segment[] {
     lastIndex = match.index + full.length;
   }
   if (lastIndex < raw.length) segments.push({ type: "text", value: raw.slice(lastIndex) });
+  return segments;
+}
+
+// Inline <svg> diagrams are pulled out first and rebuilt as safe SVG; the text around them is tokenised as before.
+function tokenize(raw: string): Segment[] {
+  if (!/<svg\b/i.test(raw)) return tokenizeText(raw);
+  const segments: Segment[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  SVG_BLOCK.lastIndex = 0;
+  while ((m = SVG_BLOCK.exec(raw)) !== null) {
+    if (m.index > last) segments.push(...tokenizeText(raw.slice(last, m.index)));
+    const svg = sanitizeSvg(m[0]);
+    if (svg) segments.push({ type: "svg", html: svg });
+    last = m.index + m[0].length;
+  }
+  if (last < raw.length) segments.push(...tokenizeText(raw.slice(last)));
   return segments;
 }
 
@@ -95,6 +114,7 @@ export function QuestionContentRenderer({ content, className }: { content: strin
         if (seg.type === "text") return <span key={i} dangerouslySetInnerHTML={{ __html: formatInlineHtml(seg.value) }} />;
         if (seg.type === "mathInline") return <MathSpan key={i} latex={seg.value} display={false} />;
         if (seg.type === "mathDisplay") return <MathSpan key={i} latex={seg.value} display />;
+        if (seg.type === "svg") return <div key={i} className="my-3 max-w-full overflow-x-auto [&>svg]:h-auto [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: seg.html }} />;
         return (
           <img
             key={i}
